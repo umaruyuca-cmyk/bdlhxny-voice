@@ -7,8 +7,9 @@ stockwise-backend/config/application-secrets.yml
 .env
 deploy/.env.cloud
 
-# Maven 构建产物
+# 构建产物
 target/
+dist/
 
 # IDE
 .idea/
