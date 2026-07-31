@@ -1,0 +1,28 @@
+package com.stockwise.llm;
+
+import com.stockwise.agent.routing.PaidModelPermit;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+
+/**
+ * 作为业务层唯一可见的付费分析模型入口，拒绝未携带有效门禁许可的调用。
+ */
+@Component
+public class PaidAnalysisClient {
+
+    private final DeepSeekClient deepSeekClient;
+
+    public PaidAnalysisClient(DeepSeekClient deepSeekClient) {
+        this.deepSeekClient = deepSeekClient;
+    }
+
+    /**
+     * 只在统一门禁明确放行后调用 DeepSeek，避免业务组件直接访问原始付费客户端。
+     */
+    public Flux<String> streamChat(PaidModelPermit permit, String systemPrompt, String userMessage) {
+        if (permit == null || !permit.allowed()) {
+            throw new IllegalStateException("缺少有效的付费模型许可");
+        }
+        return deepSeekClient.streamChat(systemPrompt, userMessage);
+    }
+}

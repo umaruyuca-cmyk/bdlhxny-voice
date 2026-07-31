@@ -1,0 +1,9 @@
+**/node_modules
+**/target
+**/coverage
+**/.git
+**/.idea
+**/.env
+**/*.log
+StockWise/docs
+StockWise/diagrams

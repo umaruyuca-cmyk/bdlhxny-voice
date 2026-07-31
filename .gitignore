@@ -1,0 +1,19 @@
+# 历史本地配置（当前不再自动加载）
+stockwise-backend/src/main/resources/application-local.yml
+stockwise-backend/src/main/resources/application-local.properties
+stockwise-backend/config/application-secrets.yml
+
+# 环境变量文件
+.env
+deploy/.env.cloud
+
+# Maven 构建产物
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 日志
+*.log

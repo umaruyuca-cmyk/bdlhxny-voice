@@ -1,0 +1,695 @@
+package com.stockwise.agent;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.stockwise.dto.GuardrailResult;
+import com.stockwise.dto.IngestResult;
+import com.stockwise.dto.ChatMode;
+import com.stockwise.dto.ChatInstrument;
+import com.stockwise.agent.routing.BusinessRoute;
+import com.stockwise.agent.routing.RequestRouter;
+import com.stockwise.agent.routing.RouteDecision;
+import com.stockwise.agent.routing.RouteExecutionPolicy;
+import com.stockwise.agent.routing.RouteExecutionPolicyRegistry;
+import com.stockwise.llm.ChatIntent;
+import com.stockwise.memory.FeedbackType;
+import com.stockwise.memory.MemoryRouter;
+import com.stockwise.memory.ConversationMessage;
+import com.stockwise.memory.SessionState;
+import com.stockwise.memory.SessionStateConflictException;
+import com.stockwise.quota.GuestAnalysisQuota;
+import com.stockwise.quota.GuestAnalysisQuotaService;
+import com.stockwise.quota.GuestAnalysisQuotaUnavailableException;
+import com.stockwise.service.AgentRunService;
+import com.stockwise.service.ExplicitAnalysisExecutor;
+import com.stockwise.service.GuardrailService;
+import com.stockwise.service.GuardedOutputService;
+import com.stockwise.service.OutputGuardrailException;
+import com.stockwise.service.KnowledgeExtractor;
+import com.stockwise.skill.KnowledgeCandidate;
+import com.stockwise.skill.SkillDefinition;
+import com.stockwise.skill.SkillRegistry;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+
+/**
+ * Agent 主流程编排器（agentic / function-calling 架构）。
+ * 分类后选 Skill 注入 systemPrompt，工具调用交给 DeepSeek 自主决策——检索知识、调 stock-analysis-skill 均由模型按需触发，编排器不再硬编码调用顺序。
+ * 暂停点（问是否解决、确认入库）、护栏、记忆、知识闭环全部保留。
+ * 修补后由 RouteExecutionPolicy 显式选择确定性能力，上一行描述仅表示改造前行为，不再作为当前执行依据。
+ * 当前工作站版本将反馈与知识沉淀移出每轮主流程，回答完成后直接允许继续提问。
+ */
+@Slf4j
+@Component
+public class AgentOrchestrator {
+
+    private static final long SSE_TIMEOUT = 300_000L;
+
+    private final RequestRouter requestRouter;
+    private final RouteExecutionPolicyRegistry routePolicyRegistry;
+    private final SkillRegistry skillRegistry;
+    private final ExplicitAnalysisExecutor explicitAnalysisExecutor;
+    private final MemoryRouter memoryRouter;
+    private final KnowledgeExtractor knowledgeExtractor;
+    private final GuardrailService guardrailService;
+    private final GuardedOutputService guardedOutputService;
+    private final AgentContextBuilder agentContextBuilder;
+    private final UserReplyClassifier userReplyClassifier;
+    private final AgentRunService agentRunService;
+    private final GuestAnalysisQuotaService guestAnalysisQuotaService;
+    private final ObjectMapper mapper;
+
+    private final ExecutorService executor;
+
+    public AgentOrchestrator(RequestRouter requestRouter,
+                             RouteExecutionPolicyRegistry routePolicyRegistry,
+                             SkillRegistry skillRegistry,
+                             ExplicitAnalysisExecutor explicitAnalysisExecutor,
+                             MemoryRouter memoryRouter,
+                             KnowledgeExtractor knowledgeExtractor,
+                             GuardrailService guardrailService,
+                             GuardedOutputService guardedOutputService,
+                             AgentContextBuilder agentContextBuilder,
+                             UserReplyClassifier userReplyClassifier,
+                             AgentRunService agentRunService,
+                             GuestAnalysisQuotaService guestAnalysisQuotaService,
+                             ObjectMapper mapper,
+                             @Qualifier("agentFlowExecutor") ExecutorService executor) {
+        this.requestRouter = requestRouter;
+        this.routePolicyRegistry = routePolicyRegistry;
+        this.skillRegistry = skillRegistry;
+        this.explicitAnalysisExecutor = explicitAnalysisExecutor;
+        this.memoryRouter = memoryRouter;
+        this.knowledgeExtractor = knowledgeExtractor;
+        this.guardrailService = guardrailService;
+        this.guardedOutputService = guardedOutputService;
+        this.agentContextBuilder = agentContextBuilder;
+        this.userReplyClassifier = userReplyClassifier;
+        this.agentRunService = agentRunService;
+        this.guestAnalysisQuotaService = guestAnalysisQuotaService;
+        this.mapper = mapper;
+        this.executor = executor;
+    }
+
+    /**
+     * 对话入口：创建 SSE 并异步执行流程，立即返回 emitter 供 Controller 写出。
+     */
+    public SseEmitter handle(Long userId, String sessionId, ChatMode mode,
+                             String message, ChatInstrument instrument) {
+        return handle(userId, sessionId, mode, message, instrument, false, null);
+    }
+
+    /**
+     * 对话入口显式携带游客主体，确保异步 Route 闸门不依赖 HTTP 线程上下文。
+     */
+    public SseEmitter handle(Long userId, String sessionId, ChatMode mode,
+                             String message, ChatInstrument instrument,
+                             boolean guest, String guestSubjectHash) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
+        // 1. 注册超时与错误回调，避免连接泄漏
+        emitter.onTimeout(emitter::complete);
+        emitter.onError(t -> emitter.complete());
+        // 2. 后台线程跑编排，及时释放 Tomcat 请求线程
+        try {
+            executor.execute(() -> runFlow(
+                    userId,
+                    sessionId,
+                    mode,
+                    message,
+                    instrument,
+                    guest,
+                    guestSubjectHash,
+                    emitter));
+        } catch (RejectedExecutionException error) {
+            // 3. 有界队列满时明确结束请求，不在Tomcat线程中降级执行重任务
+            sendEvent(emitter, "done", Map.of(
+                    "status", "SYSTEM_BUSY",
+                    "message", "当前请求较多，请稍后重试"));
+            emitter.complete();
+        }
+        return emitter;
+    }
+
+    /**
+     * 保留旧调用点的兼容入口，新请求应显式传入业务模式。
+     */
+    public SseEmitter handle(Long userId, String sessionId, String message, ChatInstrument instrument) {
+        ChatMode mode = instrument == null ? ChatMode.GENERAL : ChatMode.STOCK_AGENT;
+        return handle(userId, sessionId, mode, message, instrument);
+    }
+
+    /**
+     * 主流程分发：命中暂停点则恢复续跑，否则走首次流程。
+     */
+    private void runFlow(Long userId, String sessionId, ChatMode mode, String message,
+                         ChatInstrument instrument, boolean guest, String guestSubjectHash,
+                         SseEmitter emitter) {
+        try {
+            // 1. Stock Agent 的首次请求和暂停点续跑都必须携带结构化标的
+            if (mode == ChatMode.STOCK_AGENT && instrument == null) {
+                sendEvent(emitter, "ask", Map.of(
+                        "reason", "NEED_INSTRUMENT",
+                        "prompt", "请先选择股票、ETF或基金标的，再开始 Stock Agent 分析"));
+                sendEvent(emitter, "done", Map.of(
+                        "status", "NEED_INSTRUMENT",
+                        "route", BusinessRoute.STOCK_ANALYSIS.name(),
+                        "mode", mode.value()));
+                emitter.complete();
+                return;
+            }
+            SessionState state = memoryRouter.loadWorking(sessionId);
+            if (state != null) {
+                String step = state.getCurrentStep();
+                // 2. 同一会话已有 ReAct 在执行时拒绝并发覆盖
+                if ("react_running".equals(step) || "archiving".equals(step)) {
+                    sendEvent(emitter, "done", Map.of(
+                            "status", "SESSION_BUSY",
+                            "message", "当前会话仍在处理中，请稍后重试"));
+                    emitter.complete();
+                    return;
+                }
+                // 3. 旧会话的反馈暂停点迁移为可继续输入状态，不再强制追问解决和入库
+                if ("awaiting_resolution".equals(step) || "awaiting_confirm".equals(step)) {
+                    state.setCurrentStep("idle");
+                    state.setPendingCandidates(null);
+                    memoryRouter.saveWorking(state);
+                }
+            }
+            // 4. 进入本轮独立路由
+            firstRun(
+                    userId,
+                    sessionId,
+                    mode,
+                    message,
+                    instrument,
+                    guest,
+                    guestSubjectHash,
+                    emitter);
+        } catch (SessionStateConflictException e) {
+            log.warn("会话并发冲突: {}", e.getMessage());
+            sendEvent(emitter, "done", Map.of(
+                    "status", "SESSION_CONFLICT",
+                    "message", "会话已被另一请求更新，请重新发送"));
+            emitter.complete();
+        } catch (Exception e) {
+            log.error("编排流程异常", e);
+            sendEvent(emitter, "error", Map.of("message", safe(e)));
+            emitter.complete();
+        }
+    }
+
+    /**
+     * 首次流程：输入护栏 → 分类选 Skill → DeepSeek 自主调工具推理。
+     * 不再固定检索/调工具，知识与行情数据由模型按需通过 StockTools 获取。
+     * 修补后保留原暂停点，但实际执行改为 Route 先行并由 Java 显式调用允许的能力。
+     */
+    private void firstRun(Long userId, String sessionId, ChatMode mode, String message,
+                          ChatInstrument instrument, boolean guest, String guestSubjectHash,
+                          SseEmitter emitter) {
+        // Step 0：输入护栏，拦截空消息与 Prompt 注入
+        GuardrailResult inputCheck = guardrailService.checkInput(message);
+        if (!inputCheck.passed()) {
+            sendEvent(emitter, "done", Map.of("status", "REFUSED", "reason", inputCheck.reason()));
+            emitter.complete();
+            return;
+        }
+        // Step 1：初始化或续用会话状态，记录用户消息
+        SessionState state = memoryRouter.loadWorking(sessionId);
+        boolean newSession = state == null;
+        if (newSession) {
+            state = new SessionState();
+            state.setSessionId(sessionId);
+            state.setUserId(userId);
+        }
+        state.setChatMode(mode);
+        appendHistory(state, "user", message);
+        state.setLastQuestion(message);
+
+        // Step 2：规则优先并使用本地 Intent 兜底，输出不可变 RouteDecision
+        sendStatus(emitter, "classifying", null, null);
+        RouteDecision decision = mode == ChatMode.GENERAL
+                ? requestRouter.routeGeneral(message)
+                : requestRouter.routeStock(message, instrument.symbol());
+        applyDecision(state, decision);
+        // Step 3：游客深度分析必须先原子取得次数名额，拒绝后不得创建Run或调用任何上游能力。
+        if (!allowGuestAnalysis(emitter, guest, guestSubjectHash, decision)) {
+            return;
+        }
+        if (newSession) {
+            // 1. 路由确定标的后再做用户隔离的语义召回，避免只按时间盲目注入历史。
+            state.setRecentConversationSummaries(
+                    loadRelevantSummaries(userId, message, decision.symbol()));
+        }
+
+        // Step 6：兼容 SkillDefinition 只提供角色规则，真实 Command 由 Route 白名单控制
+        SkillDefinition skill = skillRegistry.get(decision);
+        state.setLastSkillName(skill.name());
+        state.setCurrentStep("react_running");
+        memoryRouter.saveWorking(state);
+        sendBusinessStatus(emitter, decision, skill);
+
+        // Step 7：显式执行 Route，只有门禁放行的分析类请求才能调用 DeepSeek
+        streamAndFinalize(emitter, state, skill, message, decision);
+    }
+
+    /**
+     * 暂停点 B 恢复：按用户反馈判断是否解决，已解决则抽取候选知识进入暂停点 C，未解决则带补充重跑推理。
+     */
+    private void resumeFromResolution(String sessionId, String message,
+                                      SessionState state, boolean guest, String guestSubjectHash,
+                                      SseEmitter emitter) {
+        // 1. 简单判定用户是否表示已解决
+        FeedbackType feedbackType = userReplyClassifier.classifyResolution(message);
+        boolean resolved = feedbackType == FeedbackType.RESOLVED;
+        if (resolved) {
+            // 2. 已解决：抽取候选知识，进入"等待确认入库"暂停点
+            List<KnowledgeCandidate> candidates = knowledgeExtractor.extract(state.getLastQuestion(), state.getLastAnswer());
+            state.setPendingCandidates(candidates);
+            state.setCurrentStep("awaiting_confirm");
+            memoryRouter.saveWorking(state);
+            recordFeedbackSafely(state, sessionId, feedbackType, message,
+                    Map.of("step", "awaiting_resolution"));
+            // 3. 推送候选给前端，等用户确认/修改/拒绝
+            sendEvent(emitter, "suggest", Map.of("items", candidates));
+            sendEvent(emitter, "ask", Map.of("prompt", "以上知识将加入知识库，回复\"确认\"入库，或输入修改/拒绝"));
+            sendEvent(emitter, "done", Map.of("status", "RESOLVED", "resolved", true, "candidates", candidates.size()));
+            emitter.complete();
+            return;
+        }
+        // 4. 未解决：把补充当新输入，重新路由后按显式策略执行
+        appendHistory(state, "user", message);
+        String combinedQuestion = state.getLastQuestion() + "\n用户补充：" + message;
+        RouteDecision decision = state.getChatMode() == ChatMode.GENERAL || state.getSymbol() == null
+                ? requestRouter.routeGeneral(combinedQuestion)
+                : requestRouter.routeStock(combinedQuestion, state.getSymbol());
+        applyDecision(state, decision);
+        // 5. 补充问题重新路由后重新检查配额，不能沿用上一轮已获得的分析名额。
+        if (!allowGuestAnalysis(emitter, guest, guestSubjectHash, decision)) {
+            return;
+        }
+        SkillDefinition skill = skillRegistry.get(decision);
+        state.setCurrentStep("react_running");
+        memoryRouter.saveWorking(state);
+        recordFeedbackSafely(state, sessionId, feedbackType, message,
+                Map.of("step", "awaiting_resolution"));
+        sendBusinessStatus(emitter, decision, skill);
+        streamAndFinalize(emitter, state, skill, combinedQuestion, decision);
+    }
+
+    /**
+     * 暂停点 C 恢复：用户确认后对每条候选知识去重入库，拒绝或无候选则直接收档。
+     */
+    private void confirmAndIngest(String sessionId, String message, SessionState state, SseEmitter emitter) {
+        // 1. 判定用户是否确认入库
+        FeedbackType feedbackType = userReplyClassifier.classifyKnowledgeConfirmation(message);
+        boolean confirmed = feedbackType == FeedbackType.KNOWLEDGE_CONFIRMED;
+        List<KnowledgeCandidate> candidates = state.getPendingCandidates();
+        // 2. 先抢占归档状态，再执行反馈、知识入库和归档等有副作用操作
+        state.setCurrentStep("archiving");
+        memoryRouter.saveWorking(state);
+        try {
+            recordFeedbackSafely(
+                    state,
+                    sessionId,
+                    feedbackType,
+                    message,
+                    Map.of("candidateCount", candidates == null ? 0 : candidates.size()));
+            if (!confirmed || candidates == null || candidates.isEmpty()) {
+                // 3. 拒绝或无候选：归档后收档
+                archiveThenClear(state, sessionId);
+                sendEvent(emitter, "done", Map.of("status", "CLOSED", "ingested", 0));
+                emitter.complete();
+                return;
+            }
+            // 4. 逐条入库，统计结果
+            int ingested = 0;
+            int duplicate = 0;
+            for (KnowledgeCandidate c : candidates) {
+                // 入库护栏：长度门槛 + 禁止措辞
+                GuardrailResult kCheck = guardrailService.checkKnowledge(c);
+                if (!kCheck.passed()) {
+                    log.warn("入库护栏拒绝: {}", kCheck.reason());
+                    continue;
+                }
+                IngestResult r = memoryRouter.ingestConfirmedKnowledge(
+                        c, state.getLastQuestion(), state.getUserId());
+                if ("ingested".equals(r.status())) {
+                    ingested++;
+                } else if ("duplicate".equals(r.status())) {
+                    duplicate++;
+                }
+            }
+            archiveThenClear(state, sessionId);
+            sendEvent(emitter, "done", Map.of(
+                    "status", "INGESTED", "ingested", ingested, "duplicate", duplicate, "total", candidates.size()));
+            emitter.complete();
+        } catch (RuntimeException error) {
+            // 5. 副作用失败时恢复确认暂停点，允许用户安全重试
+            state.setCurrentStep("awaiting_confirm");
+            memoryRouter.saveWorking(state);
+            throw error;
+        }
+    }
+
+    /**
+     * 流式推理并收尾：注册 StockTools 让 DeepSeek 自主调用，逐 token 推前端，完成后落库、护栏、进入暂停点。
+     * 修补后不再注册自主工具，输出流来自 ExplicitAnalysisExecutor 选择的模板、本地模型或门禁后的付费模型。
+     */
+    private void streamAndFinalize(SseEmitter emitter, SessionState state,
+                                   SkillDefinition skill, String userMessage,
+                                   RouteDecision decision) {
+        StringBuilder answer = new StringBuilder();
+        String prompt = agentContextBuilder.build(state, userMessage);
+        AgentRunContext runContext = agentRunService.start(
+                state.getUserId(), state.getSessionId(), userMessage, state.getIntent(), skill);
+        state.setLastRunId(runContext.runId());
+        memoryRouter.saveWorking(state);
+        // 1. 先返回稳定 Run ID，前端可在推理期间关联日志和后续回放
+        sendEvent(emitter, "agent_run", Map.of(
+                "runId", runContext.runId().toString(),
+                "route", decision.businessRoute().name(),
+                "internalRoute", decision.route().name(),
+                "mode", state.getChatMode() == null ? "legacy" : state.getChatMode().value()));
+        try {
+            RouteExecutionPolicy executionPolicy = routePolicyRegistry.get(decision.route());
+            agentRunService.recordRouteDecision(runContext, decision,
+                    executionPolicy.allowedSkillCommands(), executionPolicy.webSearchRequired());
+            if (decision.businessRoute() == BusinessRoute.TOOL_AGENT) {
+                sendStatus(emitter, "searching_web", null, skill.name());
+            }
+            ExplicitAnalysisExecutor.ExecutionOutput execution = explicitAnalysisExecutor.execute(
+                    decision, skill, prompt, userMessage, runContext);
+            if (decision.businessRoute() == BusinessRoute.TOOL_AGENT) {
+                sendStatus(emitter, "reading_sources", null, skill.name());
+            }
+            agentRunService.recordReactTermination(
+                    runContext,
+                    execution.reactTerminationReason().name(),
+                    execution.reactRounds(),
+                    execution.reactToolCalls(),
+                    execution.reactDetail());
+            boolean paid = "PAID".equals(execution.modelTier());
+            agentRunService.recordModelGate(runContext, paid, execution.gateReason());
+            agentRunService.recordModelCall(runContext, execution.modelTier(), decision.route().name());
+            state.setGateReason(execution.gateReason());
+            guardedOutputService.guard(execution.content())
+                    .subscribe(token -> {
+                        // 2. 只有通过发送前护栏的完整句子片段才能推送前端
+                        sendEvent(emitter, "token", Map.of("content", token));
+                        answer.append(token);
+                    }, error -> {
+                        log.error("推理流异常，runId={}", runContext.runId(), error);
+                        agentRunService.fail(runContext, error);
+                        releaseRunningState(state);
+                        if (error instanceof OutputGuardrailException) {
+                            sendEvent(emitter, "error", Map.of(
+                                    "code", "OUTPUT_GUARD_BLOCKED",
+                                    "message", "回答未通过输出安全检查，已停止发送",
+                                    "runId", runContext.runId().toString()));
+                        } else {
+                            sendEvent(emitter, "error", Map.of(
+                                    "code", "MODEL_STREAM_FAILED",
+                                    "message", safe(error),
+                                    "runId", runContext.runId().toString()));
+                        }
+                        emitter.complete();
+                    }, () -> {
+                        try {
+                            // 3. 落库回答与历史
+                            String full = answer.toString();
+                            state.setLastAnswer(full);
+                            appendHistory(state, "assistant", full);
+                            // 4. 对已发送前校验的完整答案再次检查，防止跨片段规则回归
+                            GuardrailResult outputCheck = guardrailService.checkOutput(full);
+                            if (!outputCheck.passed()) {
+                                throw new OutputGuardrailException(outputCheck.reason());
+                            }
+                            // 5. 完成本轮后回到可继续输入状态，反馈和知识沉淀不再阻塞主对话
+                            state.setCurrentStep("idle");
+                            memoryRouter.saveWorking(state);
+                            agentRunService.complete(runContext, full);
+                            List<Map<String, String>> clarificationOptions =
+                                    clarificationOptions(decision);
+                            if (!clarificationOptions.isEmpty()) {
+                                sendEvent(emitter, "clarification", Map.of(
+                                        "reason", decision.reasonCode(),
+                                        "prompt", "选择一个分析方向，我会联网检索后给出精简结论。",
+                                        "options", clarificationOptions));
+                            }
+                            Map<String, Object> done = new LinkedHashMap<>();
+                            done.put("skill", skill.name());
+                            done.put("route", decision.businessRoute().name());
+                            done.put("internalRoute", decision.route().name());
+                            done.put("mode", state.getChatMode() == null ? "legacy" : state.getChatMode().value());
+                            done.put("modelTier", execution.modelTier());
+                            done.put("gateReason", execution.gateReason());
+                            done.put("reactTerminationReason", execution.reactTerminationReason().name());
+                            done.put("reactRounds", execution.reactRounds());
+                            done.put("reactToolCalls", execution.reactToolCalls());
+                            done.put("status", decision.needsClarification()
+                                    ? "NEED_CLARIFICATION"
+                                    : "COMPLETED");
+                            done.put("runId", runContext.runId().toString());
+                            sendEvent(emitter, "done", done);
+                            emitter.complete();
+                        } catch (Exception error) {
+                            log.error("推理收尾异常，runId={}", runContext.runId(), error);
+                            agentRunService.fail(runContext, error);
+                            releaseRunningState(state);
+                            sendEvent(emitter, "error", Map.of(
+                                    "message", safe(error),
+                                    "runId", runContext.runId().toString()));
+                            emitter.complete();
+                        }
+                    });
+        } catch (RuntimeException error) {
+            agentRunService.fail(runContext, error);
+            releaseRunningState(state);
+            throw error;
+        }
+    }
+
+    /**
+     * 发送 status 事件，携带当前步骤与 Skill 名。
+     */
+    private void sendStatus(SseEmitter emitter, String step, Boolean hit, String skill) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("step", step);
+        if (hit != null) {
+            data.put("hit", hit);
+        }
+        if (skill != null) {
+            data.put("skill", skill);
+        }
+        sendEvent(emitter, "status", data);
+    }
+
+    /**
+     * 将内部细分路由转换为前端可理解的业务执行阶段。
+     */
+    private void sendBusinessStatus(SseEmitter emitter, RouteDecision decision, SkillDefinition skill) {
+        String step = switch (decision.businessRoute()) {
+            case DIRECT_CHAT -> "direct_chat";
+            case TOOL_AGENT -> "react_planning";
+            case STOCK_ANALYSIS -> "stock_validating";
+        };
+        sendStatus(emitter, step, null, skill.name());
+    }
+
+    /**
+     * 为适合渐进选择的模糊问题提供结构化选项，避免模型先生成大段通用说明。
+     */
+    private List<Map<String, String>> clarificationOptions(RouteDecision decision) {
+        if (!"GENERAL_RESEARCH_SCOPE_REQUIRED".equals(decision.reasonCode())) {
+            return List.of();
+        }
+        return List.of(
+                Map.of(
+                        "label", "昨日复盘",
+                        "message", "搜索并复盘最近一个已完成交易日的该板块表现，"
+                                + "重点看涨跌、成交和领涨细分方向。"),
+                Map.of(
+                        "label", "近期趋势",
+                        "message", "搜索并分析该板块近20个交易日的趋势、强弱和关键变化。"),
+                Map.of(
+                        "label", "资金强弱",
+                        "message", "搜索并分析该板块近期资金流向、成交变化和内部强弱分化。"),
+                Map.of(
+                        "label", "消息影响",
+                        "message", "搜索该板块近期重要新闻、政策和事件，并分析其影响。"));
+    }
+
+    /**
+     * 在真实工具和模型之前执行游客分析次数门禁，并把剩余次数同步给前端。
+     */
+    private boolean allowGuestAnalysis(SseEmitter emitter,
+                                       boolean guest,
+                                       String guestSubjectHash,
+                                       RouteDecision decision) {
+        try {
+            GuestAnalysisQuota quota = guestAnalysisQuotaService.acquire(
+                    guest,
+                    guestSubjectHash,
+                    decision.route());
+            if (!quota.applicable()) {
+                return true;
+            }
+            Map<String, Object> quotaData = guestQuotaData(quota);
+            sendEvent(emitter, "quota", quotaData);
+            if (quota.allowed()) {
+                return true;
+            }
+            Map<String, Object> done = new LinkedHashMap<>(quotaData);
+            done.put("status", "GUEST_ANALYSIS_LIMIT_REACHED");
+            done.put("message", "游客最多可发起" + quota.limit() + "次分析，当前次数已用完，请登录后继续");
+            sendEvent(emitter, "done", done);
+            emitter.complete();
+            return false;
+        } catch (GuestAnalysisQuotaUnavailableException error) {
+            sendEvent(emitter, "done", Map.of(
+                    "status", "GUEST_ANALYSIS_LIMIT_UNAVAILABLE",
+                    "message", "游客分析次数服务暂时不可用，请稍后重试"));
+            emitter.complete();
+            return false;
+        }
+    }
+
+    private Map<String, Object> guestQuotaData(GuestAnalysisQuota quota) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("guest", true);
+        data.put("quotaType", "guest_analysis");
+        data.put("limit", quota.limit());
+        data.put("used", quota.used());
+        data.put("remaining", quota.remaining());
+        return data;
+    }
+
+    /**
+     * 统一发送 SSE 事件，自动补 type 字段；发送异常忽略（emitter 可能已关闭）。
+     */
+    private void sendEvent(SseEmitter emitter, String type, Map<String, Object> payload) {
+        try {
+            Map<String, Object> data = new LinkedHashMap<>(payload);
+            data.put("type", type);
+            emitter.send(SseEmitter.event().data(mapper.writeValueAsString(data)));
+        } catch (Exception e) {
+            // 忽略：客户端连接已断
+        }
+    }
+
+    private void appendHistory(SessionState state, String role, String content) {
+        if ("assistant".equals(role)) {
+            state.getHistory().add(ConversationMessage.assistant(content));
+            return;
+        }
+        state.getHistory().add(ConversationMessage.user(content));
+    }
+
+    /**
+     * 将最终路由写入短期状态，恢复流程不得只依赖旧 Intent。
+     */
+    private void applyDecision(SessionState state, RouteDecision decision) {
+        state.setIntent(decision.compatibleIntent());
+        state.setRoute(decision.route());
+        state.setModelPolicy(decision.modelPolicy());
+        state.setSymbol(decision.symbol());
+        state.setGateReason(decision.reasonCode());
+    }
+
+    /**
+     * 归档会话到 PG 中期记忆，再清除 Redis 短期状态。
+     */
+    private void archiveThenClear(SessionState state, String sessionId) {
+        // 1. 调用方已通过 CAS 抢占归档权，写入情景记忆后清除对应版本的工作记忆
+        memoryRouter.archiveEpisode(
+                state.getUserId(),
+                sessionId,
+                state.getSymbol(),
+                state.getHistory(),
+                buildArchiveSummary(state));
+        memoryRouter.clearWorking(state);
+    }
+
+    /**
+     * 反馈落库失败只记录告警，不能阻断已经完成 CAS 状态迁移的主对话流程。
+     */
+    private void recordFeedbackSafely(SessionState state,
+                                      String sessionId,
+                                      FeedbackType feedbackType,
+                                      String message,
+                                      Map<String, Object> metadata) {
+        try {
+            memoryRouter.recordFeedback(
+                    state.getUserId(),
+                    sessionId,
+                    state.getLastRunId(),
+                    feedbackType,
+                    message,
+                    metadata);
+        } catch (RuntimeException error) {
+            log.warn("结构化反馈保存失败，sessionId={}, type={}: {}",
+                    sessionId, feedbackType, error.getMessage());
+        }
+    }
+
+    /**
+     * 推理异常时释放 react_running 状态，使下一条用户消息能够重新进入路由。
+     */
+    private void releaseRunningState(SessionState state) {
+        try {
+            state.setCurrentStep("error");
+            memoryRouter.saveWorking(state);
+        } catch (Exception e) {
+            log.warn("释放会话运行状态失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 加载与当前问题和标的相关的长期情景摘要，底层负责向量故障时的最近摘要降级。
+     */
+    private List<String> loadRelevantSummaries(Long userId, String question, String symbol) {
+        try {
+            return memoryRouter.loadRelevantEpisodes(userId, question, symbol);
+        } catch (Exception e) {
+            log.warn("加载长期情景记忆失败，本轮按无历史上下文继续: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 生成可检索的确定性会话摘要，避免仅把最后问题误当成完整摘要。
+     */
+    private String buildArchiveSummary(SessionState state) {
+        String question = truncate(state.getLastQuestion(), 300);
+        String answer = truncate(state.getLastAnswer(), 700);
+        String symbol = state.getSymbol() == null || state.getSymbol().isBlank()
+                ? "未指定"
+                : state.getSymbol();
+        return "标的：" + symbol + "\n问题：" + question + "\n历史结论：" + answer;
+    }
+
+    private String truncate(String text, int maxLength) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text.trim();
+        if (normalized.length() <= maxLength) {
+            return normalized;
+        }
+        return normalized.substring(0, maxLength) + "…";
+    }
+
+    private String safe(Throwable e) {
+        String m = e.getMessage();
+        return m == null ? e.getClass().getSimpleName() : m;
+    }
+}

@@ -1,0 +1,13 @@
+# ============================================================
+# StockWise Frontend 云端独立部署
+# Nginx 使用 host 网络监听8082，并代理到127.0.0.1:8081的Backend。
+# ============================================================
+
+services:
+  stockwise-frontend:
+    build:
+      context: ../stockwise-frontend
+      dockerfile: Dockerfile
+    container_name: stockwise-frontend
+    restart: unless-stopped
+    network_mode: host

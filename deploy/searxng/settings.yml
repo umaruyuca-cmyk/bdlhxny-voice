@@ -1,0 +1,26 @@
+use_default_settings:
+  engines:
+    keep_only:
+      - baidu
+      - 360search
+
+general:
+  debug: false
+  instance_name: "StockWise Search"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  favicon_resolver: ""
+  default_lang: "zh-CN"
+  max_page: 1
+  formats:
+    - json
+
+server:
+  # 由 SEARXNG_SECRET 环境变量覆盖，文件中不保存真实密钥
+  secret_key: "CHANGE_ME_BY_ENV"
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"

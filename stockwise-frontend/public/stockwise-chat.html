@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>智能研究工作站</title>
+  <style>
+    :root{
+      --primary:#4d6bfe;--primary-soft:#eef2ff;--primary-hover:#3b5de7;
+      --text:#202329;--muted:#69707b;--line:#e5e7eb;--bg:#f7f8fa;--white:#fff;
+      --red:#e5484d;--green:#16a36a;--orange:#d97706;
+      --shadow:0 4px 16px rgba(31,35,41,.08);--radius:10px;--radius-sm:7px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);overflow:hidden}
+
+    .app{height:100vh;display:flex;flex-direction:column}
+
+    .topbar{height:56px;min-height:56px;background:var(--white);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:10}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px}
+    .logo{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--primary);color:#fff;font-weight:800;font-size:16px}
+    .top-actions{display:flex;align-items:center;gap:10px}
+    .session-badge{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:11px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .quota-badge{display:flex;align-items:center;padding:4px 10px;border-radius:999px;background:#fff7e8;color:#9a651d;font-size:11px;font-weight:650;white-space:nowrap}
+    .quota-badge.exhausted{background:#fff0ee;color:var(--red)}
+    .ghost{height:32px;padding:0 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);color:#4e545d;font-size:12px}.ghost:hover{border-color:#b9bec7}
+    .tab-btn{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);color:var(--muted);font-size:12px;display:flex;align-items:center;gap:5px}
+    .tab-btn.active{background:var(--primary-soft);border-color:#c9d2ff;color:var(--primary);font-weight:600}
+    .tab-btn .badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--primary);color:#fff;font-size:10px;font-weight:600}
+
+    .main{flex:1;display:flex;overflow:hidden}
+    .chat-panel{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--white);border-right:1px solid var(--line)}
+    .side-panel{width:380px;min-width:320px;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+    .side-panel.hidden{display:none}
+
+    .chat-head{height:52px;min-height:52px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+    .chat-head strong{font-size:14px}.chat-head small{color:var(--muted);font-size:11px;margin-left:8px}
+    .instrument-bar{min-height:52px;padding:8px 16px;border-bottom:1px solid var(--line);background:#fbfcff;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .instrument-context{min-width:0;display:flex;align-items:center;gap:10px}
+    .instrument-icon{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:9px;background:var(--primary-soft);color:var(--primary);font-weight:800}
+    .instrument-copy{min-width:0}.instrument-copy strong{display:block;font-size:12px}.instrument-copy small{display:block;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .instrument-actions{display:flex;align-items:center;gap:6px;flex:none}
+    .instrument-code{color:var(--primary);margin-right:6px}.instrument-type{display:inline-flex;padding:1px 6px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:9px}
+    .text-btn{border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer;padding:5px}.text-btn:hover{color:var(--primary)}
+    .status-bar{display:flex;align-items:center;gap:6px;padding:6px 16px;border-bottom:1px solid var(--line);background:#fafbfc;min-height:34px;overflow-x:auto}
+    .status-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11px;white-space:nowrap}
+    .status-tag.active{background:var(--primary-soft);color:var(--primary)}.status-tag.done{background:#eaf8f2;color:var(--green)}
+    .status-tag i{width:6px;height:6px;border-radius:50%;background:currentColor}.status-tag.active i{animation:pulse 1.2s infinite}@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+    .messages{flex:1;overflow:auto;padding:18px 16px 12px;scroll-behavior:smooth}
+    .msg{display:flex;gap:10px;margin-bottom:16px}.msg.user{justify-content:flex-end}
+    .avatar{width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;background:var(--primary-soft);color:var(--primary);font-size:12px;font-weight:700}
+    .msg.user .avatar{background:var(--primary);color:#fff}
+    .bubble{max-width:85%;padding:10px 13px;border-radius:4px 12px 12px 12px;background:#f4f5f7;color:#343941;word-break:break-word}
+    .msg.user .bubble{border-radius:12px 4px 12px 12px;background:var(--primary);color:#fff}
+    .bubble p{margin:0}.bubble p+p{margin-top:6px}
+    .bubble.streaming{border-left:2px solid var(--primary);padding-left:11px}
+    .typing{display:flex;gap:4px;padding:5px 1px}.typing i{width:5px;height:5px;border-radius:50%;background:#9da4af;animation:blink 1s infinite}.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}@keyframes blink{0%,60%,100%{opacity:.25}30%{opacity:1}}
+
+    .action-card{margin-top:8px;padding:11px 13px;border:1px solid #dfe5ff;border-radius:8px;background:#f7f9ff}
+    .action-card .ac-title{font-weight:600;font-size:13px;margin-bottom:7px}
+    .action-card .ac-text{color:#545d6b;font-size:12px;line-height:1.7;margin-bottom:9px}
+    .action-card .ac-btns{display:flex;gap:7px;flex-wrap:wrap}
+    .ac-btn{height:30px;padding:0 12px;border:none;border-radius:6px;font-size:12px;cursor:pointer}
+    .ac-btn.primary{background:var(--primary);color:#fff}.ac-btn.primary:hover{background:var(--primary-hover)}
+    .ac-btn.secondary{background:var(--white);border:1px solid var(--line);color:#525964}.ac-btn.secondary:hover{border-color:#b9bec7}
+    .ac-btn.danger{background:#fff;border:1px solid #fdd;color:var(--red)}.ac-btn.danger:hover{background:#fff5f5}
+
+    .knowledge-item{margin-top:6px;padding:9px 11px;border:1px solid #e5e8ef;border-radius:8px;background:#fff;font-size:12px}
+    .knowledge-item .ki-header{display:flex;justify-content:space-between;margin-bottom:4px}
+    .knowledge-item .ki-score{color:var(--primary);font-weight:600;font-size:11px}
+    .knowledge-item .ki-meta{color:var(--muted);font-size:10px;margin-top:4px}
+    .knowledge-item .ki-text{color:#525964;line-height:1.6}
+    .knowledge-item.selected{border-color:var(--primary);background:var(--primary-soft)}
+    .knowledge-item .ki-check{display:none}.knowledge-item.selected .ki-check{display:inline}
+    .knowledge-item input[type="text"]{width:100%;margin-top:5px;padding:5px 8px;border:1px solid var(--line);border-radius:4px;font-size:12px}
+
+    .composer{margin:10px 14px 14px;padding:9px 11px;border:1px solid #d6d9df;border-radius:12px;background:var(--white);box-shadow:0 5px 20px rgba(31,35,41,.06);display:grid;grid-template-columns:1fr 36px;gap:8px;align-items:end}
+    textarea{border:0;outline:0;resize:none;min-height:42px;max-height:120px;padding:4px;color:var(--text);font:inherit}textarea::placeholder{color:#a1a7b0}
+    .send{width:36px;height:36px;border:0;border-radius:9px;background:var(--primary);color:#fff;font-size:16px;cursor:pointer;display:grid;place-items:center}.send:disabled{opacity:.45}
+
+    .side-head{height:52px;min-height:52px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:var(--white)}
+    .side-head strong{font-size:14px}
+    .side-tabs{display:flex;gap:0;border-bottom:1px solid var(--line)}
+    .side-tab{flex:1;height:36px;border:0;background:transparent;color:var(--muted);font-size:12px;border-bottom:2px solid transparent}.side-tab.active{border-bottom-color:var(--primary);color:var(--primary);font-weight:600}
+    .side-content{flex:1;overflow:auto;padding:12px}
+    .search-box{display:flex;gap:7px;margin-bottom:12px}
+    .search-box input{flex:1;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:13px}.search-box input:focus{outline:0;border-color:var(--primary)}
+    .k-list{display:flex;flex-direction:column;gap:8px}
+    .k-card{padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);cursor:pointer;transition:box-shadow .15s}.k-card:hover{box-shadow:var(--shadow)}
+    .k-card .kc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+    .k-tag{display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600}
+    .k-tag.active{background:#eaf8f2;color:var(--green)}.k-tag.deprecated{background:#f4f4f5;color:#8e8e93}.k-tag.expired{background:#fff4df;color:var(--orange)}.k-tag.conflicted{background:#fde8e8;color:var(--red)}
+    .k-card .kc-text{color:#525964;font-size:12px;line-height:1.6;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+    .k-card .kc-meta{color:var(--muted);font-size:10px;margin-top:6px}
+    .empty{text-align:center;color:var(--muted);padding:30px 0;font-size:13px}
+    .welcome{width:min(720px,100%);margin:22px auto;padding:0 10px;text-align:center}
+    .welcome-mark{width:54px;height:54px;margin:0 auto 14px;display:grid;place-items:center;border-radius:16px;background:linear-gradient(135deg,var(--primary),#7c8fff);color:#fff;font-size:22px;font-weight:800;box-shadow:0 10px 28px rgba(77,107,254,.22)}
+    .welcome h1{margin:0 0 7px;font-size:21px;line-height:1.35}.welcome>p{margin:0 auto 20px;max-width:520px;color:var(--muted);font-size:13px}
+    .start-paths{display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:left}
+    .start-card{padding:16px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 3px 12px rgba(31,35,41,.04)}
+    .start-card.primary-path{border-color:#ccd5ff;background:linear-gradient(145deg,#fff,#f4f6ff)}
+    .start-card strong{display:block;margin-bottom:5px;font-size:14px}.start-card p{min-height:38px;margin:0 0 12px;color:var(--muted);font-size:11px;line-height:1.65}
+    .start-card .ghost,.start-card .ac-btn{width:100%;height:34px}
+    .preset-row{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin-top:14px}.preset-chip{height:28px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#525964;font-size:10px;cursor:pointer}.preset-chip:hover{border-color:#b9c6ff;color:var(--primary)}
+
+    .run-list{display:flex;flex-direction:column;gap:6px}
+    .run-card{padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);cursor:pointer}.run-card:hover{box-shadow:var(--shadow)}
+    .run-card .rc-head{display:flex;justify-content:space-between;margin-bottom:3px;font-size:12px}
+    .run-card .rc-intent{font-weight:600}.run-card .rc-status{font-size:10px}
+    .run-status{display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:600}
+    .run-status.completed{background:#eaf8f2;color:var(--green)}.run-status.failed{background:#fde8e8;color:var(--red)}.run-status.running{background:var(--primary-soft);color:var(--primary)}
+    .run-card .rc-time{color:var(--muted);font-size:10px}
+    .run-guide{margin-bottom:12px;padding:11px 12px;border:1px solid #dce8e3;border-radius:12px;background:#f6fbf8;color:#58635f;font-size:11px;line-height:1.65}
+    .run-guide strong{display:block;margin-bottom:2px;color:#26312d;font-size:12px}
+    .run-route{display:inline-flex;margin-top:6px;padding:2px 7px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:10px;font-weight:600}
+
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:100;display:grid;place-items:center}
+    .modal{width:min(680px,95vw);max-height:85vh;background:var(--white);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.18);display:flex;flex-direction:column}
+    .modal-head{height:52px;padding:0 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+    .modal-body{flex:1;overflow:auto;padding:16px}
+    .instrument-modal{width:min(520px,94vw)}
+    .modal-intro{margin:0 0 14px;color:var(--muted);font-size:12px}
+    .form-label{display:block;margin:12px 0 5px;font-size:11px;font-weight:600;color:#4e545d}
+    .form-input{width:100%;height:40px;padding:0 11px;border:1px solid var(--line);border-radius:8px;color:var(--text);font:inherit}.form-input:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+    .instrument-presets{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:7px}
+    .instrument-option{padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff;text-align:left;cursor:pointer}.instrument-option:hover,.instrument-option.selected{border-color:var(--primary);background:var(--primary-soft)}
+    .instrument-option strong{display:block;font-size:12px}.instrument-option small{color:var(--muted);font-size:10px}
+    .form-error{min-height:18px;margin-top:5px;color:var(--red);font-size:10px}
+    .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}.modal-actions .ac-btn{height:34px}
+    .modal-body .step-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:12px}
+    .step-item .step-no{width:24px;height:24px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--primary-soft);color:var(--primary);font-size:10px;font-weight:700}
+    .step-item .step-type{font-weight:600;min-width:100px}.step-item .step-summary{color:#525964;flex:1}
+    .step-item .step-duration{color:var(--muted);font-size:10px;white-space:nowrap}
+
+    @media(max-width:860px){
+      .side-panel{width:100%;min-width:0;position:fixed;inset:0;z-index:50;top:56px;display:none}.side-panel.open{display:flex}
+      .chat-panel{border-right:0}.tab-btn.desktop-only{display:none}
+      .instrument-copy small{max-width:180px}.start-paths{grid-template-columns:1fr}.start-card p{min-height:0}
+    }
+    @media(min-width:861px){.tab-btn.mobile-only{display:none}}
+
+    /* 浅色灵动工作台：暖白纸面、薄荷绿强调和明确的双模式层级。 */
+    :root{
+      --primary:#0e8a63;--primary-soft:#e5f6ef;--primary-hover:#087556;
+      --text:#18231f;--muted:#6f7e78;--line:#dce7e2;--bg:#f3f7f4;--white:#fffefa;
+      --red:#c95f58;--green:#0e8a63;--orange:#b77a27;
+      --shadow:0 18px 52px rgba(31,65,52,.10);--radius:20px;--radius-sm:12px;
+    }
+    body{
+      background:
+        radial-gradient(circle at 14% 6%,rgba(114,242,189,.16),transparent 28%),
+        radial-gradient(circle at 92% 92%,rgba(197,232,219,.38),transparent 34%),
+        var(--bg);
+    }
+    button,input,textarea{font:inherit}
+    button{cursor:pointer}
+    button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid rgba(14,138,99,.18);outline-offset:2px}
+    .app{flex-direction:row;padding:14px;gap:14px}
+    .rail{
+      width:66px;flex:none;border:1px solid rgba(220,231,226,.9);border-radius:22px;
+      background:rgba(255,254,250,.78);backdrop-filter:blur(20px);box-shadow:var(--shadow);
+      display:flex;flex-direction:column;align-items:center;padding:12px 9px;gap:10px;
+    }
+    .rail-brand{
+      width:42px;height:42px;display:grid;place-items:center;border-radius:15px;
+      background:#123b2e;color:#fff;font-weight:800;letter-spacing:-1px;box-shadow:0 10px 24px rgba(18,59,46,.22);
+    }
+    .rail-nav{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+    .rail-button{
+      width:42px;height:42px;border:0;border-radius:14px;background:transparent;color:#71817b;
+      display:grid;place-items:center;transition:.18s ease;
+    }
+    .rail-button:hover,.rail-button.active{background:var(--primary-soft);color:var(--primary);transform:translateY(-1px)}
+    .rail-button svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8}
+    .rail-spacer{flex:1}
+    .shell{
+      flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+      border:1px solid rgba(220,231,226,.92);border-radius:24px;background:rgba(255,254,250,.78);
+      backdrop-filter:blur(22px);box-shadow:var(--shadow);
+    }
+    .topbar{height:68px;min-height:68px;background:rgba(255,254,250,.74);padding:0 20px;border-color:rgba(220,231,226,.82)}
+    .topbar-left{display:flex;align-items:center;gap:18px;min-width:0}
+    .brand{font-family:Georgia,"Times New Roman",serif;font-size:20px;color:#173329}.brand .logo{display:none}
+    .mode-switch{
+      display:flex;align-items:center;gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px;background:#edf3ef;
+    }
+    .mode-button{
+      height:36px;padding:0 16px;border:0;border-radius:10px;background:transparent;color:var(--muted);
+      display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650;white-space:nowrap;
+    }
+    .mode-button.active{background:var(--white);color:#173d30;box-shadow:0 5px 16px rgba(31,65,52,.10)}
+    .mode-dot{width:7px;height:7px;border-radius:50%;background:#a4b4ad}.mode-button.active .mode-dot{background:#25ba83;box-shadow:0 0 0 4px rgba(37,186,131,.12)}
+    .session-badge{background:#eef4f0;color:#587068}
+    .ghost{border-color:var(--line);border-radius:10px;background:rgba(255,254,250,.76)}
+    .ghost:hover{border-color:#9acdb9;color:var(--primary);background:#f9fffc}
+    .main{background:transparent}
+    .chat-panel{background:rgba(255,254,250,.5);border-color:var(--line)}
+    .chat-head{height:58px;min-height:58px;padding:0 20px;background:rgba(255,254,250,.46)}
+    .chat-heading{display:flex;align-items:baseline;gap:9px}.chat-heading strong{font-size:15px}
+    .mode-kicker{color:var(--primary);font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+    .instrument-bar{
+      margin:10px 16px 0;min-height:70px;padding:10px 13px;border:1px solid #d5e9e0;border-radius:18px;
+      background:linear-gradient(115deg,rgba(223,247,238,.96),rgba(255,254,250,.9));box-shadow:0 9px 26px rgba(44,105,82,.07);
+    }
+    body[data-mode="general"] .instrument-bar{display:none}
+    .instrument-icon{width:42px;height:42px;border-radius:14px;background:#d1f2e5;color:#0e8a63}
+    .instrument-copy strong{font-size:13px}.instrument-copy small{font-size:11px;margin-top:2px}
+    .status-bar{min-height:0;padding:0 20px;border:0;background:transparent}.status-bar:not(:empty){min-height:38px;padding-top:8px}
+    .messages{padding:18px 20px 8px}
+    .msg{max-width:900px;margin-left:auto;margin-right:auto;gap:11px}
+    .avatar{border-radius:11px;background:#e4f5ee;color:var(--primary)}
+    .msg.user .avatar{background:#167d5d}
+    .bubble{
+      max-width:min(78%,720px);padding:13px 15px;border:1px solid #e2ebe7;border-radius:7px 18px 18px 18px;
+      background:rgba(255,255,255,.82);box-shadow:0 8px 24px rgba(40,72,60,.06);line-height:1.72;
+    }
+    .msg.user .bubble{background:linear-gradient(135deg,#dff5ec,#cdeee1);color:#21463a;border:0;border-radius:18px 7px 18px 18px}
+    .welcome{margin:34px auto;padding:8px 12px}
+    .welcome-mark{background:linear-gradient(145deg,#0e8a63,#56c69d);border-radius:20px;box-shadow:0 14px 34px rgba(14,138,99,.22)}
+    .welcome h1{font-family:Georgia,"Times New Roman",serif;font-size:28px;color:#173329}
+    .welcome>p{font-size:13px;line-height:1.8}
+    .start-card{border-color:#dce8e3;border-radius:18px;background:rgba(255,255,255,.76);box-shadow:0 12px 32px rgba(38,73,59,.07)}
+    .start-card.primary-path{border-color:#bfe1d3;background:linear-gradient(145deg,#fafffc,#eaf8f2)}
+    .preset-chip{border-color:#dce8e3;background:rgba(255,255,255,.76)}
+    #quickPrompts{padding:5px 18px 2px!important;justify-content:center}
+    .composer{
+      width:calc(100% - 36px);max-width:900px;margin:10px auto 16px;padding:8px 9px 8px 15px;
+      border-color:#d4e3dd;border-radius:18px;background:rgba(255,255,255,.88);box-shadow:0 15px 38px rgba(30,71,54,.10);
+    }
+    textarea{background:transparent}
+    .send{border-radius:13px;background:linear-gradient(145deg,#13a975,#087957);box-shadow:0 8px 18px rgba(14,138,99,.22)}
+    .composer-hint{text-align:center;color:#899790;font-size:10px;margin:-8px 0 12px}
+    .side-panel{width:360px;min-width:310px;background:rgba(239,245,241,.66)}
+    .side-head{height:58px;min-height:58px;background:rgba(255,254,250,.5)}
+    .side-tabs{margin:10px 12px 0;padding:4px;border:1px solid var(--line);border-radius:13px;background:#e9f0ec}
+    .side-tab{height:32px;border:0!important;border-radius:9px}.side-tab.active{background:var(--white);color:var(--primary);box-shadow:0 5px 12px rgba(31,65,52,.08)}
+    .k-card,.run-card{border-color:#dce8e3;border-radius:14px;background:rgba(255,255,255,.76)}
+    .modal-overlay{backdrop-filter:blur(6px);background:rgba(20,48,38,.28)}
+    .modal{border:1px solid #d6e6df;border-radius:22px;background:#fffefa}
+    .instrument-option{border-radius:13px}.instrument-option:hover,.instrument-option.selected{border-color:#84cbb0;background:#ecf9f4}
+    .ac-btn{border-radius:9px}.ac-btn.primary{background:var(--primary)}
+    @media(max-width:860px){
+      .app{padding:0;gap:0}.rail{display:none}.shell{border:0;border-radius:0}
+      .topbar{height:62px;min-height:62px;padding:0 12px}.brand{display:none}
+      .topbar-left{gap:8px}.mode-switch{flex:1}.mode-button{flex:1;justify-content:center;padding:0 8px}
+      .session-badge{display:none}.quota-badge{padding:4px 8px;font-size:10px}.top-actions{gap:6px}.top-actions .desktop-only{display:none}
+      .chat-head{height:48px;min-height:48px;padding:0 14px}.instrument-bar{margin:8px 10px 0}
+      .messages{padding:14px 11px 6px}.bubble{max-width:88%}.welcome{margin:16px auto}.welcome h1{font-size:23px}
+      .composer{width:calc(100% - 20px);margin-bottom:10px}.composer-hint{margin-bottom:8px}
+      .side-panel{top:62px}
+    }
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+  </style>
+</head>
+<body data-mode="stock">
+<div class="app">
+  <aside class="rail" aria-label="主导航">
+    <div class="rail-brand" aria-label="智能研究工作站">研</div>
+    <nav class="rail-nav">
+      <button class="rail-button active" aria-label="智能对话" title="智能对话">
+        <svg viewBox="0 0 24 24"><path d="M5 5.5h14v10H9l-4 3v-13Z"/></svg>
+      </button>
+      <button class="rail-button" id="railRuns" aria-label="运行记录" title="运行记录">
+        <svg viewBox="0 0 24 24"><path d="M4 18V9m6 9V5m6 13v-7m4 7H2"/></svg>
+      </button>
+    </nav>
+    <div class="rail-spacer"></div>
+    <button class="rail-button" aria-label="设置" title="设置">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1A8 8 0 0 0 15 6l-.3-2.6h-4L10.4 6A8 8 0 0 0 8 7.1l-2.4-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1A8 8 0 0 0 10.4 18l.3 2.6h4L15 18a8 8 0 0 0 1.6-1.1l2.4 1 2-3.4-2-1.5a7 7 0 0 0 .1-1Z"/></svg>
+    </button>
+  </aside>
+  <div class="shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand"><span class="logo">研</span><span>智能研究工作站</span></div>
+      <div class="mode-switch" role="tablist" aria-label="工作模式">
+        <button class="mode-button" id="modeGeneral" type="button" role="tab" aria-selected="false" data-mode="general"><span class="mode-dot"></span>普通问答</button>
+        <button class="mode-button active" id="modeStock" type="button" role="tab" aria-selected="true" data-mode="stock"><span class="mode-dot"></span>Stock Agent</button>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="tab-btn desktop-only active" id="tabRuns" data-panel="runs">运行追踪</button>
+      <button class="tab-btn mobile-only" id="mobileSideToggle">☰</button>
+      <span class="quota-badge" id="guestQuotaBadge" title="仅深度分析请求消耗次数">游客分析 --/10</span>
+      <span class="session-badge" id="sessionBadge" title="会话ID">新会话</span>
+      <button class="ghost" id="newSession">新建会话</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="chat-panel" id="chatPanel">
+      <header class="chat-head">
+        <div class="chat-heading"><span class="mode-kicker" id="modeKicker">Stock Agent</span><strong id="chatTitle">标的分析</strong><small id="headSkill"></small></div>
+        <span id="headRunId" style="color:var(--muted);font-size:10px"></span>
+      </header>
+      <div class="instrument-bar">
+        <div class="instrument-context">
+          <span class="instrument-icon" id="instrumentIcon">＋</span>
+          <div class="instrument-copy">
+            <strong id="instrumentTitle">未选择分析标的</strong>
+            <small id="instrumentHint">可以直接询问投资知识，也可以先选择股票、ETF 或基金</small>
+          </div>
+        </div>
+        <div class="instrument-actions">
+          <button class="ghost" id="selectInstrument" type="button">选择标的</button>
+          <button class="text-btn" id="clearInstrument" type="button" style="display:none">清除</button>
+        </div>
+      </div>
+      <div class="status-bar" id="statusBar"></div>
+      <div class="messages" id="messages">
+        <div class="welcome">
+          <div class="welcome-mark">研</div>
+          <h1>今天想分析什么？</h1>
+          <p>选择一个标的后可以连续追问；如果只是了解投资知识，也可以直接开始对话。</p>
+          <div class="start-paths">
+            <div class="start-card primary-path">
+              <strong>分析具体标的</strong>
+              <p>选择股票、ETF 或基金，后续问题自动沿用当前标的，无需反复输入代码。</p>
+              <button class="ac-btn primary" type="button" data-open-instrument>选择分析标的</button>
+            </div>
+            <div class="start-card">
+              <strong>普通问答与闲聊</strong>
+              <p>切换到普通问答处理知识解释、方案讨论和无需绑定标的的问题。</p>
+              <button class="ghost" type="button" id="skipInstrument">切换到普通问答</button>
+            </div>
+          </div>
+          <div class="preset-row">
+            <span style="color:var(--muted);font-size:10px;line-height:28px">常用标的</span>
+            <button class="preset-chip" type="button" data-symbol="588200" data-name="科创芯片ETF" data-type="ETF">588200 科创芯片ETF</button>
+            <button class="preset-chip" type="button" data-symbol="510300" data-name="沪深300ETF" data-type="ETF">510300 沪深300ETF</button>
+            <button class="preset-chip" type="button" data-symbol="159915" data-name="创业板ETF" data-type="ETF">159915 创业板ETF</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:0 14px;display:flex;gap:6px;overflow:auto" id="quickPrompts">
+        <button class="ghost" data-prompt="分析一下 588200 科创芯片ETF，现在适合买入吗？">分析 588200</button>
+        <button class="ghost" data-prompt="ETF 动量轮动策略有哪些常见指标？">动量轮动策略</button>
+        <button class="ghost" data-prompt="什么是追高风险？怎么判断是否追高？">追高风险判断</button>
+        <button class="ghost" data-prompt="MA20 和 MA60 在技术分析中怎么用？">均线分析</button>
+      </div>
+      <form class="composer" id="composer">
+        <textarea id="input" rows="2" placeholder="输入股票代码或投资问题…"></textarea>
+        <button class="send" id="sendBtn" aria-label="发送">&#8593;</button>
+      </form>
+      <div class="composer-hint" id="composerHint">请先选择分析标的 · Enter 发送 · 结论仅供研究参考</div>
+    </section>
+
+    <aside class="side-panel" id="sidePanel">
+      <header class="side-head">
+        <strong id="sideTitle">运行追踪</strong>
+        <button class="ghost" id="sideClose" style="display:none">&#10005;</button>
+      </header>
+      <div class="side-content" id="sideContent">
+        <div class="run-guide">
+          <strong>这里展示 Agent 实际走过的流程</strong>
+          可查看路由判断、ReAct 工具调用、模型门禁和最终回答，不参与对话操作。
+        </div>
+        <button class="ghost" style="width:100%;margin-bottom:10px" onclick="loadAgentRuns()">刷新运行追踪</button>
+        <div class="run-list" id="runList"><div class="empty">正在加载最近运行…</div></div>
+      </div>
+    </aside>
+  </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalRun" style="display:none">
+  <div class="modal">
+    <div class="modal-head"><strong>Agent 流程追踪</strong><button class="ghost" onclick="closeModal()">关闭</button></div>
+    <div class="modal-body" id="modalRunBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalInstrument" style="display:none">
+  <div class="modal instrument-modal">
+    <div class="modal-head"><strong>选择当前分析标的</strong><button class="ghost" type="button" data-close-instrument>关闭</button></div>
+    <div class="modal-body">
+      <p class="modal-intro">当前标的是 Stock Agent 的唯一分析对象。切换标的后，新问题将严格按新标的重新路由。</p>
+      <span class="form-label">常用标的</span>
+      <div class="instrument-presets">
+        <button class="instrument-option" type="button" data-symbol="588200" data-name="科创芯片ETF" data-type="ETF"><strong>588200</strong><small>科创芯片ETF · ETF</small></button>
+        <button class="instrument-option" type="button" data-symbol="510300" data-name="沪深300ETF" data-type="ETF"><strong>510300</strong><small>沪深300ETF · ETF</small></button>
+        <button class="instrument-option" type="button" data-symbol="159915" data-name="创业板ETF" data-type="ETF"><strong>159915</strong><small>创业板ETF · ETF</small></button>
+        <button class="instrument-option" type="button" data-symbol="600519" data-name="贵州茅台" data-type="股票"><strong>600519</strong><small>贵州茅台 · 股票</small></button>
+      </div>
+      <label class="form-label" for="instrumentSymbol">标的代码</label>
+      <input class="form-input" id="instrumentSymbol" inputmode="numeric" maxlength="6" placeholder="例如：588200">
+      <label class="form-label" for="instrumentName">标的名称（可选）</label>
+      <input class="form-input" id="instrumentName" maxlength="30" placeholder="例如：科创芯片ETF">
+      <div class="form-error" id="instrumentError"></div>
+      <div class="modal-actions">
+        <button class="ac-btn secondary" type="button" data-close-instrument>取消</button>
+        <button class="ac-btn primary" type="button" id="confirmInstrument">使用这个标的</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const ST={
+    mode:"stock",
+    sessionIds:{general:genUUID(),stock:genUUID()},
+    messageStores:{general:document.createDocumentFragment(),stock:document.createDocumentFragment()},
+    sending:false,
+    currentBubble:null,
+    streamText:"",
+    sideView:"runs",
+    currentInstrument:loadInstrument(),
+    pendingInstrument:null,
+    activeController:null
+  };
+
+  function genUUID(){
+    return (globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():'session-'+Date.now()+"-"+Math.random().toString(36).slice(2,8);
+  }
+
+  const messages=document.getElementById("messages");
+  const input=document.getElementById("input");
+  const composer=document.getElementById("composer");
+  const sendBtn=document.getElementById("sendBtn");
+  const statusBar=document.getElementById("statusBar");
+  const sessionBadge=document.getElementById("sessionBadge");
+  const guestQuotaBadge=document.getElementById("guestQuotaBadge");
+  const headSkill=document.getElementById("headSkill");
+  const headRunId=document.getElementById("headRunId");
+  const sidePanel=document.getElementById("sidePanel");
+  const instrumentTitle=document.getElementById("instrumentTitle");
+  const instrumentHint=document.getElementById("instrumentHint");
+  const instrumentIcon=document.getElementById("instrumentIcon");
+  const selectInstrument=document.getElementById("selectInstrument");
+  const clearInstrument=document.getElementById("clearInstrument");
+  const modeKicker=document.getElementById("modeKicker");
+  const chatTitle=document.getElementById("chatTitle");
+  const composerHint=document.getElementById("composerHint");
+
+  updateSessionBadge();
+  renderInstrument();
+  restoreGuestQuota();
+  loadGuestQuota();
+
+  function loadInstrument(){
+    try{
+      return JSON.parse(localStorage.getItem("stockwise.currentInstrument")||"null");
+    }catch(e){
+      return null;
+    }
+  }
+
+  function saveInstrument(instrument){
+    ST.currentInstrument=instrument;
+    if(instrument)localStorage.setItem("stockwise.currentInstrument",JSON.stringify(instrument));
+    else localStorage.removeItem("stockwise.currentInstrument");
+    renderInstrument();
+  }
+
+  function renderInstrument(){
+    const current=ST.currentInstrument;
+    if(!current){
+      instrumentIcon.textContent="＋";
+      instrumentTitle.textContent="未选择分析标的";
+      instrumentHint.textContent="Stock Agent 必须先明确选择股票、ETF 或基金";
+      selectInstrument.textContent="选择标的";
+      clearInstrument.style.display="none";
+      if(ST.mode==="stock"){
+        sendBtn.disabled=true;
+        input.placeholder="请先选择股票、ETF 或基金…";
+        composerHint.textContent="请先选择分析标的 · Enter 发送 · 结论仅供研究参考";
+      }
+      return;
+    }
+    instrumentIcon.textContent=(current.type==="股票"?"股":"基");
+    instrumentTitle.innerHTML='<span class="instrument-code">'+escHtml(current.symbol)+'</span>'+escHtml(current.name||"当前标的")+' <span class="instrument-type">'+escHtml(current.type||"标的")+'</span>';
+    instrumentHint.textContent="后续分析固定沿用这个标的；如需更换，请先点击切换";
+    selectInstrument.textContent="切换";
+    clearInstrument.style.display="";
+  }
+
+  function updateSessionBadge(){
+    const sessionId=ST.sessionIds[ST.mode];
+    sessionBadge.textContent=sessionId.slice(0,12)+"…";
+    sessionBadge.title=sessionId;
+  }
+
+  function restoreGuestQuota(){
+    try{
+      const quota=JSON.parse(localStorage.getItem("stockwise.guestAnalysisQuota")||"null");
+      if(quota)renderGuestQuota(quota);
+    }catch(e){
+      localStorage.removeItem("stockwise.guestAnalysisQuota");
+    }
+  }
+
+  async function loadGuestQuota(){
+    try{
+      const response=await fetch("/api/v1/chat/guest-analysis-quota",{
+        headers:{"Accept":"application/json"}
+      });
+      if(!response.ok)return;
+      renderGuestQuota(await response.json());
+    }catch(e){
+      // 初始化查询失败不阻断聊天，分析请求仍由后端闸门保护。
+    }
+  }
+
+  function renderGuestQuota(quota){
+    if(!quota||quota.guest===false||quota.applicable===false){
+      guestQuotaBadge.style.display="none";
+      localStorage.removeItem("stockwise.guestAnalysisQuota");
+      return;
+    }
+    const limit=Number.isFinite(Number(quota.limit))?Number(quota.limit):10;
+    const remaining=Math.max(0,Number.isFinite(Number(quota.remaining))?Number(quota.remaining):limit);
+    guestQuotaBadge.style.display="";
+    guestQuotaBadge.textContent="游客分析 "+remaining+"/"+limit;
+    guestQuotaBadge.classList.toggle("exhausted",remaining===0);
+    guestQuotaBadge.title="仅深度分析请求消耗次数；普通问答和行情查询不扣次数";
+    localStorage.setItem("stockwise.guestAnalysisQuota",JSON.stringify({
+      guest:true,
+      applicable:true,
+      limit,
+      used:Math.max(0,limit-remaining),
+      remaining
+    }));
+  }
+
+  function scrollMsgs(){
+    messages.scrollTop=messages.scrollHeight;
+  }
+
+  function addUserMsg(text){
+    const row=document.createElement("div");row.className="msg user";
+    row.innerHTML='<div class="avatar">U</div><div class="bubble"></div>';
+    row.querySelector(".bubble").textContent=text;
+    messages.appendChild(row);scrollMsgs();
+  }
+
+  function createAgentBubble(){
+    clearEmpty();
+    const row=document.createElement("div");row.className="msg";
+    row.innerHTML='<div class="avatar">AI</div><div class="bubble streaming"><div class="typing"><i></i><i></i><i></i></div></div>';
+    messages.appendChild(row);scrollMsgs();
+    return row.querySelector(".bubble");
+  }
+
+  function clearEmpty(){
+    const emptyDiv=messages.querySelector(".empty");
+    if(emptyDiv)emptyDiv.remove();
+  }
+
+  function addStatusTags(statuses){
+    statusBar.innerHTML="";
+    statuses.forEach(s=>{
+      const tag=document.createElement("span");
+      tag.className="status-tag "+(s.active?"active":"done");
+      tag.innerHTML=(s.active?'<i></i>':'')+s.label;
+      statusBar.appendChild(tag);
+    });
+  }
+
+  function setStatus(steps){
+    const map={
+      classifying:"识别需求",
+      direct_chat:"直接问答",
+      react_planning:"规划工具",
+      searching_web:"搜索资料",
+      reading_sources:"整理来源",
+      stock_validating:"校验标的",
+      skill_executing:"执行分析",
+      searching_vector:"向量检索",
+      retrieval_result:"检索完成"
+    };
+    const list=Object.entries(map).map(([k,v])=>({label:v,active:false,done:false}));
+    let found=false;
+    list.forEach(item=>{
+      if(item.label===map[steps.current]){item.active=true;found=true;}
+      else if(!found)item.done=true;
+    });
+    addStatusTags(list);
+    if(steps.skill)headSkill.textContent="· "+steps.skill;else headSkill.textContent="";
+  }
+
+  function finalizeBubble(bubble){
+    bubble.classList.remove("streaming");
+    ST.currentBubble=null;
+    ST.streamText="";
+  }
+
+  function addActionCard(bubble,title,text,buttons){
+    const card=document.createElement("div");card.className="action-card";
+    card.innerHTML='<div class="ac-title">'+title+'</div><div class="ac-text">'+text+'</div><div class="ac-btns"></div>';
+    const btnRow=card.querySelector(".ac-btns");
+    buttons.forEach(b=>{
+      const btn=document.createElement("button");
+      btn.className="ac-btn "+b.cls;
+      btn.textContent=b.label;
+      btn.addEventListener("click",b.action);
+      btnRow.appendChild(btn);
+    });
+    bubble.appendChild(card);
+  }
+
+  async function send(text){
+    const value=(text||input.value).trim();if(!value||ST.sending)return;
+    if(ST.mode==="stock"&&!ST.currentInstrument){
+      statusBar.innerHTML='<span class="status-tag active"><i></i>Stock Agent 必须先选择分析标的</span>';
+      openInstrumentModal();
+      return;
+    }
+    ST.sending=true;input.value="";sendBtn.disabled=true;
+    addUserMsg(value);
+
+    const bubble=createAgentBubble();
+    ST.currentBubble=bubble;
+    ST.streamText="";
+    headRunId.textContent="";
+
+    const instrument=ST.mode==="stock"&&ST.currentInstrument?{
+      symbol:ST.currentInstrument.symbol,
+      assetType:normalizeAssetType(ST.currentInstrument.type)
+    }:null;
+    const controller=new AbortController();
+    ST.activeController=controller;
+    const phase={last:null};
+    try{
+      const response=await fetch("/api/v1/chat/stream",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
+        body:JSON.stringify({
+          sessionId:ST.sessionIds[ST.mode],
+          mode:ST.mode,
+          message:value,
+          instrument
+        }),
+        signal:controller.signal
+      });
+      if(!response.ok)throw new Error(await response.text()||("HTTP "+response.status));
+      await consumeSse(response,data=>handleStreamEvent(data,bubble,phase));
+    }catch(error){
+      if(error.name!=="AbortError"){
+        if(!ST.streamText)bubble.textContent="连接中断，请重试";
+        bubble.style.color="#e5484d";
+        finalizeBubble(bubble);
+      }
+    }finally{
+      ST.activeController=null;
+      ST.sending=false;
+      sendBtn.disabled=false;
+      if(!ST.streamText&&bubble.querySelector(".typing"))finalizeBubble(bubble);
+    }
+  }
+
+  async function consumeSse(response,onEvent){
+    if(!response.body)throw new Error("浏览器不支持流式响应");
+    const reader=response.body.getReader();
+    const decoder=new TextDecoder("utf-8");
+    let buffer="";
+    while(true){
+      const {value,done}=await reader.read();
+      buffer+=decoder.decode(value||new Uint8Array(),{stream:!done}).replace(/\r\n/g,"\n");
+      let boundary;
+      while((boundary=buffer.indexOf("\n\n"))>=0){
+        const frame=buffer.slice(0,boundary);
+        buffer=buffer.slice(boundary+2);
+        const payload=frame.split("\n").filter(line=>line.startsWith("data:"))
+          .map(line=>line.slice(5).trimStart()).join("\n");
+        if(payload){
+          const keepReading=onEvent(JSON.parse(payload));
+          if(keepReading===false){await reader.cancel();return;}
+        }
+      }
+      if(done)return;
+    }
+  }
+
+  function handleStreamEvent(data,bubble,phase){
+    const type=data.type;
+    if(type==="status"){
+      const step=data.step||"";
+      if(step!==phase.last){
+        phase.last=step;
+        if(step==="classifying")setStatus({current:"classifying"});
+        else if(["direct_chat","react_planning","searching_web","reading_sources","stock_validating"].includes(step)){
+          setStatus({current:step,skill:data.skill});
+          headSkill.textContent="· "+(data.skill||"");
+        }else if(step==="skill_executing"||step==="route_executing"){
+          setStatus({current:"skill_executing",skill:data.skill});
+          headSkill.textContent="· "+(data.skill||"");
+        }
+      }
+    }else if(type==="agent_run"){
+      headRunId.textContent="Run: "+(data.runId||"").slice(0,8);
+      if(data.route)headSkill.textContent="· "+data.route;
+    }else if(type==="quota"){
+      renderGuestQuota({...data,applicable:true});
+    }else if(type==="token"){
+      const tok=data.content||"";
+      ST.streamText+=tok;
+      if(bubble.querySelector(".typing"))bubble.textContent="";
+      bubble.textContent=ST.streamText;
+      scrollMsgs();
+    }else if(type==="ask"&&data.reason==="NEED_INSTRUMENT"){
+      finalizeBubble(bubble);
+      addActionCard(bubble,"请选择分析标的",data.prompt||"这项分析需要一个具体标的。请选择股票、ETF 或基金后继续。",[
+        {label:"选择标的",cls:"primary",action:()=>openInstrumentModal()},
+        {label:"切换普通问答",cls:"secondary",action:()=>switchMode("general")}
+      ]);
+    }else if(type==="clarification"){
+      const options=(data.options||[]).filter(option=>option.label&&option.message);
+      if(options.length){
+        addActionCard(
+          bubble,
+          "选择分析口径",
+          data.prompt||"选择一个方向后继续分析。",
+          options.map((option,index)=>({
+            label:option.label,
+            cls:index===0?"primary":"secondary",
+            action:()=>{
+              removeActionCard(bubble);
+              send(option.message);
+            }
+          }))
+        );
+        scrollMsgs();
+      }
+    }else if(type==="done"){
+      if(data.quotaType==="guest_analysis")renderGuestQuota({...data,applicable:true});
+      if(bubble.querySelector(".typing")){
+        bubble.textContent="";
+        if(data.status==="REFUSED")bubble.textContent="请求已被护栏拦截："+(data.reason||"");
+        else if(data.status==="GUEST_ANALYSIS_LIMIT_REACHED")bubble.textContent=data.message||"游客分析次数已用完，请登录后继续。";
+        else if(data.status==="GUEST_ANALYSIS_LIMIT_UNAVAILABLE")bubble.textContent=data.message||"游客分析次数服务暂时不可用，请稍后重试。";
+        else bubble.textContent+="对话已完成。";
+      }
+      finalizeBubble(bubble);
+      statusBar.innerHTML="";
+      const doneTag=document.createElement("span");
+      doneTag.className="status-tag done";
+      doneTag.textContent="✓ "+(data.status==="COMPLETED"
+        ?"本轮完成"
+        :(data.status==="NEED_CLARIFICATION"?"等待选择":(data.status||"完成")));
+      statusBar.appendChild(doneTag);
+      headRunId.textContent="";
+      headSkill.textContent="";
+      loadAgentRuns();
+      return false;
+    }else if(type==="error"){
+      if(bubble.querySelector(".typing"))bubble.textContent="";
+      bubble.textContent+=(bubble.textContent?"\n":"")+(data.message||"服务错误");
+      bubble.style.color="#e5484d";
+      finalizeBubble(bubble);
+      statusBar.innerHTML="";
+      return false;
+    }
+    return true;
+  }
+
+  function removeActionCard(bubble){
+    const card=bubble.querySelector(".action-card");
+    if(card)card.remove();
+  }
+
+  function escHtml(s){
+    if(!s)return"";
+    const d=document.createElement("div");d.textContent=s;return d.innerHTML;
+  }
+
+  function extractSymbol(text){
+    const match=String(text||"").match(/(?:^|\D)(\d{6})(?:\D|$)/);
+    return match?match[1]:null;
+  }
+
+  function normalizeAssetType(type){
+    const value=String(type||"").toLowerCase();
+    if(value==="股票"||value==="stock")return"stock";
+    if(value==="etf")return"etf";
+    if(value==="基金"||value==="fund")return"fund";
+    if(value==="open_fund"||value==="qdii")return value;
+    return"auto";
+  }
+
+  function renderWelcome(title,description){
+    if(ST.mode==="general"){
+      messages.innerHTML='<div class="welcome"><div class="welcome-mark">问</div><h1>'+escHtml(title||"有什么想一起弄清楚的？")+'</h1><p>'+escHtml(description||"普通问答与股票分析完全隔离。DeepSeek 会直接回答；需要时再通过 ReAct 调用搜索工具。")+'</p>'+
+        '<div class="start-paths"><div class="start-card primary-path"><strong>直接开始问答</strong><p>适合知识解释、方案讨论、系统使用和需要搜索核验的问题。</p><button class="ac-btn primary" type="button" data-focus-input>开始提问</button></div>'+
+        '<div class="start-card"><strong>需要分析股票？</strong><p>切换到 Stock Agent 后，必须先选定股票、ETF 或基金。</p><button class="ghost" type="button" data-switch-stock>前往 Stock Agent</button></div></div></div>';
+      messages.querySelector("[data-focus-input]").addEventListener("click",()=>input.focus());
+      messages.querySelector("[data-switch-stock]").addEventListener("click",()=>switchMode("stock"));
+      return;
+    }
+    messages.innerHTML='<div class="welcome"><div class="welcome-mark">研</div><h1>'+escHtml(title||"先选标的，再开始分析")+'</h1><p>'+escHtml(description||"Stock Agent 不猜测标的。选择股票、ETF 或基金后，分析 Route 始终以该标的为准。")+'</p>'+
+      '<div class="start-paths"><div class="start-card primary-path"><strong>选择分析标的</strong><p>明确代码、市场和资产类型，后续问题自动携带当前标的。</p><button class="ac-btn primary" type="button" data-open-instrument>选择标的</button></div>'+
+      '<div class="start-card"><strong>只想普通聊天？</strong><p>普通问答使用独立会话，不会污染 Stock Agent 的分析上下文。</p><button class="ghost" type="button" data-switch-general>切换到普通问答</button></div></div></div>';
+    messages.querySelector("[data-open-instrument]").addEventListener("click",openInstrumentModal);
+    messages.querySelector("[data-switch-general]").addEventListener("click",()=>switchMode("general"));
+  }
+
+  function switchMode(mode,preserveMessages=true){
+    if(!["general","stock"].includes(mode)||ST.sending)return;
+    if(mode!==ST.mode&&preserveMessages){
+      while(messages.firstChild)ST.messageStores[ST.mode].appendChild(messages.firstChild);
+    }
+    if(!preserveMessages)messages.replaceChildren();
+    ST.mode=mode;
+    document.body.dataset.mode=mode;
+    document.querySelectorAll(".mode-button").forEach(button=>{
+      const active=button.dataset.mode===mode;
+      button.classList.toggle("active",active);
+      button.setAttribute("aria-selected",String(active));
+    });
+    modeKicker.textContent=mode==="general"?"DeepSeek Chat":"Stock Agent";
+    chatTitle.textContent=mode==="general"?"普通问答":"标的分析";
+    composerHint.textContent=mode==="general"
+      ?"DeepSeek · 需要时通过 ReAct 调用 SearXNG · Enter 发送"
+      :(ST.currentInstrument?"当前标的 "+ST.currentInstrument.symbol+" · Enter 发送 · 结论仅供研究参考":"请先选择分析标的 · Enter 发送 · 结论仅供研究参考");
+    input.placeholder=mode==="general"
+      ?"输入问题；需要最新信息时会调用搜索工具…"
+      :(ST.currentInstrument?"继续分析 "+ST.currentInstrument.symbol+"…":"请先选择股票、ETF 或基金…");
+    sendBtn.disabled=mode==="stock"&&!ST.currentInstrument;
+    statusBar.innerHTML="";
+    headSkill.textContent="";
+    headRunId.textContent="";
+    if(preserveMessages){
+      const stored=ST.messageStores[mode];
+      if(!messages.childNodes.length&&stored.childNodes.length)messages.appendChild(stored);
+    }
+    if(!messages.childNodes.length)renderWelcome();
+    renderQuickPrompts();
+    updateSessionBadge();
+  }
+
+  function renderQuickPrompts(){
+    const prompts=ST.mode==="general"
+      ?[
+        ["帮我解释一个复杂概念","帮我用通俗的方式解释一下什么是 ReAct Agent"],
+        ["搜索并核验信息","帮我搜索并核验近期人工智能领域的重要变化"],
+        ["一起优化方案","帮我分析一个产品方案有哪些值得推敲的地方"]
+      ]
+      :[
+        ["现在适合买入吗？","现在适合买入吗？重点看短线风险。"],
+        ["查看关键支撑位","分析关键支撑位和失效条件"],
+        ["规划仓位","按10万元资金规划分批仓位"]
+      ];
+    document.getElementById("quickPrompts").innerHTML=prompts.map(item=>
+      '<button class="ghost" data-prompt="'+escHtml(item[1])+'">'+escHtml(item[0])+'</button>'
+    ).join("");
+    bindQuickPrompts();
+  }
+
+  function bindQuickPrompts(){
+    document.querySelectorAll("#quickPrompts [data-prompt]").forEach(button=>{
+      button.addEventListener("click",()=>{
+        input.value=button.dataset.prompt;
+        input.focus();
+      });
+    });
+  }
+
+  function openInstrumentModal(){
+    ST.pendingInstrument=ST.currentInstrument?{...ST.currentInstrument}:null;
+    document.getElementById("instrumentSymbol").value=ST.currentInstrument?.symbol||"";
+    document.getElementById("instrumentName").value=ST.currentInstrument?.name==="消息中识别"?"":(ST.currentInstrument?.name||"");
+    document.getElementById("instrumentError").textContent="";
+    document.querySelectorAll(".instrument-option").forEach(option=>option.classList.toggle("selected",option.dataset.symbol===ST.currentInstrument?.symbol));
+    document.getElementById("modalInstrument").style.display="grid";
+    setTimeout(()=>document.getElementById("instrumentSymbol").focus(),0);
+  }
+
+  function closeInstrumentModal(){
+    document.getElementById("modalInstrument").style.display="none";
+    ST.pendingInstrument=null;
+  }
+
+  function chooseInstrument(instrument){
+    saveInstrument(instrument);
+    closeInstrumentModal();
+    switchMode("stock");
+    input.placeholder="继续分析 "+instrument.symbol+"，或输入其他投资问题…";
+    composerHint.textContent="当前标的 "+instrument.symbol+" · Enter 发送 · 结论仅供研究参考";
+    sendBtn.disabled=false;
+    input.focus();
+  }
+
+  function confirmInstrument(){
+    const symbol=document.getElementById("instrumentSymbol").value.trim();
+    const name=document.getElementById("instrumentName").value.trim();
+    if(!/^\d{6}$/.test(symbol)){
+      document.getElementById("instrumentError").textContent="请输入 6 位股票、ETF 或基金代码";
+      return;
+    }
+    const pending=ST.pendingInstrument&&ST.pendingInstrument.symbol===symbol?ST.pendingInstrument:null;
+    chooseInstrument({symbol:symbol,name:name||pending?.name||"当前标的",type:pending?.type||"标的"});
+  }
+
+  async function loadAgentRuns(){
+    const list=document.getElementById("runList");
+    list.innerHTML='<div class="empty">加载中…</div>';
+    try{
+      const r=await fetch("/api/v1/agent-runs?limit=20");
+      const data=await r.json();
+      if(!data.length){list.innerHTML='<div class="empty">暂无运行记录</div>';return;}
+      list.innerHTML=data.map(run=>{
+        const status=run.status||"unknown";
+        const started=run.startedAt?new Date(run.startedAt).toLocaleString("zh-CN"):"";
+        const route=businessRouteForRun(run);
+        return '<div class="run-card" data-runid="'+run.runId+'">'+
+          '<div class="rc-head"><span class="rc-intent">'+escHtml(runLabel(run))+'</span>'+
+          '<span class="run-status '+status+'">'+escHtml(runStatusLabel(status))+'</span></div>'+
+          '<div class="rc-time">'+started+(run.toolCallCount!=null?" · 工具 "+run.toolCallCount+" 次":"")+'</div>'+
+          '<span class="run-route">'+escHtml(route)+'</span>'+
+          '</div>';
+      }).join("");
+      list.querySelectorAll(".run-card").forEach(card=>{
+        card.addEventListener("click",()=>openRunDetail(card.dataset.runid));
+      });
+    }catch(e){
+      list.innerHTML='<div class="empty">加载失败: '+escHtml(e.message)+'</div>';
+    }
+  }
+
+  async function openRunDetail(runId){
+    const modal=document.getElementById("modalRun");
+    const body=document.getElementById("modalRunBody");
+    modal.style.display="grid";
+    body.innerHTML='<div class="empty">加载中…</div>';
+    try{
+      const r=await fetch("/api/v1/agent-runs/"+runId);
+      const data=await r.json();
+      const steps=data.steps||[];
+      const routeStep=steps.find(step=>step.stepType==="ROUTE_DECISION");
+      const internalRoute=routeStep?.payload?.route||routeStep?.name||"";
+      let html='<div style="margin-bottom:8px"><strong>业务路径：</strong> '+escHtml(businessRouteForRun(data.run||{}))+
+        (internalRoute?' <span class="run-route">'+escHtml(routeLabel(internalRoute))+'</span>':"")+'</div>';
+      html+='<div style="margin-bottom:12px;color:var(--muted);font-size:11px"><strong>Run ID：</strong> '+escHtml(data.run?.runId||runId)+
+        ' · <strong>状态：</strong> '+escHtml(runStatusLabel(data.run?.status||""))+
+        ' · <strong>工具：</strong> '+(data.run?.toolCallCount||0)+'/'+(data.run?.maxToolCalls||0)+'</div>';
+      if(steps.length){
+        html+='<div style="font-weight:600;margin-bottom:8px">执行流程 ('+steps.length+' 步)</div>';
+        steps.forEach((s,i)=>{
+          html+='<div class="step-item"><span class="step-no">'+(i+1)+'</span>'+
+            '<span class="step-type">'+escHtml(stepLabel(s.stepType||""))+'</span>'+
+            '<span class="step-summary">'+escHtml(s.summary||"")+'</span>'+
+            '</div>';
+        });
+      }
+      if(data.run?.finalAnswer){
+        html+='<div style="font-weight:600;margin-top:12px;margin-bottom:6px">最终回答</div>';
+        html+='<div style="background:#f4f5f7;padding:12px;border-radius:8px;font-size:12px;line-height:1.7;max-height:200px;overflow:auto">'+escHtml(data.run.finalAnswer)+'</div>';
+      }
+      body.innerHTML=html;
+    }catch(e){
+      body.innerHTML='<div class="empty">加载失败: '+escHtml(e.message)+'</div>';
+    }
+  }
+
+  function closeModal(){
+    document.getElementById("modalRun").style.display="none";
+  }
+
+  function runLabel(run){
+    const labels={
+      "general-chat":"普通直接问答",
+      "general-tool-agent":"联网工具问答",
+      "stock-deep-analysis":"标的深度分析",
+      "investment-knowledge-qa":"投资知识问答"
+    };
+    return labels[run.skillName]||run.skillName||run.intent||"未知流程";
+  }
+
+  function businessRouteForRun(run){
+    if(run.skillName==="general-tool-agent")return"TOOL AGENT";
+    if(String(run.skillName||"").includes("stock")||run.intent==="STOCK_ANALYSIS")return"STOCK ANALYSIS";
+    return"DIRECT CHAT";
+  }
+
+  function runStatusLabel(status){
+    return({completed:"已完成",running:"运行中",failed:"失败"})[status]||status||"未知";
+  }
+
+  function routeLabel(route){
+    const labels={
+      GENERAL_CHAT:"普通闲聊",
+      KNOWLEDGE_QA:"投资知识",
+      EXTERNAL_RESEARCH:"联网研究",
+      MARKET_FACT:"行情与指标",
+      STOCK_DECISION:"标的决策",
+      MARKET_CAUSAL_ANALYSIS:"事件影响",
+      NEED_CLARIFICATION:"需要补充"
+    };
+    return labels[route]||route;
+  }
+
+  function stepLabel(stepType){
+    const labels={
+      ROUTE_DECISION:"路由",
+      REACT_DECISION:"规划",
+      TOOL_CALL:"工具",
+      TOOL_OBSERVATION:"结果",
+      REACT_TERMINATION:"收束",
+      MODEL_GATE:"模型门禁",
+      MODEL_CALL:"生成",
+      FINAL_ANSWER:"完成",
+      POLICY_REJECTION:"策略拦截",
+      ERROR:"错误"
+    };
+    return labels[stepType]||stepType;
+  }
+
+  function showRunPanel(){
+    ST.sideView="runs";
+    sidePanel.classList.remove("hidden");
+    loadAgentRuns();
+  }
+
+  function newSession(){
+    ST.sessionIds[ST.mode]=genUUID();
+    ST.messageStores[ST.mode]=document.createDocumentFragment();
+    ST.sending=false;
+    ST.currentBubble=null;
+    ST.streamText="";
+    renderWelcome("新会话已创建",ST.mode==="general"
+      ?"这是独立的普通问答会话，需要最新信息时会自动进入工具流程。"
+      :(ST.currentInstrument?"当前标的是 "+ST.currentInstrument.symbol+" "+(ST.currentInstrument.name||"")+"，可以直接继续分析。":"请先选择一个明确标的，再开始 Stock Agent 分析。"));
+    statusBar.innerHTML="";
+    headSkill.textContent="";
+    headRunId.textContent="";
+    sendBtn.disabled=ST.mode==="stock"&&!ST.currentInstrument;
+    updateSessionBadge();
+  }
+
+  document.getElementById("sendBtn").addEventListener("click",()=>send());
+  composer.addEventListener("submit",e=>{e.preventDefault();send()});
+  input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
+  document.getElementById("newSession").addEventListener("click",newSession);
+  selectInstrument.addEventListener("click",openInstrumentModal);
+  clearInstrument.addEventListener("click",()=>{
+    saveInstrument(null);
+    input.placeholder="请先选择股票、ETF 或基金…";
+  });
+  document.querySelectorAll("[data-open-instrument]").forEach(button=>button.addEventListener("click",openInstrumentModal));
+  document.getElementById("skipInstrument").addEventListener("click",()=>switchMode("general"));
+  document.querySelectorAll("[data-close-instrument]").forEach(button=>button.addEventListener("click",closeInstrumentModal));
+  document.getElementById("confirmInstrument").addEventListener("click",confirmInstrument);
+  document.querySelectorAll(".instrument-option").forEach(option=>{
+    option.addEventListener("click",()=>{
+      ST.pendingInstrument={symbol:option.dataset.symbol,name:option.dataset.name,type:option.dataset.type};
+      document.getElementById("instrumentSymbol").value=option.dataset.symbol;
+      document.getElementById("instrumentName").value=option.dataset.name;
+      document.getElementById("instrumentError").textContent="";
+      document.querySelectorAll(".instrument-option").forEach(item=>item.classList.toggle("selected",item===option));
+    });
+  });
+  document.querySelectorAll(".preset-chip").forEach(option=>{
+    option.addEventListener("click",()=>chooseInstrument({symbol:option.dataset.symbol,name:option.dataset.name,type:option.dataset.type}));
+  });
+
+  bindQuickPrompts();
+
+  document.querySelectorAll(".mode-button").forEach(button=>{
+    button.addEventListener("click",()=>switchMode(button.dataset.mode));
+  });
+
+  document.getElementById("tabRuns").addEventListener("click",showRunPanel);
+
+  document.getElementById("mobileSideToggle").addEventListener("click",()=>sidePanel.classList.toggle("open"));
+  document.getElementById("sideClose").addEventListener("click",()=>sidePanel.classList.remove("open"));
+  document.getElementById("railRuns").addEventListener("click",()=>document.getElementById("tabRuns").click());
+
+  document.getElementById("modalRun").addEventListener("click",function(e){if(e.target===this)closeModal()});
+  document.getElementById("modalInstrument").addEventListener("click",function(e){if(e.target===this)closeInstrumentModal()});
+
+  switchMode("stock",false);
+  showRunPanel();
+</script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stockwise.mapper.KnowledgeChunkMapper">
+
+    <!-- 带 score 的结果映射，向量与元数据走自定义 TypeHandler 还原为 Java 类型 -->
+    <resultMap id="withScoreMap" type="com.stockwise.entity.KnowledgeChunkWithScore" autoMapping="true">
+        <id property="id" column="id"/>
+        <result property="embedding" column="embedding" typeHandler="com.stockwise.handler.VectorTypeHandler"/>
+        <result property="metadata" column="metadata" typeHandler="com.stockwise.handler.JsonbTypeHandler"/>
+        <result property="score" column="score"/>
+    </resultMap>
+
+    <!-- 向量检索：ORDER BY embedding <=> vec 才会命中 ivfflat 索引，1-(<=>) 把余弦距离换算成相似度 -->
+    <select id="searchByVector" resultMap="withScoreMap">
+        SELECT id, content, embedding, metadata, status, version, replaces_id, created_at, updated_at,
+               1 - (embedding &lt;=&gt; CAST(#{vec} AS vector)) AS score
+        FROM public.knowledge_chunks
+        WHERE status = 'active'
+          AND (metadata-&gt;&gt;'expires_at' IS NULL OR (metadata-&gt;&gt;'expires_at')::timestamptz &gt; now())
+        ORDER BY embedding &lt;=&gt; CAST(#{vec} AS vector)
+        LIMIT #{topK}
+    </select>
+
+    <!-- 去重判定：取与候选向量相似度最高的已有知识，供入库前判定是否重复 -->
+    <select id="findTopSimilarity" resultType="double">
+        SELECT COALESCE(MAX(1 - (embedding &lt;=&gt; CAST(#{vec} AS vector))), 0)
+        FROM public.knowledge_chunks
+        WHERE status = 'active'
+    </select>
+
+    <!-- 入库：向量与元数据显式指定 TypeHandler，保证以 vector/jsonb 类型落库 -->
+    <insert id="insertKnowledge" parameterType="com.stockwise.entity.KnowledgeChunk"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO public.knowledge_chunks (content, embedding, metadata, status, version, replaces_id, created_at, updated_at)
+        VALUES (
+            #{content},
+            #{embedding, typeHandler=com.stockwise.handler.VectorTypeHandler},
+            #{metadata, typeHandler=com.stockwise.handler.JsonbTypeHandler},
+            #{status}, #{version}, #{replacesId}, NOW(), NOW()
+        )
+    </insert>
+
+    <!-- 部分更新：用动态 SET 仅更新非 null 字段，metadata 走 JsonbTypeHandler -->
+    <update id="updateKnowledge" parameterType="com.stockwise.entity.KnowledgeChunk">
+        UPDATE public.knowledge_chunks
+        <set>
+            updated_at = NOW()
+            <if test="content != null">, content = #{content}</if>
+            <if test="metadata != null">, metadata = #{metadata, typeHandler=com.stockwise.handler.JsonbTypeHandler}</if>
+            <if test="status != null">, status = #{status}</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 软删除：状态置为 deprecated，保留数据 -->
+    <update id="deprecate">
+        UPDATE public.knowledge_chunks SET status = 'deprecated', updated_at = NOW() WHERE id = #{id}
+    </update>
+
+</mapper>

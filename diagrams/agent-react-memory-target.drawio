@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="30.4.1">
+  <diagram name="目标架构">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="2" value="接入与运行时" style="swimlane;startSize=30;horizontal=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="1720" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="3" value="接口 / 服务器事件流" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="2">
+          <mxGeometry x="90" y="50" width="220" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="4" value="智能体运行时&#xa;运行编号 / 截止时间 / 流式输出" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="2">
+          <mxGeometry x="430" y="50" width="300" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="5" value="上下文构建器&#xa;窗口 + 摘要 + 事实 + 检索结果" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="2">
+          <mxGeometry x="850" y="50" width="330" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="6" value="可观测性&#xa;链路 / 指标 / 回放 / 评测" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" vertex="1" parent="2">
+          <mxGeometry x="1330" y="50" width="300" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="7" value="显式“推理—行动”状态机" style="swimlane;startSize=30;horizontal=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="200" width="1720" height="280" as="geometry"/>
+        </mxCell>
+        <mxCell id="8" value="1. 生成决策&#xa;调用工具 / 最终回答 / 追问用户" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;" vertex="1" parent="7">
+          <mxGeometry x="90" y="70" width="280" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="9" value="2. 工具策略&#xa;白名单 / 结构校验 / 权限 / 前置条件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;" vertex="1" parent="7">
+          <mxGeometry x="450" y="70" width="300" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="10" value="3. 执行动作&#xa;超时 / 重试 / 幂等 / 调用指纹" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;" vertex="1" parent="7">
+          <mxGeometry x="830" y="70" width="300" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="11" value="4. 校验工具结果&#xa;版本 / 时效 / 完整性 / 方向许可" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;" vertex="1" parent="7">
+          <mxGeometry x="1210" y="70" width="320" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="12" value="5. 预算与终止&#xa;最大步骤 / 最大工具数 / 令牌 / 截止时间" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="7">
+          <mxGeometry x="710" y="180" width="330" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="13" value="结构化最终回答" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="7">
+          <mxGeometry x="1250" y="190" width="280" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="14" value="技能与工具层" style="swimlane;startSize=30;horizontal=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="510" width="1720" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="15" value="技能运行时&#xa;清单 / 版本 / 提示词 / 预算" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="14">
+          <mxGeometry x="70" y="55" width="300" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="16" value="股票分析适配器&#xa;Node 命令行 / JSON 契约" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="14">
+          <mxGeometry x="450" y="55" width="300" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="17" value="持仓服务&#xa;按用户编号加载真实持仓" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="14">
+          <mxGeometry x="830" y="55" width="280" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="18" value="混合检索器&#xa;过滤 + 向量 + 全文 + 融合 + 重排" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;" vertex="1" parent="14">
+          <mxGeometry x="1190" y="55" width="360" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="19" value="记忆系统" style="swimlane;startSize=30;horizontal=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="740" width="1720" height="280" as="geometry"/>
+        </mxCell>
+        <mxCell id="27" value="记忆路由器&#xa;读写路由 / 上下文压缩 / 记忆分类" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="19">
+          <mxGeometry x="660" y="45" width="400" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="20" value="工作记忆&#xa;Redis&#xa;状态 / 最近窗口 / 摘要 / 工具结果&#xa;过期时间 + 版本锁" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="19">
+          <mxGeometry x="100" y="130" width="350" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="21" value="情景记忆&#xa;PostgreSQL&#xa;运行 / 步骤 / 工具执行 / 反馈" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="19">
+          <mxGeometry x="650" y="130" width="420" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="22" value="语义记忆&#xa;PostgreSQL + pgvector&#xa;知识 / 长期事实 / 来源 / 时效 / 版本" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;" vertex="1" parent="19">
+          <mxGeometry x="1270" y="130" width="350" height="115" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="23" value="外部依赖" style="swimlane;startSize=30;horizontal=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1050" width="1720" height="140" as="geometry"/>
+        </mxCell>
+        <mxCell id="24" value="DeepSeek&#xa;生成决策 / 回答" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="23">
+          <mxGeometry x="180" y="50" width="260" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="25" value="Ollama / 向量化 / 重排模型" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="23">
+          <mxGeometry x="650" y="50" width="310" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="26" value="stock-wrapper + 股票分析技能 + 行情源" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="23">
+          <mxGeometry x="1170" y="50" width="330" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="30" value="创建运行" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="3" target="4"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="31" value="构建上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="4" target="5"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="32" value="开始循环" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="5" target="8"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="33" value="动作" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="8" target="9"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="34" value="允许" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="9" target="10"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="35" value="工具结果" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="10" target="11"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="36" value="有效结果" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="11" target="12"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="37" value="继续" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;entryX=0.5;entryY=1;" edge="1" parent="1" source="12" target="8"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="600" y="420"/><mxPoint x="270" y="420"/></Array></mxGeometry></mxCell>
+        <mxCell id="38" value="结束" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="12" target="13"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="39" value="记录全链路" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="4" target="6"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="40" value="加载策略" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="15" target="9"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="41" value="工具" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="10" target="16"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="42" value="持仓" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="10" target="17"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="43" value="检索" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="10" target="18"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="44" value="读取上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="5" target="27"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1680" y="100"/><mxPoint x="1680" y="720"/><mxPoint x="900" y="720"/></Array></mxGeometry></mxCell>
+        <mxCell id="45" value="语义检索" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" edge="1" parent="1" source="18" target="27"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1370" y="725"/><mxPoint x="1120" y="725"/></Array></mxGeometry></mxCell>
+        <mxCell id="46" value="短期" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="27" target="20"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="47" value="情景" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="27" target="21"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="48" value="语义" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="27" target="22"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
