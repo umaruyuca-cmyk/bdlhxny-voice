@@ -31,6 +31,7 @@ public class EvidenceValidator {
             }
         }
         boolean sufficient = route == RequestRoute.MARKET_CAUSAL_ANALYSIS
+                || route == RequestRoute.SECTOR_ATTENTION
                 ? safeResults.size() >= 2 && domains.size() >= 2
                 : !safeResults.isEmpty();
         return new EvidenceBundle(true, sufficient, safeResults.size(), domains.size(), authoritative);

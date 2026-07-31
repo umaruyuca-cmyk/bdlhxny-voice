@@ -26,19 +26,21 @@
 
 | 文档 | 说明 |
 |------|------|
-| [00-PRD-v3.md](docs/00-PRD-v3.md) | 当前需求唯一真源 |
-| [08-dev-prompt.md](docs/08-dev-prompt.md) | 当前开发指挥 Prompt 与实施路线 |
-| [architecture-analysis.md](docs/architecture-analysis.md) | 后端现状架构分析 |
-| [stockwise-backend-architecture.drawio](diagrams/stockwise-backend-architecture.drawio) | 后端现状架构图 |
-| [agent-react-memory-optimization.md](docs/agent-react-memory-optimization.md) | ReAct、Skill、记忆与向量检索优化方案 |
-| [09-stock-analysis-methodology.md](docs/09-stock-analysis-methodology.md) | 对外核心分析依据、证据等级、Rule ID与能力边界 |
-| [10-stock-skill-agent-integration.md](docs/10-stock-skill-agent-integration.md) | 其他Agent调用云端Skill的接口、鉴权与消费规则 |
-| [11-stock-skill-docker-deployment.md](docs/11-stock-skill-docker-deployment.md) | 运维Agent使用的Docker、Nginx、验证与回滚手册 |
-| [12-stockwise-backend-cloud-deployment.md](docs/12-stockwise-backend-cloud-deployment.md) | Java Backend连接云端PG、Redis、Ollama与Wrapper的部署联调手册 |
-| [13-stockwise-frontend-deployment.md](docs/13-stockwise-frontend-deployment.md) | 独立Nginx前端的构建、代理、测试与发布手册 |
-| [15-stockwise-cloud-config-operations.md](docs/15-stockwise-cloud-config-operations.md) | application-dev.yml与application-prod.yml使用说明 |
-| [agent-react-memory-target.drawio](diagrams/agent-react-memory-target.drawio) | Agent 与记忆系统目标架构图 |
-| [stockwise-agent-new-logic.drawio](diagrams/stockwise-agent-new-logic.drawio) | 当前新逻辑、请求流程、记忆审计与显式 ReAct 演进图（4 页） |
+| [00-需求规格说明书-v3.md](docs/00-需求规格说明书-v3.md) | 当前需求唯一真源 |
+| [08-开发指挥Prompt.md](docs/08-开发指挥Prompt.md) | 当前开发指挥 Prompt 与实施路线 |
+| [后端架构分析.md](docs/后端架构分析.md) | 后端现状架构分析 |
+| [StockWise系统总架构.drawio](diagrams/StockWise系统总架构.drawio) | 系统部署与组件总览图 |
+| [后端现状架构图.drawio](diagrams/后端现状架构图.drawio) | 后端现状架构图 |
+| [ReAct-Skill-记忆优化方案.md](docs/ReAct-Skill-记忆优化方案.md) | ReAct、Skill、记忆与向量检索优化方案 |
+| [09-核心分析依据.md](docs/09-核心分析依据.md) | 对外核心分析依据、证据等级、Rule ID与能力边界 |
+| [10-Skill对接文档.md](docs/10-Skill对接文档.md) | 其他Agent调用云端Skill的接口、鉴权与消费规则 |
+| [11-Skill-Docker部署文档.md](docs/11-Skill-Docker部署文档.md) | 运维Agent使用的Docker、Nginx、验证与回滚手册 |
+| [12-后端云端部署与联调.md](docs/12-后端云端部署与联调.md) | Java Backend连接云端PG、Redis、Ollama与Wrapper的部署联调手册 |
+| [13-前端独立部署.md](docs/13-前端独立部署.md) | 独立Nginx前端的构建、代理、测试与发布手册 |
+| [15-云端配置运维.md](docs/15-云端配置运维.md) | application-dev.yml与application-prod.yml使用说明 |
+| [16-个人网站与Agent服务规划.md](docs/16-个人网站与Agent服务规划.md) | 个人网站首页、双 Agent、StockSkill 外网服务与文档中心总规划 |
+| [Agent与记忆目标架构.drawio](diagrams/Agent与记忆目标架构.drawio) | Agent 与记忆系统目标架构图 |
+| [整体调用逻辑.drawio](diagrams/整体调用逻辑.drawio) | 当前请求入口、路由、Skill、搜索、记忆与模型调用逻辑 |
 | [schema.sql](db/schema.sql) | 数据库建表语句 |
 | [docker-compose.yml](deploy/docker-compose.yml) | 容器化部署配置 |
 
@@ -73,10 +75,11 @@ curl "http://localhost:8080/api/v1/agent-runs/{runId}"
 StockWise/
 ├── README.md
 ├── docs/
-│   ├── 00-PRD-v3.md                         # 当前需求唯一真源
-│   ├── 08-dev-prompt.md                     # 开发指挥 Prompt
-│   ├── architecture-analysis.md             # 后端现状分析
-│   └── agent-react-memory-optimization.md   # Agent 优化方案
+│   ├── 00-需求规格说明书-v3.md              # 当前需求唯一真源
+│   ├── 08-开发指挥Prompt.md                 # 开发指挥 Prompt
+│   ├── 后端架构分析.md                      # 后端现状分析
+│   ├── ReAct-Skill-记忆优化方案.md          # Agent 优化方案
+│   └── 16-个人网站与Agent服务规划.md        # 个人网站、双 Agent、Skill 外网服务与文档中心规划
 ├── db/
 │   └── schema.sql               # 数据库 DDL
 ├── deploy/
@@ -85,10 +88,10 @@ StockWise/
 ├── stockwise-frontend/          # 独立Nginx静态前端与前端契约测试
 ├── stock-wrapper/               # Node.js HTTP 包装层，与 stock-analysis-skill 同镜像
 └── diagrams/
-    ├── StockWise-architecture.drawio
-    ├── stockwise-backend-architecture.drawio
-    ├── agent-react-memory-target.drawio
-    └── stockwise-agent-new-logic.drawio
+    ├── StockWise系统总架构.drawio
+    ├── 后端现状架构图.drawio
+    ├── Agent与记忆目标架构.drawio
+    └── 整体调用逻辑.drawio
 ```
 
 `stock-analysis-skill` 源码位于工作区同级的 `skills/stock-analysis-skill/`，Docker 构建时与 `stock-wrapper` 一起打入 Node 镜像。

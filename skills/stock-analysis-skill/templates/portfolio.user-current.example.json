@@ -1,0 +1,37 @@
+{
+  "monthlyBudget": 5000,
+  "cash": 0,
+  "positions": [
+    {
+      "code": "022463",
+      "name": "富国中证A500ETF联接A",
+      "assetType": "open_fund",
+      "avgCost": 1.0,
+      "shares": 5000,
+      "buyDate": "2026-05-01",
+      "targetWeight": 0.5,
+      "sector": "A股宽基"
+    },
+    {
+      "code": "017641",
+      "name": "摩根标普500指数QDII人民币A",
+      "assetType": "qdii",
+      "avgCost": 1.0,
+      "shares": 4000,
+      "buyDate": "2026-05-01",
+      "targetWeight": 0.4,
+      "sector": "海外宽基"
+    },
+    {
+      "code": "159801",
+      "name": "广发国证半导体芯片ETF",
+      "assetType": "etf",
+      "riskRole": "sector",
+      "avgCost": 1.2,
+      "shares": 830,
+      "buyDate": "2026-05-20",
+      "targetWeight": 0.1,
+      "sector": "半导体"
+    }
+  ]
+}

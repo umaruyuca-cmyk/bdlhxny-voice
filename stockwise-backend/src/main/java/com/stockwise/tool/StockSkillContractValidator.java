@@ -61,11 +61,34 @@ public class StockSkillContractValidator {
             if (!root.path("decisionBasis").isObject()) {
                 throw new IllegalArgumentException("Skill 缺少结构化 decisionBasis");
             }
+            if ("sector".equals(command)) {
+                validateSectorHeat(root);
+            }
             return root;
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalArgumentException("解析 Skill JSON 失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 校验板块热度分项和公式版本，拒绝只返回单一分数的旧版黑箱结果。
+     */
+    private void validateSectorHeat(JsonNode root) {
+        JsonNode sectors = root.path("data").path("sectors");
+        if (!sectors.isArray()) {
+            throw new IllegalArgumentException("sector 缺少板块排名数组");
+        }
+        for (JsonNode sector : sectors) {
+            JsonNode breakdown = sector.path("heatScoreBreakdown");
+            if (!sector.path("heatScore").isNumber()
+                    || !"sector-heat-v2".equals(breakdown.path("formulaVersion").asText())
+                    || !"cross_sectional_percentile".equals(
+                    breakdown.path("normalization").asText())
+                    || !breakdown.path("components").isObject()) {
+                throw new IllegalArgumentException("sector 热度缺少可复算分项");
+            }
         }
     }
 

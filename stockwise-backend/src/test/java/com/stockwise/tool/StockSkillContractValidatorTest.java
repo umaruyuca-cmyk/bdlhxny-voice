@@ -95,4 +95,26 @@ class StockSkillContractValidatorTest {
 
         assertThrows(IllegalArgumentException.class, () -> validator.validate(json, "sector"));
     }
+
+    @Test
+    void shouldRejectOpaqueSectorHeatWithoutBreakdown() {
+        String json = """
+                {
+                  "schemaVersion":"1.1",
+                  "command":"sector",
+                  "timezone":"Asia/Shanghai",
+                  "asOf":"2026-08-01 10:00:00",
+                  "dataQuality":{"status":"verified","allowsDirectionalSignal":true},
+                  "methodology":{
+                    "id":"stockwise-objective-analysis",
+                    "version":"1.1.0",
+                    "rules":[{"ruleId":"SECTOR-HEAT-001"}]
+                  },
+                  "decisionBasis":{"verdict":"relative_ranking_only"},
+                  "data":{"sectors":[{"name":"半导体","heatScore":88}]}
+                }
+                """;
+
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(json, "sector"));
+    }
 }

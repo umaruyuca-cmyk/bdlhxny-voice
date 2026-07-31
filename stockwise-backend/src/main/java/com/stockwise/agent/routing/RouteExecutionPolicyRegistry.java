@@ -26,6 +26,12 @@ public class RouteExecutionPolicyRegistry {
         values.put(RequestRoute.MARKET_FACT, policy(
                 RequestRoute.MARKET_FACT, ChatIntent.STOCK_ANALYSIS, ModelPolicy.TEMPLATE_ONLY,
                 Set.of("stock"), false, false));
+        values.put(RequestRoute.SECTOR_FACT, policy(
+                RequestRoute.SECTOR_FACT, ChatIntent.STOCK_ANALYSIS, ModelPolicy.TEMPLATE_ONLY,
+                Set.of("sector"), false, false));
+        values.put(RequestRoute.SECTOR_ATTENTION, policy(
+                RequestRoute.SECTOR_ATTENTION, ChatIntent.STOCK_ANALYSIS, ModelPolicy.LOCAL_ONLY,
+                Set.of("sector"), true, true));
         values.put(RequestRoute.STOCK_DECISION, policy(
                 RequestRoute.STOCK_DECISION, ChatIntent.STOCK_ANALYSIS, ModelPolicy.PAID_AFTER_VALIDATED_SKILL,
                 Set.of("stock"), false, false));

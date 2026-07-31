@@ -30,6 +30,7 @@ import com.stockwise.websearch.model.WebSearchResponse;
 import com.stockwise.websearch.planner.LocalSearchPlanner;
 import com.stockwise.websearch.policy.SearchPolicyValidator;
 import com.stockwise.websearch.validation.EvidenceValidator;
+import com.stockwise.websearch.attention.ExternalAttentionAnalyzer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -103,6 +104,8 @@ class ExplicitAnalysisExecutorTest {
                 new PaidModelGate(policyRegistry),
                 new ExecutionPlanFactory(),
                 marketFactResponder,
+                new SectorFactResponder(),
+                new ExternalAttentionAnalyzer(),
                 reactLoop,
                 memoryRouter,
                 objectMapper);
@@ -121,7 +124,7 @@ class ExplicitAnalysisExecutorTest {
     }
 
     @Test
-    void nonPaidRoutesNeverInvokeDeepSeek() {
+    void nonPaidRoutesNeverInvokeDeepSeek() throws Exception {
         // 1. 普通问答只允许本地模型
         ExecutionResult general = execute(decision(
                 RequestRoute.GENERAL_CHAT, ChatIntent.GENERAL_CHAT, ModelPolicy.LOCAL_ONLY, null));
@@ -160,6 +163,25 @@ class ExplicitAnalysisExecutorTest {
         ExecutionResult marketFact = execute(decision(
                 RequestRoute.MARKET_FACT, ChatIntent.STOCK_ANALYSIS, ModelPolicy.TEMPLATE_ONLY, "600519"));
         assertThat(marketFact.modelTier()).isEqualTo("TEMPLATE");
+
+        // 5. 板块行情事实只消费可解释 Skill JSON，不调用本地或付费模型
+        String sectorJson = """
+                {
+                  "schemaVersion":"1.1",
+                  "command":"sector",
+                  "data":{"sectors":[{
+                    "name":"半导体",
+                    "heatScore":80,
+                    "heatScoreQuality":"verified_20d",
+                    "heatScoreBreakdown":{"components":{}}
+                  }]}
+                }
+                """;
+        when(stockAnalysisGateway.sector("industry", 20)).thenReturn(sectorJson);
+        when(contractValidator.validate(sectorJson, "sector"))
+                .thenReturn(objectMapper.readTree(sectorJson));
+        ExecutionResult sectorFact = execute(sectorDecision(RequestRoute.SECTOR_FACT));
+        assertThat(sectorFact.modelTier()).isEqualTo("TEMPLATE");
 
         verify(paidAnalysisClient, never()).streamChat(any(), anyString(), anyString());
     }
@@ -276,7 +298,10 @@ class ExplicitAnalysisExecutorTest {
                     "asOf":"2026-07-30 10:00:00",
                     "allowsDirectionalSignal":true
                   },
-                  "data":{"rankings":[{"name":"新能源车"}]},
+                  "data":{"sectors":[{
+                    "name":"新能源车",
+                    "heatScoreQuality":"verified_20d"
+                  }]},
                   "sources":{}
                 }
                 """;
@@ -314,7 +339,7 @@ class ExplicitAnalysisExecutorTest {
     }
 
     private ExecutionResult execute(RouteDecision decision) {
-        SkillDefinition skill = skillRegistry.get(decision.compatibleIntent());
+        SkillDefinition skill = skillRegistry.get(decision);
         ExplicitAnalysisExecutor.ExecutionOutput output = executor.execute(
                 decision,
                 skill,
@@ -322,6 +347,25 @@ class ExplicitAnalysisExecutorTest {
                 "原始问题",
                 new AgentRunContext(UUID.randomUUID()));
         return new ExecutionResult(output.content().collectList().block(), output.modelTier());
+    }
+
+    private RouteDecision sectorDecision(RequestRoute route) {
+        RouteExecutionPolicyRegistry registry = new RouteExecutionPolicyRegistry();
+        return new RouteDecision(
+                route,
+                registry.get(route).compatibleIntent(),
+                registry.get(route).modelPolicy(),
+                RouteSubjectType.MARKET,
+                List.of(),
+                List.of(),
+                SectorType.INDUSTRY,
+                "TEST_SECTOR_FACT",
+                RouteSource.REGEX,
+                1.0,
+                true,
+                false,
+                false,
+                null);
     }
 
     private RouteDecision decision(RequestRoute route,

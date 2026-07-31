@@ -106,19 +106,13 @@ public class RequestRouter {
     }
 
     /**
-     * Stock Agent 以用户已选标的为唯一可信主体，同时允许闲聊和投资知识走非分析 Route。
+     * Stock Agent 固定已选单标的，同时允许显式板块或市场问题切换到对应分析主体。
      */
     public RouteDecision routeStock(String question, String selectedSymbol) {
         RoutingContext context = entityExtractor.extract(question, selectedSymbol, false);
-        if (context.contextSymbol() == null) {
-            return routeValidator.clarification(
-                    context,
-                    "SELECTED_INSTRUMENT_REQUIRED",
-                    "请先选择股票、ETF或基金标的，再开始 Stock Agent 分析。");
-        }
         boolean containsDifferentSymbol = context.explicitSymbols().stream()
                 .anyMatch(symbol -> !symbol.equals(context.contextSymbol()));
-        if (containsDifferentSymbol) {
+        if (context.contextSymbol() != null && containsDifferentSymbol) {
             return routeValidator.clarification(
                     context,
                     "SELECTED_INSTRUMENT_MISMATCH",
@@ -137,9 +131,10 @@ public class RequestRouter {
         }
         return switch (decision.route()) {
             case GENERAL_CHAT, KNOWLEDGE_QA, EXTERNAL_RESEARCH,
-                    MARKET_FACT, STOCK_DECISION, MARKET_CAUSAL_ANALYSIS,
+                    MARKET_FACT, SECTOR_FACT, SECTOR_ATTENTION, STOCK_DECISION,
+                    SECTOR_ANALYSIS, MARKET_CAUSAL_ANALYSIS,
                     NEED_CLARIFICATION -> decision;
-            case PORTFOLIO_DECISION, QUANT_DECISION, SECTOR_ANALYSIS ->
+            case PORTFOLIO_DECISION, QUANT_DECISION ->
                     routeValidator.clarification(
                             context,
                             "STOCK_WORKSPACE_ROUTE_OUT_OF_SCOPE",
@@ -153,9 +148,7 @@ public class RequestRouter {
             return false;
         }
         return switch (decision.reasonCode()) {
-            case "PORTFOLIO_DATA_REQUIRED", "MISSING_QUANT_UNIVERSE",
-                    "SECTOR_ROUTE_SYMBOL_CONFLICT", "SECTOR_REQUIRED",
-                    "MIXED_SECTOR_TYPES" -> true;
+            case "PORTFOLIO_DATA_REQUIRED", "MISSING_QUANT_UNIVERSE" -> true;
             default -> false;
         };
     }

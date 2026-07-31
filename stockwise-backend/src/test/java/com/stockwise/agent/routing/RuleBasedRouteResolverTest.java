@@ -59,10 +59,19 @@ class RuleBasedRouteResolverTest {
     void overallSectorRankingDoesNotRequireSpecificSectorName() {
         RouteDecision decision = route("今天哪些板块最强", null);
 
-        assertEquals(RequestRoute.SECTOR_ANALYSIS, decision.route());
+        assertEquals(RequestRoute.SECTOR_FACT, decision.route());
         assertEquals(RouteSubjectType.MARKET, decision.subjectType());
         assertEquals(SectorType.INDUSTRY, decision.sectorType());
         assertTrue(decision.sectors().isEmpty());
+    }
+
+    @Test
+    void sectorAttentionUsesLocalEvidenceRoute() {
+        RouteDecision decision = route("半导体板块最近网上讨论度高吗", null);
+
+        assertEquals(RequestRoute.SECTOR_ATTENTION, decision.route());
+        assertEquals(ModelPolicy.LOCAL_ONLY, decision.modelPolicy());
+        assertTrue(decision.requiresExternalEvidence());
     }
 
     @Test

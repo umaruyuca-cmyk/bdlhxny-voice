@@ -34,3 +34,23 @@ test("正式页面使用同源POST流并遵守身份边界", async () => {
   assert.match(html, /选择分析口径/);
   assert.match(html, /NEED_CLARIFICATION/);
 });
+
+/**
+ * 验证柔和版入口复用正式后端协议，并保留陪伴角色的快捷操作。
+ */
+test("柔和版入口连接后端流式协议", async () => {
+  const html = await readFile(
+    new URL("../public/stockwise-chat-soft.html", import.meta.url),
+    "utf8",
+  );
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+
+  assert.equal(scripts.length, 1);
+  assert.doesNotThrow(() => new Function(scripts[0][1]));
+  assert.match(html, /fetch\("\/api\/v1\/chat\/stream"/);
+  assert.match(html, /fetch\("\/api\/v1\/agent-runs\?limit=20"/);
+  assert.match(html, /sessionId:ST\.sessionIds\[ST\.mode\]/);
+  assert.match(html, /assetType:normalizeAssetType/);
+  assert.match(html, /id="companionWidget"/);
+  assert.match(html, /data-companion-action="follow"/);
+});

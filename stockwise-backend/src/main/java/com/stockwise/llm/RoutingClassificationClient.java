@@ -39,7 +39,7 @@ public class RoutingClassificationClient implements SemanticRouteClassifier {
 
             route 只能是：
             GENERAL_CHAT, KNOWLEDGE_QA, EXTERNAL_RESEARCH, MARKET_FACT,
-            STOCK_DECISION, PORTFOLIO_DECISION, QUANT_DECISION,
+            SECTOR_FACT, SECTOR_ATTENTION, STOCK_DECISION, PORTFOLIO_DECISION, QUANT_DECISION,
             SECTOR_ANALYSIS, MARKET_CAUSAL_ANALYSIS, NEED_CLARIFICATION。
 
             subjectType 只能是：
@@ -51,11 +51,13 @@ public class RoutingClassificationClient implements SemanticRouteClassifier {
             3. sectorType 只能是 INDUSTRY、CONCEPT、UNKNOWN。
             4. 只有用户使用“这只、它、当前标的”等指代时，useContextSymbol 才能为 true。
             5. QUANT_DECISION 表示至少两个ETF或基金的比较、轮动和目标权重。
-            6. SECTOR_ANALYSIS 表示行业或概念的热度、排名、趋势、资金流和方向判断。
-            7. MARKET_CAUSAL_ANALYSIS 表示外部事件对股票、板块或市场的影响。
-            8. 最新政策、公告、新闻和公开事实查询属于 EXTERNAL_RESEARCH。
-            9. 意图、主体或必要参数不清晰时返回 NEED_CLARIFICATION，并填写 ambiguityReason。
-            10. reportedConfidence 取值为 0 到 1，只是自评，系统会再次校验。
+            6. SECTOR_FACT 表示板块涨跌、热度、排名、资金流、换手和已经计算出的趋势事实，不做买卖判断。
+            7. SECTOR_ATTENTION 表示互联网讨论度、搜索关注、舆情热度或大众关注代理。
+            8. SECTOR_ANALYSIS 只表示板块未来、买卖、追高、仓位或方向性投资判断。
+            9. MARKET_CAUSAL_ANALYSIS 表示外部事件对股票、板块或市场的影响。
+            10. 最新政策、公告、新闻和公开事实查询属于 EXTERNAL_RESEARCH。
+            11. 意图、主体或必要参数不清晰时返回 NEED_CLARIFICATION，并填写 ambiguityReason。
+            12. reportedConfidence 取值为 0 到 1，只是自评，系统会再次校验。
 
             JSON 格式：
             {
@@ -80,7 +82,7 @@ public class RoutingClassificationClient implements SemanticRouteClassifier {
     public RoutingClassificationClient(
             DeepSeekClient deepSeekClient,
             ObjectMapper mapper,
-            @Value("${stockwise.routing.semantic.enabled:true}") boolean enabled,
+            @Value("${stockwise.routing.semantic.enabled:false}") boolean enabled,
             @Value("${stockwise.routing.semantic.model:deepseek-v4-flash}") String model,
             @Value("${stockwise.routing.semantic.max-output-tokens:256}") int maxTokens,
             @Value("${stockwise.routing.semantic.total-timeout-ms:2500}") long timeoutMs,

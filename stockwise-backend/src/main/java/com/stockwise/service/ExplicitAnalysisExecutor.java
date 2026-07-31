@@ -27,6 +27,8 @@ import com.stockwise.tool.PortfolioAnalysisInput;
 import com.stockwise.tool.StockSkillContractValidator;
 import com.stockwise.tool.StockTools;
 import com.stockwise.websearch.gateway.WebSearchGateway;
+import com.stockwise.websearch.attention.AttentionSnapshot;
+import com.stockwise.websearch.attention.ExternalAttentionAnalyzer;
 import com.stockwise.websearch.model.SearchTask;
 import com.stockwise.websearch.model.WebSearchResponse;
 import com.stockwise.websearch.planner.LocalSearchPlanner;
@@ -62,6 +64,8 @@ public class ExplicitAnalysisExecutor {
     private final PaidModelGate paidModelGate;
     private final ExecutionPlanFactory executionPlanFactory;
     private final MarketFactResponder marketFactResponder;
+    private final SectorFactResponder sectorFactResponder;
+    private final ExternalAttentionAnalyzer externalAttentionAnalyzer;
     private final BoundedReactLoop reactLoop;
     private final MemoryRouter memoryRouter;
     private final ObjectMapper objectMapper;
@@ -79,6 +83,8 @@ public class ExplicitAnalysisExecutor {
                                     PaidModelGate paidModelGate,
                                     ExecutionPlanFactory executionPlanFactory,
                                     MarketFactResponder marketFactResponder,
+                                    SectorFactResponder sectorFactResponder,
+                                    ExternalAttentionAnalyzer externalAttentionAnalyzer,
                                     BoundedReactLoop reactLoop,
                                     MemoryRouter memoryRouter,
                                     ObjectMapper objectMapper) {
@@ -95,6 +101,8 @@ public class ExplicitAnalysisExecutor {
         this.paidModelGate = paidModelGate;
         this.executionPlanFactory = executionPlanFactory;
         this.marketFactResponder = marketFactResponder;
+        this.sectorFactResponder = sectorFactResponder;
+        this.externalAttentionAnalyzer = externalAttentionAnalyzer;
         this.reactLoop = reactLoop;
         this.memoryRouter = memoryRouter;
         this.objectMapper = objectMapper;
@@ -116,6 +124,9 @@ public class ExplicitAnalysisExecutor {
             case KNOWLEDGE_QA -> knowledge(skill, contextualPrompt, rawQuestion, decision, runContext);
             case EXTERNAL_RESEARCH -> external(skill, contextualPrompt, rawQuestion, decision, runContext);
             case MARKET_FACT -> marketFact(skill, rawQuestion, decision, runContext);
+            case SECTOR_FACT -> sectorFact(skill, decision, runContext);
+            case SECTOR_ATTENTION -> sectorAttention(
+                    skill, contextualPrompt, rawQuestion, decision, runContext, plan);
             case STOCK_DECISION -> stockDecision(skill, contextualPrompt, decision, runContext);
             case PORTFOLIO_DECISION -> portfolioDecision(skill, contextualPrompt, decision, runContext);
             case QUANT_DECISION -> quantDecision(
@@ -192,6 +203,62 @@ public class ExplicitAnalysisExecutor {
                 "MARKET_FACT_TEMPLATE",
                 ReactTerminationReason.FINAL_ANSWER,
                 loop.rounds(), loop.toolCalls(), "行情事实模板回答");
+    }
+
+    private ExecutionOutput sectorFact(SkillDefinition skill,
+                                       RouteDecision decision,
+                                       AgentRunContext context) {
+        ReactLoopResult loop = reactLoop.execute(
+                decision, skill, context, List.of(sectorAction(decision)));
+        if (!loop.completed()) {
+            return reactBlocked(loop);
+        }
+        String sectorJson = observation(loop, "sector");
+        JsonNode validated = contractValidator.validate(sectorJson, "sector");
+        return new ExecutionOutput(
+                Flux.just(sectorFactResponder.respond(decision, validated)),
+                "TEMPLATE",
+                "SECTOR_FACT_TEMPLATE",
+                ReactTerminationReason.FINAL_ANSWER,
+                loop.rounds(), loop.toolCalls(), "板块事实模板回答");
+    }
+
+    private ExecutionOutput sectorAttention(SkillDefinition skill,
+                                            String prompt,
+                                            String question,
+                                            RouteDecision decision,
+                                            AgentRunContext context,
+                                            ExecutionPlan plan) {
+        requirePlannedCommand(decision, plan, "sector");
+        SearchPlan searchPlan = searchPlan(decision, question);
+        ReactLoopResult loop = reactLoop.execute(
+                decision,
+                skill,
+                context,
+                List.of(sectorAction(decision), searchPlan.action()));
+        if (!loop.completed()) {
+            return reactBlocked(loop);
+        }
+        String sectorJson = observation(loop, "sector");
+        JsonNode validated = contractValidator.validate(sectorJson, "sector");
+        SearchExecution search = searchResult(decision, observation(loop, "webSearch"));
+        AttentionSnapshot attention = externalAttentionAnalyzer.analyze(search.response().results());
+        if (!search.evidence().sufficient()) {
+            String fallback = sectorFactResponder.respond(decision, validated)
+                    + "\n外围关注：搜索结果不足，当前不能形成可靠的讨论度代理。";
+            return new ExecutionOutput(
+                    Flux.just(fallback),
+                    "TEMPLATE",
+                    "ATTENTION_EVIDENCE_INSUFFICIENT",
+                    ReactTerminationReason.EVIDENCE_INSUFFICIENT,
+                    loop.rounds(), loop.toolCalls(), "外围关注证据不足");
+        }
+        String modelPrompt = prompt
+                + "\n\n已校验板块行情数据：\n" + truncate(sectorJson)
+                + "\n\n外围关注代理（不能解释为真实搜索量或用户人数）：\n" + json(attention)
+                + "\n\n标准化搜索结果（引用时保留URL）：\n" + truncate(search.json());
+        return local(skill.systemPrompt(), modelPrompt,
+                "LOCAL", "SECTOR_ATTENTION_LOCAL", ReactTerminationReason.FINAL_ANSWER, loop);
     }
 
     private ExecutionOutput stockDecision(SkillDefinition skill,
@@ -308,7 +375,7 @@ public class ExplicitAnalysisExecutor {
         JsonNode validated = contractValidator.validate(result, "sector");
         PaidModelPermit permit = gate(
                 decision,
-                hasVerifiedDataQuality(validated),
+                sectorDataAllowsDirectionalAnalysis(validated, decision),
                 sectorSubjectsMatch(validated, decision),
                 EvidenceBundle.notRequired());
         if (!permit.allowed()) {
@@ -355,7 +422,7 @@ public class ExplicitAnalysisExecutor {
         JsonNode validated = contractValidator.validate(marketJson, command);
         boolean fresh = "stock".equals(command)
                 ? contractValidator.policy(validated).directionalSignalAllowed()
-                : hasVerifiedDataQuality(validated);
+                : sectorDataAllowsDirectionalAnalysis(validated, decision);
         boolean subjectMatches = "stock".equals(command)
                 ? stockSubjectMatches(validated, decision.primarySymbol())
                 : sectorSubjectsMatch(validated, decision);
@@ -385,7 +452,7 @@ public class ExplicitAnalysisExecutor {
         try {
             WebSearchResponse response = objectMapper.readValue(responseJson, WebSearchResponse.class);
             EvidenceBundle evidence = evidenceValidator.validate(decision.route(), response.results());
-            return new SearchExecution(responseJson, evidence);
+            return new SearchExecution(responseJson, evidence, response);
         } catch (Exception e) {
             throw new IllegalStateException("标准化搜索结果解析失败", e);
         }
@@ -564,6 +631,30 @@ public class ExplicitAnalysisExecutor {
         return decision.sectors().stream().allMatch(json::contains);
     }
 
+    private boolean sectorDataAllowsDirectionalAnalysis(JsonNode root, RouteDecision decision) {
+        if (decision.sectors().isEmpty()) {
+            return hasVerifiedDataQuality(root);
+        }
+        JsonNode sectors = root.path("data").path("sectors");
+        if (!sectors.isArray()) {
+            return false;
+        }
+        for (String expected : decision.sectors()) {
+            boolean verified = false;
+            for (JsonNode sector : sectors) {
+                if (expected.equals(sector.path("name").asText())
+                        && "verified_20d".equals(sector.path("heatScoreQuality").asText())) {
+                    verified = true;
+                    break;
+                }
+            }
+            if (!verified) {
+                return false;
+            }
+        }
+        return !root.path("asOf").asText("").isBlank();
+    }
+
     private List<String> extractSymbols(String question) {
         Matcher matcher = SYMBOL_PATTERN.matcher(question == null ? "" : question);
         java.util.LinkedHashSet<String> result = new java.util.LinkedHashSet<>();
@@ -602,7 +693,9 @@ public class ExplicitAnalysisExecutor {
     ) {
     }
 
-    private record SearchExecution(String json, EvidenceBundle evidence) {
+    private record SearchExecution(String json,
+                                   EvidenceBundle evidence,
+                                   WebSearchResponse response) {
     }
 
     private record SearchPlan(ReactToolAction action) {

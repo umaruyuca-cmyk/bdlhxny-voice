@@ -10,11 +10,19 @@ deploy/.env.cloud
 # 构建产物
 target/
 dist/
+.tmp/
+
+# Skill本地依赖、IDE文件和历史分析记录
+skills/**/node_modules/
+skills/**/.idea/
+skills/**/history/
+skills/**/portfolio.json
 
 # IDE
 .idea/
 *.iml
 .vscode/
+.claude/
 
 # 日志
 *.log

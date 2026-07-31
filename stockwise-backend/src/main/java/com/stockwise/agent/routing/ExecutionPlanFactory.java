@@ -19,6 +19,8 @@ public class ExecutionPlanFactory {
             case KNOWLEDGE_QA -> List.of("searchInvestmentKnowledge");
             case EXTERNAL_RESEARCH -> List.of("webSearch");
             case MARKET_FACT, STOCK_DECISION -> List.of("stock");
+            case SECTOR_FACT -> List.of("sector");
+            case SECTOR_ATTENTION -> List.of("sector", "webSearch");
             case PORTFOLIO_DECISION -> List.of("portfolio");
             case QUANT_DECISION -> List.of("quant");
             case SECTOR_ANALYSIS -> List.of("sector");

@@ -107,7 +107,8 @@ public class HttpWebSearchGateway implements WebSearchGateway {
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("taskId", task.taskId());
             value.put("purposeCode", task.purpose().name());
-            value.put("mode", task.purpose() == SearchPurpose.NEWS_CATALYST ? "NEWS" : "GENERAL");
+            value.put("mode", task.purpose() == SearchPurpose.NEWS_CATALYST
+                    || task.purpose() == SearchPurpose.MARKET_ATTENTION ? "NEWS" : "GENERAL");
             value.put("query", task.query());
             value.put("language", "zh-CN");
             value.put("freshnessDays", task.freshnessDays());

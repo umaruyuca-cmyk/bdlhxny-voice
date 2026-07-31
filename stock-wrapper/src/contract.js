@@ -52,7 +52,30 @@ export function normalizeSkillOutput(command, stdout) {
       || Array.isArray(parsed.decisionBasis)) {
     throw new WrapperError(502, 'SKILL_DECISION_BASIS_MISSING', 'Skill 缺少结构化 decisionBasis');
   }
+  if (command === 'sector') {
+    validateSectorHeatContract(parsed);
+  }
   return parsed;
+}
+
+/**
+ * 校验板块热度可解释字段，避免旧版不透明分数继续进入 Java Agent。
+ */
+function validateSectorHeatContract(parsed) {
+  if (!Array.isArray(parsed.data.sectors)) {
+    throw new WrapperError(502, 'SECTOR_HEAT_CONTRACT_INVALID', 'sector 缺少板块排名数组');
+  }
+  for (const sector of parsed.data.sectors) {
+    const breakdown = sector?.heatScoreBreakdown;
+    if (!Number.isFinite(sector?.heatScore)
+        || !breakdown
+        || breakdown.formulaVersion !== 'sector-heat-v2'
+        || breakdown.normalization !== 'cross_sectional_percentile'
+        || !breakdown.components
+        || typeof breakdown.components !== 'object') {
+      throw new WrapperError(502, 'SECTOR_HEAT_CONTRACT_INVALID', 'sector 热度缺少可复算分项');
+    }
+  }
 }
 
 /**

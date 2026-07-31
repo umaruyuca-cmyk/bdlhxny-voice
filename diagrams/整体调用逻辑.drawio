@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0">
+  <diagram name="StockWise整体调用逻辑">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1600" math="0" shadow="0" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="tier1" value="入口层" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="2200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tier2" value="Agent 编排与路由层" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#eef5ff;strokeColor=#6c8ebf;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="20" y="200" width="2200" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="tier3" value="请求执行层：按 Route 选择最小必要能力" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#f7f0fb;strokeColor=#9673a6;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="20" y="650" width="2200" height="390" as="geometry" />
+        </mxCell>
+        <mxCell id="tier4" value="数据、记忆与模型基础设施" style="swimlane;startSize=30;rounded=1;whiteSpace=wrap;html=1;fillColor=#f3faf1;strokeColor=#82b366;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="20" y="1060" width="2200" height="300" as="geometry" />
+        </mxCell>
+
+        <mxCell id="user" value="用户 / 浏览器&#xa;选择模式：ChatAgent 或 StockAgent&#xa;StockAgent 可选股票，也可直接问板块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="230" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="Chat API&#xa;REST + SSE 流式响应&#xa;身份 / 会话入口" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="360" y="80" width="210" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="orchestrator" value="AgentOrchestrator&#xa;统一编排、状态推进、最终响应&#xa;StockAgent 不再强制必须有股票" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="640" y="80" width="260" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="context" value="上下文构建&#xa;LangChain4j ContextWindow&#xa;短期消息 + 压缩摘要 + 相关长期记忆" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="630" y="260" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="react" value="有界 ReAct Loop&#xa;观察 → 判断 → 执行 → 校验&#xa;最多 N 轮，失败时停止并结构化返回" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="960" y="260" width="250" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="router" value="RouteResolver + RequestRouter&#xa;规则优先；语义路由默认关闭&#xa;输出 RouteDecision + ExecutionPlan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="260" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="subject" value="Subject / Workspace&#xa;个股、ETF、板块、市场宽基&#xa;选股上下文与显式问题可互相校验" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="410" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="quota" value="PaidModelPermit&#xa;仅在 Skill + 证据 + Gate 通过后检查&#xa;游客限制付费分析次数，不限制事实查询" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1680" y="410" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="general" value="GENERAL_CHAT / KNOWLEDGE_QA&#xa;普通问答、知识问答&#xa;只用本地模型；知识问答可查本地 RAG" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="80" y="720" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="marketFact" value="MARKET_FACT / STOCK_FACT&#xa;实时价格、K线、单标的事实&#xa;固定 Skill JSON + 模板输出，不调用付费模型" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="430" y="720" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="sectorFact" value="SECTOR_FACT&#xa;板块涨跌、资金、换手、热度排名&#xa;sector-heat-v2 可复算明细 + 模板输出" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="780" y="720" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="attention" value="SECTOR_ATTENTION&#xa;互联网讨论 / 关注度代理&#xa;SearXNG 搜索 + 确定性关注度指标 + 本地模型" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="720" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="paid" value="SECTOR_ANALYSIS / STOCK_ANALYSIS&#xa;投资判断、仓位、风险与行动建议&#xa;必须经过 Skill 数据校验和付费模型闸门" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1480" y="720" width="290" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="fallback" value="失败 / 数据不足&#xa;结构化错误或观望模板&#xa;不会伪造结论，也不消耗付费额度" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1830" y="720" width="290" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="skill" value="stock-wrapper + stock-analysis-skill&#xa;Node.js 独立部署&#xa;实时行情、K线、板块、组合、回测&#xa;返回固定版本化 JSON 契约" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="370" y="1140" width="320" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="web" value="web-search-wrapper + SearXNG&#xa;固定 SearchTask / WebSearchResponse&#xa;仅用于外部事实和关注度证据&#xa;不是 Skill 的行情替代品" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1140" width="320" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="localModel" value="本地 Ollama&#xa;普通问答、知识问答、搜索总结&#xa;默认承担非付费推理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="1140" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="deepseek" value="PaidAnalysisClient → DeepSeek&#xa;只接收已校验 Skill 结果、搜索证据、记忆上下文&#xa;产生最终投资分析结论" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="1140" width="300" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="memory" value="PostgreSQL + Redis + 向量存储&#xa;会话、长期记忆、情景记忆、RAG 索引&#xa;Ollama Embedding 失败时可降级到摘要" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1760" y="1140" width="320" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" value="HTTP / SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="user" target="api"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" value="请求 + 身份" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="api" target="orchestrator"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" value="构建上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="orchestrator" target="context"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e4" value="多轮循环" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="context" target="react"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" value="意图 + 标的" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="react" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" value="校验主题上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="router" target="subject"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" value="RouteDecision" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="router" target="general"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" value="事实查询" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="router" target="marketFact"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e9" value="板块事实" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="router" target="sectorFact"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" value="外部关注度" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="router" target="attention"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" value="付费分析" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="router" target="paid"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" value="本地模型" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="general" target="localModel"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" value="Skill JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="marketFact" target="skill"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e14" value="Skill JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="sectorFact" target="skill"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e15" value="行情事实" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="attention" target="skill"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" value="SearchTask" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="attention" target="web"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e17" value="证据 + 本地总结" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="attention" target="localModel"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18" value="Skill → Gate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="paid" target="quota"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e19" value="通过后订阅" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="quota" target="deepseek"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e20" value="会话状态" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="orchestrator" target="memory"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" value="读写记忆" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;" edge="1" parent="1" source="context" target="memory"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e22" value="数据不足 / 上游失败" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#b85450;" edge="1" parent="1" source="skill" target="fallback"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e23" value="契约校验失败" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#b85450;" edge="1" parent="1" source="web" target="fallback"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

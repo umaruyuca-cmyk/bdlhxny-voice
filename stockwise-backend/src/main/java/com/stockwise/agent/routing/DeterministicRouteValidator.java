@@ -46,6 +46,8 @@ public class DeterministicRouteValidator {
                     List.of(), SectorType.UNKNOWN, "VALID_EXTERNAL_RESEARCH");
             case MARKET_FACT -> singleSymbolDecision(
                     context, candidate, symbols, RequestRoute.MARKET_FACT, "VALID_MARKET_FACT");
+            case SECTOR_FACT, SECTOR_ATTENTION, SECTOR_ANALYSIS ->
+                    sectorDecision(context, candidate, false, symbols);
             case STOCK_DECISION -> singleSymbolDecision(
                     context, candidate, symbols, RequestRoute.STOCK_DECISION, "VALID_STOCK_DECISION");
             case PORTFOLIO_DECISION -> context.portfolioAvailable()
@@ -57,7 +59,6 @@ public class DeterministicRouteValidator {
                     SectorType.UNKNOWN, "VALID_QUANT_DECISION")
                     : clarification(context, "MISSING_QUANT_UNIVERSE",
                     "请至少提供两个需要比较的6位ETF或基金代码。");
-            case SECTOR_ANALYSIS -> sectorDecision(context, candidate, false, symbols);
             case MARKET_CAUSAL_ANALYSIS -> causalDecision(context, candidate, symbols);
             case NEED_CLARIFICATION -> clarification(
                     context, "SEMANTIC_AMBIGUOUS", "请补充你想分析的具体目标。");
@@ -127,7 +128,13 @@ public class DeterministicRouteValidator {
                     "问题同时包含行业和概念板块，请分开提问以便核验数据。");
         }
         List<String> names = resolved.stream().map(ResolvedSector::name).distinct().toList();
-        String reason = causal ? "VALID_SECTOR_CAUSAL_ANALYSIS" : "VALID_SECTOR_ANALYSIS";
+        String reason = causal
+                ? "VALID_SECTOR_CAUSAL_ANALYSIS"
+                : switch (candidate.route()) {
+                    case SECTOR_FACT -> "VALID_SECTOR_FACT";
+                    case SECTOR_ATTENTION -> "VALID_SECTOR_ATTENTION";
+                    default -> "VALID_SECTOR_ANALYSIS";
+                };
         return decision(candidate, RouteSubjectType.SECTOR, List.of(), names, type, reason);
     }
 

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.stockwise.llm.ChatIntent;
 import com.stockwise.agent.routing.ModelPolicy;
 import com.stockwise.agent.routing.RequestRoute;
+import com.stockwise.agent.routing.RouteSubjectType;
+import com.stockwise.agent.routing.SectorType;
 import com.stockwise.dto.ChatMode;
 import com.stockwise.skill.KnowledgeCandidate;
 import lombok.Data;
@@ -46,6 +48,15 @@ public class SessionState {
 
     /** 本轮已确认的6位标的代码。 */
     private String symbol;
+
+    /** 本轮已确认的统一分析对象类型。 */
+    private RouteSubjectType subjectType;
+
+    /** 本轮板块对象的行业或概念类型。 */
+    private SectorType sectorType;
+
+    /** 本轮已确认的板块名称，避免只用股票代码保存上下文。 */
+    private List<String> sectors = new ArrayList<>();
 
     /** 最近一次模型门禁原因码。 */
     private String gateReason;

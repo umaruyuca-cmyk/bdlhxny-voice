@@ -72,3 +72,23 @@ test('拒绝缺少方法论和决策依据的成功 JSON', () => {
     error => error.code === 'SKILL_METHODOLOGY_MISSING',
   );
 });
+
+test('拒绝缺少可复算分项的旧版板块热度', () => {
+  assert.throws(
+    () => normalizeSkillOutput('sector', JSON.stringify({
+      schemaVersion: '1.1',
+      command: 'sector',
+      timezone: 'Asia/Shanghai',
+      asOf: '2026-08-01 10:00:00',
+      dataQuality: { status: 'verified' },
+      data: { sectors: [{ name: '半导体', heatScore: 88 }] },
+      methodology: {
+        id: 'stockwise-objective-analysis',
+        version: '1.0.0',
+        rules: [],
+      },
+      decisionBasis: { verdict: 'relative_ranking_only' },
+    })),
+    error => error.code === 'SECTOR_HEAT_CONTRACT_INVALID',
+  );
+});

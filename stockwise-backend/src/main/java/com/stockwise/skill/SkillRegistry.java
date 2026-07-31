@@ -40,7 +40,8 @@ public class SkillRegistry {
         return switch (decision.route()) {
             case EXTERNAL_RESEARCH -> generalToolAgent();
             case QUANT_DECISION -> quantAnalysis();
-            case SECTOR_ANALYSIS -> sectorAnalysis();
+            case SECTOR_FACT, SECTOR_ANALYSIS -> sectorAnalysis();
+            case SECTOR_ATTENTION -> sectorAttention();
             case MARKET_CAUSAL_ANALYSIS -> causalAnalysis();
             default -> get(decision.compatibleIntent());
         };
@@ -204,6 +205,27 @@ public class SkillRegistry {
                 5. 只分析用户指定且确实出现在 Skill 数据中的板块，并附风险声明。
                 """,
                 List.of("listSectors"));
+    }
+
+    /**
+     * 板块外围关注分析只解释搜索证据代理，不推断真实人群身份或平台讨论总量。
+     */
+    private SkillDefinition sectorAttention() {
+        SkillDefinition base = sectorAnalysis();
+        return variant(
+                base,
+                "sector-attention",
+                "板块行情与外围关注代理",
+                """
+                你是 StockWise 的板块外围关注分析师，只解释已校验的 sector JSON、固定 SearchResult 和 attentionSnapshot。
+                工作规则：
+                1. 行情热度与外围关注度必须分开展示，不得把搜索结果混入板块行情热度。
+                2. attentionSnapshot 是搜索证据覆盖代理，不是百度指数、平台互动量或真实用户人数。
+                3. retailKeywordProxy 只表示结果文本命中新手/追涨类关键词，不得推断性别、家庭身份或投资经验。
+                4. 说明来源数、独立域名、时间覆盖、关键词命中和局限性，并保留来源URL。
+                5. 不提供买卖、加减仓或收益预测结论。
+                """,
+                List.of("listSectors", "webSearch"));
     }
 
     /**

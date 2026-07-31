@@ -26,6 +26,17 @@ public class LocalSearchPlanner {
      * 为允许联网的 Route 生成最多一个初始任务，复杂拆分后续仍受任务预算约束。
      */
     public List<SearchTask> plan(RouteDecision decision, String question) {
+        if (decision.route() == RequestRoute.SECTOR_ATTENTION) {
+            String subject = decision.sectors().isEmpty()
+                    ? "A股 热门板块"
+                    : String.join(" ", decision.sectors());
+            return List.of(task(
+                    SearchPurpose.MARKET_ATTENTION,
+                    subject + " 近期 讨论 关注 热度",
+                    null,
+                    14,
+                    List.of()));
+        }
         if (decision.route() == RequestRoute.MARKET_CAUSAL_ANALYSIS) {
             String symbol = decision.symbol();
             if (symbol != null && isPriceReasonQuestion(question)) {
@@ -92,6 +103,7 @@ public class LocalSearchPlanner {
             case POLICY_UPDATE -> "最新 政策 官方";
             case NEWS_CATALYST -> "近期 新闻";
             case KNOWLEDGE_VERIFY -> "资料 核验";
+            case MARKET_ATTENTION -> "近期 讨论 关注 热度";
         };
         String query = (keywords + " " + suffix).replaceAll("\\s+", " ").trim();
         if (query.length() > 100) {
@@ -112,6 +124,9 @@ public class LocalSearchPlanner {
         }
         if (query.contains("新闻") || query.contains("消息") || query.contains("事件")) {
             return SearchPurpose.NEWS_CATALYST;
+        }
+        if (query.contains("讨论") || query.contains("关注") || query.contains("热度")) {
+            return SearchPurpose.MARKET_ATTENTION;
         }
         return SearchPurpose.KNOWLEDGE_VERIFY;
     }

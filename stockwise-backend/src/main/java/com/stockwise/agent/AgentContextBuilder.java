@@ -51,10 +51,29 @@ public class AgentContextBuilder {
                 budget.maxMessageTokens());
 
         StringBuilder context = new StringBuilder();
+        appendSubject(context, state);
         appendSummaries(context, summaries);
         appendHistory(context, trimmedHistory);
         context.append("当前用户问题：\n").append(safe(currentMessage));
         return context.toString();
+    }
+
+    private void appendSubject(StringBuilder context, SessionState state) {
+        if (state.getSubjectType() == null) {
+            return;
+        }
+        context.append("当前分析对象（由 Route 校验）：\n")
+                .append("- 类型：").append(state.getSubjectType()).append('\n');
+        if (state.getSymbol() != null && !state.getSymbol().isBlank()) {
+            context.append("- 代码：").append(state.getSymbol()).append('\n');
+        }
+        if (state.getSectorType() != null) {
+            context.append("- 板块类型：").append(state.getSectorType()).append('\n');
+        }
+        if (state.getSectors() != null && !state.getSectors().isEmpty()) {
+            context.append("- 板块：").append(String.join("、", state.getSectors())).append('\n');
+        }
+        context.append('\n');
     }
 
     private void appendSummaries(StringBuilder context, List<String> summaries) {

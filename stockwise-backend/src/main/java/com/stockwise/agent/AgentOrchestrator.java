@@ -154,18 +154,7 @@ public class AgentOrchestrator {
                          ChatInstrument instrument, boolean guest, String guestSubjectHash,
                          SseEmitter emitter) {
         try {
-            // 1. Stock Agent 的首次请求和暂停点续跑都必须携带结构化标的
-            if (mode == ChatMode.STOCK_AGENT && instrument == null) {
-                sendEvent(emitter, "ask", Map.of(
-                        "reason", "NEED_INSTRUMENT",
-                        "prompt", "请先选择股票、ETF或基金标的，再开始 Stock Agent 分析"));
-                sendEvent(emitter, "done", Map.of(
-                        "status", "NEED_INSTRUMENT",
-                        "route", BusinessRoute.STOCK_ANALYSIS.name(),
-                        "mode", mode.value()));
-                emitter.complete();
-                return;
-            }
+            // 1. Stock Agent 无标的时仍允许板块和市场问题，单标的缺失由 Route 统一追问。
             SessionState state = memoryRouter.loadWorking(sessionId);
             if (state != null) {
                 String step = state.getCurrentStep();
@@ -238,12 +227,8 @@ public class AgentOrchestrator {
         sendStatus(emitter, "classifying", null, null);
         RouteDecision decision = mode == ChatMode.GENERAL
                 ? requestRouter.routeGeneral(message)
-                : requestRouter.routeStock(message, instrument.symbol());
+                : requestRouter.routeStock(message, instrument == null ? null : instrument.symbol());
         applyDecision(state, decision);
-        // Step 3：游客深度分析必须先原子取得次数名额，拒绝后不得创建Run或调用任何上游能力。
-        if (!allowGuestAnalysis(emitter, guest, guestSubjectHash, decision)) {
-            return;
-        }
         if (newSession) {
             // 1. 路由确定标的后再做用户隔离的语义召回，避免只按时间盲目注入历史。
             state.setRecentConversationSummaries(
@@ -258,7 +243,8 @@ public class AgentOrchestrator {
         sendBusinessStatus(emitter, decision, skill);
 
         // Step 7：显式执行 Route，只有门禁放行的分析类请求才能调用 DeepSeek
-        streamAndFinalize(emitter, state, skill, message, decision);
+        streamAndFinalize(
+                emitter, state, skill, message, decision, guest, guestSubjectHash);
     }
 
     /**
@@ -288,21 +274,18 @@ public class AgentOrchestrator {
         // 4. 未解决：把补充当新输入，重新路由后按显式策略执行
         appendHistory(state, "user", message);
         String combinedQuestion = state.getLastQuestion() + "\n用户补充：" + message;
-        RouteDecision decision = state.getChatMode() == ChatMode.GENERAL || state.getSymbol() == null
+        RouteDecision decision = state.getChatMode() == ChatMode.GENERAL
                 ? requestRouter.routeGeneral(combinedQuestion)
                 : requestRouter.routeStock(combinedQuestion, state.getSymbol());
         applyDecision(state, decision);
-        // 5. 补充问题重新路由后重新检查配额，不能沿用上一轮已获得的分析名额。
-        if (!allowGuestAnalysis(emitter, guest, guestSubjectHash, decision)) {
-            return;
-        }
         SkillDefinition skill = skillRegistry.get(decision);
         state.setCurrentStep("react_running");
         memoryRouter.saveWorking(state);
         recordFeedbackSafely(state, sessionId, feedbackType, message,
                 Map.of("step", "awaiting_resolution"));
         sendBusinessStatus(emitter, decision, skill);
-        streamAndFinalize(emitter, state, skill, combinedQuestion, decision);
+        streamAndFinalize(
+                emitter, state, skill, combinedQuestion, decision, guest, guestSubjectHash);
     }
 
     /**
@@ -366,7 +349,9 @@ public class AgentOrchestrator {
      */
     private void streamAndFinalize(SseEmitter emitter, SessionState state,
                                    SkillDefinition skill, String userMessage,
-                                   RouteDecision decision) {
+                                   RouteDecision decision,
+                                   boolean guest,
+                                   String guestSubjectHash) {
         StringBuilder answer = new StringBuilder();
         String prompt = agentContextBuilder.build(state, userMessage);
         AgentRunContext runContext = agentRunService.start(
@@ -388,6 +373,16 @@ public class AgentOrchestrator {
             }
             ExplicitAnalysisExecutor.ExecutionOutput execution = explicitAnalysisExecutor.execute(
                     decision, skill, prompt, userMessage, runContext);
+            // 2. Skill 和证据门禁通过后才为真实付费流取得游客名额，事实查询和失败分析不扣次数。
+            if ("PAID".equals(execution.modelTier())
+                    && !allowGuestAnalysis(emitter, guest, guestSubjectHash, decision)) {
+                state.setCurrentStep("idle");
+                state.setGateReason("GUEST_ANALYSIS_QUOTA_BLOCKED");
+                memoryRouter.saveWorking(state);
+                agentRunService.recordModelGate(runContext, false, "GUEST_ANALYSIS_QUOTA_BLOCKED");
+                agentRunService.complete(runContext, "游客付费分析次数门禁阻断，未调用付费模型。");
+                return;
+            }
             if (decision.businessRoute() == BusinessRoute.TOOL_AGENT) {
                 sendStatus(emitter, "reading_sources", null, skill.name());
             }
@@ -403,7 +398,7 @@ public class AgentOrchestrator {
             state.setGateReason(execution.gateReason());
             guardedOutputService.guard(execution.content())
                     .subscribe(token -> {
-                        // 2. 只有通过发送前护栏的完整句子片段才能推送前端
+                        // 3. 只有通过发送前护栏的完整句子片段才能推送前端
                         sendEvent(emitter, "token", Map.of("content", token));
                         answer.append(token);
                     }, error -> {
@@ -424,16 +419,16 @@ public class AgentOrchestrator {
                         emitter.complete();
                     }, () -> {
                         try {
-                            // 3. 落库回答与历史
+                            // 4. 落库回答与历史
                             String full = answer.toString();
                             state.setLastAnswer(full);
                             appendHistory(state, "assistant", full);
-                            // 4. 对已发送前校验的完整答案再次检查，防止跨片段规则回归
+                            // 5. 对已发送前校验的完整答案再次检查，防止跨片段规则回归
                             GuardrailResult outputCheck = guardrailService.checkOutput(full);
                             if (!outputCheck.passed()) {
                                 throw new OutputGuardrailException(outputCheck.reason());
                             }
-                            // 5. 完成本轮后回到可继续输入状态，反馈和知识沉淀不再阻塞主对话
+                            // 6. 完成本轮后回到可继续输入状态，反馈和知识沉淀不再阻塞主对话
                             state.setCurrentStep("idle");
                             memoryRouter.saveWorking(state);
                             agentRunService.complete(runContext, full);
@@ -529,7 +524,7 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 在真实工具和模型之前执行游客分析次数门禁，并把剩余次数同步给前端。
+     * 在 Skill 和付费门禁通过后、付费模型流订阅前扣减游客次数并同步前端。
      */
     private boolean allowGuestAnalysis(SseEmitter emitter,
                                        boolean guest,
@@ -602,6 +597,9 @@ public class AgentOrchestrator {
         state.setRoute(decision.route());
         state.setModelPolicy(decision.modelPolicy());
         state.setSymbol(decision.symbol());
+        state.setSubjectType(decision.subjectType());
+        state.setSectorType(decision.sectorType());
+        state.setSectors(decision.sectors());
         state.setGateReason(decision.reasonCode());
     }
 
@@ -671,10 +669,12 @@ public class AgentOrchestrator {
     private String buildArchiveSummary(SessionState state) {
         String question = truncate(state.getLastQuestion(), 300);
         String answer = truncate(state.getLastAnswer(), 700);
-        String symbol = state.getSymbol() == null || state.getSymbol().isBlank()
-                ? "未指定"
-                : state.getSymbol();
-        return "标的：" + symbol + "\n问题：" + question + "\n历史结论：" + answer;
+        String subject = state.getSymbol() != null && !state.getSymbol().isBlank()
+                ? state.getSymbol()
+                : state.getSectors() == null || state.getSectors().isEmpty()
+                ? state.getSubjectType() == null ? "未指定" : state.getSubjectType().name()
+                : String.join("、", state.getSectors());
+        return "分析对象：" + subject + "\n问题：" + question + "\n历史结论：" + answer;
     }
 
     private String truncate(String text, int maxLength) {

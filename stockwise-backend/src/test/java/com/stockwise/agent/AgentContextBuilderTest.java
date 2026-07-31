@@ -5,6 +5,8 @@ import com.stockwise.agent.context.ContextBudgetPolicy;
 import com.stockwise.agent.context.LangChainContextWindow;
 import com.stockwise.memory.ConversationMessage;
 import com.stockwise.memory.SessionState;
+import com.stockwise.agent.routing.RouteSubjectType;
+import com.stockwise.agent.routing.SectorType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -70,6 +72,20 @@ class AgentContextBuilderTest {
 
         assertTrue(prompt.endsWith("当前用户问题：\n当前问题必须完整保留"));
         assertEquals(1, occurrences(prompt, "当前问题必须完整保留"));
+    }
+
+    @Test
+    void shouldExposeValidatedSectorSubjectWithoutUsingStockSymbol() {
+        SessionState state = new SessionState();
+        state.setSubjectType(RouteSubjectType.SECTOR);
+        state.setSectorType(SectorType.CONCEPT);
+        state.setSectors(List.of("半导体"));
+
+        String prompt = builder.build(state, "讨论度高吗");
+
+        assertTrue(prompt.contains("类型：SECTOR"));
+        assertTrue(prompt.contains("板块类型：CONCEPT"));
+        assertTrue(prompt.contains("板块：半导体"));
     }
 
     private int occurrences(String text, String target) {

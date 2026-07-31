@@ -94,7 +94,7 @@ public record RouteDecision(
         return switch (route) {
             case PORTFOLIO_DECISION -> RouteSubjectType.PORTFOLIO;
             case QUANT_DECISION -> RouteSubjectType.ETF_POOL;
-            case SECTOR_ANALYSIS -> RouteSubjectType.SECTOR;
+            case SECTOR_FACT, SECTOR_ATTENTION, SECTOR_ANALYSIS -> RouteSubjectType.SECTOR;
             default -> RouteSubjectType.NONE;
         };
     }

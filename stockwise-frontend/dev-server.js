@@ -89,7 +89,7 @@ function proxyApi(request, response) {
  * 从 public 目录提供静态资源，并将根路径映射到正式聊天页面。
  */
 async function serveStatic(requestPath, request, response, rootDirectory) {
-  const decodedPath = decodeURIComponent(requestPath === "/" ? "/stockwise-chat.html" : requestPath);
+    const decodedPath = decodeURIComponent(requestPath === "/" ? "/stockwise-chat-soft.html" : requestPath);
   const relativePath = decodedPath.replace(/^[/\\]+/, "");
   const filePath = path.resolve(rootDirectory, relativePath);
   const publicRoot = path.resolve(rootDirectory);

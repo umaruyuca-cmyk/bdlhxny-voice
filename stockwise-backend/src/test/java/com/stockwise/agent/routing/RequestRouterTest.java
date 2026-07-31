@@ -123,6 +123,33 @@ class RequestRouterTest {
     }
 
     @Test
+    void stockModeAllowsSectorFactWithoutSelectedInstrument() {
+        RequestRouter router = router(
+                mock(SemanticRouteClassifier.class),
+                mock(IntentClassifier.class));
+
+        RouteDecision decision = router.routeStock("今天哪些板块最强", null);
+
+        assertThat(decision.route()).isEqualTo(RequestRoute.SECTOR_FACT);
+        assertThat(decision.subjectType()).isEqualTo(RouteSubjectType.MARKET);
+        assertThat(decision.modelPolicy()).isEqualTo(ModelPolicy.TEMPLATE_ONLY);
+    }
+
+    @Test
+    void explicitSectorOverridesSelectedStockContext() {
+        RequestRouter router = router(
+                mock(SemanticRouteClassifier.class),
+                mock(IntentClassifier.class));
+
+        RouteDecision decision = router.routeStock("半导体板块热度怎么样", "600519");
+
+        assertThat(decision.route()).isEqualTo(RequestRoute.SECTOR_FACT);
+        assertThat(decision.subjectType()).isEqualTo(RouteSubjectType.SECTOR);
+        assertThat(decision.symbol()).isNull();
+        assertThat(decision.sectors()).contains("半导体");
+    }
+
+    @Test
     void ambiguousStockIntentRequiresClarificationWhenSemanticClassifierUnavailable() {
         IntentClassifier localClassifier = mock(IntentClassifier.class);
         SemanticRouteClassifier semanticClassifier = mock(SemanticRouteClassifier.class);

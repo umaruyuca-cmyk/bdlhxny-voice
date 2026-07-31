@@ -30,8 +30,12 @@ public class RuleBasedRouteResolver {
     private static final Pattern QUANT_PATTERN = Pattern.compile(
             "(ETF|etf|基金).*(轮动|排名|选哪|选择|比较|对比|目标权重)|"
                     + "(轮动|比较|对比).*(ETF|etf|基金)");
-    private static final Pattern SECTOR_ANALYSIS_PATTERN = Pattern.compile(
-            "(板块|行业|概念|热度|趋势|排名|资金流|资金流向|到顶|见顶|还能追|轮动|强不强)");
+    private static final Pattern SECTOR_ATTENTION_PATTERN = Pattern.compile(
+            "(讨论度|关注度|搜索热度|网上.*热|舆情热度|大众关注|散户热度|小白指数|宝妈指数)");
+    private static final Pattern SECTOR_DECISION_PATTERN = Pattern.compile(
+            "(能买吗|能不能买|值得买吗|未来|后续|到顶|见顶|还能追|买入|加仓|减仓|方向判断|投资建议)");
+    private static final Pattern SECTOR_FACT_PATTERN = Pattern.compile(
+            "(板块|行业|概念|热度|趋势|排名|资金流|资金流向|轮动|强不强|涨跌|换手|表现)");
     private static final Pattern SECTOR_RANKING_PATTERN = Pattern.compile(
             "(哪些板块|什么板块|板块排名|行业排名|最强板块|板块轮动)");
     private static final Pattern CAUSAL_EVENT_PATTERN = Pattern.compile(
@@ -135,7 +139,16 @@ public class RuleBasedRouteResolver {
                     false,
                     null));
         }
-        if (!sectorNames.isEmpty() && SECTOR_ANALYSIS_PATTERN.matcher(question).find()) {
+        if (SECTOR_ATTENTION_PATTERN.matcher(question).find()) {
+            return Optional.of(candidate(
+                    RequestRoute.SECTOR_ATTENTION,
+                    sectorNames.isEmpty() ? RouteSubjectType.MARKET : RouteSubjectType.SECTOR,
+                    sectorNames,
+                    sectorNames.isEmpty() ? SectorType.INDUSTRY : sectorType,
+                    false,
+                    null));
+        }
+        if (!sectorNames.isEmpty() && SECTOR_DECISION_PATTERN.matcher(question).find()) {
             return Optional.of(candidate(
                     RequestRoute.SECTOR_ANALYSIS,
                     RouteSubjectType.SECTOR,
@@ -146,10 +159,19 @@ public class RuleBasedRouteResolver {
         }
         if (sectorNames.isEmpty() && SECTOR_RANKING_PATTERN.matcher(question).find()) {
             return Optional.of(candidate(
-                    RequestRoute.SECTOR_ANALYSIS,
+                    RequestRoute.SECTOR_FACT,
                     RouteSubjectType.MARKET,
                     List.of(),
                     SectorType.INDUSTRY,
+                    false,
+                    null));
+        }
+        if (!sectorNames.isEmpty() && SECTOR_FACT_PATTERN.matcher(question).find()) {
+            return Optional.of(candidate(
+                    RequestRoute.SECTOR_FACT,
+                    RouteSubjectType.SECTOR,
+                    sectorNames,
+                    sectorType,
                     false,
                     null));
         }

@@ -345,7 +345,7 @@
         <textarea id="input" rows="2" placeholder="输入股票代码或投资问题…"></textarea>
         <button class="send" id="sendBtn" aria-label="发送">&#8593;</button>
       </form>
-      <div class="composer-hint" id="composerHint">请先选择分析标的 · Enter 发送 · 结论仅供研究参考</div>
+      <div class="composer-hint" id="composerHint">可直接询问板块；个股决策需先选择标的</div>
     </section>
 
     <aside class="side-panel" id="sidePanel">
@@ -460,13 +460,13 @@
     if(!current){
       instrumentIcon.textContent="＋";
       instrumentTitle.textContent="未选择分析标的";
-      instrumentHint.textContent="Stock Agent 必须先明确选择股票、ETF 或基金";
+      instrumentHint.textContent="可直接查询板块；个股决策需要选择股票、ETF 或基金";
       selectInstrument.textContent="选择标的";
       clearInstrument.style.display="none";
       if(ST.mode==="stock"){
-        sendBtn.disabled=true;
-        input.placeholder="请先选择股票、ETF 或基金…";
-        composerHint.textContent="请先选择分析标的 · Enter 发送 · 结论仅供研究参考";
+        sendBtn.disabled=false;
+        input.placeholder="询问板块热度、讨论度，或先选择个股标的…";
+        composerHint.textContent="可直接询问板块；个股决策需先选择标的";
       }
       return;
     }
@@ -603,11 +603,6 @@
 
   async function send(text){
     const value=(text||input.value).trim();if(!value||ST.sending)return;
-    if(ST.mode==="stock"&&!ST.currentInstrument){
-      statusBar.innerHTML='<span class="status-tag active"><i></i>Stock Agent 必须先选择分析标的</span>';
-      openInstrumentModal();
-      return;
-    }
     ST.sending=true;input.value="";sendBtn.disabled=true;
     addUserMsg(value);
 
@@ -813,11 +808,11 @@
     chatTitle.textContent=mode==="general"?"普通问答":"标的分析";
     composerHint.textContent=mode==="general"
       ?"DeepSeek · 需要时通过 ReAct 调用 SearXNG · Enter 发送"
-      :(ST.currentInstrument?"当前标的 "+ST.currentInstrument.symbol+" · Enter 发送 · 结论仅供研究参考":"请先选择分析标的 · Enter 发送 · 结论仅供研究参考");
+      :(ST.currentInstrument?"当前标的 "+ST.currentInstrument.symbol+" · 也可直接询问板块":"可直接询问板块；个股决策需先选择标的");
     input.placeholder=mode==="general"
       ?"输入问题；需要最新信息时会调用搜索工具…"
-      :(ST.currentInstrument?"继续分析 "+ST.currentInstrument.symbol+"…":"请先选择股票、ETF 或基金…");
-    sendBtn.disabled=mode==="stock"&&!ST.currentInstrument;
+      :(ST.currentInstrument?"继续分析 "+ST.currentInstrument.symbol+"，或询问板块…":"询问板块热度、讨论度，或先选择个股标的…");
+    sendBtn.disabled=false;
     statusBar.innerHTML="";
     headSkill.textContent="";
     headRunId.textContent="";
@@ -839,8 +834,9 @@
       ]
       :[
         ["现在适合买入吗？","现在适合买入吗？重点看短线风险。"],
-        ["查看关键支撑位","分析关键支撑位和失效条件"],
-        ["规划仓位","按10万元资金规划分批仓位"]
+        ["查看板块热度","今天哪些行业板块最强？请展示热度组成。"],
+        ["查看外围关注","半导体板块最近网上讨论度高吗？"],
+        ["查看关键支撑位","分析关键支撑位和失效条件"]
       ];
     document.getElementById("quickPrompts").innerHTML=prompts.map(item=>
       '<button class="ghost" data-prompt="'+escHtml(item[1])+'">'+escHtml(item[0])+'</button>'
@@ -1021,11 +1017,11 @@
     ST.streamText="";
     renderWelcome("新会话已创建",ST.mode==="general"
       ?"这是独立的普通问答会话，需要最新信息时会自动进入工具流程。"
-      :(ST.currentInstrument?"当前标的是 "+ST.currentInstrument.symbol+" "+(ST.currentInstrument.name||"")+"，可以直接继续分析。":"请先选择一个明确标的，再开始 Stock Agent 分析。"));
+      :(ST.currentInstrument?"当前标的是 "+ST.currentInstrument.symbol+" "+(ST.currentInstrument.name||"")+"，也可以直接询问板块。":"可以直接询问板块热度和外围关注；个股决策需要先选择标的。"));
     statusBar.innerHTML="";
     headSkill.textContent="";
     headRunId.textContent="";
-    sendBtn.disabled=ST.mode==="stock"&&!ST.currentInstrument;
+    sendBtn.disabled=false;
     updateSessionBadge();
   }
 
@@ -1036,7 +1032,7 @@
   selectInstrument.addEventListener("click",openInstrumentModal);
   clearInstrument.addEventListener("click",()=>{
     saveInstrument(null);
-    input.placeholder="请先选择股票、ETF 或基金…";
+    input.placeholder="询问板块热度、讨论度，或先选择个股标的…";
   });
   document.querySelectorAll("[data-open-instrument]").forEach(button=>button.addEventListener("click",openInstrumentModal));
   document.getElementById("skipInstrument").addEventListener("click",()=>switchMode("general"));
