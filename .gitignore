@@ -11,6 +11,10 @@ deploy/.env.cloud
 target/
 dist/
 .tmp/
+deploy/packages/
+*.zip
+*.tgz
+*.jar
 
 # Skill本地依赖、IDE文件和历史分析记录
 skills/**/node_modules/
