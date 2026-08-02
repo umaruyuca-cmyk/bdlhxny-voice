@@ -86,10 +86,16 @@ function proxyApi(request, response) {
 }
 
 /**
- * 从 public 目录提供静态资源，并将根路径映射到正式聊天页面。
+ * 从 public 目录提供静态资源，并按 URL 映射首页与两个 Agent 工作站。
  */
 async function serveStatic(requestPath, request, response, rootDirectory) {
-    const decodedPath = decodeURIComponent(requestPath === "/" ? "/stockwise-chat-soft.html" : requestPath);
+  let target = requestPath;
+  if (requestPath === "/") target = "/index.html";
+  else if (requestPath === "/workspace") target = "/workspace.html";
+  else if (requestPath === "/agent" || requestPath === "/agent/") target = "/workspace.html";
+  else if (requestPath === "/agent/general") target = "/workspace.html?name=general";
+  else if (requestPath === "/agent/stock") target = "/workspace.html?name=stock";
+  const decodedPath = decodeURIComponent(target);
   const relativePath = decodedPath.replace(/^[/\\]+/, "");
   const filePath = path.resolve(rootDirectory, relativePath);
   const publicRoot = path.resolve(rootDirectory);

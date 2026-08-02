@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>StockSkill 数据看板预览</title>
+  <link rel="stylesheet" href="../public/assets/workspace-theme.css">
+  <style>
+    body{min-height:100vh;padding:36px;background:#f7f7f5}
+    .preview{width:min(920px,100%);margin:0 auto}
+    .preview-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+    .preview-head span{color:var(--primary);font-size:10px;font-weight:750;letter-spacing:.14em}
+    .preview-head h1{margin:5px 0 0;font-size:28px;letter-spacing:-.04em}
+    .preview-head p{margin:0;color:var(--text-3);font-size:12px}
+    .preview-stack{display:grid;gap:16px}
+    .preview-stack .skill-dashboard{width:100%}
+    .preview-caption{margin:7px 2px 0;color:var(--text-3);font-size:11px}
+    @media(max-width:680px){body{padding:18px}.preview-head{display:block}.preview-head p{margin-top:10px}}
+  </style>
+</head>
+<body>
+  <main class="preview">
+    <header class="preview-head">
+      <div><span>STOCKSKILL · PRESENTATION LAYER</span><h1>结构化数据如何展示</h1></div>
+      <p>示例数据，仅用于界面预览</p>
+    </header>
+    <section class="preview-stack">
+      <article class="skill-dashboard">
+        <div class="skill-dashboard-head"><div><span>STRUCTURED MARKET DATA</span><h3>600519 · 贵州茅台</h3></div><small>2026-08-02 15:00</small></div>
+        <div class="skill-metrics">
+          <div class="skill-metric"><span>最新价</span><strong class="up">1,428.60</strong><small>+1.24%</small></div>
+          <div class="skill-metric"><span>系统判断</span><strong>偏多</strong><small>规则推理</small></div>
+          <div class="skill-metric"><span>判断置信度</span><strong>较高</strong><small>信号一致性</small></div>
+          <div class="skill-metric"><span>RSI(6)</span><strong>61.20</strong><small>强势</small></div>
+        </div>
+        <figure class="skill-chart"><figcaption>收盘价走势 · 最近 120 个交易日</figcaption><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="收盘价走势"><line x1="4" y1="90" x2="96" y2="90"></line><polyline points="4,76 10,72 16,78 22,65 28,69 34,58 40,63 46,49 52,54 58,46 64,51 70,35 76,41 82,30 88,33 96,22"></polyline></svg><div><span>1,245.30</span><span>1,428.60</span></div></figure>
+        <div class="skill-levels"><div><span>MA5</span><strong>1,412.40</strong></div><div><span>MA10</span><strong>1,396.80</strong></div><div><span>MA20</span><strong>1,368.20</strong></div><div><span>20日低点</span><strong>1,320.60</strong></div></div>
+        <section class="skill-decision"><span>系统判断</span><p>偏多：短期趋势保持向上，但仍需关注市场波动。</p><ul><li>MA5、MA10、MA20 呈多头排列，价格运行在主要均线上方。</li><li>RSI(6) 为 61.20，动能偏强但尚未进入超买区。</li><li>量比 1.18，成交活跃度高于近期常态，趋势有量能配合。</li></ul><small>规则评分 72 / 100 仅用于衡量上述证据的综合强弱，不是投资评级或买卖指令。</small><em>当前为 StockSkill 规则推理；接入模型后将展示模型结合证据给出的推理。</em></section>
+        <div class="skill-quality realtime">实时数据 · 方向信号可用</div>
+        <div class="skill-summary"><strong>StockSkill 分析依据</strong><span>价格、趋势、均线、RSI 与风险位由 StockSkill 基于已获取行情和固定规则计算；模型仅负责把结果解释成自然语言。</span><small>数据截至 2026-08-02 15:00</small></div>
+      </article>
+      <p class="preview-caption">单标的：趋势线 + 关键价格 + 技术评分，不展示原始 history / technical JSON。</p>
+
+      <article class="skill-dashboard">
+        <div class="skill-dashboard-head"><div><span>SECTOR HEATMAP</span><h3>板块热度</h3></div><small>2026-08-02 15:00</small></div>
+        <div class="sector-bars">
+          <div class="sector-bar"><span class="sector-rank">1</span><strong>半导体</strong><div class="sector-track"><i style="width:100%"></i></div><b>86.4</b><em class="up">+2.31%</em></div>
+          <div class="sector-bar"><span class="sector-rank">2</span><strong>通信设备</strong><div class="sector-track"><i style="width:88%"></i></div><b>76.2</b><em class="up">+1.64%</em></div>
+          <div class="sector-bar"><span class="sector-rank">3</span><strong>软件开发</strong><div class="sector-track"><i style="width:72%"></i></div><b>62.7</b><em class="up">+0.82%</em></div>
+          <div class="sector-bar"><span class="sector-rank">4</span><strong>银行</strong><div class="sector-track"><i style="width:45%"></i></div><b>39.5</b><em class="down">-0.43%</em></div>
+        </div>
+        <section class="skill-decision"><span>系统判断</span><p>半导体处于当前样本的相对强势位置，市场关注度领先。</p><ul><li>热度排名第 1，横截面评分 86.4。</li><li>当日上涨 +2.31%，强于本次样本中的多数板块。</li><li>需结合后续资金流和持续性，避免仅凭单日强度追高。</li></ul><small>热度评分描述当前相对位置，不预测下一交易日的涨跌。</small><em>当前为 StockSkill 规则推理；接入模型后将展示模型结合证据给出的推理。</em></section>
+        <div class="skill-quality verified">已核验数据 · 热度依据为横截面标准化评分</div>
+        <div class="skill-summary"><strong>StockSkill 分析依据</strong><span>板块热度、涨跌和资金流来自 StockSkill 的板块数据与标准化热度公式；模型不会自行编造板块强弱。</span><small>数据截至 2026-08-02 15:00</small></div>
+      </article>
+      <p class="preview-caption">板块：热度不再是一串 score / breakdown JSON，而是排序、强弱和涨跌的可读看板。</p>
+
+      <article class="skill-dashboard">
+        <div class="skill-dashboard-head"><div><span>QUANT BACKTEST</span><h3>ETF 轮动回测</h3></div><small>截至 2026-08-01</small></div>
+        <div class="skill-metrics"><div class="skill-metric"><span>累计收益</span><strong class="up">+28.36%</strong></div><div class="skill-metric"><span>最大回撤</span><strong class="down">-12.48%</strong></div><div class="skill-metric"><span>夏普比率</span><strong>1.42</strong></div><div class="skill-metric"><span>年化波动</span><strong>16.21%</strong></div></div>
+        <figure class="skill-chart"><figcaption>策略净值走势</figcaption><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="策略净值走势"><line x1="4" y1="90" x2="96" y2="90"></line><polyline points="4,82 10,78 16,80 22,70 28,75 34,61 40,65 46,51 52,57 58,45 64,48 70,39 76,44 82,31 88,35 96,20"></polyline></svg><div><span>1.00</span><span>1.28</span></div></figure>
+        <section class="skill-decision"><span>系统判断</span><p>策略历史收益风险比具备可研究价值，但需接受阶段性回撤。</p><ul><li>历史累计收益 +28.36%，净值总体向上。</li><li>最大回撤 -12.48%，意味着策略并非持续上涨。</li><li>夏普比率 1.42，风险调整后收益处于可进一步验证的水平。</li></ul><small>这是历史样本中的规则回测结果，用于观察收益与风险特征，不代表未来表现。</small><em>当前为 StockSkill 规则推理；接入模型后将展示模型结合证据给出的推理。</em></section>
+        <div class="skill-quality verified">已核验数据 · 历史回测不构成未来收益承诺</div>
+        <div class="skill-summary"><strong>StockSkill 分析依据</strong><span>收益、回撤、夏普和净值曲线由 StockSkill 的历史回测引擎计算；它描述历史表现，不承诺未来收益。</span><small>回测区间：2024-01-02 至 2026-08-02</small></div>
+      </article>
+      <p class="preview-caption">量化：净值曲线与回撤、夏普、波动率并列，方便理解策略收益与风险的关系。</p>
+    </section>
+  </main>
+</body>
+</html>
