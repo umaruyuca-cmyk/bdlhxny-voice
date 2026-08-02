@@ -95,3 +95,20 @@ StockWise/
 ```
 
 `stock-analysis-skill` 源码位于工作区同级的 `skills/stock-analysis-skill/`，Docker 构建时与 `stock-wrapper` 一起打入 Node 镜像。
+
+## 分支管理
+
+单人开发采用 `main` + `dev` 两分支：
+
+| 分支 | 用途 |
+| --- | --- |
+| `main` | 默认开发与发布分支，当前工作区默认使用 |
+| `dev` | 预发布验证分支，需要隔离联调时可切出使用 |
+
+日常直接在 `main` 上开发提交；`dev` 仅在需要隔离验证时使用。不再使用多 worktree 多分支并行模式。
+
+```powershell
+git status                 # 查看当前改动
+git add . && git commit    # 提交
+git push origin main       # 推送
+```
