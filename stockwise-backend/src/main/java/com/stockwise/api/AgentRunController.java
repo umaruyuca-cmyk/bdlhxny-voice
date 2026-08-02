@@ -1,6 +1,7 @@
 package com.stockwise.api;
 
 import com.stockwise.dto.AgentRunReplay;
+import com.stockwise.dto.AgentSkillResults;
 import com.stockwise.entity.AgentRun;
 import com.stockwise.security.SingleUserContext;
 import com.stockwise.service.AgentRunService;
@@ -47,6 +48,20 @@ public class AgentRunController {
     public AgentRunReplay replay(@PathVariable UUID runId) {
         try {
             return agentRunService.replay(runId, singleUserContext.requirePermission("AGENT_RUN_READ"));
+        } catch (NoSuchElementException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (SecurityException e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 返回本轮可视化所需的结构化 Skill 结果，不暴露完整运行审计细节。
+     */
+    @GetMapping("/{runId}/skill-results")
+    public AgentSkillResults skillResults(@PathVariable UUID runId) {
+        try {
+            return agentRunService.skillResults(runId, singleUserContext.requirePermission("AGENT_RUN_READ"));
         } catch (NoSuchElementException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SecurityException e) {

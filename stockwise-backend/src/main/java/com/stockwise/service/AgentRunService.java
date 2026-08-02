@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stockwise.agent.AgentRunContext;
 import com.stockwise.agent.routing.RouteDecision;
 import com.stockwise.dto.AgentRunReplay;
+import com.stockwise.dto.AgentSkillResults;
 import com.stockwise.entity.AgentRun;
 import com.stockwise.entity.AgentStep;
 import com.stockwise.entity.ToolExecution;
@@ -279,6 +280,28 @@ public class AgentRunService {
                         .eq(ToolExecution::getRunId, runId)
                         .orderByAsc(ToolExecution::getCallStepNo));
         return new AgentRunReplay(run, steps, executions);
+    }
+
+    /**
+     * 返回本次运行成功获得的版本化 Skill 数据，供前端按需打开结果看板。
+     */
+    public AgentSkillResults skillResults(UUID runId, Long userId) {
+        AgentRun run = requireRun(runId);
+        if (!run.getUserId().equals(userId)) {
+            throw new SecurityException("无权访问该 Agent Run");
+        }
+        List<AgentSkillResults.Item> items = toolExecutionMapper.selectList(
+                        new LambdaQueryWrapper<ToolExecution>()
+                                .eq(ToolExecution::getRunId, runId)
+                                .eq(ToolExecution::getStatus, "success")
+                                .in(ToolExecution::getToolName, List.of("stock", "sector", "quant", "portfolio"))
+                                .orderByAsc(ToolExecution::getCallStepNo))
+                .stream()
+                .filter(execution -> execution.getObservationJson() != null)
+                .map(execution -> new AgentSkillResults.Item(
+                        execution.getToolName(), execution.getDurationMs(), execution.getObservationJson()))
+                .toList();
+        return new AgentSkillResults(runId, items);
     }
 
     /**

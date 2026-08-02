@@ -450,6 +450,8 @@ public class AgentOrchestrator {
                             done.put("reactTerminationReason", execution.reactTerminationReason().name());
                             done.put("reactRounds", execution.reactRounds());
                             done.put("reactToolCalls", execution.reactToolCalls());
+                            done.put("skillResultAvailable", execution.reactToolCalls() > 0
+                                    && decision.businessRoute() == BusinessRoute.STOCK_ANALYSIS);
                             done.put("status", decision.needsClarification()
                                     ? "NEED_CLARIFICATION"
                                     : "COMPLETED");
