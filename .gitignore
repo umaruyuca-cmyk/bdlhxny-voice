@@ -1,7 +1,9 @@
 # 历史本地配置（当前不再自动加载）
 stockwise-backend/src/main/resources/application-local.yml
 stockwise-backend/src/main/resources/application-local.properties
-stockwise-backend/config/application-secrets.yml
+
+# 密钥备份（已并入 application-dev.yml）
+stockwise-backend/config/application-secrets.yml.bak
 
 # 环境变量文件
 .env
