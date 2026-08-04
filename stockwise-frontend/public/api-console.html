@@ -56,13 +56,7 @@
     <pre id="streamOut">等待请求…</pre>
   </div>
 
-  <h2>2 · 访客分析额度 <span class="badge">GET /api/v1/chat/guest-analysis-quota</span></h2>
-  <div class="card">
-    <button class="btn sec" id="quotaBtn">查询额度</button>
-    <pre id="quotaOut">—</pre>
-  </div>
-
-  <h2>3 · 运行追踪 <span class="badge">GET /api/v1/agent-runs</span></h2>
+  <h2>2 · 运行追踪 <span class="badge">GET /api/v1/agent-runs</span></h2>
   <div class="card">
     <button class="btn sec" id="runsBtn">最近 20 条</button>
     <label>查询单条 runId</label>
@@ -116,16 +110,6 @@
       }catch(e){ out.className="err"; out.textContent+="ERR: "+e.message+"\n"; }
     });
     $("streamStop").addEventListener("click",()=>{ if(aborter) aborter.abort(); $("streamOut").textContent+="\n已中止\n"; });
-
-    // 2) quota
-    $("quotaBtn").addEventListener("click", async () => {
-      const out=$("quotaOut"); out.textContent="请求中…";
-      try{
-        const res=await fetch("/api/v1/chat/guest-analysis-quota",{headers:{Accept:"application/json"}});
-        out.textContent="HTTP "+res.status+"\n"+await res.text();
-        out.className=res.ok?"ok":"err";
-      }catch(e){ out.className="err"; out.textContent="ERR: "+e.message; }
-    });
 
     // 3) runs
     $("runsBtn").addEventListener("click", async () => {

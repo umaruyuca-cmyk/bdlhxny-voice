@@ -23,8 +23,8 @@
     .logo{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--primary);color:#fff;font-weight:800;font-size:16px}
     .top-actions{display:flex;align-items:center;gap:10px}
     .session-badge{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-size:11px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-    .quota-badge{display:flex;align-items:center;padding:4px 10px;border-radius:999px;background:#fff7e8;color:#9a651d;font-size:11px;font-weight:650;white-space:nowrap}
-    .quota-badge.exhausted{background:#fff0ee;color:var(--red)}
+    
+    
     .ghost{height:32px;padding:0 11px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);color:#4e545d;font-size:12px}.ghost:hover{border-color:#b9bec7}
     .tab-btn{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--white);color:var(--muted);font-size:12px;display:flex;align-items:center;gap:5px}
     .tab-btn.active{background:var(--primary-soft);border-color:#c9d2ff;color:var(--primary);font-weight:600}
@@ -247,7 +247,7 @@
       .app{padding:0;gap:0}.rail{display:none}.shell{border:0;border-radius:0}
       .topbar{height:62px;min-height:62px;padding:0 12px}.brand{display:none}
       .topbar-left{gap:8px}.mode-switch{flex:1}.mode-button{flex:1;justify-content:center;padding:0 8px}
-      .session-badge{display:none}.quota-badge{padding:4px 8px;font-size:10px}.top-actions{gap:6px}.top-actions .desktop-only{display:none}
+      .session-badge{display:none}.top-actions{gap:6px}.top-actions .desktop-only{display:none}
       .chat-head{height:48px;min-height:48px;padding:0 14px}.instrument-bar{margin:8px 10px 0}
       .messages{padding:14px 11px 6px}.bubble{max-width:88%}.welcome{margin:16px auto}.welcome h1{font-size:23px}
       .composer{width:calc(100% - 20px);margin-bottom:10px}.composer-hint{margin-bottom:8px}
@@ -385,7 +385,7 @@
     .brand{color:#1d2a4a}.mode-switch{border-color:#dce3f2;background:#eef2f9}
     .mode-button{color:#77849a}.mode-button.active{color:#2c3f8f;background:#fff;box-shadow:0 6px 18px rgba(50,70,125,.12)}
     .mode-dot{background:#aab5c8}.mode-button.active .mode-dot{background:#536dff;box-shadow:0 0 0 4px rgba(83,109,255,.14)}
-    .session-badge{background:#eef2ff;color:#5267c7}.quota-badge{background:#fff6e8;color:#a36c29}.quota-badge.exhausted{background:#fff0f2;color:var(--red)}
+    .session-badge{background:#eef2ff;color:#5267c7}
     .ghost{border-color:#dce3f2;background:rgba(255,255,255,.84);color:#66748d}.ghost:hover{border-color:#aab8ed;color:#536dff;background:#f7f8ff}
     .chat-panel,.side-panel{border-color:#dbe3f1;background:rgba(255,255,255,.72);box-shadow:var(--panel-shadow)}
     .chat-head,.side-head{border-color:#dbe3f1;background:rgba(249,251,255,.92)}
@@ -468,8 +468,8 @@
     .mode-button.active{background:linear-gradient(145deg,#2b2f6d,#3f3794);color:#eef1ff;box-shadow:0 6px 20px rgba(110,139,255,.35)}
     .mode-dot{background:#5a6276}.mode-button.active .mode-dot{background:var(--cyan);box-shadow:0 0 0 4px rgba(125,211,252,.15)}
     .session-badge{background:#1a2247;color:#a9b8f5}
-    .quota-badge{background:#3a2a10;color:#fbbf24}
-    .quota-badge.exhausted{background:#3a1620;color:var(--red)}
+    
+    
     .ghost{border-color:var(--line);background:rgba(19,23,34,.7);color:#b6bccb}
     .ghost:hover{border-color:rgba(110,139,255,.5);color:var(--nerve);background:#1a2140}
     .tab-btn{border-color:var(--line);background:rgba(19,23,34,.7);color:var(--muted)}
@@ -616,7 +616,7 @@
     <div class="top-actions">
       <button class="tab-btn desktop-only active" id="tabRuns" data-panel="runs">运行追踪</button>
       <button class="tab-btn mobile-only" id="mobileSideToggle">☰</button>
-      <span class="quota-badge" id="guestQuotaBadge" title="仅深度分析请求消耗次数">游客分析 --/10</span>
+      
       <span class="session-badge" id="sessionBadge" title="会话ID">新会话</span>
       <button class="ghost" id="newSession">新建会话</button>
     </div>
@@ -767,7 +767,6 @@
   const sendBtn=document.getElementById("sendBtn");
   const statusBar=document.getElementById("statusBar");
   const sessionBadge=document.getElementById("sessionBadge");
-  const guestQuotaBadge=document.getElementById("guestQuotaBadge");
   const headSkill=document.getElementById("headSkill");
   const headRunId=document.getElementById("headRunId");
   const sidePanel=document.getElementById("sidePanel");
@@ -782,8 +781,6 @@
 
   updateSessionBadge();
   renderInstrument();
-  restoreGuestQuota();
-  loadGuestQuota();
 
   function loadInstrument(){
     try{
@@ -826,48 +823,6 @@
     const sessionId=ST.sessionIds[ST.mode];
     sessionBadge.textContent=sessionId.slice(0,12)+"…";
     sessionBadge.title=sessionId;
-  }
-
-  function restoreGuestQuota(){
-    try{
-      const quota=JSON.parse(localStorage.getItem("stockwise.guestAnalysisQuota")||"null");
-      if(quota)renderGuestQuota(quota);
-    }catch(e){
-      localStorage.removeItem("stockwise.guestAnalysisQuota");
-    }
-  }
-
-  async function loadGuestQuota(){
-    try{
-      const response=await fetch("/api/v1/chat/guest-analysis-quota",{
-        headers:{"Accept":"application/json"}
-      });
-      if(!response.ok)return;
-      renderGuestQuota(await response.json());
-    }catch(e){
-      // 初始化查询失败不阻断聊天，分析请求仍由后端闸门保护。
-    }
-  }
-
-  function renderGuestQuota(quota){
-    if(!quota||quota.guest===false||quota.applicable===false){
-      guestQuotaBadge.style.display="none";
-      localStorage.removeItem("stockwise.guestAnalysisQuota");
-      return;
-    }
-    const limit=Number.isFinite(Number(quota.limit))?Number(quota.limit):10;
-    const remaining=Math.max(0,Number.isFinite(Number(quota.remaining))?Number(quota.remaining):limit);
-    guestQuotaBadge.style.display="";
-    guestQuotaBadge.textContent="游客分析 "+remaining+"/"+limit;
-    guestQuotaBadge.classList.toggle("exhausted",remaining===0);
-    guestQuotaBadge.title="仅深度分析请求消耗次数；普通问答和行情查询不扣次数";
-    localStorage.setItem("stockwise.guestAnalysisQuota",JSON.stringify({
-      guest:true,
-      applicable:true,
-      limit,
-      used:Math.max(0,limit-remaining),
-      remaining
-    }));
   }
 
   function scrollMsgs(){
@@ -1032,8 +987,6 @@
     }else if(type==="agent_run"){
       headRunId.textContent="Run: "+(data.runId||"").slice(0,8);
       if(data.route)headSkill.textContent="· "+data.route;
-    }else if(type==="quota"){
-      renderGuestQuota({...data,applicable:true});
     }else if(type==="token"){
       const tok=data.content||"";
       ST.streamText+=tok;
@@ -1065,12 +1018,9 @@
         scrollMsgs();
       }
     }else if(type==="done"){
-      if(data.quotaType==="guest_analysis")renderGuestQuota({...data,applicable:true});
       if(bubble.querySelector(".typing")){
         bubble.textContent="";
         if(data.status==="REFUSED")bubble.textContent="请求已被护栏拦截："+(data.reason||"");
-        else if(data.status==="GUEST_ANALYSIS_LIMIT_REACHED")bubble.textContent=data.message||"游客分析次数已用完，请登录后继续。";
-        else if(data.status==="GUEST_ANALYSIS_LIMIT_UNAVAILABLE")bubble.textContent=data.message||"游客分析次数服务暂时不可用，请稍后重试。";
         else bubble.textContent+="对话已完成。";
       }
       finalizeBubble(bubble);

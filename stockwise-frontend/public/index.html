@@ -505,6 +505,25 @@
         box-shadow: 0 8px 20px rgba(110, 139, 255, 0.45);
         transform: translateY(-1px);
       }
+      /* 首屏三件事说明 */
+      .hero-points {
+        display: flex;
+        justify-content: center;
+        gap: 22px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+        font-size: 12.5px;
+        color: var(--text-faint);
+      }
+      .hero-points span {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .hero-points i {
+        font-style: normal;
+        color: var(--accent);
+      }
 
       /* 首屏动态：Dynazenon 五机合体 + ACCESS CODE 变身 */
       .hero-core {
@@ -1685,6 +1704,11 @@
             <button type="button" data-q="帮我整理这份资料的核心观点">整理研究资料</button>
             <button type="button" data-q="帮我搜索并核验近期的重要变化">搜索核验信息</button>
           </div>
+          <div class="hero-points">
+            <span><i>1</i> 研究型 Agent 工作站，不只是聊天窗口</span>
+            <span><i>2</i> 可直接提问，也可选标的做结构化分析</span>
+            <span><i>3</i> Skill 负责数据与计算，Agent 负责编排与解释</span>
+          </div>
           <div class="hero-scroll">SCROLL ↓</div>
         </div>
       </div>
@@ -1714,12 +1738,12 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4M8 4h8M12 12v4M8 16h8"/><circle cx="12" cy="16" r="6"/><circle cx="12" cy="16" r="2"/></svg>
             </div>
             <h3>领域分析 <span class="chip-tag">可扩展</span></h3>
-            <p>面向特定方向的专用能力：标的、组合、量化与板块分析，更多方向持续规划中。</p>
+            <p>针对股票、ETF、基金、组合与板块，使用固定路由、Skill 数据与校验规则，形成可重复的研究流程。行情、指标、回测、板块热度与外部舆情由 Skill 提供，Agent 负责编排与解释。</p>
             <div style="display:flex;gap:14px;align-items:center;margin-top:18px">
-              <a class="card-link" href="/agent">进入工作站
+              <a class="card-link" href="/agent?name=stock">进入标的研究
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
-              <a class="card-link" style="color:var(--text-faint)" href="/docs/agents">了解架构
+              <a class="card-link" style="color:var(--text-faint)" href="/docs/agents">了解领域分析
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </a>
             </div>

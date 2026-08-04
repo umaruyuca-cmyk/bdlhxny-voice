@@ -14,9 +14,14 @@
 | 首页 | `http://127.0.0.1:8083/` | 首屏输入框 → 跳转工作站 |
 | 智能问答 | `http://127.0.0.1:8083/agent?name=general` | 通用 Agent |
 | 股市分析 | `http://127.0.0.1:8083/agent?name=stock` | 市场与标的研究 Agent；板块问题可直接提问，单标的决策才需选择标的 |
+| 文档中心 | `http://127.0.0.1:8083/docs` | 文档索引 |
+| Skill 接入规范 | `http://127.0.0.1:8083/docs/skill` | 开发者接入文档 |
+| Agent 与路由 | `http://127.0.0.1:8083/docs/agents` | 领域分析说明 |
+| 部署与联调 | `http://127.0.0.1:8083/docs/deployment` | 部署边界 |
+| Skill 生态 | `http://127.0.0.1:8083/skill-dashboard.html` | Skill 服务目录 |
 | 旧版聊天 | `http://127.0.0.1:8083/stockwise-chat.html?mode=general\|stock` | 兼容页面 |
 | 旧版聊天-柔版 | `http://127.0.0.1:8083/stockwise-chat-soft.html?mode=general\|stock` | 兼容页面 |
-| API 联调页 | `http://127.0.0.1:8083/api-console.html` | 快速测试各接口 |
+| API 联调页 | `http://127.0.0.1:8083/api-console.html` | 测试 SSE 与运行记录 |
 
 ### 页面联动参数
 - `?name=general|stock` —— 选择 Agent（workspace.html）
@@ -30,7 +35,7 @@
 
 ## 2. 前端 → 后端 API 契约
 
-前端只调用以下 3 组接口（全部经 `/api/*` 代理转发，方法、路径、请求体原样透传）。
+前端只调用以下 2 组接口（全部经 `/api/*` 代理转发，方法、路径、请求体原样透传）。
 
 ### 2.1 流式对话（SSE）
 
@@ -58,28 +63,7 @@ Content-Type: application/json
 
 响应为 SSE 流，每帧 `data: {json}`，事件类型见下表。
 
-### 2.2 访客分析额度
-
-```
-GET /api/v1/chat/guest-analysis-quota
-Accept: application/json
-```
-
-响应体（示例）：
-
-```json
-{
-  "guest": true,
-  "applicable": true,
-  "used": 3,
-  "limit": 5,
-  "remaining": 2
-}
-```
-
-> 前端拿到 `guest:false` 或 `applicable:false` 时隐藏额度角标。
-
-### 2.3 运行追踪
+### 2.2 运行追踪与 Skill 结果
 
 ```
 GET /api/v1/agent-runs?limit=20          // 最近运行列表
@@ -87,6 +71,8 @@ GET /api/v1/agent-runs/{runId}          // 单条运行详情
 GET /api/v1/agent-runs/{runId}/skill-results // 本轮可展示的结构化 Skill 结果
 Accept: application/json
 ```
+
+> 说明：`POST /api/v1/chat/guest-analysis-quota` 已随游客配额功能一并移除，前端与文档不再调用或宣传该接口。若未来恢复游客次数限制，必须同时实现后端身份识别、配额存储、校验、错误响应、前端展示和测试，不能只改文档或前端。
 
 ---
 
@@ -101,8 +87,27 @@ Accept: application/json
 | `ask` | `prompt`, `reason?`, `options?` | 主动提问（用于需要澄清/选标的），展示为问题卡片，`options` 为可选按钮 |
 | `clarification` | `prompt`, `reason?`, `options?` | 澄清说明 |
 | `agent_run` | `runId`, `status?`, `route?`, `skill?` | 上报一次运行追踪的 ID 与路由信息，填充「运行追踪」面板 |
-| `quota` | `quotaType`, `used?`, `limit?`, `remaining?` | 实时额度更新 |
-| `done` | `message?`, `runId?`, `skillResultAvailable?` | 对话结束；`skillResultAvailable=true` 时前端展示“查看本次分析数据”按钮 |
+| `done` | 见下表 | 对话结束，携带本轮运行与 Skill 结果的完整元数据 |
+
+### 3.1 `done` 事件字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `status` | string | `COMPLETED` / `NEED_CLARIFICATION` / `REFUSED` / `RESOLVED` / `CLOSED` |
+| `runId` | string | 本轮运行 ID |
+| `skill` | string | 命中的 Skill 名 |
+| `route` | string | 业务路由（如 `STOCK_ANALYSIS`） |
+| `internalRoute` | string | 内部路由（如 `QUANT_DECISION`） |
+| `mode` | string | 会话模式（`general` / `stock` / `legacy`） |
+| `modelTier` | string | 模型层级（`LOCAL` / `PAID`） |
+| `modelProvider` / `modelName` | string | 实际回答来源的模型供应商与名称 |
+| `gateReason` | string | 付费门禁触发原因（如为空表示未拦截） |
+| `reactTerminationReason` | string | ReAct 终止原因 |
+| `reactRounds` / `reactToolCalls` | number | ReAct 轮数与工具调用次数 |
+| `skillResultAvailable` | boolean | 是否有本轮可展示的结构化 Skill 结果 |
+| `skillResult` | object | 本轮 StockSkill 结构化结果（行情/指标/热度等），游客可直接打开看板，无需请求受保护的运行审计接口 |
+
+> `modelTier` 的 `LOCAL` 仅是后端策略层级，不代表 Ollama；回答的真实来源以 `modelProvider` / `modelName` 为准。
 
 ### 完整事件序列示例
 
@@ -182,6 +187,6 @@ data: {"type":"done","message":"..."}
 
 1. 启动后端（默认 `127.0.0.1:8080`），确认健康检查通过。
 2. 启动前端 dev-server：`PORT=8083 node dev-server.js`。
-3. 打开 `http://127.0.0.1:8083/api-console.html` 逐项测试 3 组接口。
+3. 打开 `http://127.0.0.1:8083/api-console.html` 逐项测试 SSE 与运行记录。
 4. 打开 `http://127.0.0.1:8083/agent?name=stock`，发送问题，观察 SSE 是否推进、运行追踪面板是否刷新。
 5. 后端不可用时前端会走本地模拟（`simulateReply`），不影响演示，联调时以真实响应为准。

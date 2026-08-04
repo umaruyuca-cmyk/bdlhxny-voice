@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>文档中心 · StockWise</title>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>StockWise</em> 文档中心</a>
+  <span class="crumb">DOCS</span>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>开始</h4>
+    <ul>
+      <li><a href="/docs/" class="active">文档中心</a></li>
+    </ul>
+    <h4>系统</h4>
+    <ul>
+      <li><a href="/docs/agents">Agent 与路由</a></li>
+      <li><a href="/docs/skill">Skill 接入规范</a></li>
+      <li><a href="/docs/deployment">部署与联调</a></li>
+    </ul>
+    <h4>工具</h4>
+    <ul>
+      <li><a href="/agent">Agent 工作站</a></li>
+      <li><a href="/skill-dashboard.html">Skill 生态</a></li>
+      <li><a href="/api-console.html">API 控制台</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/">← 返回首页</a>
+    <h1>StockWise 文档中心</h1>
+    <p class="lead">理解 Agent、Skill、模型和部署边界，快速接入与研究型 Agent 工作站的集成。</p>
+
+    <div class="doc-grid">
+      <div class="doc-card">
+        <h3>Agent 与路由</h3>
+        <p>普通问答、领域分析、ReAct、Gate、记忆与 SSE 输出。</p>
+        <a href="/docs/agents">阅读 →</a>
+      </div>
+      <div class="doc-card">
+        <h3>Skill 接入规范</h3>
+        <p>四个 Skill 接口、认证、请求响应、错误处理和调用示例。</p>
+        <a href="/docs/skill">阅读 →</a>
+      </div>
+      <div class="doc-card">
+        <h3>部署与联调</h3>
+        <p>前端、后端、stock-wrapper、web-search-wrapper 的独立部署边界。</p>
+        <a href="/docs/deployment">阅读 →</a>
+      </div>
+    </div>
+
+    <h2>系统概览</h2>
+    <div class="flow">用户问题
+  → Agent（路由判断：普通问答 / 领域分析）
+  → Skill（行情、指标、回测、热度等结构化计算）
+  → 模型（本地解释 / 付费正式研判）
+  → 结论 + 依据 + 风险 + 数据时间</div>
+
+    <div class="note"><strong>边界：</strong>Skill 是确定性的数据和计算层；调用 Skill 不等于调用付费大模型。只有在需要把结构化结果转成正式研判结论时才调用付费模型。</div>
+
+    <h2>如何选择</h2>
+    <table>
+      <tr><th>你需要</th><th>入口</th></tr>
+      <tr><td>普通问答、资料整理、解释概念</td><td><a href="/agent?name=general">通用 Agent</a></td></tr>
+      <tr><td>标的 / 组合 / 板块 / 量化分析</td><td><a href="/agent?name=stock">标的研究</a></td></tr>
+      <tr><td>直接调用 Skill 接口</td><td><a href="/docs/skill">Skill 接入规范</a></td></tr>
+      <tr><td>调试 SSE 与运行记录</td><td><a href="/api-console.html">API 控制台</a></td></tr>
+    </table>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click",()=>{
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+</script>
+</body>
+</html>

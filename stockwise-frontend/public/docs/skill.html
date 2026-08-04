@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Skill 接入规范 · StockWise</title>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>StockWise</em> 文档中心</a>
+  <span class="crumb">DOCS / SKILL</span>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>开始</h4>
+    <ul>
+      <li><a href="/docs/">文档中心</a></li>
+    </ul>
+    <h4>系统</h4>
+    <ul>
+      <li><a href="/docs/agents">Agent 与路由</a></li>
+      <li><a href="/docs/skill" class="active">Skill 接入规范</a></li>
+      <li><a href="/docs/deployment">部署与联调</a></li>
+    </ul>
+    <h4>工具</h4>
+    <ul>
+      <li><a href="/agent">Agent 工作站</a></li>
+      <li><a href="/skill-dashboard.html">Skill 生态</a></li>
+      <li><a href="/api-console.html">API 控制台</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/docs/">← 文档中心</a>
+    <h1>Skill 接入规范</h1>
+    <p class="lead">面向开发者的 StockSkill 服务接入文档：服务关系、真实接口、请求响应、错误处理与安全部署。</p>
+
+    <h2>1 · 30 秒快速理解</h2>
+    <p>StockWise 的分析能力由 <strong>stock-wrapper</strong> 提供——一个独立部署的 Node.js HTTP 服务，内部调用 <strong>stock-analysis-skill</strong> 执行确定性的行情拉取、指标计算和回测。Agent 或第三方程序通过 HTTP 调用它，得到一个统一的 JSON 信封。</p>
+    <div class="flow">调用方（Agent / 程序）
+  → POST ${STOCK_WRAPPER_URL}/api/v1/stock/analyze
+  → stock-wrapper → stock-analysis-skill → 行情数据源
+  → { success, data, requestId }</div>
+    <p>最小调用链（curl）：</p>
+    <pre>curl -X POST "${STOCK_WRAPPER_URL}/api/v1/stock/analyze" \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Token: ${STOCK_WRAPPER_TOKEN}" \
+  -H "X-Request-ID: 4f9d8c2e-0001-4b1a-9c3a-abcdef000001" \
+  -d '{"symbol":"600519","assetType":"stock"}'</pre>
+
+    <h2>2 · 实际服务和接口</h2>
+    <p>接口地址均为占位符，实际值来自部署环境变量：<code>${STOCK_WRAPPER_URL}</code>、<code>${STOCK_WRAPPER_TOKEN}</code>。</p>
+    <table>
+      <tr><th>能力</th><th>方法</th><th>路径</th></tr>
+      <tr><td>单标的分析</td><td>POST</td><td><code>/api/v1/stock/analyze</code></td></tr>
+      <tr><td>组合分析</td><td>POST</td><td><code>/api/v1/portfolio/analyze</code></td></tr>
+      <tr><td>量化分析</td><td>POST</td><td><code>/api/v1/quant/analyze</code></td></tr>
+      <tr><td>板块分析</td><td>POST</td><td><code>/api/v1/sector/analyze</code></td></tr>
+      <tr><td>存活检查</td><td>GET</td><td><code>/health</code></td></tr>
+      <tr><td>就绪检查</td><td>GET</td><td><code>/ready</code></td></tr>
+    </table>
+
+    <h2>3 · 请求约定</h2>
+    <ul>
+      <li>所有请求 <code>Content-Type: application/json</code>；</li>
+      <li>服务间认证使用请求头 <code>X-Internal-Token</code>；</li>
+      <li>调用链统一传递 <code>X-Request-ID</code>（UUID），贯穿日志用于追踪；</li>
+      <li>Token 只能放在服务端环境变量或密钥管理系统，<strong>浏览器不能直接持有内部 Token</strong>；</li>
+      <li>公共文档示例只使用 <code>${STOCK_WRAPPER_URL}</code>、<code>${STOCK_WRAPPER_TOKEN}</code> 占位符。</li>
+    </ul>
+    <div class="warn"><strong>安全：</strong>浏览器端直接调用带内部认证的 Skill 服务是被禁止的。前端只访问 StockWise 后端，由后端在服务端发起 Skill 调用。</div>
+
+    <h2>4 · 请求与返回格式</h2>
+
+    <h3>4.1 单标的分析 <span class="tag ok">POST /api/v1/stock/analyze</span></h3>
+    <p>请求字段：</p>
+    <table>
+      <tr><th>字段</th><th>类型</th><th>必填</th><th>示例</th><th>说明</th></tr>
+      <tr><td>symbol</td><td>string</td><td>是</td><td>600519</td><td>6 位数字代码</td></tr>
+      <tr><td>assetType</td><td>string</td><td>否</td><td>stock</td><td>auto/stock/etf/fund/open_fund/qdii</td></tr>
+    </table>
+    <pre>{
+  "success": true,
+  "requestId": "4f9d8c2e-...",
+  "command": "stock",
+  "data": {
+    "symbol": "600519",
+    "asOf": "2026-08-02T15:00:00+08:00",
+    "dataQuality": "REALTIME",
+    "methodology": { "version": "1.0.0" },
+    "decisionBasis": { ... },
+    "sources": [ ... ],
+    "profile": { ... }
+  }
+}</pre>
+    <p><code>data</code> 中行情、K 线、技术指标、评分与决策依据字段以后端返回为准；当前版本不保证字段完全稳定，接入时以实际响应为准。</p>
+
+    <h3>4.2 组合分析 <span class="tag ok">POST /api/v1/portfolio/analyze</span></h3>
+    <pre>{
+  "positions": [
+    {
+      "code": "600519", "name": "贵州茅台", "assetType": "stock",
+      "avgCost": 1400, "shares": 100, "buyDate": "2026-01-05",
+      "targetWeight": 0.4
+    }
+  ],
+  "monthlyBudget": 10000,
+  "cash": 5000,
+  "cashReserveRatio": 0.2
+}</pre>
+    <p><code>positions</code> 数量 1–50，每个持仓字段校验严格（代码、名称、成本、份额、买入日期）。</p>
+
+    <h3>4.3 量化分析 <span class="tag ok">POST /api/v1/quant/analyze</span></h3>
+    <pre>{
+  "codes": ["510300", "159915", "588200"],
+  "benchmark": "510300"
+}</pre>
+    <p><code>codes</code> 至少 2 个不重复的 6 位代码；<code>benchmark</code> 可选 6 位代码。</p>
+
+    <h3>4.4 板块分析 <span class="tag ok">POST /api/v1/sector/analyze</span></h3>
+    <pre>{
+  "type": "industry",
+  "limit": 20
+}</pre>
+    <p><code>type</code> 只能是 <code>industry</code> 或 <code>concept</code>；<code>limit</code> 1–100。</p>
+
+    <h3>4.5 统一成功响应 envelope</h3>
+    <pre>{ "success": true, "requestId": "UUID", "command": "stock", "data": { ... } }</pre>
+    <p>错误响应统一为：</p>
+    <pre>{ "success": false, "requestId": "UUID", "error": { "code": "INVALID_SYMBOL", "message": "..." } }</pre>
+
+    <h2>5 · 错误、超时和重试</h2>
+    <table>
+      <tr><th>状态</th><th>含义</th><th>处理</th></tr>
+      <tr><td>400</td><td>参数校验失败（INVALID_SYMBOL / INVALID_JSON / INVALID_POSITIONS 等）</td><td>修正请求，无需重试</td></tr>
+      <tr><td>401/403</td><td>内部凭证缺失或无效（UNAUTHORIZED）</td><td>检查 Token，禁止重试</td></tr>
+      <tr><td>404</td><td>接口不存在（NOT_FOUND）</td><td>检查路径</td></tr>
+      <tr><td>408/超时</td><td>上游行情或计算超时</td><td>可重试，带幂等 <code>X-Request-ID</code></td></tr>
+      <tr><td>429</td><td>触发限流（如实现）</td><td>退避重试，最多 3 次</td></tr>
+      <tr><td>5xx</td><td>服务内部错误（INTERNAL_ERROR）</td><td>记录 requestId，指数退避重试，最多 3 次</td></tr>
+    </table>
+    <div class="warn"><strong>重试纪律：</strong>重试必须有次数上限、退避时间，并复用幂等 <code>X-Request-ID</code>；禁止无限重试。Skill 执行是有副作用的行情任务，客户端不应自动无限重试。</div>
+
+    <h2>6 · 调用示例</h2>
+    <h3>curl</h3>
+    <pre>curl -X POST "${STOCK_WRAPPER_URL}/api/v1/sector/analyze" \
+  -H "Content-Type: application/json" \
+  -H "X-Internal-Token: ${STOCK_WRAPPER_TOKEN}" \
+  -d '{"type":"industry","limit":20}'</pre>
+    <h3>Node.js（服务端）</h3>
+    <pre>const res = await fetch(`${process.env.STOCK_WRAPPER_URL}/api/v1/stock/analyze`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Internal-Token": process.env.STOCK_WRAPPER_TOKEN,
+    "X-Request-ID": crypto.randomUUID()
+  },
+  body: JSON.stringify({ symbol: "600519", assetType: "stock" })
+});
+const { success, data } = await res.json();</pre>
+    <h3>Java / Spring（服务端）</h3>
+    <pre>HttpRequest req = HttpRequest.newBuilder()
+    .uri(URI.create(baseUrl + "/api/v1/quant/analyze"))
+    .header("Content-Type", "application/json")
+    .header("X-Internal-Token", internalToken)
+    .header("X-Request-ID", UUID.randomUUID().toString())
+    .POST(HttpRequest.BodyPublishers.ofString(json))
+    .timeout(Duration.ofSeconds(120))
+    .build();</pre>
+    <h3>Agent 调用最小 JSON</h3>
+    <pre>{ "command": "sector", "type": "industry", "limit": 20 }</pre>
+
+    <h2>7 · 安全和部署</h2>
+    <ul>
+      <li>Skill 服务可以独立部署（Docker / Node），通过 <code>internalToken</code> 鉴权；</li>
+      <li>Agent（Java 后端）在服务端发起调用，前端只访问 StockWise 后端，不直接访问带内部认证的 Skill；</li>
+      <li>Token 通过环境变量注入，日志必须脱敏，禁止打印 Token；</li>
+      <li>提供 <code>/health</code> 与 <code>/ready</code> 健康检查，供编排系统探活；</li>
+      <li>服务不监听公网管理端口，仅暴露业务接口与健康检查。</li>
+    </ul>
+
+    <h2>8 · 接入检查清单</h2>
+    <ul class="checklist">
+      <li>健康检查 <code>GET /health</code> 返回 UP</li>
+      <li>就绪检查 <code>GET /ready</code> 返回 READY</li>
+      <li>四个分析接口分别可调用</li>
+      <li>缺 Token 返回 401，不泄露内部信息</li>
+      <li>错误 JSON / 非法参数返回稳定错误结构</li>
+      <li>超时与上游无数据时返回可读错误</li>
+      <li>重试有上限且复用幂等 <code>X-Request-ID</code></li>
+      <li>日志不打印 Token，且 <code>X-Request-ID</code> 贯穿链路</li>
+      <li>版本兼容：锁定 methodology.version 后升级有回滚预案</li>
+    </ul>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click",()=>{
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+</script>
+</body>
+</html>

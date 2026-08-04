@@ -95,6 +95,11 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
   else if (requestPath === "/agent" || requestPath === "/agent/") target = "/workspace.html";
   else if (requestPath === "/agent/general") target = "/workspace.html?name=general";
   else if (requestPath === "/agent/stock") target = "/workspace.html?name=stock";
+  else if (requestPath === "/docs" || requestPath === "/docs/") target = "/docs/index.html";
+  else if (requestPath.startsWith("/docs/")) {
+    const docPath = requestPath.slice("/docs/".length);
+    target = "/docs/" + (docPath.endsWith(".html") || docPath.includes(".") ? docPath : docPath + ".html");
+  }
   const decodedPath = decodeURIComponent(target);
   const relativePath = decodedPath.replace(/^[/\\]+/, "");
   const filePath = path.resolve(rootDirectory, relativePath);
