@@ -38,7 +38,7 @@ public class SystemUserController {
     public List<SystemUserView> list(
             @Parameter(description = "返回数量，范围 1 至 100")
             @RequestParam(defaultValue = "20") Integer limit) {
-        // 1. 系统用户信息不属于游客公开数据，先校验登录身份。
+        // 1. 系统用户信息属于受保护数据，先校验登录身份。
         singleUserContext.requirePermission("SYSTEM_USER_READ");
         return systemUserService.list(limit);
     }

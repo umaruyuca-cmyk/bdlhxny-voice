@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 /**
- * 验证游客、登录用户和非HTTP上下文不会被固定单用户ID混淆。
+ * 验证单用户回退和登录用户不会相互混淆。
  */
 class SingleUserContextTest {
 
@@ -28,7 +28,6 @@ class SingleUserContextTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
-        assertThat(context.isGuest()).isTrue();
         assertThatThrownBy(context::requireAuthenticatedUserId)
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("请先登录");
@@ -36,12 +35,11 @@ class SingleUserContextTest {
     }
 
     @Test
-    void shouldUseJwtUserAndDisableGuestMode() {
+    void shouldUseJwtUserWhenPresent() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setAttribute(JwtAuthenticationFilter.USER_ID_ATTRIBUTE, 42L);
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
-        assertThat(context.isGuest()).isFalse();
         assertThat(context.requireAuthenticatedUserId()).isEqualTo(42L);
         assertThat(context.userId()).isEqualTo(42L);
     }

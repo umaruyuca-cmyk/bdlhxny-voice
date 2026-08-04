@@ -47,9 +47,6 @@ spring:
         model: qwen3-embedding:0.6b
 
 stockwise:
-  guest-analysis:
-    enabled: true
-    max-questions: 10
   embedding:
     api-key: "你的DashScope API Key"
   stock-analysis:

@@ -9,7 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 /**
- * 为当前请求提供用户身份，优先读取 JWT 解析的 userId，无 Token 时回退到单用户兼容ID；游客状态单独由 isGuest() 判断。
+ * 为当前请求提供用户身份，优先读取 JWT 解析的 userId，无 Token 时回退到单用户工作站 ID。
  */
 @Component
 public class SingleUserContext {
@@ -43,15 +43,7 @@ public class SingleUserContext {
     }
 
     /**
-     * 当前请求是否为游客。
-     */
-    public boolean isGuest() {
-        RequestAttributes attrs = RequestContextHolder.getRequestAttributes();
-        return attrs instanceof ServletRequestAttributes && authenticatedUserId() == null;
-    }
-
-    /**
-     * 返回当前请求的已认证用户ID；游客和异步线程上下文返回 null。
+     * 返回当前请求的已认证用户ID；未携带凭据和异步线程上下文返回 null。
      */
     public Long authenticatedUserId() {
         RequestAttributes attrs = RequestContextHolder.getRequestAttributes();

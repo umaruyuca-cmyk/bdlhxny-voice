@@ -23,7 +23,7 @@ public class PaidAnalysisClient {
         if (permit == null || !permit.allowed()) {
             throw new IllegalStateException("缺少有效的付费模型许可");
         }
-        // 1. 延迟创建真实模型流，确保上层可以在订阅前完成游客额度和审计门禁。
+        // 1. 延迟创建真实模型流，确保上层可以在订阅前完成审计与模型门禁。
         return Flux.defer(() -> deepSeekClient.streamChat(systemPrompt, userMessage));
     }
 }

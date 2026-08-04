@@ -87,7 +87,7 @@ public class KnowledgeController {
      */
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable Long id) {
-        // 1. 游客只能读取公开知识，不能修改或删除知识库内容。
+        // 1. 知识库写操作需要服务端身份校验，避免未授权修改或删除内容。
         singleUserContext.requirePermission("KNOWLEDGE_WRITE");
         knowledgeService.deprecate(id);
         return Map.of("status", "deprecated", "id", id);

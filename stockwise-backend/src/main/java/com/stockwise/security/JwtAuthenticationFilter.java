@@ -13,7 +13,7 @@ import java.io.IOException;
 
 /**
  * 从 Authorization Header 提取 JWT 并反解 userId，写入请求属性供 SingleUserContext 读取。
- * 不依赖 Spring Security，成功解析设 userId，失败放行当游客。
+ * 不依赖 Spring Security，成功解析后写入 userId，未携带凭据时由单用户上下文回退处理。
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -39,7 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 request.setAttribute(USER_ID_ATTRIBUTE, userId);
             }
         }
-        // 2. Token 不存在或无效时继续作为游客处理
+        // 2. Token 不存在或无效时继续请求，由单用户工作站上下文回退处理。
         chain.doFilter(request, response);
     }
 

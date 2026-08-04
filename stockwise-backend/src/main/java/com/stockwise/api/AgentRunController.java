@@ -37,8 +37,8 @@ public class AgentRunController {
      */
     @GetMapping
     public List<AgentRun> list(@RequestParam(defaultValue = "20") int limit) {
-        // 1. 运行审计包含用户问题和模型输出，游客不能读取固定单用户的历史记录。
-        return agentRunService.listRecent(singleUserContext.requirePermission("AGENT_RUN_READ"), limit);
+        // 1. 当前为单用户工作站，运行记录统一归属服务端配置的用户。
+        return agentRunService.listRecent(singleUserContext.userId(), limit);
     }
 
     /**
@@ -47,7 +47,7 @@ public class AgentRunController {
     @GetMapping("/{runId}")
     public AgentRunReplay replay(@PathVariable UUID runId) {
         try {
-            return agentRunService.replay(runId, singleUserContext.requirePermission("AGENT_RUN_READ"));
+            return agentRunService.replay(runId, singleUserContext.userId());
         } catch (NoSuchElementException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SecurityException e) {
@@ -61,7 +61,7 @@ public class AgentRunController {
     @GetMapping("/{runId}/skill-results")
     public AgentSkillResults skillResults(@PathVariable UUID runId) {
         try {
-            return agentRunService.skillResults(runId, singleUserContext.requirePermission("AGENT_RUN_READ"));
+            return agentRunService.skillResults(runId, singleUserContext.userId());
         } catch (NoSuchElementException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SecurityException e) {

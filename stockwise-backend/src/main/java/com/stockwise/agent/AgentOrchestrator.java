@@ -3,6 +3,7 @@ package com.stockwise.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stockwise.dto.GuardrailResult;
 import com.stockwise.dto.IngestResult;
+import com.stockwise.dto.AgentSkillResults;
 import com.stockwise.dto.ChatMode;
 import com.stockwise.dto.ChatInstrument;
 import com.stockwise.agent.routing.BusinessRoute;
@@ -16,9 +17,6 @@ import com.stockwise.memory.MemoryRouter;
 import com.stockwise.memory.ConversationMessage;
 import com.stockwise.memory.SessionState;
 import com.stockwise.memory.SessionStateConflictException;
-import com.stockwise.quota.GuestAnalysisQuota;
-import com.stockwise.quota.GuestAnalysisQuotaService;
-import com.stockwise.quota.GuestAnalysisQuotaUnavailableException;
 import com.stockwise.service.AgentRunService;
 import com.stockwise.service.ExplicitAnalysisExecutor;
 import com.stockwise.service.GuardrailService;
@@ -31,6 +29,7 @@ import com.stockwise.skill.SkillRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.LinkedHashMap;
@@ -38,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -65,8 +65,16 @@ public class AgentOrchestrator {
     private final AgentContextBuilder agentContextBuilder;
     private final UserReplyClassifier userReplyClassifier;
     private final AgentRunService agentRunService;
-    private final GuestAnalysisQuotaService guestAnalysisQuotaService;
     private final ObjectMapper mapper;
+
+    @Value("${stockwise.ai.chat-provider:deepseek}")
+    private String generalChatProvider;
+
+    @Value("${spring.ai.openai.chat.options.model:deepseek}")
+    private String deepSeekModel;
+
+    @Value("${spring.ai.ollama.chat.model:ollama}")
+    private String ollamaModel;
 
     private final ExecutorService executor;
 
@@ -81,7 +89,6 @@ public class AgentOrchestrator {
                              AgentContextBuilder agentContextBuilder,
                              UserReplyClassifier userReplyClassifier,
                              AgentRunService agentRunService,
-                             GuestAnalysisQuotaService guestAnalysisQuotaService,
                              ObjectMapper mapper,
                              @Qualifier("agentFlowExecutor") ExecutorService executor) {
         this.requestRouter = requestRouter;
@@ -95,7 +102,6 @@ public class AgentOrchestrator {
         this.agentContextBuilder = agentContextBuilder;
         this.userReplyClassifier = userReplyClassifier;
         this.agentRunService = agentRunService;
-        this.guestAnalysisQuotaService = guestAnalysisQuotaService;
         this.mapper = mapper;
         this.executor = executor;
     }
@@ -105,15 +111,6 @@ public class AgentOrchestrator {
      */
     public SseEmitter handle(Long userId, String sessionId, ChatMode mode,
                              String message, ChatInstrument instrument) {
-        return handle(userId, sessionId, mode, message, instrument, false, null);
-    }
-
-    /**
-     * 对话入口显式携带游客主体，确保异步 Route 闸门不依赖 HTTP 线程上下文。
-     */
-    public SseEmitter handle(Long userId, String sessionId, ChatMode mode,
-                             String message, ChatInstrument instrument,
-                             boolean guest, String guestSubjectHash) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
         // 1. 注册超时与错误回调，避免连接泄漏
         emitter.onTimeout(emitter::complete);
@@ -126,8 +123,6 @@ public class AgentOrchestrator {
                     mode,
                     message,
                     instrument,
-                    guest,
-                    guestSubjectHash,
                     emitter));
         } catch (RejectedExecutionException error) {
             // 3. 有界队列满时明确结束请求，不在Tomcat线程中降级执行重任务
@@ -151,7 +146,7 @@ public class AgentOrchestrator {
      * 主流程分发：命中暂停点则恢复续跑，否则走首次流程。
      */
     private void runFlow(Long userId, String sessionId, ChatMode mode, String message,
-                         ChatInstrument instrument, boolean guest, String guestSubjectHash,
+                         ChatInstrument instrument,
                          SseEmitter emitter) {
         try {
             // 1. Stock Agent 无标的时仍允许板块和市场问题，单标的缺失由 Route 统一追问。
@@ -180,8 +175,6 @@ public class AgentOrchestrator {
                     mode,
                     message,
                     instrument,
-                    guest,
-                    guestSubjectHash,
                     emitter);
         } catch (SessionStateConflictException e) {
             log.warn("会话并发冲突: {}", e.getMessage());
@@ -202,7 +195,7 @@ public class AgentOrchestrator {
      * 修补后保留原暂停点，但实际执行改为 Route 先行并由 Java 显式调用允许的能力。
      */
     private void firstRun(Long userId, String sessionId, ChatMode mode, String message,
-                          ChatInstrument instrument, boolean guest, String guestSubjectHash,
+                          ChatInstrument instrument,
                           SseEmitter emitter) {
         // Step 0：输入护栏，拦截空消息与 Prompt 注入
         GuardrailResult inputCheck = guardrailService.checkInput(message);
@@ -244,14 +237,14 @@ public class AgentOrchestrator {
 
         // Step 7：显式执行 Route，只有门禁放行的分析类请求才能调用 DeepSeek
         streamAndFinalize(
-                emitter, state, skill, message, decision, guest, guestSubjectHash);
+                emitter, state, skill, message, decision);
     }
 
     /**
      * 暂停点 B 恢复：按用户反馈判断是否解决，已解决则抽取候选知识进入暂停点 C，未解决则带补充重跑推理。
      */
     private void resumeFromResolution(String sessionId, String message,
-                                      SessionState state, boolean guest, String guestSubjectHash,
+                                      SessionState state,
                                       SseEmitter emitter) {
         // 1. 简单判定用户是否表示已解决
         FeedbackType feedbackType = userReplyClassifier.classifyResolution(message);
@@ -285,7 +278,7 @@ public class AgentOrchestrator {
                 Map.of("step", "awaiting_resolution"));
         sendBusinessStatus(emitter, decision, skill);
         streamAndFinalize(
-                emitter, state, skill, combinedQuestion, decision, guest, guestSubjectHash);
+                emitter, state, skill, combinedQuestion, decision);
     }
 
     /**
@@ -349,9 +342,7 @@ public class AgentOrchestrator {
      */
     private void streamAndFinalize(SseEmitter emitter, SessionState state,
                                    SkillDefinition skill, String userMessage,
-                                   RouteDecision decision,
-                                   boolean guest,
-                                   String guestSubjectHash) {
+                                   RouteDecision decision) {
         StringBuilder answer = new StringBuilder();
         String prompt = agentContextBuilder.build(state, userMessage);
         AgentRunContext runContext = agentRunService.start(
@@ -373,16 +364,6 @@ public class AgentOrchestrator {
             }
             ExplicitAnalysisExecutor.ExecutionOutput execution = explicitAnalysisExecutor.execute(
                     decision, skill, prompt, userMessage, runContext);
-            // 2. Skill 和证据门禁通过后才为真实付费流取得游客名额，事实查询和失败分析不扣次数。
-            if ("PAID".equals(execution.modelTier())
-                    && !allowGuestAnalysis(emitter, guest, guestSubjectHash, decision)) {
-                state.setCurrentStep("idle");
-                state.setGateReason("GUEST_ANALYSIS_QUOTA_BLOCKED");
-                memoryRouter.saveWorking(state);
-                agentRunService.recordModelGate(runContext, false, "GUEST_ANALYSIS_QUOTA_BLOCKED");
-                agentRunService.complete(runContext, "游客付费分析次数门禁阻断，未调用付费模型。");
-                return;
-            }
             if (decision.businessRoute() == BusinessRoute.TOOL_AGENT) {
                 sendStatus(emitter, "reading_sources", null, skill.name());
             }
@@ -446,12 +427,19 @@ public class AgentOrchestrator {
                             done.put("internalRoute", decision.route().name());
                             done.put("mode", state.getChatMode() == null ? "legacy" : state.getChatMode().value());
                             done.put("modelTier", execution.modelTier());
+                            done.putAll(modelMetadata(execution.modelTier()));
                             done.put("gateReason", execution.gateReason());
                             done.put("reactTerminationReason", execution.reactTerminationReason().name());
                             done.put("reactRounds", execution.reactRounds());
                             done.put("reactToolCalls", execution.reactToolCalls());
-                            done.put("skillResultAvailable", execution.reactToolCalls() > 0
-                                    && decision.businessRoute() == BusinessRoute.STOCK_ANALYSIS);
+                            Map<String, Object> skillResult = skillResultForDisplay(
+                                    runContext.runId(), runContext.userId(), execution.reactToolCalls(),
+                                    decision.businessRoute());
+                            done.put("skillResultAvailable", skillResult != null);
+                            if (skillResult != null) {
+                                // 7. 将本轮已完成的结构化结果随 SSE 返回，前端无需再次读取运行审计接口。
+                                done.put("skillResult", skillResult);
+                            }
                             done.put("status", decision.needsClarification()
                                     ? "NEED_CLARIFICATION"
                                     : "COMPLETED");
@@ -526,48 +514,40 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 在 Skill 和付费门禁通过后、付费模型流订阅前扣减游客次数并同步前端。
+     * 提取本轮可视化所需的首个 StockSkill 契约，避免前端额外进行审计回读。
      */
-    private boolean allowGuestAnalysis(SseEmitter emitter,
-                                       boolean guest,
-                                       String guestSubjectHash,
-                                       RouteDecision decision) {
-        try {
-            GuestAnalysisQuota quota = guestAnalysisQuotaService.acquire(
-                    guest,
-                    guestSubjectHash,
-                    decision.route());
-            if (!quota.applicable()) {
-                return true;
-            }
-            Map<String, Object> quotaData = guestQuotaData(quota);
-            sendEvent(emitter, "quota", quotaData);
-            if (quota.allowed()) {
-                return true;
-            }
-            Map<String, Object> done = new LinkedHashMap<>(quotaData);
-            done.put("status", "GUEST_ANALYSIS_LIMIT_REACHED");
-            done.put("message", "游客最多可发起" + quota.limit() + "次分析，当前次数已用完，请登录后继续");
-            sendEvent(emitter, "done", done);
-            emitter.complete();
-            return false;
-        } catch (GuestAnalysisQuotaUnavailableException error) {
-            sendEvent(emitter, "done", Map.of(
-                    "status", "GUEST_ANALYSIS_LIMIT_UNAVAILABLE",
-                    "message", "游客分析次数服务暂时不可用，请稍后重试"));
-            emitter.complete();
-            return false;
+    private Map<String, Object> skillResultForDisplay(UUID runId,
+                                                       Long userId,
+                                                       int reactToolCalls,
+                                                       BusinessRoute businessRoute) {
+        if (userId == null || reactToolCalls <= 0 || businessRoute != BusinessRoute.STOCK_ANALYSIS) {
+            return null;
         }
+        return agentRunService.skillResults(runId, userId).items().stream()
+                .map(AgentSkillResults.Item::observation)
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .filter(item -> item.containsKey("schemaVersion")
+                        && item.containsKey("command")
+                        && item.containsKey("data"))
+                .findFirst()
+                .orElse(null);
     }
 
-    private Map<String, Object> guestQuotaData(GuestAnalysisQuota quota) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("guest", true);
-        data.put("quotaType", "guest_analysis");
-        data.put("limit", quota.limit());
-        data.put("used", quota.used());
-        data.put("remaining", quota.remaining());
-        return data;
+    /**
+     * 将策略层级转换为前端可理解的实际回答来源，避免把 LOCAL 误解为本地模型。
+     */
+    private Map<String, Object> modelMetadata(String modelTier) {
+        if ("TEMPLATE".equals(modelTier)) {
+            return Map.of("modelProvider", "rule", "modelName", "规则与 Skill 数据");
+        }
+        if ("PAID".equals(modelTier)) {
+            return Map.of("modelProvider", "deepseek", "modelName", deepSeekModel);
+        }
+        boolean ollama = "ollama".equalsIgnoreCase(generalChatProvider);
+        return Map.of(
+                "modelProvider", ollama ? "ollama" : "deepseek",
+                "modelName", ollama ? ollamaModel : deepSeekModel);
     }
 
     /**

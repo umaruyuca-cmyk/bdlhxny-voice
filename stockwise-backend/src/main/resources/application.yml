@@ -63,10 +63,6 @@ stockwise:
   single-user:
     # 当前产品为单用户部署，客户端不得自行提交userId
     id: ${STOCKWISE_SINGLE_USER_ID:1}
-  guest-analysis:
-    # 游客不限制Token，只限制Skill和付费门禁通过后的真实付费分析次数。
-    enabled: ${GUEST_ANALYSIS_LIMIT_ENABLED:true}
-    max-questions: ${GUEST_ANALYSIS_MAX_QUESTIONS:10}
   jwt:
     # 生产环境必须通过环境变量覆盖默认密钥
     secret: ${JWT_SECRET:}
