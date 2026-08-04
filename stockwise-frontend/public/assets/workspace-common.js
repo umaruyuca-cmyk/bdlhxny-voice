@@ -108,7 +108,6 @@
   const composer=document.getElementById("composer");
   const sendBtn=document.getElementById("sendBtn");
   const statusBar=document.getElementById("statusBar");
-  const guestQuotaBadge=document.getElementById("guestQuotaBadge")||null;
   const headSkill=document.getElementById("headSkill");
   const headRunId=document.getElementById("headRunId");
   const runsDrawer=document.getElementById("runsPanel")||null;
@@ -123,8 +122,6 @@
 
   updateSessionBadge();
   renderInstrument();
-  restoreGuestQuota();
-  loadGuestQuota();
 
   function loadInstrument(){
     try{
@@ -169,49 +166,6 @@
     if(sessionName)sessionName.textContent=title;
     const badge=document.getElementById("sessionBadge");
     if(badge){badge.textContent=title;badge.title=title;}
-  }
-
-  function restoreGuestQuota(){
-    try{
-      const quota=JSON.parse(localStorage.getItem("stockwise.guestAnalysisQuota")||"null");
-      if(quota)renderGuestQuota(quota);
-    }catch(e){
-      localStorage.removeItem("stockwise.guestAnalysisQuota");
-    }
-  }
-
-  async function loadGuestQuota(){
-    try{
-      const response=await fetch("/api/v1/chat/guest-analysis-quota",{
-        headers:{"Accept":"application/json"}
-      });
-      if(!response.ok)return;
-      renderGuestQuota(await response.json());
-    }catch(e){
-      // 初始化查询失败不阻断聊天，分析请求仍由后端闸门保护。
-    }
-  }
-
-  function renderGuestQuota(quota){
-    if(!quota||quota.guest===false||quota.applicable===false){
-      if(guestQuotaBadge)guestQuotaBadge.style.display="none";
-      localStorage.removeItem("stockwise.guestAnalysisQuota");
-      return;
-    }
-    if(!guestQuotaBadge)return;
-    const limit=Number.isFinite(Number(quota.limit))?Number(quota.limit):10;
-    const remaining=Math.max(0,Number.isFinite(Number(quota.remaining))?Number(quota.remaining):limit);
-    guestQuotaBadge.style.display="";
-    guestQuotaBadge.textContent="游客分析 "+remaining+"/"+limit;
-    guestQuotaBadge.classList.toggle("exhausted",remaining===0);
-    guestQuotaBadge.title="仅深度分析请求消耗次数；普通问答和行情查询不扣次数";
-    localStorage.setItem("stockwise.guestAnalysisQuota",JSON.stringify({
-      guest:true,
-      applicable:true,
-      limit,
-      used:Math.max(0,limit-remaining),
-      remaining
-    }));
   }
 
   function scrollMsgs(){
@@ -494,8 +448,6 @@
       headRunId.textContent="Run: "+(data.runId||"").slice(0,8);
       if(data.runId)bubble.dataset.runId=data.runId;
       if(data.route)headSkill.textContent="· "+data.route;
-    }else if(type==="quota"){
-      renderGuestQuota({...data,applicable:true});
     }else if(type==="token"){
       const tok=data.content||"";
       ST.streamText+=tok;
@@ -527,16 +479,14 @@
         scrollMsgs();
       }
     }else if(type==="done"){
-      if(data.quotaType==="guest_analysis")renderGuestQuota({...data,applicable:true});
       if(bubble.querySelector(".typing")){
         bubble.textContent="";
         if(data.status==="REFUSED")bubble.textContent="请求已被护栏拦截："+(data.reason||"");
-        else if(data.status==="GUEST_ANALYSIS_LIMIT_REACHED")bubble.textContent=data.message||"游客分析次数已用完，请登录后继续。";
-        else if(data.status==="GUEST_ANALYSIS_LIMIT_UNAVAILABLE")bubble.textContent=data.message||"游客分析次数服务暂时不可用，请稍后重试。";
         else bubble.textContent+="对话已完成。";
       }
-      const inlineContract=parseSkillContract(ST.streamText);
+      const inlineContract=normalizeSkillContract(data.skillResult)||parseSkillContract(ST.streamText);
       finalizeBubble(bubble);
+      addAnswerMeta(bubble,data);
       if(inlineContract||data.skillResultAvailable){
         addSkillResultButton(bubble,data.runId||bubble.dataset.runId,inlineContract);
       }
@@ -565,6 +515,16 @@
   function removeActionCard(bubble){
     const card=bubble.querySelector(".action-card");
     if(card)card.remove();
+  }
+
+  function addAnswerMeta(bubble,data){
+    if(!data||bubble.querySelector(".answer-meta")||data.status!=="COMPLETED")return;
+    const provider={deepseek:"DeepSeek",ollama:"Ollama",rule:"StockSkill 规则"}[data.modelProvider];
+    if(!provider)return;
+    const meta=document.createElement("div");
+    meta.className="answer-meta";
+    meta.innerHTML='<strong>回答来源：</strong>'+escHtml(provider)+(data.modelName?" · "+escHtml(data.modelName):"");
+    bubble.appendChild(meta);
   }
 
   function renderStructuredSkillResult(bubble){
@@ -644,6 +604,11 @@
     }catch(e){
       return null;
     }
+  }
+
+  function normalizeSkillContract(value){
+    if(!value||typeof value!=="object"||Array.isArray(value))return null;
+    return value.schemaVersion&&value.command&&value.data?value:null;
   }
 
   function buildSkillDashboard(contract){
