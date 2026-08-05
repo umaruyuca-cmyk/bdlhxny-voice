@@ -76,18 +76,44 @@
 
   const ST={
     mode:"stock",
-    sessionIds:Object.fromEntries(AGENTS.map(a=>[a.id,genUUID()])),
-    messageStores:Object.fromEntries(AGENTS.map(a=>[a.id,document.createDocumentFragment()])),
-    sessionTitles:Object.fromEntries(AGENTS.map(a=>[a.id,defaultSessionTitle(a.id)])),
-    sessionHasMessages:Object.fromEntries(AGENTS.map(a=>[a.id,false])),
+    sessionsByMode:Object.fromEntries(AGENTS.map(a=>[a.id,createSessionList(a.id)])),
     sending:false,
     currentBubble:null,
     streamText:"",
     sideView:"runs",
     currentInstrument:loadInstrument(),
     pendingInstrument:null,
-    activeController:null
+    activeController:null,
+    activeRunId:null,
+    currentTrace:null
   };
+
+  function createSessionList(mode){
+    const s0=makeSession(mode);
+    return {activeId:s0.id, items:[s0]};
+  }
+
+  function makeSession(mode){
+    const m=mode||ST.mode;
+    return {
+      id:genUUID(),
+      title:defaultSessionTitle(m),
+      store:document.createDocumentFragment(),
+      hasMessages:false,
+      runId:null,
+      trace:null
+    };
+  }
+
+  function activeSession(){
+    const list=ST.sessionsByMode[ST.mode];
+    const cur=list.items.find(s=>s.id===list.activeId);
+    return cur||list.items[0];
+  }
+
+  function curS(){
+    return activeSession();
+  }
 
   function genUUID(){
     return (globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():'session-'+Date.now()+"-"+Math.random().toString(36).slice(2,8);
@@ -160,12 +186,63 @@
     clearInstrument.style.display="";
   }
 
+  function renderSessionList(){
+    const listEl=document.getElementById("sessionList");
+    if(!listEl)return;
+    const list=ST.sessionsByMode[ST.mode];
+    listEl.innerHTML=list.items.map(s=>{
+      const active=s.id===list.activeId?" active":"";
+      const title=s.hasMessages?s.title:"未命名研究";
+      return '<div class="session-item'+active+'" data-session="'+s.id+'" role="button" tabindex="0">'+
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'+
+        '<span>'+escHtml(title)+'</span></div>';
+    }).join("");
+    listEl.querySelectorAll(".session-item").forEach(el=>{
+      el.addEventListener("click",()=>selectSession(el.dataset.session));
+    });
+  }
+
+  function selectSession(id){
+    const list=ST.sessionsByMode[ST.mode];
+    const target=list.items.find(s=>s.id===id);
+    if(!target||id===list.activeId)return;
+    // 1. 保存当前消息
+    const prev=activeSession();
+    while(messages.firstChild)prev.store.appendChild(messages.firstChild);
+    // 2. 切换到目标会话
+    list.activeId=id;
+    ST.sending=false;
+    ST.currentBubble=null;
+    ST.streamText="";
+    messages.replaceChildren();
+    if(target.store.childNodes.length){
+      messages.appendChild(target.store);
+    }else{
+      const cfg=AGENT_MAP[ST.mode];
+      renderWelcome(cfg.needsInstrument&&ST.currentInstrument
+        ?"继续分析 "+ST.currentInstrument.symbol
+        :undefined,cfg.needsInstrument&&ST.currentInstrument
+          ?"可继续针对当前标的提问，或先选择其他标的。"
+          :cfg.newSessionDesc);
+    }
+    statusBar.innerHTML="";
+    headSkill.textContent="";
+    headRunId.textContent="";
+    sendBtn.disabled=false;
+    updateSessionBadge();
+    renderCurrentTrace();
+    input.value="";
+    input.focus();
+  }
+
   function updateSessionBadge(){
-    const title=ST.sessionTitles[ST.mode]||defaultSessionTitle(ST.mode);
+    const s=activeSession();
+    const title=s? (s.title||defaultSessionTitle(ST.mode)) : defaultSessionTitle(ST.mode);
     const sessionName=document.getElementById("sessionName");
     if(sessionName)sessionName.textContent=title;
     const badge=document.getElementById("sessionBadge");
     if(badge){badge.textContent=title;badge.title=title;}
+    renderSessionList();
   }
 
   function scrollMsgs(){
@@ -248,9 +325,10 @@
   async function send(text){
     const value=(text||input.value).trim();if(!value||ST.sending)return;
     ST.sending=true;input.value="";sendBtn.disabled=true;
-    if(!ST.sessionHasMessages[ST.mode]){
-      ST.sessionHasMessages[ST.mode]=true;
-      ST.sessionTitles[ST.mode]=createSessionTitle(value);
+    const s=activeSession();
+    if(s&&!s.hasMessages){
+      s.hasMessages=true;
+      s.title=createSessionTitle(value);
       updateSessionBadge();
     }
     addUserMsg(value);
@@ -272,7 +350,7 @@
         method:"POST",
         headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
         body:JSON.stringify({
-          sessionId:ST.sessionIds[ST.mode],
+          sessionId:activeSession().id,
           mode:ST.mode,
           message:value,
           instrument
@@ -391,6 +469,84 @@
 
   function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
+  const TRACE_SEQUENCE=["ROUTE_DECISION","REACT_DECISION","TOOL_CALL","TOOL_OBSERVATION","REACT_TERMINATION","MODEL_GATE","MODEL_CALL","FINAL_ANSWER"];
+  const TRACE_PROGRESS=["ROUTE_DECISION","REACT_DECISION","TOOL_CALL","TOOL_OBSERVATION","MODEL_GATE","MODEL_CALL"];
+
+  /** Render the current response's agent path instead of a mixed history of audit runs. */
+  function createTrace(data){
+    const labels={ROUTE_DECISION:"路由",REACT_DECISION:"规划",TOOL_CALL:"工具",TOOL_OBSERVATION:"结果",REACT_TERMINATION:"收束",MODEL_GATE:"模型门禁",MODEL_CALL:"生成",FINAL_ANSWER:"完成"};
+    const details={ROUTE_DECISION:"正在匹配研究路径",REACT_DECISION:"正在制定 ReAct 工具执行计划",TOOL_CALL:"等待工具调用",TOOL_OBSERVATION:"等待结构化数据返回",REACT_TERMINATION:"等待 ReAct 收束",MODEL_GATE:"等待数据与规则校验",MODEL_CALL:"等待模型生成结论",FINAL_ANSWER:"等待最终回答"};
+    return {runId:data.runId||null,route:data.route||"",status:"running",startedAt:Date.now(),steps:TRACE_SEQUENCE.map(type=>({type,title:labels[type],detail:details[type],tech:"",status:type==="ROUTE_DECISION"?"active":"pending"}))};
+  }
+
+  function applyResearchTrace(data){
+    const trace=createTrace(data);
+    trace.status=data.status||"running";
+    (Array.isArray(data.steps)?data.steps:[]).forEach(item=>{
+      const node=trace.steps.find(step=>step.type===item.type);
+      if(node)Object.assign(node,item);
+    });
+    const active=trace.steps.find(step=>step.type===data.currentStage);
+    if(active&&trace.status!=="completed")active.status="active";
+    const s=activeSession();
+    if(s){s.trace=trace;s.runId=data.runId||s.runId;}
+    renderCurrentTrace();
+  }
+
+  function renderCurrentTrace(){
+    const list=document.getElementById("traceList"),progress=document.getElementById("traceProgress"),meta=document.getElementById("traceMeta"),trace=curS().trace;
+    if(!list||!progress||!meta)return;
+    if(!trace){progress.innerHTML="";meta.textContent="等待开始研究";list.innerHTML='<div class="empty">发起一次研究后，这里将展示路由、ReAct、工具和模型门禁。</div>';return;}
+    meta.textContent=(trace.route||"本次研究")+" · "+(trace.status==="completed"?"已完成":"执行中");
+    progress.innerHTML=TRACE_PROGRESS.map((type,index)=>{const node=trace.steps.find(item=>item.type===type);const state=node.status;return '<div class="trace-progress-item '+state+'"><span class="trace-progress-dot">'+(state==="done"?"✓":(state==="blocked"?"!":index+1))+'</span>'+node.title+'</div>';}).join("");
+    list.innerHTML=trace.steps.map((node,index)=>'<div class="trace-step '+node.status+'"><span class="trace-step-no">'+(node.status==="done"?"✓":(node.status==="blocked"?"!":index+1))+'</span><strong class="trace-step-title">'+node.title+'</strong><div class="trace-step-detail">'+escHtml(node.detail)+(node.tech?'<small class="trace-tech">'+escHtml(node.tech)+'</small>':"")+'</div></div>').join("");
+  }
+
+  async function refreshCurrentTrace(runId){
+    if(runId)curS().runId=runId;
+    if(!curS().runId){renderCurrentTrace();return;}
+    try{
+      const response=await fetch("/api/v1/agent-runs/"+encodeURIComponent(curS().runId));
+      if(response.ok){
+        const replay=await response.json();
+        const trace=createTrace({runId:curS().runId,route:businessRouteForRun(replay.run||{})});
+        trace.status=replay.run?.status||"completed";
+        (replay.steps||[]).forEach(step=>{
+          const node=trace.steps.find(item=>item.type===step.stepType);
+          if(!node)return;
+          node.status="done";
+          node.tech=step.name?({ROUTE_DECISION:"Route",REACT_DECISION:"Action",TOOL_CALL:"Tool",TOOL_OBSERVATION:"Observation",REACT_TERMINATION:"Termination",MODEL_GATE:"Gate",MODEL_CALL:"Model",FINAL_ANSWER:"FINAL_ANSWER"}[node.type]||"Step")+" · "+step.name:"";
+          node.detail=traceDetail(node.type,step);
+        });
+        const failed=(replay.steps||[]).find(step=>step.stepType==="POLICY_REJECTION"||step.stepType==="ERROR");
+        if(failed){const node=trace.steps.find(item=>item.type==="MODEL_GATE")||trace.steps.at(-1);node.status="blocked";node.detail=failed.summary||"规则校验未通过，停止生成结论";}
+        curS().trace=trace;
+      }
+    }catch(e){/* Keep the streaming trace when the optional replay request is unavailable. */}
+    renderCurrentTrace();
+  }
+
+  function traceDetail(type,step){
+    const payload=step.payload||{};
+    if(type==="ROUTE_DECISION")return "请求已映射到「"+routeLabel(payload.route||step.name||"")+"」执行路径";
+    if(type==="REACT_DECISION")return "ReAct 第 "+(payload.round||1)+" 轮："+(payload.reasoningSummary||"选择下一步工具 Action");
+    if(type==="TOOL_CALL")return "正在调用 "+({stock:"StockSkill · 标的分析",sector:"StockSkill · 板块分析",quant:"StockSkill · 量化分析",portfolio:"StockSkill · 组合分析",webSearch:"联网检索"}[step.name]||step.name)+" 获取研究数据";
+    if(type==="TOOL_OBSERVATION")return "工具已返回结构化结果"+(payload.durationMs?" · 耗时 "+payload.durationMs+"ms":"");
+    if(type==="REACT_TERMINATION")return "ReAct 已获得足够信息，结束工具调用";
+    if(type==="MODEL_GATE")return payload.allowed===false?"数据或规则未通过，停止生成方向性结论":"数据质量与规则校验已通过，允许生成结论";
+    if(type==="MODEL_CALL")return "正在调用回答模型生成解释性结论";
+    return "已生成最终回答与分析看板";
+  }
+
+  function advanceTrace(statusStep){
+    if(!curS().trace)return;
+    const target={classifying:"ROUTE_DECISION",react_planning:"REACT_DECISION",route_executing:"REACT_DECISION",skill_executing:"TOOL_CALL",stock_validating:"TOOL_OBSERVATION",searching_web:"TOOL_CALL",reading_sources:"TOOL_OBSERVATION",direct_chat:"MODEL_CALL"}[statusStep];
+    if(!target)return;
+    const targetIndex=curS().trace.steps.findIndex(item=>item.type===target);
+    curS().trace.steps.forEach((item,index)=>{if(index<targetIndex&&item.status!=="blocked")item.status="done";if(index===targetIndex)item.status="active";});
+    renderCurrentTrace();
+  }
+
   /* 轻提示：操作反馈（对接后端后保留，用于用户操作确认） */
   function toast(message){
     let el=document.getElementById("toast");
@@ -435,6 +591,7 @@
       const step=data.step||"";
       if(step!==phase.last){
         phase.last=step;
+        advanceTrace(step);
         if(step==="classifying")setStatus({current:"classifying"});
         else if(["direct_chat","react_planning","searching_web","reading_sources","stock_validating"].includes(step)){
           setStatus({current:step,skill:data.skill});
@@ -446,8 +603,15 @@
       }
     }else if(type==="agent_run"){
       headRunId.textContent="Run: "+(data.runId||"").slice(0,8);
-      if(data.runId)bubble.dataset.runId=data.runId;
+      if(data.runId){
+        bubble.dataset.runId=data.runId;
+        curS().runId=data.runId;
+        curS().trace=createTrace(data);
+        renderCurrentTrace();
+      }
       if(data.route)headSkill.textContent="· "+data.route;
+    }else if(type==="research_trace"){
+      applyResearchTrace(data);
     }else if(type==="token"){
       const tok=data.content||"";
       ST.streamText+=tok;
@@ -499,7 +663,7 @@
       statusBar.appendChild(doneTag);
       headRunId.textContent="";
       headSkill.textContent="";
-      loadAgentRuns();
+      refreshCurrentTrace(data.runId||curS().runId);
       return false;
     }else if(type==="error"){
       if(bubble.querySelector(".typing"))bubble.textContent="";
@@ -856,7 +1020,8 @@
   function switchMode(mode,preserveMessages=true){
     if(!AGENT_MAP[mode]||ST.sending)return;
     if(mode!==ST.mode&&preserveMessages){
-      while(messages.firstChild)ST.messageStores[ST.mode].appendChild(messages.firstChild);
+      const src=activeSession();
+      while(messages.firstChild)src.store.appendChild(messages.firstChild);
     }
     if(!preserveMessages)messages.replaceChildren();
     ST.mode=mode;
@@ -878,7 +1043,7 @@
     headSkill.textContent="";
     headRunId.textContent="";
     if(preserveMessages){
-      const stored=ST.messageStores[mode];
+      const stored=activeSession().store;
       if(!messages.childNodes.length&&stored.childNodes.length)messages.appendChild(stored);
     }
     if(!messages.childNodes.length)renderWelcome();
@@ -1194,16 +1359,21 @@
     ST.sideView="runs";
     if(runsDrawer)runsDrawer.classList.add("open");
     document.querySelector(".main")?.classList.add("runs-open");
-    loadAgentRuns();
+    renderCurrentTrace();
   }
   function newSession(){
-    ST.sessionIds[ST.mode]=genUUID();
-    ST.messageStores[ST.mode]=document.createDocumentFragment();
-    ST.sessionTitles[ST.mode]=defaultSessionTitle(ST.mode);
-    ST.sessionHasMessages[ST.mode]=false;
+    // 1. 先保存当前会话的消息到它的 store
+    const prev=activeSession();
+    while(messages.firstChild)prev.store.appendChild(messages.firstChild);
+    // 2. 新建会话并加入当前 mode 的列表
+    const list=ST.sessionsByMode[ST.mode];
+    const s=makeSession(ST.mode);
+    list.items.push(s);
+    list.activeId=s.id;
     ST.sending=false;
     ST.currentBubble=null;
     ST.streamText="";
+    if(ST.mode==="stock")saveInstrument(null);
     const cfg=AGENT_MAP[ST.mode];
     renderWelcome("新会话已创建",cfg.needsInstrument&&ST.currentInstrument
       ?"当前标的是 "+ST.currentInstrument.symbol+" "+(ST.currentInstrument.name||"")+"，也可以直接询问板块。"
@@ -1213,7 +1383,12 @@
     headRunId.textContent="";
     sendBtn.disabled=false;
     updateSessionBadge();
-    toast("已创建新会话 · "+cfg.label);
+    const sessionName=document.getElementById("sessionName");
+    if(sessionName)sessionName.textContent="未命名研究";
+    renderCurrentTrace();
+    input.value="";
+    input.focus();
+    toast("已开始新的研究");
   }
 
   document.getElementById("sendBtn").addEventListener("click",()=>send());

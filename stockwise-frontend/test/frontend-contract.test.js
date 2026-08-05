@@ -57,6 +57,30 @@ test("柔和版入口连接后端流式协议", async () => {
 });
 
 /**
+ * 验证公共导航只保留正式入口，Skill 目录可以通过注册清单扩展。
+ */
+test("公共入口与 Skill 目录边界完整", async () => {
+  const [index, consolePage, dashboard, registry] = await Promise.all([
+    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/api-console.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/skill-dashboard.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/skills/registry.json", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(index, /href="\/skill-dashboard\.html"/);
+  assert.match(index, /href="\/docs"/);
+  assert.match(index, /WebSearchSkill/);
+  assert.doesNotMatch(index, /api-console\.html|stockwise-chat-soft|stockwise-chat\.html/);
+  assert.doesNotMatch(consolePage, /旧版聊天|柔版/);
+  assert.match(consolePage, /开发工具/);
+  assert.match(dashboard, /fetch\('\/skills\/registry\.json'/);
+  assert.match(dashboard, /function renderSkill/);
+  assert.match(registry, /"id": "stock"/);
+  assert.match(registry, /"id": "web-search"/);
+  assert.doesNotMatch(registry, /"status": "planned"/);
+});
+
+/**
  * 验证工作站空白态保持可读的输入宽度，运行追踪默认不遮挡对话区。
  */
 test("工作站空白态布局与运行追踪行为完整", async () => {
