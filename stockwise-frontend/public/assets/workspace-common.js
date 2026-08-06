@@ -96,8 +96,8 @@
     if(restored&&restored.length){
       return {activeId:restored[restored.length-1].id, items:restored};
     }
-    const s0=makeSession(mode);
-    return {activeId:s0.id, items:[s0]};
+    // 无历史会话：进入空白新建态，不产生任何 session 条目（发首条消息时才创建）
+    return {activeId:null, items:[]};
   }
 
   function makeSession(mode){
@@ -142,12 +142,13 @@
 
   function activeSession(){
     const list=ST.sessionsByMode[ST.mode];
+    if(!list.activeId)return null;
     const cur=list.items.find(s=>s.id===list.activeId);
-    return cur||list.items[0];
+    return cur||null;
   }
 
   function curS(){
-    return activeSession();
+    return activeSession()||makeSession(ST.mode);
   }
 
   function genUUID(){
@@ -241,9 +242,9 @@
     const list=ST.sessionsByMode[ST.mode];
     const target=list.items.find(s=>s.id===id);
     if(!target||id===list.activeId)return;
-    // 1. 保存当前消息
+    // 1. 保存当前消息（空白态 prev 为 null，直接丢弃）
     const prev=activeSession();
-    while(messages.firstChild)prev.store.appendChild(messages.firstChild);
+    if(prev){while(messages.firstChild)prev.store.appendChild(messages.firstChild);}
     // 2. 切换到目标会话
     list.activeId=id;
     ST.sending=false;
@@ -273,7 +274,7 @@
 
   function updateSessionBadge(){
     const s=activeSession();
-    const title=s? (s.title||defaultSessionTitle(ST.mode)) : defaultSessionTitle(ST.mode);
+    const title=s? (s.title||defaultSessionTitle(ST.mode)) : "新会话";
     const sessionName=document.getElementById("sessionName");
     if(sessionName)sessionName.textContent=title;
     const badge=document.getElementById("sessionBadge");
@@ -361,8 +362,16 @@
   async function send(text){
     const value=(text||input.value).trim();if(!value||ST.sending)return;
     ST.sending=true;input.value="";sendBtn.disabled=true;
-    const s=activeSession();
-    if(s&&!s.hasMessages){
+    // 空白新建态下发首条消息：真正创建会话并入列（上限 20 条）
+    let s=activeSession();
+    if(!s){
+      const list=ST.sessionsByMode[ST.mode];
+      s=makeSession(ST.mode);
+      list.items.push(s);
+      while(list.items.length>MAX_SESSIONS_PER_AGENT)list.items.shift();
+      list.activeId=s.id;
+    }
+    if(!s.hasMessages){
       s.hasMessages=true;
       s.title=createSessionTitle(value);
       persistSessions();
@@ -1058,7 +1067,7 @@
     if(!AGENT_MAP[mode]||ST.sending)return;
     if(mode!==ST.mode&&preserveMessages){
       const src=activeSession();
-      while(messages.firstChild)src.store.appendChild(messages.firstChild);
+      if(src){while(messages.firstChild)src.store.appendChild(messages.firstChild);}
     }
     if(!preserveMessages)messages.replaceChildren();
     ST.mode=mode;
@@ -1080,8 +1089,11 @@
     headSkill.textContent="";
     headRunId.textContent="";
     if(preserveMessages){
-      const stored=activeSession().store;
-      if(!messages.childNodes.length&&stored.childNodes.length)messages.appendChild(stored);
+      const storedSession=activeSession();
+      if(storedSession){
+        const stored=storedSession.store;
+        if(!messages.childNodes.length&&stored.childNodes.length)messages.appendChild(stored);
+      }
     }
     if(!messages.childNodes.length)renderWelcome();
     renderQuickPrompts();
@@ -1401,13 +1413,12 @@
   function newSession(){
     // 1. 先保存当前会话的消息到它的 store
     const prev=activeSession();
-    while(messages.firstChild)prev.store.appendChild(messages.firstChild);
-    // 2. 新建会话并加入当前 mode 的列表（上限 20 条，超出清理最旧）
+    if(prev){
+      while(messages.firstChild)prev.store.appendChild(messages.firstChild);
+    }
+    // 2. 进入空白新建态：不新增 session 条目，发首条消息时才真正创建（对齐国内产品习惯）
     const list=ST.sessionsByMode[ST.mode];
-    const s=makeSession(ST.mode);
-    list.items.push(s);
-    while(list.items.length>MAX_SESSIONS_PER_AGENT)list.items.shift();
-    list.activeId=s.id;
+    list.activeId=null;
     persistSessions();
     ST.sending=false;
     ST.currentBubble=null;
@@ -1422,8 +1433,6 @@
     headRunId.textContent="";
     sendBtn.disabled=false;
     updateSessionBadge();
-    const sessionName=document.getElementById("sessionName");
-    if(sessionName)sessionName.textContent="未命名研究";
     renderCurrentTrace();
     input.value="";
     input.focus();
