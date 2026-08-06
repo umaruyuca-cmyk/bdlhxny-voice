@@ -74,6 +74,9 @@
 
   const AGENT_MAP=Object.fromEntries(AGENTS.map(a=>[a.id,a]));
 
+  const MAX_SESSIONS_PER_AGENT=20;
+  const SESSION_STORAGE_KEY="stockwise.sessions.v1";
+
   const ST={
     mode:"stock",
     sessionsByMode:Object.fromEntries(AGENTS.map(a=>[a.id,createSessionList(a.id)])),
@@ -89,6 +92,10 @@
   };
 
   function createSessionList(mode){
+    const restored=restoreSessions(mode);
+    if(restored&&restored.length){
+      return {activeId:restored[restored.length-1].id, items:restored};
+    }
     const s0=makeSession(mode);
     return {activeId:s0.id, items:[s0]};
   }
@@ -101,8 +108,36 @@
       store:document.createDocumentFragment(),
       hasMessages:false,
       runId:null,
-      trace:null
+      trace:null,
+      createdAt:Date.now()
     };
+  }
+
+  function restoreSessions(mode){
+    try{
+      const raw=localStorage.getItem(SESSION_STORAGE_KEY);
+      if(!raw)return null;
+      const all=JSON.parse(raw);
+      const list=all[mode];
+      if(!Array.isArray(list)||!list.length)return null;
+      return list.slice(-MAX_SESSIONS_PER_AGENT).map(s=>Object.assign(makeSession(mode),{
+        id:s.id,title:s.title||defaultSessionTitle(mode),hasMessages:!!s.hasMessages,runId:s.runId||null
+      }));
+    }catch(e){
+      return null;
+    }
+  }
+
+  function persistSessions(){
+    try{
+      const data={};
+      for(const mode of Object.keys(ST.sessionsByMode)){
+        data[mode]=ST.sessionsByMode[mode].items.map(s=>({
+          id:s.id,title:s.title,hasMessages:s.hasMessages,runId:s.runId
+        }));
+      }
+      localStorage.setItem(SESSION_STORAGE_KEY,JSON.stringify(data));
+    }catch(e){/* 存储失败不影响使用 */}
   }
 
   function activeSession(){
@@ -229,6 +264,7 @@
     headSkill.textContent="";
     headRunId.textContent="";
     sendBtn.disabled=false;
+    persistSessions();
     updateSessionBadge();
     renderCurrentTrace();
     input.value="";
@@ -329,6 +365,7 @@
     if(s&&!s.hasMessages){
       s.hasMessages=true;
       s.title=createSessionTitle(value);
+      persistSessions();
       updateSessionBadge();
     }
     addUserMsg(value);
@@ -1365,11 +1402,13 @@
     // 1. 先保存当前会话的消息到它的 store
     const prev=activeSession();
     while(messages.firstChild)prev.store.appendChild(messages.firstChild);
-    // 2. 新建会话并加入当前 mode 的列表
+    // 2. 新建会话并加入当前 mode 的列表（上限 20 条，超出清理最旧）
     const list=ST.sessionsByMode[ST.mode];
     const s=makeSession(ST.mode);
     list.items.push(s);
+    while(list.items.length>MAX_SESSIONS_PER_AGENT)list.items.shift();
     list.activeId=s.id;
+    persistSessions();
     ST.sending=false;
     ST.currentBubble=null;
     ST.streamText="";
