@@ -51,7 +51,7 @@ public class ChatController {
         // 2. 单用户工作站始终使用服务端确定的用户 ID，客户端不得自行声明用户 ID。
         return orchestrator.handle(
                 singleUserContext.userId(),
-                normalized.mode().scopedSessionId(normalized.sessionId()),
+                resolveBackendSessionId(normalized.mode(), normalized.sessionId()),
                 normalized.mode(),
                 normalized.message(),
                 normalized.instrument());
@@ -78,5 +78,13 @@ public class ChatController {
             instrument = null;
         }
         return new ChatStreamRequest(sessionId, mode, message, instrument);
+    }
+
+    /**
+     * 已从会话目录恢复的后端 ID 直接复用，首次由浏览器生成的原始 ID 才进行模式隔离转换。
+     */
+    private String resolveBackendSessionId(ChatMode mode, String sessionId) {
+        String prefix = mode.value() + "_";
+        return sessionId.startsWith(prefix) ? sessionId : mode.scopedSessionId(sessionId);
     }
 }

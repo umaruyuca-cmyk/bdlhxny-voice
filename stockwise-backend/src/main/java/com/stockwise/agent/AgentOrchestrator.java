@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stockwise.dto.GuardrailResult;
 import com.stockwise.dto.IngestResult;
 import com.stockwise.dto.AgentSkillResults;
+import com.stockwise.dto.AgentRunReplay;
 import com.stockwise.dto.ChatMode;
 import com.stockwise.dto.ChatInstrument;
 import com.stockwise.agent.routing.BusinessRoute;
@@ -18,6 +19,7 @@ import com.stockwise.memory.ConversationMessage;
 import com.stockwise.memory.SessionState;
 import com.stockwise.memory.SessionStateConflictException;
 import com.stockwise.service.AgentRunService;
+import com.stockwise.service.ConversationSessionService;
 import com.stockwise.service.ExplicitAnalysisExecutor;
 import com.stockwise.service.GuardrailService;
 import com.stockwise.service.GuardedOutputService;
@@ -26,6 +28,7 @@ import com.stockwise.service.KnowledgeExtractor;
 import com.stockwise.skill.KnowledgeCandidate;
 import com.stockwise.skill.SkillDefinition;
 import com.stockwise.skill.SkillRegistry;
+import com.stockwise.entity.AgentStep;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -65,6 +68,7 @@ public class AgentOrchestrator {
     private final AgentContextBuilder agentContextBuilder;
     private final UserReplyClassifier userReplyClassifier;
     private final AgentRunService agentRunService;
+    private final ConversationSessionService conversationSessionService;
     private final ObjectMapper mapper;
 
     @Value("${stockwise.ai.chat-provider:deepseek}")
@@ -89,6 +93,7 @@ public class AgentOrchestrator {
                              AgentContextBuilder agentContextBuilder,
                              UserReplyClassifier userReplyClassifier,
                              AgentRunService agentRunService,
+                             ConversationSessionService conversationSessionService,
                              ObjectMapper mapper,
                              @Qualifier("agentFlowExecutor") ExecutorService executor) {
         this.requestRouter = requestRouter;
@@ -102,6 +107,7 @@ public class AgentOrchestrator {
         this.agentContextBuilder = agentContextBuilder;
         this.userReplyClassifier = userReplyClassifier;
         this.agentRunService = agentRunService;
+        this.conversationSessionService = conversationSessionService;
         this.mapper = mapper;
         this.executor = executor;
     }
@@ -352,6 +358,7 @@ public class AgentOrchestrator {
         // 1. 先返回稳定 Run ID，前端可在推理期间关联日志和后续回放
         sendEvent(emitter, "agent_run", Map.of(
                 "runId", runContext.runId().toString(),
+                "sessionId", state.getSessionId(),
                 "route", decision.businessRoute().name(),
                 "internalRoute", decision.route().name(),
                 "mode", state.getChatMode() == null ? "legacy" : state.getChatMode().value()));
@@ -359,6 +366,7 @@ public class AgentOrchestrator {
             RouteExecutionPolicy executionPolicy = routePolicyRegistry.get(decision.route());
             agentRunService.recordRouteDecision(runContext, decision,
                     executionPolicy.allowedSkillCommands(), executionPolicy.webSearchRequired());
+            sendResearchTrace(emitter, runContext, decision, "running", "ROUTE_DECISION");
             if (decision.businessRoute() == BusinessRoute.TOOL_AGENT) {
                 sendStatus(emitter, "searching_web", null, skill.name());
             }
@@ -376,6 +384,7 @@ public class AgentOrchestrator {
             boolean paid = "PAID".equals(execution.modelTier());
             agentRunService.recordModelGate(runContext, paid, execution.gateReason());
             agentRunService.recordModelCall(runContext, execution.modelTier(), decision.route().name());
+            sendResearchTrace(emitter, runContext, decision, "running", "MODEL_CALL");
             state.setGateReason(execution.gateReason());
             guardedOutputService.guard(execution.content())
                     .subscribe(token -> {
@@ -409,6 +418,7 @@ public class AgentOrchestrator {
                             if (!outputCheck.passed()) {
                                 throw new OutputGuardrailException(outputCheck.reason());
                             }
+                            saveConversationSnapshotSafely(state);
                             // 6. 完成本轮后回到可继续输入状态，反馈和知识沉淀不再阻塞主对话
                             state.setCurrentStep("idle");
                             memoryRouter.saveWorking(state);
@@ -444,6 +454,11 @@ public class AgentOrchestrator {
                                     ? "NEED_CLARIFICATION"
                                     : "COMPLETED");
                             done.put("runId", runContext.runId().toString());
+                            done.put("sessionId", state.getSessionId());
+                            Map<String, Object> researchTrace = researchTrace(
+                                    runContext, decision, "completed", "FINAL_ANSWER");
+                            done.put("researchTrace", researchTrace);
+                            sendEvent(emitter, "research_trace", researchTrace);
                             sendEvent(emitter, "done", done);
                             emitter.complete();
                         } catch (Exception error) {
@@ -535,6 +550,128 @@ public class AgentOrchestrator {
     }
 
     /**
+     * 将审计步骤投影为面向用户的研究路径，供 SSE 实时展示而不暴露原始审计载荷。
+     */
+    private void sendResearchTrace(SseEmitter emitter,
+                                   AgentRunContext context,
+                                   RouteDecision decision,
+                                   String status,
+                                   String currentStage) {
+        sendEvent(emitter, "research_trace", researchTrace(context, decision, status, currentStage));
+    }
+
+    /**
+     * 复用已持久化的运行步骤生成统一路径，确保实时展示与回放结果一致。
+     */
+    private Map<String, Object> researchTrace(AgentRunContext context,
+                                              RouteDecision decision,
+                                              String status,
+                                              String currentStage) {
+        AgentRunReplay replay = agentRunService.replay(context.runId(), context.userId());
+        List<Map<String, Object>> steps = replay.steps().stream()
+                .filter(step -> isTraceStep(step.getStepType()))
+                .map(this::traceStep)
+                .toList();
+        Map<String, Object> trace = new LinkedHashMap<>();
+        trace.put("runId", context.runId().toString());
+        trace.put("route", decision.businessRoute().name());
+        trace.put("status", status);
+        trace.put("currentStage", currentStage);
+        trace.put("steps", steps);
+        return trace;
+    }
+
+    private boolean isTraceStep(String type) {
+        return List.of("ROUTE_DECISION", "REACT_DECISION", "TOOL_CALL", "TOOL_OBSERVATION",
+                        "REACT_TERMINATION", "MODEL_GATE", "MODEL_CALL", "FINAL_ANSWER",
+                        "POLICY_REJECTION", "ERROR")
+                .contains(type);
+    }
+
+    private Map<String, Object> traceStep(AgentStep step) {
+        Map<String, Object> payload = step.getPayload() == null ? Map.of() : step.getPayload();
+        String type = step.getStepType();
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("type", type);
+        view.put("title", traceTitle(type));
+        view.put("status", traceStatus(type, payload));
+        view.put("detail", traceDetail(step, payload));
+        view.put("technical", traceTechnical(step, payload));
+        return view;
+    }
+
+    private String traceTitle(String type) {
+        return Map.of(
+                "ROUTE_DECISION", "路由", "REACT_DECISION", "规划", "TOOL_CALL", "工具",
+                "TOOL_OBSERVATION", "结果", "REACT_TERMINATION", "收束", "MODEL_GATE", "模型门禁",
+                "MODEL_CALL", "生成", "FINAL_ANSWER", "完成", "POLICY_REJECTION", "策略拦截",
+                "ERROR", "执行错误").getOrDefault(type, type);
+    }
+
+    private String traceStatus(String type, Map<String, Object> payload) {
+        if ("POLICY_REJECTION".equals(type) || "ERROR".equals(type)
+                || ("MODEL_GATE".equals(type) && Boolean.FALSE.equals(payload.get("allowed")))) {
+            return "blocked";
+        }
+        return "done";
+    }
+
+    private String traceDetail(AgentStep step, Map<String, Object> payload) {
+        return switch (step.getStepType()) {
+            case "ROUTE_DECISION" -> "请求已映射到「" + routeDisplay(value(payload, "route", step.getName())) + "」执行路径";
+            case "REACT_DECISION" -> "ReAct 第 " + value(payload, "round", "1")
+                    + " 轮：" + value(payload, "reasoningSummary", "选择下一步工具 Action");
+            case "TOOL_CALL" -> "正在调用 " + toolDisplay(step.getName()) + " 获取研究数据";
+            case "TOOL_OBSERVATION" -> "工具已返回结构化结果" + durationSuffix(payload);
+            case "REACT_TERMINATION" -> "ReAct 已获得足够信息，结束工具调用";
+            case "MODEL_GATE" -> Boolean.FALSE.equals(payload.get("allowed"))
+                    ? "数据或规则未通过，停止生成方向性结论"
+                    : "数据质量与规则校验已通过，允许生成结论";
+            case "MODEL_CALL" -> "正在调用回答模型生成解释性结论";
+            case "FINAL_ANSWER" -> "已生成最终回答与分析看板";
+            default -> step.getSummary();
+        };
+    }
+
+    private String traceTechnical(AgentStep step, Map<String, Object> payload) {
+        return switch (step.getStepType()) {
+            case "ROUTE_DECISION" -> "Route · " + value(payload, "route", step.getName());
+            case "REACT_DECISION" -> "Action · " + value(payload, "action", step.getName());
+            case "TOOL_CALL" -> "Tool · " + step.getName();
+            case "TOOL_OBSERVATION" -> "Observation · " + step.getName();
+            case "REACT_TERMINATION" -> "Termination · " + value(payload, "reason", step.getName());
+            case "MODEL_GATE" -> "Gate · " + value(payload, "reasonCode", "passed");
+            case "MODEL_CALL" -> "Model · " + value(payload, "modelTier", step.getName());
+            case "FINAL_ANSWER" -> "FINAL_ANSWER";
+            default -> step.getName();
+        };
+    }
+
+    private String durationSuffix(Map<String, Object> payload) {
+        Object duration = payload.get("durationMs");
+        return duration == null ? "" : " · 耗时 " + duration + "ms";
+    }
+
+    private String value(Map<String, Object> payload, String key, String fallback) {
+        Object value = payload.get(key);
+        return value == null || value.toString().isBlank() ? fallback : value.toString();
+    }
+
+    private String routeDisplay(String route) {
+        return Map.of("STOCK_DECISION", "标的决策", "MARKET_FACT", "行情与指标",
+                "EXTERNAL_RESEARCH", "联网研究", "KNOWLEDGE_QA", "投资知识",
+                "GENERAL_CHAT", "普通问答", "NEED_CLARIFICATION", "需要补充")
+                .getOrDefault(route, route);
+    }
+
+    private String toolDisplay(String tool) {
+        return Map.of("stock", "StockSkill · 标的分析", "sector", "StockSkill · 板块分析",
+                "quant", "StockSkill · 量化分析", "portfolio", "StockSkill · 组合分析",
+                "webSearch", "联网检索", "searchInvestmentKnowledge", "知识库检索")
+                .getOrDefault(tool, tool);
+    }
+
+    /**
      * 将策略层级转换为前端可理解的实际回答来源，避免把 LOCAL 误解为本地模型。
      */
     private Map<String, Object> modelMetadata(String modelTier) {
@@ -569,6 +706,29 @@ public class AgentOrchestrator {
             return;
         }
         state.getHistory().add(ConversationMessage.user(content));
+    }
+
+    /**
+     * 将当前轮完整消息写入会话目录和可恢复快照，持久化失败只记录告警，不回滚已经完成的回答。
+     */
+    private void saveConversationSnapshotSafely(SessionState state) {
+        try {
+            String title = state.getHistory() == null
+                    ? "新的研究"
+                    : state.getHistory().stream()
+                    .filter(message -> "user".equals(message.role()))
+                    .map(ConversationMessage::content)
+                    .findFirst()
+                    .orElse("新的研究");
+            conversationSessionService.saveTurn(
+                    state.getUserId(),
+                    state.getSessionId(),
+                    state.getChatMode(),
+                    title,
+                    state.getHistory());
+        } catch (RuntimeException error) {
+            log.warn("会话快照保存失败，sessionId={}: {}", state.getSessionId(), error.getMessage());
+        }
     }
 
     /**

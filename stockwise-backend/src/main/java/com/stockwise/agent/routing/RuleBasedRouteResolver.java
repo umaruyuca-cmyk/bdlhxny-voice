@@ -18,12 +18,13 @@ public class RuleBasedRouteResolver {
             "^(你好|您好|嗨|hi|hello|在吗|谢谢|感谢|帮助|你能做什么)[！!。.\\s]*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern MARKET_FACT_PATTERN = Pattern.compile(
-            "(现在多少钱|当前价格|当前股价|现价|最新价|涨跌幅|日\\s*K|K线|k线|"
+            "(行情|今日行情|今天.*行情|今日.*表现|今天.*表现|现在多少钱|当前价格|当前股价|现价|最新价|涨跌幅|日\\s*K|K线|k线|"
                     + "MA5|MA10|MA20|MA60|MACD|RSI|KDJ|均线|成交量|量比|技术指标)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern STOCK_DECISION_PATTERN = Pattern.compile(
             "(能买吗|能不能买|适合买|买入|卖出|加仓|补仓|减仓|清仓|止损|止盈|"
-                    + "持有吗|仓位建议|还能拿|要不要卖|走势分析)");
+                    + "持有吗|仓位建议|还能拿|要不要卖|走势分析|分析一下|分析现在|现在怎么样|"
+                    + "表现怎么样|走势怎么样)");
     private static final Pattern PORTFOLIO_PATTERN = Pattern.compile(
             "(我的持仓|持仓组合|整体持仓|组合风险|整体风险|整体仓位|仓位怎么调|"
                     + "持仓怎么调|调仓|月度资金分配)");

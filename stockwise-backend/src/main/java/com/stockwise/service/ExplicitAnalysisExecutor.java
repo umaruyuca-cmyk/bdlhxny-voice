@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stockwise.agent.AgentRunContext;
 import com.stockwise.agent.react.BoundedReactLoop;
+import com.stockwise.agent.react.LangChain4jGeneralReactAgent;
 import com.stockwise.agent.react.ReactLoopResult;
 import com.stockwise.agent.react.ReactObservation;
 import com.stockwise.agent.react.ReactTerminationReason;
@@ -50,6 +51,15 @@ public class ExplicitAnalysisExecutor {
 
     private static final Pattern SYMBOL_PATTERN = Pattern.compile("(?<!\\d)(\\d{6})(?!\\d)");
     private static final int MAX_MODEL_EVIDENCE_LENGTH = 60_000;
+    private static final String STOCK_RESEARCH_OUTPUT_CONTRACT = """
+            这是 StockSkill 已校验的唯一事实来源。请生成面向用户的标准研究报告，默认约 600～1000 个中文字符。
+            必须按以下顺序输出：
+            1. ## 核心判断：用“买入 / 持有 / 观望 / 减仓 / 卖出”之一开头，并说明判断适用的时间尺度。
+            2. ## 判断依据：至少引用趋势与均线、动量（MACD 或 RSI）、成交/资金、关键价位中的三类实际字段和数值；每条先陈述事实，再说明由此得出的推理。
+            3. ## 下一步怎么观察：给出最多三个可验证的条件，例如站上、跌破、放量或趋势修复；没有充分数据时明确写“数据未提供”。
+            4. ## 风险与边界：说明什么情况会使当前判断失效，并解释超卖、评分等指标不能单独作为买卖依据。
+            不复述整段 JSON，不编造未提供的新闻、资金流或支撑位；将 StockSkill 的事实与模型推理明确区分。
+            """;
 
     private final LocalAnswerClient localAnswerClient;
     private final PaidAnalysisClient paidAnalysisClient;
@@ -67,6 +77,7 @@ public class ExplicitAnalysisExecutor {
     private final SectorFactResponder sectorFactResponder;
     private final ExternalAttentionAnalyzer externalAttentionAnalyzer;
     private final BoundedReactLoop reactLoop;
+    private final LangChain4jGeneralReactAgent langChain4jGeneralReactAgent;
     private final MemoryRouter memoryRouter;
     private final ObjectMapper objectMapper;
 
@@ -86,6 +97,7 @@ public class ExplicitAnalysisExecutor {
                                     SectorFactResponder sectorFactResponder,
                                     ExternalAttentionAnalyzer externalAttentionAnalyzer,
                                     BoundedReactLoop reactLoop,
+                                    LangChain4jGeneralReactAgent langChain4jGeneralReactAgent,
                                     MemoryRouter memoryRouter,
                                     ObjectMapper objectMapper) {
         this.localAnswerClient = localAnswerClient;
@@ -104,6 +116,7 @@ public class ExplicitAnalysisExecutor {
         this.sectorFactResponder = sectorFactResponder;
         this.externalAttentionAnalyzer = externalAttentionAnalyzer;
         this.reactLoop = reactLoop;
+        this.langChain4jGeneralReactAgent = langChain4jGeneralReactAgent;
         this.memoryRouter = memoryRouter;
         this.objectMapper = objectMapper;
     }
@@ -118,11 +131,8 @@ public class ExplicitAnalysisExecutor {
                                    AgentRunContext runContext) {
         ExecutionPlan plan = executionPlanFactory.create(decision);
         return switch (decision.route()) {
-            case GENERAL_CHAT -> local(
-                    skill.systemPrompt(), contextualPrompt, "LOCAL", "ROUTE_LOCAL_ONLY",
-                    ReactTerminationReason.FINAL_ANSWER);
-            case KNOWLEDGE_QA -> knowledge(skill, contextualPrompt, rawQuestion, decision, runContext);
-            case EXTERNAL_RESEARCH -> external(skill, contextualPrompt, rawQuestion, decision, runContext);
+            case GENERAL_CHAT, KNOWLEDGE_QA, EXTERNAL_RESEARCH -> langChain4jGeneralReactAgent.execute(
+                    decision, skill, contextualPrompt, rawQuestion, runContext, localAnswerClient::streamChat);
             case MARKET_FACT -> marketFact(skill, rawQuestion, decision, runContext);
             case SECTOR_FACT -> sectorFact(skill, decision, runContext);
             case SECTOR_ATTENTION -> sectorAttention(
@@ -281,7 +291,7 @@ public class ExplicitAnalysisExecutor {
         if (!permit.allowed()) {
             return blocked(permit, loop);
         }
-        return paid(skill.systemPrompt(), prompt + "\n\n已校验行情数据：\n" + truncate(stockJson), permit, loop);
+        return paid(skill.systemPrompt(), stockResearchPrompt(prompt, stockJson), permit, loop);
     }
 
     private ExecutionOutput portfolioDecision(SkillDefinition skill,
@@ -677,6 +687,16 @@ public class ExplicitAnalysisExecutor {
             return value == null ? "" : value;
         }
         return value.substring(0, MAX_MODEL_EVIDENCE_LENGTH) + "…";
+    }
+
+    /**
+     * 为单标的分析补充统一的研究输出协议，确保模型解释完整的 Skill 证据而非压缩成一句摘要。
+     */
+    private String stockResearchPrompt(String contextualPrompt, String stockJson) {
+        return contextualPrompt
+                + "\n\n" + STOCK_RESEARCH_OUTPUT_CONTRACT
+                + "\n\n已校验 StockSkill 数据：\n"
+                + truncate(stockJson);
     }
 
     /**

@@ -23,4 +23,5 @@ public interface ConversationHistoryMapper extends BaseMapper<ConversationHistor
     List<ConversationHistory> selectRecent(
             @Param("userId") Long userId,
             @Param("limit") int limit);
+
 }

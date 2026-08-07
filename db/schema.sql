@@ -103,6 +103,39 @@ COMMENT ON COLUMN public.conversation_history.messages IS '完整对话消息JSO
 COMMENT ON COLUMN public.conversation_history.summary IS 'LLM压缩后的对话摘要（超5轮时生成）';
 
 -- ============================================================
+-- 5.1 会话目录（前端左侧会话列表的持久化真相源）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.conversation_sessions (
+    session_id    VARCHAR(100) PRIMARY KEY,
+    user_id       BIGINT NOT NULL,
+    mode          VARCHAR(32) NOT NULL,
+    title         VARCHAR(200) NOT NULL,
+    message_count INT NOT NULL DEFAULT 0,
+    status        VARCHAR(24) NOT NULL DEFAULT 'ACTIVE',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cs_user_updated
+    ON public.conversation_sessions(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cs_user_mode_updated
+    ON public.conversation_sessions(user_id, mode, updated_at DESC);
+
+COMMENT ON TABLE public.conversation_sessions IS 'Agent 会话目录，保存标题、模式和最近更新时间，不替代完整消息历史';
+COMMENT ON COLUMN public.conversation_sessions.session_id IS '与 Redis 工作记忆和 conversation_history 一致的后端会话 ID';
+
+CREATE TABLE IF NOT EXISTS public.conversation_session_snapshots (
+    session_id    VARCHAR(100) PRIMARY KEY
+                  REFERENCES public.conversation_sessions(session_id) ON DELETE CASCADE,
+    user_id       BIGINT NOT NULL,
+    messages      JSONB NOT NULL,
+    token_count   INT NOT NULL DEFAULT 0,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.conversation_session_snapshots IS '每个活动会话的最新完整消息快照，不参与长期情景向量归档';
+
+-- ============================================================
 -- 5.0 会话情景向量（LangChain4j 长期记忆检索层）
 -- ============================================================
 -- conversation_history 继续保存完整会话并作为真相源；本表只保存可重建的摘要向量索引。

@@ -118,6 +118,11 @@ test("工作站空白态布局与运行追踪行为完整", async () => {
   assert.match(script, /function openSkillResultModal/);
   assert.match(script, /skillResultAvailable/);
   assert.match(script, /agent-runs\/"\+encodeURIComponent\(runId\)\+"\/skill-results/);
+  assert.match(script, /api\/v1\/conversations\?mode=/);
+  assert.match(script, /api\/v1\/conversations\/"\+encodeURIComponent\(session\.id\)/);
+  assert.match(script, /conversationId/);
+  assert.match(script, /function adoptServerSessionId/);
+  assert.doesNotMatch(script, /await simulateReply\(value,bubble,phase\)/);
   assert.match(html, /id="modalSkillResult"/);
   assert.match(css, /\.skill-dashboard\{/);
   assert.match(script, /function defaultSessionTitle/);

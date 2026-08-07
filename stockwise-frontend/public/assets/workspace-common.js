@@ -96,7 +96,7 @@
     if(restored&&restored.length){
       return {activeId:restored[restored.length-1].id, items:restored};
     }
-    // 无历史会话：进入空白新建态，不产生任何 session 条目（发首条消息时才创建）
+    // 无历史会话：等待用户发起第一轮研究，避免在后端目录生成空会话。
     return {activeId:null, items:[]};
   }
 
@@ -106,7 +106,9 @@
       id:genUUID(),
       title:defaultSessionTitle(m),
       store:document.createDocumentFragment(),
+      messages:[],
       hasMessages:false,
+      draft:true,
       runId:null,
       trace:null,
       createdAt:Date.now()
@@ -121,7 +123,8 @@
       const list=all[mode];
       if(!Array.isArray(list)||!list.length)return null;
       return list.slice(-MAX_SESSIONS_PER_AGENT).map(s=>Object.assign(makeSession(mode),{
-        id:s.id,title:s.title||defaultSessionTitle(mode),hasMessages:!!s.hasMessages,runId:s.runId||null
+        id:s.id,title:s.title||defaultSessionTitle(mode),hasMessages:!!s.hasMessages,
+        draft:false,runId:s.runId||null,updatedAt:s.updatedAt||Date.now()
       }));
     }catch(e){
       return null;
@@ -132,8 +135,8 @@
     try{
       const data={};
       for(const mode of Object.keys(ST.sessionsByMode)){
-        data[mode]=ST.sessionsByMode[mode].items.map(s=>({
-          id:s.id,title:s.title,hasMessages:s.hasMessages,runId:s.runId
+        data[mode]=ST.sessionsByMode[mode].items.filter(s=>!s.draft).map(s=>({
+          id:s.id,title:s.title,hasMessages:s.hasMessages,runId:s.runId,updatedAt:s.updatedAt||Date.now()
         }));
       }
       localStorage.setItem(SESSION_STORAGE_KEY,JSON.stringify(data));
@@ -226,7 +229,7 @@
     const listEl=document.getElementById("sessionList");
     if(!listEl)return;
     const list=ST.sessionsByMode[ST.mode];
-    listEl.innerHTML=list.items.map(s=>{
+    listEl.innerHTML=list.items.filter(s=>!s.draft).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(s=>{
       const active=s.id===list.activeId?" active":"";
       const title=s.hasMessages?s.title:"未命名研究";
       return '<div class="session-item'+active+'" data-session="'+s.id+'" role="button" tabindex="0">'+
@@ -251,7 +254,9 @@
     ST.currentBubble=null;
     ST.streamText="";
     messages.replaceChildren();
-    if(target.store.childNodes.length){
+    if(target.messages&&target.messages.length){
+      renderSessionMessages(target);
+    }else if(target.store.childNodes.length){
       messages.appendChild(target.store);
     }else{
       const cfg=AGENT_MAP[ST.mode];
@@ -268,18 +273,128 @@
     persistSessions();
     updateSessionBadge();
     renderCurrentTrace();
+    setConversationUrl(target.id);
     input.value="";
     input.focus();
+    void loadSessionDetail(target);
   }
 
   function updateSessionBadge(){
     const s=activeSession();
-    const title=s? (s.title||defaultSessionTitle(ST.mode)) : "新会话";
+    const title=s&&!s.draft? (s.title||defaultSessionTitle(ST.mode)) : "新会话";
     const sessionName=document.getElementById("sessionName");
     if(sessionName)sessionName.textContent=title;
     const badge=document.getElementById("sessionBadge");
     if(badge){badge.textContent=title;badge.title=title;}
     renderSessionList();
+  }
+
+  function setConversationUrl(sessionId){
+    const nextUrl=new URL(location.href);
+    if(sessionId)nextUrl.searchParams.set("conversationId",sessionId);
+    else nextUrl.searchParams.delete("conversationId");
+    history.replaceState(null,"",nextUrl.toString());
+  }
+
+  function adoptServerSessionId(serverSessionId){
+    const session=activeSession();
+    if(!session||!serverSessionId||session.id===serverSessionId)return;
+    const list=ST.sessionsByMode[ST.mode];
+    const duplicate=list.items.find(item=>item!==session&&item.id===serverSessionId);
+    if(duplicate){
+      duplicate.messages=session.messages||duplicate.messages||[];
+      duplicate.hasMessages=session.hasMessages;
+      duplicate.title=session.title;
+      duplicate.draft=false;
+      list.items=list.items.filter(item=>item!==session);
+      list.activeId=duplicate.id;
+    }else{
+      session.id=serverSessionId;
+      session.draft=false;
+    }
+    persistSessions();
+    updateSessionBadge();
+    setConversationUrl(list.activeId);
+  }
+
+  function appendStoredMessage(message){
+    if(!message||!message.content)return;
+    if(message.role==="assistant"){
+      const row=document.createElement("div");row.className="msg";
+      row.innerHTML='<div class="avatar">AI</div><div class="bubble"></div>';
+      row.querySelector(".bubble").textContent=message.content;
+      messages.appendChild(row);
+      return;
+    }
+    addUserMsg(message.content);
+  }
+
+  function renderSessionMessages(session){
+    messages.replaceChildren();
+    const history=Array.isArray(session?.messages)?session.messages:[];
+    history.forEach(appendStoredMessage);
+    if(!history.length){
+      const cfg=AGENT_MAP[ST.mode];
+      renderWelcome(cfg?.needsInstrument&&ST.currentInstrument
+        ?"继续分析 "+ST.currentInstrument.symbol
+        :undefined,
+        cfg?.needsInstrument&&ST.currentInstrument
+          ?"可继续针对当前标的提问，或先选择其他标的。"
+          :cfg?.newSessionDesc);
+    }
+    updateIdleState();
+    scrollMsgs();
+  }
+
+  async function loadSessionDetail(session){
+    if(!session||session.draft)return;
+    try{
+      const response=await fetch("/api/v1/conversations/"+encodeURIComponent(session.id));
+      if(!response.ok)throw new Error("HTTP "+response.status);
+      const detail=await response.json();
+      const serverSession=detail.session||{};
+      session.id=serverSession.sessionId||session.id;
+      session.title=serverSession.title||session.title;
+      session.hasMessages=(serverSession.messageCount||0)>0;
+      session.messages=Array.isArray(detail.messages)?detail.messages:[];
+      session.draft=false;
+      session.updatedAt=serverSession.updatedAt?Date.parse(serverSession.updatedAt):Date.now();
+      persistSessions();
+      updateSessionBadge();
+      renderSessionMessages(session);
+    }catch(error){
+      toast("会话内容暂时无法加载");
+    }
+  }
+
+  async function loadConversations(mode){
+    const list=ST.sessionsByMode[mode];
+    const activeDraft=list.items.find(session=>session.id===list.activeId&&session.draft);
+    try{
+      const response=await fetch("/api/v1/conversations?mode="+encodeURIComponent(mode)+"&limit="+MAX_SESSIONS_PER_AGENT);
+      if(!response.ok)throw new Error("HTTP "+response.status);
+      const remote=await response.json();
+      const drafts=list.items.filter(session=>session.draft);
+      list.items=(Array.isArray(remote)?remote:[]).map(item=>({
+        id:item.sessionId,title:item.title||defaultSessionTitle(mode),store:document.createDocumentFragment(),
+        messages:[],hasMessages:(item.messageCount||0)>0,draft:false,runId:null,trace:null,
+        updatedAt:item.updatedAt?Date.parse(item.updatedAt):Date.now()
+      })).concat(drafts);
+      const requested=new URLSearchParams(location.search).get("conversationId");
+      if(activeDraft&&list.items.some(session=>session.id===activeDraft.id))list.activeId=activeDraft.id;
+      else if(requested&&list.items.some(session=>session.id===requested))list.activeId=requested;
+      else if(!requested&&list.items.length)list.activeId=list.items[0].id;
+      else if(list.activeId&&!list.items.some(session=>session.id===list.activeId))list.activeId=null;
+      persistSessions();
+      updateSessionBadge();
+      const current=activeSession();
+      if(current&&!current.draft){
+        setConversationUrl(current.id);
+        await loadSessionDetail(current);
+      }
+    }catch(error){
+      // 后端暂不可用时保留本地目录，消息详情仍以当前页面缓存为准。
+    }
   }
 
   function scrollMsgs(){
@@ -362,7 +477,7 @@
   async function send(text){
     const value=(text||input.value).trim();if(!value||ST.sending)return;
     ST.sending=true;input.value="";sendBtn.disabled=true;
-    // 空白新建态下发首条消息：真正创建会话并入列（上限 20 条）
+    // 草稿会话发出首条消息后进入正式会话目录（上限 20 条）。
     let s=activeSession();
     if(!s){
       const list=ST.sessionsByMode[ST.mode];
@@ -371,12 +486,17 @@
       while(list.items.length>MAX_SESSIONS_PER_AGENT)list.items.shift();
       list.activeId=s.id;
     }
+    s.draft=false;
     if(!s.hasMessages){
       s.hasMessages=true;
       s.title=createSessionTitle(value);
-      persistSessions();
-      updateSessionBadge();
     }
+    s.messages=s.messages||[];
+    s.messages.push({role:"user",content:value});
+    s.updatedAt=Date.now();
+    persistSessions();
+    updateSessionBadge();
+    setConversationUrl(s.id);
     addUserMsg(value);
 
     const bubble=createAgentBubble();
@@ -407,8 +527,9 @@
       await consumeSse(response,data=>handleStreamEvent(data,bubble,phase));
     }catch(error){
       if(error.name!=="AbortError"){
-        // 后端不可用：走本地模拟流程，保证页面可演示
-        await simulateReply(value,bubble,phase);
+        bubble.textContent="暂时无法连接研究服务，请稍后重试。";
+        bubble.style.color="#e5484d";
+        finalizeBubble(bubble);
       }
     }finally{
       ST.activeController=null;
@@ -418,7 +539,7 @@
     }
   }
 
-  /* 本地模拟：后端未接入时的完整对话演示（对接后端后替换为真实 SSE） */
+  /* 保留原型演示函数供离线页面复用，正式发送流程不再自动降级到模拟回答。 */
   async function simulateReply(question,bubble,phase){
     const cfg=AGENT_MAP[ST.mode];
     const instrumentText=ST.mode==="stock"&&ST.currentInstrument?ST.currentInstrument.symbol+" "+(ST.currentInstrument.name||""):"";
@@ -649,6 +770,7 @@
       }
     }else if(type==="agent_run"){
       headRunId.textContent="Run: "+(data.runId||"").slice(0,8);
+      adoptServerSessionId(data.sessionId);
       if(data.runId){
         bubble.dataset.runId=data.runId;
         curS().runId=data.runId;
@@ -689,12 +811,20 @@
         scrollMsgs();
       }
     }else if(type==="done"){
+      adoptServerSessionId(data.sessionId);
       if(bubble.querySelector(".typing")){
         bubble.textContent="";
         if(data.status==="REFUSED")bubble.textContent="请求已被护栏拦截："+(data.reason||"");
         else bubble.textContent+="对话已完成。";
       }
       const inlineContract=normalizeSkillContract(data.skillResult)||parseSkillContract(ST.streamText);
+      const session=activeSession();
+      if(session&&ST.streamText){
+        session.messages=session.messages||[];
+        session.messages.push({role:"assistant",content:ST.streamText});
+        session.updatedAt=Date.now();
+        persistSessions();
+      }
       finalizeBubble(bubble);
       addAnswerMeta(bubble,data);
       if(inlineContract||data.skillResultAvailable){
@@ -1051,6 +1181,10 @@
     const cfg=AGENT_MAP[ST.mode];
     if(!cfg)return;
     messages.replaceChildren();
+    const idleTitle=document.getElementById("idleTitle");
+    const idleSub=document.getElementById("idleSub");
+    if(idleTitle)idleTitle.textContent=title||cfg.welcomeTitle;
+    if(idleSub)idleSub.textContent=description||cfg.welcomeDesc;
     updateIdleState();
   }
 
@@ -1099,6 +1233,7 @@
     renderQuickPrompts();
     updateSessionBadge();
     syncIdleChar();
+    void loadConversations(mode);
   }
 
   function renderQuickPrompts(){
@@ -1416,9 +1551,12 @@
     if(prev){
       while(messages.firstChild)prev.store.appendChild(messages.firstChild);
     }
-    // 2. 进入空白新建态：不新增 session 条目，发首条消息时才真正创建（对齐国内产品习惯）
+    // 2. 创建仅存在于当前页面的草稿会话，发首条消息后才写入后端目录
     const list=ST.sessionsByMode[ST.mode];
-    list.activeId=null;
+    list.items=list.items.filter(session=>!session.draft);
+    const draft=makeSession(ST.mode);
+    list.items.push(draft);
+    list.activeId=draft.id;
     persistSessions();
     ST.sending=false;
     ST.currentBubble=null;
@@ -1434,6 +1572,7 @@
     sendBtn.disabled=false;
     updateSessionBadge();
     renderCurrentTrace();
+    setConversationUrl(null);
     input.value="";
     input.focus();
     toast("已开始新的研究");

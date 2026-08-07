@@ -455,6 +455,7 @@ body[data-mode="stock"].idle .market-launch{display:block}
 .composer:hover{border-color:var(--line-active)}
 .composer:focus-within{border-color:var(--line-active);box-shadow:0 4px 12px #00000008, 0 5px 16px -4px #00000012}
 textarea{
+  display:block;width:100%;box-sizing:border-box;
   border:0;outline:0;resize:none;min-height:56px;max-height:200px;
   padding:0;color:var(--text);font:inherit;font-size:17px;line-height:28px;background:transparent;
 }
@@ -502,8 +503,20 @@ textarea::placeholder{color:var(--text-3)}
   display:flex;align-items:center;justify-content:space-between;
   border-bottom:.5px solid var(--line);
 }
-.runs-head strong{font-size:13px;font-weight:600}
+.runs-head strong{font-size:13px;font-weight:600}.runs-head small{display:block;margin-top:2px;color:var(--text-3);font-size:10px}
 .runs-body{flex:1;overflow:auto;padding:14px}
+.trace-progress{display:flex;align-items:flex-start;justify-content:space-between;gap:0;margin:2px 2px 18px}
+.trace-progress-item{position:relative;z-index:1;flex:1;min-width:0;text-align:center;color:var(--text-3);font-size:9px;line-height:1.3}
+.trace-progress-item::before{content:"";position:absolute;left:50%;right:-50%;top:9px;height:1px;background:var(--line);z-index:-1}.trace-progress-item:last-child::before{display:none}
+.trace-progress-dot{display:grid;place-items:center;width:18px;height:18px;margin:0 auto 5px;border:1px solid var(--line);border-radius:50%;background:var(--card);font-size:9px}
+.trace-progress-item.done{color:var(--primary)}.trace-progress-item.done .trace-progress-dot{border-color:var(--primary);background:var(--primary);color:#fff}.trace-progress-item.done::before{background:var(--primary)}
+.trace-progress-item.active{color:var(--primary);font-weight:600}.trace-progress-item.active .trace-progress-dot{border-color:var(--primary);background:var(--primary-soft);box-shadow:0 0 0 5px #e9efff;animation:trace-pulse 1.5s ease-in-out infinite}
+.trace-progress-item.blocked{color:#c97812}.trace-progress-item.blocked .trace-progress-dot{border-color:#e6a23c;background:#fff7e8;color:#b87812}
+@keyframes trace-pulse{50%{box-shadow:0 0 0 8px #e9efff}}
+.trace-list{display:flex;flex-direction:column}.trace-step{display:grid;grid-template-columns:28px 86px 1fr;column-gap:9px;padding:11px 0;border-bottom:.5px solid var(--line);font-size:12px}.trace-step:last-child{border-bottom:0}
+.trace-step-no{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:var(--bg);color:var(--text-3);font-size:10px;font-weight:600}.trace-step.done .trace-step-no{background:var(--primary-soft);color:var(--primary)}.trace-step.active .trace-step-no{background:var(--primary);color:#fff}.trace-step.blocked .trace-step-no{background:#fff7e8;color:#b87812}
+.trace-step-title{font-weight:650;color:var(--text);padding-top:3px}.trace-step-detail{min-width:0;color:var(--text-2);line-height:1.55}.trace-step-detail small{display:block;margin-top:3px;color:var(--text-3);font-size:10px}.trace-step-detail .trace-tech{display:inline-block;margin-top:4px;padding:1px 5px;border-radius:5px;background:var(--bg);color:var(--text-3);font-size:9px}
+.trace-data-link{display:inline-flex;margin-top:6px;border:0;background:transparent;padding:0;color:var(--primary);font:inherit;font-size:11px;cursor:pointer}
 .run-guide{
   margin-bottom:12px;padding:11px 12px;border:.5px solid var(--line);border-radius:var(--radius-md);
   background:var(--bg);color:var(--text-2);font-size:11px;line-height:1.65;

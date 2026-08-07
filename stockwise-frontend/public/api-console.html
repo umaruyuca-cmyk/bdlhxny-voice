@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>StockWise · API 联调台</title>
+<title>Grid Universe · API 联调台</title>
 <style>
   :root{--bg:#0b0d12;--card:rgba(255,255,255,.04);--border:rgba(255,255,255,.1);--text:#f4f6fb;--dim:#a3a8b8;--faint:#6b7180;--accent:#6e8bff;--green:#34d399;--red:#f87171}
   *{box-sizing:border-box}
@@ -28,8 +28,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>StockWise API 联调台
-    <small>前端 dev-server 会将 /api/* 代理到后端。用于对接前逐项验证接口契约。</small>
+  <h1>Grid Universe API 联调台 <span class="badge">开发工具</span>
+    <small>仅供开发人员验证 SSE、Agent Run 和 Skill 结果契约，不是普通用户功能。</small>
   </h1>
 
   <h2>页面联动入口</h2>
@@ -37,8 +37,8 @@
     <a href="/">首页</a>
     <a href="/agent?name=general">智能问答</a>
     <a href="/agent?name=stock">股市分析</a>
-    <a href="/stockwise-chat.html?mode=general">旧版聊天</a>
-    <a href="/stockwise-chat-soft.html?mode=stock">旧版聊天·柔版</a>
+    <a href="/skill-dashboard.html">Skill 目录</a>
+    <a href="/docs/skill">Skill 接入规范</a>
   </div>
 
   <h2>1 · 流式对话 SSE <span class="badge">POST /api/v1/chat/stream</span></h2>

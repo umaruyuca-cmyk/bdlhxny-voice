@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Skill 接入规范 · StockWise</title>
+<title>Skill 接入规范 · グリッドユニバース研究所</title>
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
 <div class="docs-top">
-  <a class="brand" href="/"><em>StockWise</em> 文档中心</a>
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
   <span class="crumb">DOCS / SKILL</span>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
@@ -23,22 +23,25 @@
     <ul>
       <li><a href="/docs/agents">Agent 与路由</a></li>
       <li><a href="/docs/skill" class="active">Skill 接入规范</a></li>
-      <li><a href="/docs/deployment">部署与联调</a></li>
     </ul>
-    <h4>工具</h4>
+    <h4>研究入口</h4>
     <ul>
       <li><a href="/agent">Agent 工作站</a></li>
       <li><a href="/skill-dashboard.html">Skill 生态</a></li>
-      <li><a href="/api-console.html">API 控制台</a></li>
     </ul>
   </nav>
   <main class="docs-main">
     <a class="back-link" href="/docs/">← 文档中心</a>
     <h1>Skill 接入规范</h1>
-    <p class="lead">面向开发者的 StockSkill 服务接入文档：服务关系、真实接口、请求响应、错误处理与安全部署。</p>
+    <p class="lead">当前平台内部使用的两个能力服务：Stock Skill 负责市场数据和分析，Web Search Skill 负责外部搜索证据。</p>
+
+    <div class="note"><strong>使用边界：</strong>Skill 由平台后端统一调用，前端和普通用户不直接访问 Skill 服务，也不需要管理 Skill 注册或服务 Token。</div>
+
+    <h2 id="stock-skill">Stock Skill · 市场分析</h2>
+    <p>平台的市场分析能力由 <strong>stock-wrapper</strong> 提供——一个独立部署的 Node.js HTTP 服务，内部调用 <strong>stock-analysis-skill</strong> 执行确定性的行情拉取、指标计算和回测。</p>
 
     <h2>1 · 30 秒快速理解</h2>
-    <p>StockWise 的分析能力由 <strong>stock-wrapper</strong> 提供——一个独立部署的 Node.js HTTP 服务，内部调用 <strong>stock-analysis-skill</strong> 执行确定性的行情拉取、指标计算和回测。Agent 或第三方程序通过 HTTP 调用它，得到一个统一的 JSON 信封。</p>
+    <p>Agent 或后端程序通过 HTTP 调用 Stock Skill，得到结构化 JSON；模型只负责解释这些数据，不负责替代 Skill 进行行情计算。</p>
     <div class="flow">调用方（Agent / 程序）
   → POST ${STOCK_WRAPPER_URL}/api/v1/stock/analyze
   → stock-wrapper → stock-analysis-skill → 行情数据源
@@ -70,7 +73,7 @@
       <li>Token 只能放在服务端环境变量或密钥管理系统，<strong>浏览器不能直接持有内部 Token</strong>；</li>
       <li>公共文档示例只使用 <code>${STOCK_WRAPPER_URL}</code>、<code>${STOCK_WRAPPER_TOKEN}</code> 占位符。</li>
     </ul>
-    <div class="warn"><strong>安全：</strong>浏览器端直接调用带内部认证的 Skill 服务是被禁止的。前端只访问 StockWise 后端，由后端在服务端发起 Skill 调用。</div>
+    <div class="warn"><strong>安全：</strong>浏览器端直接调用带内部认证的 Skill 服务是被禁止的。前端只访问平台后端，由后端在服务端发起 Skill 调用。</div>
 
     <h2>4 · 请求与返回格式</h2>
 
@@ -131,6 +134,16 @@
     <p>错误响应统一为：</p>
     <pre>{ "success": false, "requestId": "UUID", "error": { "code": "INVALID_SYMBOL", "message": "..." } }</pre>
 
+    <h2 id="web-search-skill">Web Search Skill · 结构化外部搜索</h2>
+    <p>Web Search Skill 通过独立的 <code>web-search-wrapper</code> 处理新闻、网页和舆情查询，向 Agent 返回固定的搜索结果结构。它与 Stock Skill 分工不同：Stock Skill 负责行情和确定性计算，Web Search Skill 负责外部证据。</p>
+    <table>
+      <tr><th>方法</th><th>路径</th><th>用途</th></tr>
+      <tr><td>POST</td><td><code>/api/search</code></td><td>批量执行结构化搜索任务</td></tr>
+      <tr><td>GET</td><td><code>/health</code></td><td>存活检查</td></tr>
+      <tr><td>GET</td><td><code>/ready</code></td><td>Provider 就绪检查</td></tr>
+    </table>
+    <p>服务端认证使用 <code>X-Agent-ID</code> 与 <code>X-Search-Token</code>。浏览器不得直接调用该服务，搜索结果需要经过 Agent 编排、来源整理和不确定性说明。</p>
+
     <h2>5 · 错误、超时和重试</h2>
     <table>
       <tr><th>状态</th><th>含义</th><th>处理</th></tr>
@@ -175,7 +188,7 @@ const { success, data } = await res.json();</pre>
     <h2>7 · 安全和部署</h2>
     <ul>
       <li>Skill 服务可以独立部署（Docker / Node），通过 <code>internalToken</code> 鉴权；</li>
-      <li>Agent（Java 后端）在服务端发起调用，前端只访问 StockWise 后端，不直接访问带内部认证的 Skill；</li>
+      <li>Agent（Java 后端）在服务端发起调用，前端只访问平台后端，不直接访问带内部认证的 Skill；</li>
       <li>Token 通过环境变量注入，日志必须脱敏，禁止打印 Token；</li>
       <li>提供 <code>/health</code> 与 <code>/ready</code> 健康检查，供编排系统探活；</li>
       <li>服务不监听公网管理端口，仅暴露业务接口与健康检查。</li>

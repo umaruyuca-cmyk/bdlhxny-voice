@@ -1571,8 +1571,8 @@
         </a>
         <ul class="nav-links" id="navLinks">
           <li><a href="/agent">工作站</a></li>
-          <li><a href="/docs/skill">Skills</a></li>
-          <li><a href="/docs/agents">文档</a></li>
+          <li><a href="/skill-dashboard.html">Skills</a></li>
+          <li><a href="/docs">文档</a></li>
           <li><a href="#gallery">收藏</a></li>
         </ul>
         <div class="nav-actions">
@@ -1768,8 +1768,8 @@
         <div class="skills-wrap reveal">
           <div class="skills-head">
             <div>
-              <h3>Skill 生态 · 能力即插即用</h3>
-              <p>每个 Skill 是一组结构化命令。Agent 调用它执行，你也可以直接编程调用。</p>
+              <h3>Skill 能力 · Agent 的执行层</h3>
+              <p>当前平台已配置两类内部能力：市场分析与外部搜索。Agent 负责判断和编排，Skill 负责执行。</p>
             </div>
             <a class="code-link" href="/skill-dashboard.html">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>
@@ -1778,25 +1778,14 @@
           </div>
           <div class="skill-group-label">已接入</div>
           <div class="cmd-grid">
-            <a class="cmd connected" href="/skill-dashboard.html">
+            <a class="cmd connected" href="/skill-dashboard.html#stock">
               <code>StockSkill</code>
               <span>行情分析 · 个股 / 板块 / 量化 / 持仓</span>
             </a>
-            <div class="cmd coming">
-              <span class="plus">＋</span>
-              <span>更多 Skill 将陆续接入</span>
-            </div>
-          </div>
-          <div class="skill-group-label">规划中</div>
-          <div class="cmd-grid">
-            <div class="cmd coming">
-              <span class="plus">＋</span>
-              <span>下一个 Skill 待接入</span>
-            </div>
-            <div class="cmd coming">
-              <span class="plus">＋</span>
-              <span>更多领域 Agent 规划中</span>
-            </div>
+            <a class="cmd connected" href="/skill-dashboard.html#web-search">
+              <code>WebSearchSkill</code>
+              <span>外部搜索 · 新闻 / 舆情 / 讨论度证据</span>
+            </a>
           </div>
         </div>
       </div>
@@ -1934,16 +1923,16 @@
             <h4>产品</h4>
             <ul>
               <li><a href="/agent">工作站</a></li>
-              <li><a href="/docs/skill">Skill 服务</a></li>
+              <li><a href="/skill-dashboard.html">Skill 生态</a></li>
               <li><a href="/docs/agents">Agent 工作逻辑</a></li>
             </ul>
           </div>
           <div class="footer-col">
             <h4>文档</h4>
             <ul>
-              <li><a href="/docs/skill">Skill 对接</a></li>
+              <li><a href="/docs">文档中心</a></li>
               <li><a href="/docs/agents">Agent 工作逻辑</a></li>
-              <li><a href="/docs/deployment">部署说明</a></li>
+              <li><a href="/docs/skill">Skill 接入规范</a></li>
             </ul>
           </div>
           <div class="footer-col">

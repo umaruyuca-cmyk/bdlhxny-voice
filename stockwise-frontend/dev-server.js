@@ -89,6 +89,12 @@ function proxyApi(request, response) {
  * 从 public 目录提供静态资源，并按 URL 映射首页与两个 Agent 工作站。
  */
 async function serveStatic(requestPath, request, response, rootDirectory) {
+  // 1. 保持文档目录有尾部斜杠，确保相对 CSS/图片资源在开发服务器中正确解析。
+  if (requestPath === "/docs") {
+    response.writeHead(302, { Location: "/docs/" });
+    response.end();
+    return;
+  }
   let target = requestPath;
   if (requestPath === "/") target = "/index.html";
   else if (requestPath === "/workspace") target = "/workspace.html";
@@ -105,7 +111,7 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
   const filePath = path.resolve(rootDirectory, relativePath);
   const publicRoot = path.resolve(rootDirectory);
 
-  // 1. 拒绝任何越过 public 目录的路径。
+  // 2. 拒绝任何越过 public 目录的路径。
   if (filePath !== publicRoot && !filePath.startsWith(`${publicRoot}${path.sep}`)) {
     response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("禁止访问");

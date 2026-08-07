@@ -78,6 +78,20 @@ public class LocalSearchPlanner {
         throw new IllegalArgumentException("当前 Route 不允许规划 WebSearch: " + decision.route());
     }
 
+    /**
+     * 为普通 ReAct 问答生成最小化网页检索任务，不让规划模型直接构造底层检索参数。
+     */
+    public List<SearchTask> planGeneral(String question) {
+        String sanitized = sanitize(question);
+        SearchPurpose purpose = purpose(sanitized);
+        return List.of(task(
+                purpose,
+                minimalQuery(sanitized, purpose),
+                null,
+                purpose == SearchPurpose.POLICY_UPDATE ? 365 : 30,
+                preferredDomains(purpose)));
+    }
+
     private SearchTask task(SearchPurpose purpose,
                             String query,
                             String symbol,

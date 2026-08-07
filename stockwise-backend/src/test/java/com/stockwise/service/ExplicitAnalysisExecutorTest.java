@@ -3,6 +3,7 @@ package com.stockwise.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stockwise.agent.AgentRunContext;
 import com.stockwise.agent.react.BoundedReactLoop;
+import com.stockwise.agent.react.LangChain4jGeneralReactAgent;
 import com.stockwise.agent.routing.ModelPolicy;
 import com.stockwise.agent.routing.ExecutionPlanFactory;
 import com.stockwise.agent.routing.PaidModelGate;
@@ -68,6 +69,7 @@ class ExplicitAnalysisExecutorTest {
     private AgentRunService agentRunService;
     private MemoryRouter memoryRouter;
     private BoundedReactLoop reactLoop;
+    private LangChain4jGeneralReactAgent langChain4jGeneralReactAgent;
     private ExplicitAnalysisExecutor executor;
     private final SkillRegistry skillRegistry = new SkillRegistry();
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -85,6 +87,7 @@ class ExplicitAnalysisExecutorTest {
         marketFactResponder = mock(MarketFactResponder.class);
         agentRunService = mock(AgentRunService.class);
         memoryRouter = mock(MemoryRouter.class);
+        langChain4jGeneralReactAgent = mock(LangChain4jGeneralReactAgent.class);
 
         RouteExecutionPolicyRegistry policyRegistry = new RouteExecutionPolicyRegistry();
         reactLoop = new BoundedReactLoop(
@@ -107,10 +110,16 @@ class ExplicitAnalysisExecutorTest {
                 new SectorFactResponder(),
                 new ExternalAttentionAnalyzer(),
                 reactLoop,
+                langChain4jGeneralReactAgent,
                 memoryRouter,
                 objectMapper);
 
         when(localAnswerClient.streamChat(anyString(), anyString())).thenReturn(Flux.just("本地回答"));
+        when(langChain4jGeneralReactAgent.execute(any(), any(), anyString(), anyString(), any(), any()))
+                .thenReturn(new ExplicitAnalysisExecutor.ExecutionOutput(
+                        Flux.just("ReAct 回答"), "LOCAL_REACT", "REACT_NO_TOOL_NEEDED",
+                        com.stockwise.agent.react.ReactTerminationReason.FINAL_ANSWER,
+                        1, 0, "测试 ReAct"));
         when(agentRunService.executeTool(any(), anyString(), anyString(), any()))
                 .thenAnswer(invocation -> {
                     Supplier<String> action = invocation.getArgument(3);
@@ -125,18 +134,18 @@ class ExplicitAnalysisExecutorTest {
 
     @Test
     void nonPaidRoutesNeverInvokeDeepSeek() throws Exception {
-        // 1. 普通问答只允许本地模型
+        // 1. 普通问答使用本地模型的 LangChain4j ReAct，不触发付费分析模型
         ExecutionResult general = execute(decision(
                 RequestRoute.GENERAL_CHAT, ChatIntent.GENERAL_CHAT, ModelPolicy.LOCAL_ONLY, null));
-        assertThat(general.modelTier()).isEqualTo("LOCAL");
+        assertThat(general.modelTier()).isEqualTo("LOCAL_REACT");
 
-        // 2. 知识问答只允许知识库和本地模型
+        // 2. 知识问答使用同一受控 ReAct 链路
         when(stockTools.searchInvestmentKnowledge(anyString())).thenReturn("{\"items\":[]}");
         ExecutionResult knowledge = execute(decision(
                 RequestRoute.KNOWLEDGE_QA, ChatIntent.INVESTMENT_QA, ModelPolicy.LOCAL_ONLY, null));
-        assertThat(knowledge.modelTier()).isEqualTo("LOCAL");
+        assertThat(knowledge.modelTier()).isEqualTo("LOCAL_REACT");
 
-        // 3. 外部研究只消费固定搜索结果并由本地模型总结
+        // 3. 外部研究通过同一受控 ReAct 链路选择工具并由本地模型总结
         SearchTask task = new SearchTask(
                 "news-1", SearchPurpose.NEWS_CATALYST, "贵州茅台 最新公告",
                 "600519", 7, List.of(), 3);
@@ -149,7 +158,7 @@ class ExplicitAnalysisExecutorTest {
                 List.of()));
         ExecutionResult external = execute(decision(
                 RequestRoute.EXTERNAL_RESEARCH, ChatIntent.INVESTMENT_QA, ModelPolicy.LOCAL_ONLY, "600519"));
-        assertThat(external.modelTier()).isEqualTo("LOCAL");
+        assertThat(external.modelTier()).isEqualTo("LOCAL_REACT");
 
         // 4. 行情事实查询只使用固定模板
         String stockJson = "{\"schemaVersion\":\"1.1\",\"command\":\"stock\",\"data\":{}}";

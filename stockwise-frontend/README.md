@@ -1,6 +1,6 @@
 # StockWise Frontend
 
-独立 Nginx 静态前端。默认入口为 `public/stockwise-chat-soft.html`，通过同源 `/api/` 调用 StockWise Backend。
+独立 Nginx 静态前端。正式入口为 `public/index.html`，通过同源 `/api/` 调用 StockWise Backend。
 
 ## 本地前后端联调
 
@@ -16,7 +16,9 @@ npm run dev
 http://127.0.0.1:8082/
 ```
 
-默认首页包含普通问答、Stock Agent、标的选择、SSE 流式回答和运行追踪；原始基线页面仍保留在 `public/stockwise-chat.html`。
+首页进入统一工作站，支持普通问答、Stock Agent、标的选择、SSE 流式回答和运行追踪。历史页面仍保留在 `public` 供兼容测试使用，但不属于公共导航。
+
+Skill 目录从 `public/skills/registry.json` 读取脱敏注册清单，当前展示 Stock Skill 与 Web Search Skill。
 
 开发服务器会把 `/api/**` 流式代理到 `http://127.0.0.1:8080`。如需临时连接其他 Backend：
 

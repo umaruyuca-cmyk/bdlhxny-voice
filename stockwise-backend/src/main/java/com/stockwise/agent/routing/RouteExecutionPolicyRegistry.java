@@ -18,7 +18,7 @@ public class RouteExecutionPolicyRegistry {
     public RouteExecutionPolicyRegistry() {
         EnumMap<RequestRoute, RouteExecutionPolicy> values = new EnumMap<>(RequestRoute.class);
         values.put(RequestRoute.GENERAL_CHAT, policy(
-                RequestRoute.GENERAL_CHAT, ChatIntent.GENERAL_CHAT, ModelPolicy.LOCAL_ONLY, Set.of(), false, false));
+                RequestRoute.GENERAL_CHAT, ChatIntent.GENERAL_CHAT, ModelPolicy.LOCAL_ONLY, Set.of(), true, false));
         values.put(RequestRoute.KNOWLEDGE_QA, policy(
                 RequestRoute.KNOWLEDGE_QA, ChatIntent.INVESTMENT_QA, ModelPolicy.LOCAL_ONLY, Set.of(), false, false));
         values.put(RequestRoute.EXTERNAL_RESEARCH, policy(
@@ -82,7 +82,7 @@ public class RouteExecutionPolicyRegistry {
         if ("webSearch".equals(actionName)) {
             return policy.webSearchAllowed();
         }
-        return route == RequestRoute.KNOWLEDGE_QA
+        return (route == RequestRoute.GENERAL_CHAT || route == RequestRoute.KNOWLEDGE_QA)
                 && "searchInvestmentKnowledge".equals(actionName);
     }
 

@@ -123,6 +123,31 @@ class RequestRouterTest {
     }
 
     @Test
+    void stockModeRoutesTodayMarketQuestionForSelectedInstrumentToStockSkill() {
+        RequestRouter router = router(
+                mock(SemanticRouteClassifier.class),
+                mock(IntentClassifier.class));
+
+        RouteDecision decision = router.routeStock("今天的行情怎么样", "600519");
+
+        assertThat(decision.route()).isEqualTo(RequestRoute.MARKET_FACT);
+        assertThat(decision.symbol()).isEqualTo("600519");
+        assertThat(decision.businessRoute()).isEqualTo(BusinessRoute.STOCK_ANALYSIS);
+    }
+
+    @Test
+    void stockModeRoutesGenericAnalysisOfSelectedInstrumentWithoutTemplateClarification() {
+        RequestRouter router = router(
+                mock(SemanticRouteClassifier.class),
+                mock(IntentClassifier.class));
+
+        RouteDecision decision = router.routeStock("分析现在588200怎么样", "588200");
+
+        assertThat(decision.route()).isEqualTo(RequestRoute.STOCK_DECISION);
+        assertThat(decision.needsClarification()).isFalse();
+    }
+
+    @Test
     void stockModeAllowsSectorFactWithoutSelectedInstrument() {
         RequestRouter router = router(
                 mock(SemanticRouteClassifier.class),

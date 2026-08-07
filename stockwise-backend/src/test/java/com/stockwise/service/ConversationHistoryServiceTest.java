@@ -1,6 +1,7 @@
 package com.stockwise.service;
 
 import com.stockwise.mapper.ConversationHistoryMapper;
+import com.stockwise.mapper.ConversationSessionSnapshotMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,7 +17,8 @@ import static org.mockito.Mockito.when;
 class ConversationHistoryServiceTest {
 
     private final ConversationHistoryMapper mapper = mock(ConversationHistoryMapper.class);
-    private final ConversationHistoryService service = new ConversationHistoryService(mapper);
+    private final ConversationSessionSnapshotMapper snapshotMapper = mock(ConversationSessionSnapshotMapper.class);
+    private final ConversationHistoryService service = new ConversationHistoryService(mapper, snapshotMapper);
 
     @Test
     void shouldClampRecentHistoryLimit() {

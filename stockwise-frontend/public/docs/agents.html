@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Agent 与路由 · StockWise</title>
+<title>Agent 与路由 · グリッドユニバース研究所</title>
 <link rel="stylesheet" href="docs.css">
 </head>
 <body>
 <div class="docs-top">
-  <a class="brand" href="/"><em>StockWise</em> 文档中心</a>
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
   <span class="crumb">DOCS / AGENTS</span>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
@@ -23,13 +23,11 @@
     <ul>
       <li><a href="/docs/agents" class="active">Agent 与路由</a></li>
       <li><a href="/docs/skill">Skill 接入规范</a></li>
-      <li><a href="/docs/deployment">部署与联调</a></li>
     </ul>
-    <h4>工具</h4>
+    <h4>研究入口</h4>
     <ul>
       <li><a href="/agent">Agent 工作站</a></li>
       <li><a href="/skill-dashboard.html">Skill 生态</a></li>
-      <li><a href="/api-console.html">API 控制台</a></li>
     </ul>
   </nav>
   <main class="docs-main">
@@ -96,7 +94,7 @@
 
     <h2>对话输出（SSE）</h2>
     <p>工作站通过 <code>POST /api/v1/chat/stream</code> 接收统一 SSE 事件：<code>status</code>、<code>agent_run</code>、<code>token</code>、<code>ask</code>、<code>clarification</code>、<code>done</code>、<code>error</code> 等。Agent 负责思考编排，Skill 负责执行专业计算，模型负责解释结果；三者不是三个重复的聊天机器人。</p>
-    <p><a href="/api-console.html">打开 API 控制台调试 SSE →</a></p>
+    <div class="note"><strong>开发提示：</strong>API 联调台属于内部开发工具，不在公共导航中展示。需要调试 SSE 时直接访问部署环境的 <code>/api-console.html</code>。</div>
   </main>
 </div>
 <script>

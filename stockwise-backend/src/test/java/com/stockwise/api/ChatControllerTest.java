@@ -59,4 +59,21 @@ class ChatControllerTest {
                 .hasMessageContaining("sessionId");
     }
 
+    @Test
+    void shouldReuseCanonicalSessionIdRestoredFromConversationDirectory() {
+        AgentOrchestrator orchestrator = mock(AgentOrchestrator.class);
+        SingleUserContext userContext = new SingleUserContext(7L, mock(AuthorizationService.class));
+        ChatController controller = new ChatController(orchestrator, userContext);
+        SseEmitter emitter = new SseEmitter();
+        String canonicalSessionId = "stock_12345678-1234-1234-1234-123456789012";
+        when(orchestrator.handle(7L, canonicalSessionId, ChatMode.STOCK_AGENT, "继续分析", null))
+                .thenReturn(emitter);
+
+        assertThat(controller.stream(new ChatStreamRequest(
+                canonicalSessionId, ChatMode.STOCK_AGENT, "继续分析", null)))
+                .isSameAs(emitter);
+
+        verify(orchestrator).handle(7L, canonicalSessionId, ChatMode.STOCK_AGENT, "继续分析", null);
+    }
+
 }

@@ -7,26 +7,23 @@
 
 ## 1. 页面地址（联调用）
 
-前端 dev-server 默认端口 `8082`，也可用 `PORT` 环境变量覆盖（本机测试用 `8083`）。
+前端 dev-server 默认端口 `8082`，也可用 `PORT` 环境变量覆盖。下表使用默认端口。
 
 | 页面 | 地址 | 说明 |
 | --- | --- | --- |
-| 首页 | `http://127.0.0.1:8083/` | 首屏输入框 → 跳转工作站 |
-| 智能问答 | `http://127.0.0.1:8083/agent?name=general` | 通用 Agent |
-| 股市分析 | `http://127.0.0.1:8083/agent?name=stock` | 市场与标的研究 Agent；板块问题可直接提问，单标的决策才需选择标的 |
-| 文档中心 | `http://127.0.0.1:8083/docs` | 文档索引 |
-| Skill 接入规范 | `http://127.0.0.1:8083/docs/skill` | 开发者接入文档 |
-| Agent 与路由 | `http://127.0.0.1:8083/docs/agents` | 领域分析说明 |
-| 部署与联调 | `http://127.0.0.1:8083/docs/deployment` | 部署边界 |
-| Skill 生态 | `http://127.0.0.1:8083/skill-dashboard.html` | Skill 服务目录 |
-| 旧版聊天 | `http://127.0.0.1:8083/stockwise-chat.html?mode=general\|stock` | 兼容页面 |
-| 旧版聊天-柔版 | `http://127.0.0.1:8083/stockwise-chat-soft.html?mode=general\|stock` | 兼容页面 |
-| API 联调页 | `http://127.0.0.1:8083/api-console.html` | 测试 SSE 与运行记录 |
+| 首页 | `http://127.0.0.1:8082/` | 首屏输入框 → 跳转工作站 |
+| 智能问答 | `http://127.0.0.1:8082/agent?name=general` | 通用 Agent |
+| 股市分析 | `http://127.0.0.1:8082/agent?name=stock` | 市场与标的研究 Agent；板块问题可直接提问，单标的决策才需选择标的 |
+| 文档中心 | `http://127.0.0.1:8082/docs` | 用户与开发者文档索引 |
+| Skill 接入规范 | `http://127.0.0.1:8082/docs/skill` | 通用 Skill 接入文档 |
+| Agent 与路由 | `http://127.0.0.1:8082/docs/agents` | 领域分析说明 |
+| Skill 生态 | `http://127.0.0.1:8082/skill-dashboard.html` | 多 Skill 服务目录 |
+| API 联调页（开发工具） | `http://127.0.0.1:8082/api-console.html` | 仅开发人员测试 SSE 与运行记录 |
 
 ### 页面联动参数
 - `?name=general|stock` —— 选择 Agent（workspace.html）
 - `?q=问题内容` —— 自动带入并发送问题（首页输入框跳转时带上）
-- `?mode=general|stock` —— 旧版聊天页的 Agent 选择
+- `?mode=general|stock` —— 仅供历史兼容页面使用，正式入口统一使用 `?name=general|stock`
 
 首页 → 工作站的跳转逻辑：输入含 6 位数字判定为 `stock`，否则 `general`，并携带 `q` 参数。
 进入 Stock Agent 后，用户可直接询问市场或板块问题；只有涉及单只股票、ETF 或基金的方向判断，后端才会通过 `ask` 事件要求补充标的。
@@ -35,7 +32,7 @@
 
 ## 2. 前端 → 后端 API 契约
 
-前端只调用以下 2 组接口（全部经 `/api/*` 代理转发，方法、路径、请求体原样透传）。
+前端调用以下 3 组接口（全部经 `/api/*` 代理转发，方法、路径、请求体原样透传）。
 
 ### 2.1 流式对话（SSE）
 
@@ -49,7 +46,7 @@ Content-Type: application/json
 
 ```json
 {
-  "sessionId": "string (uuid)",
+  "sessionId": "string (客户端临时 uuid 或服务端返回的 canonical sessionId)",
   "mode": "general | stock",
   "message": "用户问题",
   "instrument": {
@@ -63,7 +60,17 @@ Content-Type: application/json
 
 响应为 SSE 流，每帧 `data: {json}`，事件类型见下表。
 
-### 2.2 运行追踪与 Skill 结果
+### 2.2 会话目录与消息恢复
+
+```
+GET /api/v1/conversations?mode=general|stock&limit=20
+GET /api/v1/conversations/{sessionId}
+Accept: application/json
+```
+
+会话目录由后端持久化，前端 `localStorage` 只作为离线缓存。详情接口返回会话元数据和最新完整消息快照，用于刷新页面或切换左侧会话。
+
+### 2.3 运行追踪与 Skill 结果
 
 ```
 GET /api/v1/agent-runs?limit=20          // 最近运行列表
@@ -86,7 +93,7 @@ Accept: application/json
 | `token` | `content` | 增量文本 token，追加到回答气泡 |
 | `ask` | `prompt`, `reason?`, `options?` | 主动提问（用于需要澄清/选标的），展示为问题卡片，`options` 为可选按钮 |
 | `clarification` | `prompt`, `reason?`, `options?` | 澄清说明 |
-| `agent_run` | `runId`, `status?`, `route?`, `skill?` | 上报一次运行追踪的 ID 与路由信息，填充「运行追踪」面板 |
+| `agent_run` | `runId`, `sessionId`, `status?`, `route?`, `skill?` | 上报一次运行追踪的 ID 与后端正式会话 ID，填充「运行追踪」面板并同步 URL |
 | `done` | 见下表 | 对话结束，携带本轮运行与 Skill 结果的完整元数据 |
 
 ### 3.1 `done` 事件字段
@@ -95,6 +102,7 @@ Accept: application/json
 | --- | --- | --- |
 | `status` | string | `COMPLETED` / `NEED_CLARIFICATION` / `REFUSED` / `RESOLVED` / `CLOSED` |
 | `runId` | string | 本轮运行 ID |
+| `sessionId` | string | 后端正式会话 ID；前端首次发送的临时 ID 会在收到该字段后替换 |
 | `skill` | string | 命中的 Skill 名 |
 | `route` | string | 业务路由（如 `STOCK_ANALYSIS`） |
 | `internalRoute` | string | 内部路由（如 `QUANT_DECISION`） |
@@ -186,7 +194,7 @@ data: {"type":"done","message":"..."}
 ## 5. 联调步骤
 
 1. 启动后端（默认 `127.0.0.1:8080`），确认健康检查通过。
-2. 启动前端 dev-server：`PORT=8083 node dev-server.js`。
-3. 打开 `http://127.0.0.1:8083/api-console.html` 逐项测试 SSE 与运行记录。
-4. 打开 `http://127.0.0.1:8083/agent?name=stock`，发送问题，观察 SSE 是否推进、运行追踪面板是否刷新。
+2. 启动前端 dev-server：`node dev-server.js`（默认端口 8082）。
+3. 打开 `http://127.0.0.1:8082/api-console.html` 逐项测试 SSE 与运行记录。
+4. 打开 `http://127.0.0.1:8082/agent?name=stock`，发送问题，观察 SSE 是否推进、运行追踪面板是否刷新。
 5. 后端不可用时前端会走本地模拟（`simulateReply`），不影响演示，联调时以真实响应为准。

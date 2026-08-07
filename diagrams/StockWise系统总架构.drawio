@@ -1,80 +1,61 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="drawio" version="26.0.0">
-  <diagram name="StockWise-Architecture-v3">
-    <mxGraphModel dx="1200" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="950">
+<mxfile host="Electron">
+  <diagram name="StockWise-Architecture-v3" id="0">
+    <mxGraphModel dx="1501" dy="903" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="950" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-
-        <!-- Title -->
-        <mxCell id="title" value="StockWise v3.0 — 智能投资分析系统架构图" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="350" y="8" width="500" height="30" as="geometry" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontStyle=1;fontColor=#333333;" value="StockWise v3.0 — 智能投资分析系统架构图" vertex="1">
+          <mxGeometry height="30" width="500" x="350" y="8" as="geometry" />
         </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- LAYER 1: 用户交互层 -->
-        <!-- ============================================================ -->
-        <mxCell id="layer1" value="用户交互层" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;fontColor=#333333;swimlaneFillColor=#dae8fc;" vertex="1" parent="1">
-          <mxGeometry x="30" y="45" width="1200" height="95" as="geometry" />
+        <mxCell id="layer1" parent="1" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;fontColor=#333333;swimlaneFillColor=#dae8fc;" value="用户交互层" vertex="1">
+          <mxGeometry height="95" width="1200" x="30" y="45" as="geometry" />
         </mxCell>
-        <mxCell id="l1_webchat" value="网页对话端&#xa;（React）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f0fd;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="layer1">
-          <mxGeometry x="70" y="38" width="270" height="42" as="geometry" />
+        <mxCell id="l1_webchat" parent="layer1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f0fd;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" value="网页对话端&#xa;（React）" vertex="1">
+          <mxGeometry height="42" width="270" x="70" y="38" as="geometry" />
         </mxCell>
-        <mxCell id="l1_mobile" value="移动端&#xa;(H5 / 小程序)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f0fd;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="layer1">
-          <mxGeometry x="460" y="38" width="270" height="42" as="geometry" />
+        <mxCell id="l1_mobile" parent="layer1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f0fd;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" value="移动端&#xa;(H5 / 小程序)" vertex="1">
+          <mxGeometry height="42" width="270" x="460" y="38" as="geometry" />
         </mxCell>
-        <mxCell id="l1_api" value="接口接入&#xa;（REST / 服务器事件流）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f0fd;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="layer1">
-          <mxGeometry x="850" y="38" width="270" height="42" as="geometry" />
+        <mxCell id="l1_api" parent="layer1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f0fd;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" value="接口接入&#xa;（REST / 服务器事件流）" vertex="1">
+          <mxGeometry height="42" width="270" x="850" y="38" as="geometry" />
         </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- LAYER 2: Agent 核心引擎 -->
-        <!-- ============================================================ -->
-        <mxCell id="layer2" value="智能体核心引擎（Java 17 + Spring Boot 3.4 + Spring AI）" style="swimlane;startSize=30;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;fontColor=#333333;swimlaneFillColor=#e1d5e7;" vertex="1" parent="1">
-          <mxGeometry x="30" y="160" width="1200" height="275" as="geometry" />
+        <mxCell id="layer2" parent="1" style="swimlane;startSize=30;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;fontStyle=1;fontColor=#333333;swimlaneFillColor=#e1d5e7;" value="智能体核心引擎（Java 17 + Spring Boot 3.4 + Spring AI）" vertex="1">
+          <mxGeometry height="275" width="1200" x="30" y="160" as="geometry" />
         </mxCell>
-
-        <!-- Row 1: 主流程 Step 2→10 -->
-        <mxCell id="l2_classify" value="问题分类&#xa;（第 2 步）&#xa;qwen3:1.5b 轻量分类" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="40" y="42" width="170" height="60" as="geometry" />
+        <mxCell id="l2_classify" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="问题分类&#xa;（第 2 步）&#xa;qwen3:1.5b 轻量分类" vertex="1">
+          <mxGeometry height="60" width="170" x="40" y="42" as="geometry" />
         </mxCell>
-        <mxCell id="l2_vector" value="向量检索编排&#xa;（第 3—5 步）&#xa;临时向量→检索→过滤" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="280" y="42" width="190" height="60" as="geometry" />
+        <mxCell id="l2_vector" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="向量检索编排&#xa;（第 3—5 步）&#xa;临时向量→检索→过滤" vertex="1">
+          <mxGeometry height="60" width="190" x="280" y="42" as="geometry" />
         </mxCell>
-        <mxCell id="l2_skill" value="技能选择与执行&#xa;（第 6—8 步）&#xa;加载技能→组装上下文→深度推理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="540" y="42" width="210" height="60" as="geometry" />
+        <mxCell id="l2_skill" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="技能选择与执行&#xa;（第 6—8 步）&#xa;加载技能→组装上下文→深度推理" vertex="1">
+          <mxGeometry height="60" width="210" x="540" y="42" as="geometry" />
         </mxCell>
-        <mxCell id="l2_result" value="结果判断与反馈&#xa;（第 9—10 步）&#xa;已解决 / 需补充 / 无法判断" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="820" y="42" width="220" height="60" as="geometry" />
+        <mxCell id="l2_result" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0e6f5;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="结果判断与反馈&#xa;（第 9—10 步）&#xa;已解决 / 需补充 / 无法判断" vertex="1">
+          <mxGeometry height="60" width="220" x="820" y="42" as="geometry" />
         </mxCell>
-
-        <!-- Row 2: 知识闭环 + 支撑 -->
-        <mxCell id="l2_extract" value="知识提取与确认&#xa;（第 11 步）&#xa;提取→展示→用户确认/修改" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="40" y="145" width="190" height="60" as="geometry" />
+        <mxCell id="l2_extract" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="知识提取与确认&#xa;（第 11 步）&#xa;提取→展示→用户确认/修改" vertex="1">
+          <mxGeometry height="60" width="190" x="40" y="145" as="geometry" />
         </mxCell>
-        <mxCell id="l2_dedup" value="去重与入库&#xa;（第 12—14 步）&#xa;去重→正式向量→PgVector 入库" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="300" y="145" width="200" height="60" as="geometry" />
+        <mxCell id="l2_dedup" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="去重与入库&#xa;（第 12—14 步）&#xa;去重→正式向量→PgVector 入库" vertex="1">
+          <mxGeometry height="60" width="200" x="300" y="145" as="geometry" />
         </mxCell>
-        <mxCell id="l2_memory" value="记忆管理&#xa;Redis(短期) + PG(中期) + PgVector(长期)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="590" y="145" width="240" height="60" as="geometry" />
+        <mxCell id="l2_memory" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#9673a6;fontSize=11;fontColor=#333333;" value="记忆管理&#xa;Redis(短期) + PG(中期) + PgVector(长期)" vertex="1">
+          <mxGeometry height="60" width="240" x="590" y="145" as="geometry" />
         </mxCell>
-        <mxCell id="l2_guardrail" value="护栏层&#xa;注入检测 / 合规审查 / 禁止措辞过滤" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#b85450;fontSize=11;fontColor=#333333;" vertex="1" parent="layer2">
-          <mxGeometry x="890" y="145" width="200" height="60" as="geometry" />
+        <mxCell id="l2_guardrail" parent="layer2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5eef8;strokeColor=#b85450;fontSize=11;fontColor=#333333;" value="护栏层&#xa;注入检测 / 合规审查 / 禁止措辞过滤" vertex="1">
+          <mxGeometry height="60" width="200" x="890" y="145" as="geometry" />
         </mxCell>
-
-        <!-- Intra-Layer 2 edges — Row 1 (main pipeline) -->
-        <mxCell id="e_l2_1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="l2_classify" target="l2_vector">
+        <mxCell id="e_l2_1" edge="1" parent="1" source="l2_classify" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="l2_vector" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_2" value="检索是否命中 + 检索结果" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" edge="1" parent="1" source="l2_vector" target="l2_skill">
+        <mxCell id="e_l2_2" edge="1" parent="1" source="l2_vector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" target="l2_skill" value="检索是否命中 + 检索结果">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_3" value="技能上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" edge="1" parent="1" source="l2_skill" target="l2_result">
+        <mxCell id="e_l2_3" edge="1" parent="1" source="l2_skill" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" target="l2_result" value="技能上下文">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- Row 1 → Row 2: result → extract (U-turn) -->
-        <mxCell id="e_l2_4" value="用户确认已解决" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" edge="1" parent="1" source="l2_result" target="l2_extract">
+        <mxCell id="e_l2_4" edge="1" parent="1" source="l2_result" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" target="l2_extract" value="用户确认已解决">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="930" y="120" />
@@ -82,92 +63,70 @@
             </Array>
           </mxGeometry>
         </mxCell>
-
-        <!-- Row 2: extract → dedup -->
-        <mxCell id="e_l2_5" value="候选知识" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" edge="1" parent="1" source="l2_extract" target="l2_dedup">
+        <mxCell id="e_l2_5" edge="1" parent="1" source="l2_extract" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" target="l2_dedup" value="候选知识">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- Support: memory ↔ skill (dashed) -->
-        <mxCell id="e_l2_mem" value="读/写对话记忆" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#9673a6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" edge="1" parent="1" source="l2_memory" target="l2_skill">
+        <mxCell id="e_l2_mem" edge="1" parent="1" source="l2_memory" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#9673a6;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontSize=9;fontColor=#9673a6;" target="l2_skill" value="读/写对话记忆">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- Support: guardrail → skill + dedup (dashed, red) -->
-        <mxCell id="e_l2_guard1" value="输出审查" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;fontSize=9;fontColor=#b85450;" edge="1" parent="1" source="l2_guardrail" target="l2_skill">
+        <mxCell id="e_l2_guard1" edge="1" parent="1" source="l2_guardrail" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;fontSize=9;fontColor=#b85450;" target="l2_skill" value="输出审查">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_guard2" value="入库审查" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#b85450;" edge="1" parent="1" source="l2_guardrail" target="l2_dedup">
+        <mxCell id="e_l2_guard2" edge="1" parent="1" source="l2_guardrail" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=9;fontColor=#b85450;" target="l2_dedup" value="入库审查">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- Inter-layer: L1 → L2 -->
-        <!-- ============================================================ -->
-        <mxCell id="e_l1_l2a" value="用户请求" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#6c8ebf;" edge="1" parent="1" source="l1_webchat" target="l2_classify">
+        <mxCell id="e_l1_l2a" edge="1" parent="1" source="l1_webchat" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#6c8ebf;" target="l2_classify" value="用户请求">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l1_l2b" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="l1_mobile" target="l2_classify">
+        <mxCell id="e_l1_l2b" edge="1" parent="1" source="l1_mobile" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="l2_classify" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l1_l2c" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="l1_api" target="l2_classify">
+        <mxCell id="e_l1_l2c" edge="1" parent="1" source="l1_api" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="l2_classify" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- LAYER 3: 知识与工具层 -->
-        <!-- ============================================================ -->
-        <mxCell id="layer3_knowledge" value="知识层（知识增强检索 + PgVector）" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontColor=#333333;swimlaneFillColor=#d5e8d4;" vertex="1" parent="1">
-          <mxGeometry x="30" y="455" width="580" height="175" as="geometry" />
+        <mxCell id="layer3_knowledge" parent="1" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontColor=#333333;swimlaneFillColor=#d5e8d4;" value="知识层（知识增强检索 + PgVector）" vertex="1">
+          <mxGeometry height="175" width="580" x="30" y="455" as="geometry" />
         </mxCell>
-        <!-- PgVector cylinder center -->
-        <mxCell id="l3_pgvector_db" value="PgVector&#xa;向量数据库" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;boundedLbl=1;backgroundOutline=1;size=10;" vertex="1" parent="layer3_knowledge">
-          <mxGeometry x="195" y="52" width="160" height="80" as="geometry" />
+        <mxCell id="l3_pgvector_db" parent="layer3_knowledge" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;boundedLbl=1;backgroundOutline=1;size=10;" value="PgVector&#xa;向量数据库" vertex="1">
+          <mxGeometry height="80" width="160" x="195" y="52" as="geometry" />
         </mxCell>
-        <!-- 4 functions around PgVector -->
-        <mxCell id="l3_temp_vec" value="临时向量检索&#xa;(Step 3-4)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" vertex="1" parent="layer3_knowledge">
-          <mxGeometry x="25" y="50" width="135" height="42" as="geometry" />
+        <mxCell id="l3_temp_vec" parent="layer3_knowledge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" value="临时向量检索&#xa;(Step 3-4)" vertex="1">
+          <mxGeometry height="42" width="135" x="25" y="50" as="geometry" />
         </mxCell>
-        <mxCell id="l3_formal_vec" value="正式向量存储&#xa;(Step 13)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" vertex="1" parent="layer3_knowledge">
-          <mxGeometry x="400" y="50" width="135" height="42" as="geometry" />
+        <mxCell id="l3_formal_vec" parent="layer3_knowledge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" value="正式向量存储&#xa;(Step 13)" vertex="1">
+          <mxGeometry height="42" width="135" x="400" y="50" as="geometry" />
         </mxCell>
-        <mxCell id="l3_dedup_func" value="知识去重&#xa;(Step 12)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" vertex="1" parent="layer3_knowledge">
-          <mxGeometry x="25" y="110" width="135" height="42" as="geometry" />
+        <mxCell id="l3_dedup_func" parent="layer3_knowledge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" value="知识去重&#xa;(Step 12)" vertex="1">
+          <mxGeometry height="42" width="135" x="25" y="110" as="geometry" />
         </mxCell>
-        <mxCell id="l3_meta_filter" value="元数据过滤&#xa;(过期/冲突/可信度)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" vertex="1" parent="layer3_knowledge">
-          <mxGeometry x="400" y="110" width="135" height="42" as="geometry" />
+        <mxCell id="l3_meta_filter" parent="layer3_knowledge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=10;fontColor=#333333;" value="元数据过滤&#xa;(过期/冲突/可信度)" vertex="1">
+          <mxGeometry height="42" width="135" x="400" y="110" as="geometry" />
         </mxCell>
-
-        <!-- Knowledge layer internal edges -->
-        <mxCell id="e_l3_k1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="l3_temp_vec" target="l3_pgvector_db">
+        <mxCell id="e_l3_k1" edge="1" parent="1" source="l3_temp_vec" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" target="l3_pgvector_db" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l3_k2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="l3_dedup_func" target="l3_pgvector_db">
+        <mxCell id="e_l3_k2" edge="1" parent="1" source="l3_dedup_func" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" target="l3_pgvector_db" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l3_k3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="l3_pgvector_db" target="l3_formal_vec">
+        <mxCell id="e_l3_k3" edge="1" parent="1" source="l3_pgvector_db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" target="l3_formal_vec" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l3_k4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="l3_pgvector_db" target="l3_meta_filter">
+        <mxCell id="e_l3_k4" edge="1" parent="1" source="l3_pgvector_db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" target="l3_meta_filter" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- Tools layer -->
-        <mxCell id="layer3_tools" value="工具层" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontColor=#333333;swimlaneFillColor=#d5e8d4;" vertex="1" parent="1">
-          <mxGeometry x="630" y="455" width="600" height="175" as="geometry" />
+        <mxCell id="layer3_tools" parent="1" style="swimlane;startSize=28;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontColor=#333333;swimlaneFillColor=#d5e8d4;" value="工具层" vertex="1">
+          <mxGeometry height="175" width="600" x="630" y="455" as="geometry" />
         </mxCell>
-        <mxCell id="l3_wrapper" value="股票分析适配服务&#xa;（Node.js Express）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;" vertex="1" parent="layer3_tools">
-          <mxGeometry x="20" y="50" width="175" height="55" as="geometry" />
+        <mxCell id="l3_wrapper" parent="layer3_tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;" value="股票分析适配服务&#xa;（Node.js Express）" vertex="1">
+          <mxGeometry height="55" width="175" x="20" y="50" as="geometry" />
         </mxCell>
-        <mxCell id="l3_websearch" value="联网搜索工具" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;" vertex="1" parent="layer3_tools">
-          <mxGeometry x="220" y="50" width="145" height="55" as="geometry" />
+        <mxCell id="l3_websearch" parent="layer3_tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;" value="联网搜索工具" vertex="1">
+          <mxGeometry height="55" width="145" x="220" y="50" as="geometry" />
         </mxCell>
-        <mxCell id="l3_crud" value="用户持仓&#xa;增删改查" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;" vertex="1" parent="layer3_tools">
-          <mxGeometry x="400" y="50" width="160" height="55" as="geometry" />
+        <mxCell id="l3_crud" parent="layer3_tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e0;strokeColor=#82b366;fontSize=11;fontColor=#333333;" value="用户持仓&#xa;增删改查" vertex="1">
+          <mxGeometry height="55" width="160" x="400" y="50" as="geometry" />
         </mxCell>
-
-        <!-- External API connection -->
-        <mxCell id="e_l3_ext" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fontSize=9;fontColor=#999999;" edge="1" parent="1" source="l3_wrapper">
+        <mxCell id="e_l3_ext" edge="1" parent="1" source="l3_wrapper" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;fontSize=9;fontColor=#999999;" value="HTTP">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1220" y="533" />
@@ -175,20 +134,16 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="l3_extlabel" value="东方财富 / 新浪 / 腾讯&#xa;（外部行情接口）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#999999;" vertex="1" parent="1">
-          <mxGeometry x="1130" y="590" width="100" height="35" as="geometry" />
+        <mxCell id="l3_extlabel" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontColor=#999999;" value="东方财富 / 新浪 / 腾讯&#xa;（外部行情接口）" vertex="1">
+          <mxGeometry height="35" width="100" x="1130" y="590" as="geometry" />
         </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- Inter-layer: L2 → L3 -->
-        <!-- ============================================================ -->
-        <mxCell id="e_l2_l3a" value="检索" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" edge="1" parent="1" source="l2_vector" target="l3_temp_vec">
+        <mxCell id="e_l2_l3a" edge="1" parent="1" source="l2_vector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" target="l3_temp_vec" value="检索">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_l3b" value="入库" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" edge="1" parent="1" source="l2_dedup" target="l3_dedup_func">
+        <mxCell id="e_l2_l3b" edge="1" parent="1" source="l2_dedup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" target="l3_dedup_func" value="入库">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_l3c" value="调用" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" edge="1" parent="1" source="l2_skill" target="l3_wrapper">
+        <mxCell id="e_l2_l3c" edge="1" parent="1" source="l2_skill" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" target="l3_wrapper" value="调用">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="645" y="440" />
@@ -196,7 +151,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_l2_l3d" value="搜索" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" edge="1" parent="1" source="l2_skill" target="l3_websearch">
+        <mxCell id="e_l2_l3d" edge="1" parent="1" source="l2_skill" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#82b366;" target="l3_websearch" value="搜索">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1125" y="192" />
@@ -205,76 +160,63 @@
             </Array>
           </mxGeometry>
         </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- LAYER 4: 模型层 -->
-        <!-- ============================================================ -->
-        <mxCell id="layer4" value="模型层" style="swimlane;startSize=30;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;fontColor=#333333;swimlaneFillColor=#ffe6cc;" vertex="1" parent="1">
-          <mxGeometry x="30" y="650" width="1200" height="130" as="geometry" />
+        <mxCell id="layer4" parent="1" style="swimlane;startSize=30;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;fontStyle=1;fontColor=#333333;swimlaneFillColor=#ffe6cc;" value="模型层" vertex="1">
+          <mxGeometry height="130" width="1200" x="30" y="650" as="geometry" />
         </mxCell>
-        <mxCell id="l4_lightweight" value="qwen3:1.5b&#xa;轻量分类模型 (Ollama 本地)&#xa;问题分类 · 简单问答 · 意图识别" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e0;strokeColor=#d79b00;fontSize=11;fontColor=#333333;" vertex="1" parent="layer4">
-          <mxGeometry x="50" y="40" width="290" height="60" as="geometry" />
+        <mxCell id="l4_lightweight" parent="layer4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e0;strokeColor=#d79b00;fontSize=11;fontColor=#333333;" value="qwen3.6:27b&lt;br&gt;轻量分类模型 (Ollama 本地)&lt;br&gt;问题分类 · 简单问答 · 意图识别" vertex="1">
+          <mxGeometry height="60" width="290" x="50" y="40" as="geometry" />
         </mxCell>
-        <mxCell id="l4_deepseek" value="deepseek-v4-pro&#xa;深度推理模型（自有接口密钥）&#xa;技能执行 · 知识提取 · 对话叙事 · 结构化输出" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e0;strokeColor=#d79b00;fontSize=11;fontColor=#333333;" vertex="1" parent="layer4">
-          <mxGeometry x="400" y="40" width="350" height="60" as="geometry" />
+        <mxCell id="l4_deepseek" parent="layer4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e0;strokeColor=#d79b00;fontSize=11;fontColor=#333333;" value="deepseek-v4-pro&#xa;深度推理模型（自有接口密钥）&#xa;技能执行 · 知识提取 · 对话叙事 · 结构化输出" vertex="1">
+          <mxGeometry height="60" width="350" x="400" y="40" as="geometry" />
         </mxCell>
-        <mxCell id="l4_embed" value="qwen3-embedding:0.6b&#xa;Ollama 本地向量模型（免费）&#xa;临时向量生成 · 正式向量生成 · 去重相似度" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e0;strokeColor=#d79b00;fontSize=11;fontColor=#333333;" vertex="1" parent="layer4">
-          <mxGeometry x="810" y="40" width="310" height="60" as="geometry" />
+        <mxCell id="l4_embed" parent="layer4" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2e0;strokeColor=#d79b00;fontSize=11;fontColor=#333333;" value="qwen3-embedding:0.6b&#xa;Ollama 本地向量模型（免费）&#xa;临时向量生成 · 正式向量生成 · 去重相似度" vertex="1">
+          <mxGeometry height="60" width="310" x="810" y="40" as="geometry" />
         </mxCell>
-
-        <!-- Inter-layer: L2 → L4 -->
-        <mxCell id="e_l2_l4a" value="推理请求" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" edge="1" parent="1" source="l2_skill" target="l4_deepseek">
+        <mxCell id="l4_label_local1" parent="layer4" style="text;html=1;strokeColor=#82b366;fillColor=#e8f5e0;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#82b366;rounded=1;" value="本地免费" vertex="1">
+          <mxGeometry height="18" width="60" x="160" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="l4_label_ds" parent="layer4" style="text;html=1;strokeColor=#d79b00;fillColor=#fff2e0;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#d79b00;rounded=1;" value="自有接口密钥" vertex="1">
+          <mxGeometry height="18" width="80" x="530" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="l4_label_free" parent="layer4" style="text;html=1;strokeColor=#82b366;fillColor=#e8f5e0;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#82b366;rounded=1;" value="本地免费" vertex="1">
+          <mxGeometry height="18" width="60" x="930" y="105" as="geometry" />
+        </mxCell>
+        <mxCell id="e_l2_l4a" edge="1" parent="1" source="l2_skill" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" target="l4_deepseek" value="推理请求">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_l4d" value="轻量分类" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" edge="1" parent="1" source="l2_classify" target="l4_lightweight">
+        <mxCell id="e_l2_l4d" edge="1" parent="1" source="l2_classify" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" target="l4_lightweight" value="轻量分类">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_l4b" value="生成临时向量" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" edge="1" parent="1" source="l2_vector" target="l4_embed">
+        <mxCell id="e_l2_l4b" edge="1" parent="1" source="l2_vector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" target="l4_embed" value="生成临时向量">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_l2_l4c" value="生成正式向量" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" edge="1" parent="1" source="l2_dedup" target="l4_embed">
+        <mxCell id="e_l2_l4c" edge="1" parent="1" source="l2_dedup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;fontSize=9;fontColor=#d79b00;" target="l4_embed" value="生成正式向量">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-
-        <!-- Model labels -->
-        <mxCell id="l4_label_local1" value="本地免费" style="text;html=1;strokeColor=#82b366;fillColor=#e8f5e0;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#82b366;rounded=1;" vertex="1" parent="layer4">
-          <mxGeometry x="160" y="105" width="60" height="18" as="geometry" />
+        <mxCell id="legend_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;fontSize=9;fontColor=#333333;dashed=1;" value="" vertex="1">
+          <mxGeometry height="80" width="350" x="30" y="800" as="geometry" />
         </mxCell>
-        <mxCell id="l4_label_ds" value="自有接口密钥" style="text;html=1;strokeColor=#d79b00;fillColor=#fff2e0;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#d79b00;rounded=1;" vertex="1" parent="layer4">
-          <mxGeometry x="530" y="105" width="80" height="18" as="geometry" />
+        <mxCell id="legend_title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;fontColor=#333333;" value="图例" vertex="1">
+          <mxGeometry height="18" width="40" x="40" y="803" as="geometry" />
         </mxCell>
-        <mxCell id="l4_label_free" value="本地免费" style="text;html=1;strokeColor=#82b366;fillColor=#e8f5e0;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#82b366;rounded=1;" vertex="1" parent="layer4">
-          <mxGeometry x="930" y="105" width="60" height="18" as="geometry" />
-        </mxCell>
-
-        <!-- ============================================================ -->
-        <!-- Legend -->
-        <!-- ============================================================ -->
-        <mxCell id="legend_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cccccc;fontSize=9;fontColor=#333333;dashed=1;" vertex="1" parent="1">
-          <mxGeometry x="30" y="800" width="350" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="legend_title" value="图例" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="40" y="803" width="40" height="18" as="geometry" />
-        </mxCell>
-        <mxCell id="legend_flow" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;" edge="1" parent="1">
+        <mxCell id="legend_flow" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;flowAnimation=1;strokeColor=#9673a6;strokeWidth=2;" value="">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="50" y="840" as="sourcePoint" />
             <mxPoint x="110" y="840" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="legend_flow_text" value="数据流 / 调用" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="115" y="832" width="60" height="16" as="geometry" />
+        <mxCell id="legend_flow_text" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#666666;" value="数据流 / 调用" vertex="1">
+          <mxGeometry height="16" width="60" x="115" y="832" as="geometry" />
         </mxCell>
-        <mxCell id="legend_dash" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#999999;strokeWidth=2;" edge="1" parent="1">
+        <mxCell id="legend_dash" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#999999;strokeWidth=2;" value="">
           <mxGeometry relative="1" as="geometry">
             <mxPoint x="200" y="840" as="sourcePoint" />
             <mxPoint x="260" y="840" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="legend_dash_text" value="支撑 / 审查" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#666666;" vertex="1" parent="1">
-          <mxGeometry x="265" y="832" width="60" height="16" as="geometry" />
+        <mxCell id="legend_dash_text" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=9;fontColor=#666666;" value="支撑 / 审查" vertex="1">
+          <mxGeometry height="16" width="60" x="265" y="832" as="geometry" />
         </mxCell>
-
       </root>
     </mxGraphModel>
   </diagram>
