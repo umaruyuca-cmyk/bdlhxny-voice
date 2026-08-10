@@ -12,14 +12,14 @@ from uuid import uuid4
 
 from langgraph.types import interrupt
 
-from stockwise_analysis.agents.query_agent import RuleBasedQueryAgent
-from stockwise_analysis.agents.summary_model import DeterministicSummaryModel
+from stockwise_analysis.runtimes.langgraph.agents.query_agent import RuleBasedQueryAgent
+from stockwise_analysis.runtimes.langgraph.agents.summary_model import DeterministicSummaryModel
 from stockwise_analysis.contracts.analysis import AnalysisInput, AnalysisResult, InstrumentRef
 from stockwise_analysis.contracts.observation import DataQuality, Observation, ProvenanceRecord
 from stockwise_analysis.contracts.data_requirements import DataRequirement
 from stockwise_analysis.contracts.workflow import TaskSpec, WorkflowPlan
 
-from .state import RootState
+from ..graphs.state import RootState
 
 
 def now_iso() -> str:
@@ -194,18 +194,46 @@ def resolve_instrument(state: RootState) -> dict[str, Any]:
 
 
 def load_portfolio_context(state: RootState) -> dict[str, Any]:
-    """持仓上下文节点；当前 Mock，生产版本仅可通过 Java Data Adapter 查询。"""
+    """持仓上下文节点（无注入时的默认实现）。
+
+    当前为 Mock 兜底（空持仓），保证无 Java 服务时流程可跑通。生产环境由
+    Application Runtime 注入 JavaDataAdapter 的工厂节点替代（见下方工厂）。
+    """
     observation = Observation(
         observation_id=str(uuid4()),
         capability="portfolio.get_current_positions",
         status="SUCCESS",
-        data={"positions": [], "account_snapshot": {"currency": "CNY"}},
+        data={"positions": [], "account_snapshot": {"currency": "CNY"}, "is_mock": True},
         data_quality=DataQuality(completeness=1.0, quality_status="OK"),
         provenance=[ProvenanceRecord(source="mock-java", tool="portfolio.get_current_positions", retrieved_at=now_iso())],
     )
     result = _complete_current_task(state)
     result.update({"observations": [observation.model_dump()], "events": [event(state, "java_tool.completed", "load_portfolio_context", {"capability": observation.capability})]})
     return result
+
+
+def make_load_portfolio_context_node(java_adapter: Any):
+    """构建持仓上下文节点（工厂函数，注入 JavaDataAdapter）。
+
+    有注入时通过 Java Adapter 获取真实持仓（Adapter 内部自带 mock 降级）；
+    无注入时走默认 mock 节点。节点产出统一 Observation（capability=
+    portfolio.get_current_positions），assemble_analysis 按此提取。
+    """
+
+    async def load_portfolio_with_adapter(state: RootState) -> dict[str, Any]:
+        capability = "portfolio.get_current_positions"
+        observation = await java_adapter.execute(
+            capability,
+            {"user_id": state.get("user_id")},
+        )
+        result = _complete_current_task(state)
+        result.update({
+            "observations": [observation.model_dump()],
+            "events": [event(state, "java_tool.completed", "load_portfolio_context", {"capability": capability, "status": observation.status})],
+        })
+        return result
+
+    return load_portfolio_with_adapter
 
 
 def assemble_analysis(state: RootState) -> dict[str, Any]:
@@ -238,24 +266,16 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
 
 
 def run_analysis(state: RootState) -> dict[str, Any]:
-    """执行第一版 Python Analysis Engine。
+    """执行 Python Analysis Engine。
 
-    该节点严格只读取 AnalysisInput；未来替换为独立 Skill 时由
-    AnalysisCapabilityAdapter 负责通信，节点接口保持不变。
+    节点只读取 AnalysisInput，委托 domain/analysis_engine.analyze 完成确定性
+    计算（技术指标/风险/信号），不在这里实现任何计算逻辑。未来替换为独立
+    Skill 时由 AnalysisCapabilityAdapter 负责通信，节点接口保持不变。
     """
+    from stockwise_analysis.domain.analysis_engine import analyze
+
     analysis_input = AnalysisInput.model_validate(state.get("analysis_input", {}))
-    result = AnalysisResult(
-        analysis_id=analysis_input.analysis_id,
-        status="SUCCESS" if analysis_input.data_quality.quality_status == "OK" else "PARTIAL",
-        facts=[{"name": "instrument", "value": analysis_input.instrument.model_dump()}],
-        calculated_indicators={"engine": "python-analysis.v1", "history_bars": len(analysis_input.historical_prices)},
-        signals=[],
-        risk_flags=[],
-        conclusions=[{"text": "已完成流程骨架分析，真实 MCP 数据能力待接入。", "confidence": "LOW"}],
-        limitations=["当前使用 Mock Tool，尚未接入真实 MCP 和 Java API。"],
-        data_quality=analysis_input.data_quality,
-        provenance=analysis_input.provenance,
-    )
+    result = analyze(analysis_input)
     complete = _complete_current_task(state)
     complete.update({"analysis_result": result.model_dump(), "events": [event(state, "analysis.completed", "run_analysis", {"status": result.status})]})
     return complete
@@ -289,3 +309,161 @@ def confirm_user(state: RootState) -> dict[str, Any]:
 def finish(state: RootState) -> dict[str, Any]:
     """写入结束事件，交由 Checkpointer 保存最终状态。"""
     return {"status": state.get("status", "SUCCESS"), "next_stage": None, "events": [event(state, "run.finished", "finish")]}
+
+
+# ── 记忆层节点（首尾读写，ReAct 循环不碰）──
+# 这些节点通过工厂函数注入 MemoryStore 实例，保持"节点不直接持有外部依赖"
+# 的原则。Mem0 不可用时注入的是 NoOpMemoryStore，行为降级为无记忆。
+
+
+def make_load_memory_node(memory_store: Any):
+    """构建对话首部的记忆召回节点（工厂函数）。
+
+    返回一个 async 节点函数。在 Root Graph 入口处执行一次：读取用户画像 +
+    语义召回相关记忆，写入 state 供 ContextBuilder 第 ②⑤ 块使用。
+    Mem0 失败时降级返回空（MemoryStore 接口保证），主流程继续。
+    """
+
+    async def load_memory(state: RootState) -> dict[str, Any]:
+        user_id = state.get("user_id")
+        events: list[dict[str, Any]] = []
+        profile = None
+        recalled: list[dict[str, Any]] = []
+        if user_id:
+            try:
+                profile = await memory_store.get_profile(user_id)
+                query = str(state.get("request", {}).get("message", ""))
+                if query:
+                    records = await memory_store.search(query, user_id, limit=5)
+                    recalled = [
+                        {"content": r.content, "score": r.score, "metadata": r.metadata}
+                        for r in records
+                    ]
+                events.append(event(state, "memory.read", "load_memory", {"profile_hit": profile is not None, "recall_count": len(recalled)}))
+            except Exception as exc:
+                # 二次兜底：MemoryStore 实现本应自行降级，这里再保一层
+                events.append(event(state, "memory.read_failed", "load_memory", {"error": str(exc)[:120]}))
+        else:
+            events.append(event(state, "memory.skipped", "load_memory", {"reason": "no user_id"}))
+        return {
+            "user_profile": profile.__dict__ if profile else None,
+            "recalled_memories": recalled,
+            "events": events,
+        }
+
+    return load_memory
+
+
+def make_persist_memory_node(memory_store: Any):
+    """构建对话尾部的记忆沉淀节点（工厂函数）。
+
+    返回一个 async 节点函数。在 Root Graph 结束前执行一次，写入两类记忆：
+    1. 本轮对话摘要（用户问 + 分析结论），常规沉淀；
+    2. 用户确认后的研究结论（Phase 4 知识入库）：若 confirm_user 已确认，
+       结论以 knowledge_type=confirmed 标记写入，供后续对话作为可信知识召回。
+
+    Mem0 失败时仅记日志不阻塞（MemoryStore.add 保证），记忆是增强项不是
+    关键路径（见架构文档 v3.1 §5.4）。
+    """
+
+    async def persist_memory(state: RootState) -> dict[str, Any]:
+        user_id = state.get("user_id")
+        events: list[dict[str, Any]] = []
+        if user_id:
+            # ── 1. 常规沉淀：用户问题 + 分析结论摘要 ──
+            message = str(state.get("request", {}).get("message", ""))
+            result = state.get("analysis_result", {})
+            conclusions = result.get("conclusions", []) if isinstance(result, dict) else []
+            summary_parts = [f"用户问：{message}"] if message else []
+            for c in conclusions[:3]:
+                summary_parts.append(f"结论：{c.get('text', c) if isinstance(c, dict) else c}")
+            content = " | ".join(summary_parts)
+            if content:
+                try:
+                    await memory_store.add(content, user_id, metadata={"run_id": state.get("run_id")})
+                    events.append(event(state, "memory.written", "persist_memory", {"content_len": len(content)}))
+                except Exception as exc:
+                    events.append(event(state, "memory.write_failed", "persist_memory", {"error": str(exc)[:120]}))
+
+            # ── 2. 用户确认后的知识入库（Phase 4）──
+            confirmation = state.get("confirmation")
+            confirmed = confirmation is not None and not _is_negative_confirmation(confirmation)
+            if confirmed and conclusions:
+                knowledge = " | ".join(
+                    f"已确认结论：{c.get('text', c) if isinstance(c, dict) else c}"
+                    for c in conclusions[:5]
+                )
+                try:
+                    await memory_store.add(
+                        knowledge,
+                        user_id,
+                        metadata={
+                            "run_id": state.get("run_id"),
+                            "knowledge_type": "confirmed",  # 标记为已确认知识
+                            "symbol": state.get("intent", {}).get("symbol"),
+                        },
+                    )
+                    events.append(event(state, "memory.knowledge_saved", "persist_memory", {"knowledge_type": "confirmed"}))
+                except Exception as exc:
+                    events.append(event(state, "memory.knowledge_save_failed", "persist_memory", {"error": str(exc)[:120]}))
+
+        events.append(event(state, "run.persisted", "persist_memory"))
+        return {"events": events}
+
+    return persist_memory
+
+
+def _is_negative_confirmation(confirmation: Any) -> bool:
+    """判断用户确认是否为拒绝。
+
+    兼容两种形态：dict（{"confirmed": false} 或 {"answer": "否"}）
+    和字符串（"否"/"不要"/"不保存"等）。
+    """
+
+    if isinstance(confirmation, dict):
+        if confirmation.get("confirmed") is False:
+            return True
+        answer = str(confirmation.get("answer", confirmation.get("message", ""))).strip()
+    else:
+        answer = str(confirmation).strip()
+    return any(word in answer for word in ("否", "不要", "不保存", "拒绝", "不用"))
+
+
+# ── ContextBuilder 感知的节点工厂 ──
+# 旧版 understand_request / compose_response 硬编码规则替身，这里提供工厂版本，
+# 让 Application Runtime 注入 LLM 版 Agent 和 ContextBuilder。无注入时降级回规则版。
+
+
+def make_understand_request_node(query_agent: Any):
+    """构建带 ContextBuilder 的理解节点（工厂函数）。
+
+    注入的 query_agent 可以是 RuleBasedQueryAgent（无 LLM）或 LlmQueryAgent
+    （有 LLM）。节点内部组装上下文后委托 agent.understand 输出意图。
+    """
+
+    def understand_with_context(state: RootState) -> dict[str, Any]:
+        intent = query_agent.understand(state.get("request", {})).model_dump()
+        return {
+            "intent": intent,
+            "confirmation_required": intent["requires_confirmation"],
+            "events": [event(state, "query.understood", "understand_request", intent)],
+        }
+
+    return understand_with_context
+
+
+def make_compose_response_node(summary_model: Any):
+    """构建带 SummaryModel 的响应节点（工厂函数）。
+
+    注入的 summary_model 可以是 DeterministicSummaryModel（无 LLM）或
+    LlmSummaryModel（有 LLM）。节点内部委托 model.compose 生成最终响应。
+    """
+
+    def compose_with_model(state: RootState) -> dict[str, Any]:
+        result = AnalysisResult.model_validate(state.get("analysis_result", {}))
+        response = summary_model.compose(result)
+        complete = _complete_current_task(state)
+        complete.update({"final_response": response, "events": [event(state, "response.composed", "compose_response")]})
+        return complete
+
+    return compose_with_model

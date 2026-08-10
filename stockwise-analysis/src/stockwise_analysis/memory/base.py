@@ -1,0 +1,64 @@
+"""记忆层统一抽象。
+
+所有记忆实现（Mem0、降级 NoOp、未来其他后端）都遵守这套接口。LangGraph
+版只在对话首尾调用 search/get_profile 和 add，ReAct 循环中不碰记忆——
+这是保证流程确定性的关键边界（见架构文档 v3.1 §5.1）。
+
+为什么用 Protocol 而非 ABC：记忆实现可能是异步的（Mem0 内部调 LLM），
+Protocol 允许实现自行决定是否 async，调用方通过统一签名适配。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+
+@dataclass
+class MemoryRecord:
+    """单条召回的记忆记录。
+
+    content 是记忆正文（研究结论、用户观点等）；metadata 携带来源、时间、
+    分数等溯源信息，供 ContextBuilder 第 ⑤ 块和 limitations 使用。
+    """
+
+    content: str
+    score: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class UserProfile:
+    """用户结构化画像。
+
+    从 PG 表字段读取（确定性），非语义召回。包含风险偏好、偏好板块等，
+    由 LLM 定期归纳写入，ContextBuilder 第 ② 块直接注入。
+    """
+
+    user_id: str
+    risk_tolerance: str | None = None
+    preferred_sectors: list[str] = field(default_factory=list)
+    forbidden_symbols: list[str] = field(default_factory=list)  # 禁忌标的
+    notes: str | None = None
+
+
+class MemoryStore(Protocol):
+    """记忆存储统一接口。
+
+    实现必须保证：
+    - search/get_profile 失败时不抛致命异常，返回空结果（降级语义）；
+    - add 失败时仅记录日志，不阻塞主流程；
+    - 记忆是增强项，不是关键路径——挂了分析照常跑（见架构文档 §5.4）。
+    """
+
+    async def search(self, query: str, user_id: str, *, limit: int = 5) -> list[MemoryRecord]:
+        """语义召回与 query 相关的历史记忆。失败时返回空列表。"""
+        ...
+
+    async def get_profile(self, user_id: str) -> UserProfile | None:
+        """读取用户结构化画像。无画像时返回 None。"""
+        ...
+
+    async def add(self, content: str, user_id: str, *, metadata: dict[str, Any] | None = None) -> None:
+        """沉淀一条记忆。失败时仅记日志，不抛异常。"""
+        ...

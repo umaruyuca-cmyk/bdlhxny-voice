@@ -1,7 +1,8 @@
 """Root Graph 的统一状态定义。
 
 State 是短期运行记忆：它随 Checkpointer 保存并可由同一 ``thread_id`` 恢复。
-长期用户偏好不放在这里，后续通过独立的 Memory Adapter（例如 Letta）召回。
+长期用户偏好和语义记忆通过 Mem0 在对话首尾召回/沉淀，不常驻 State——
+但召回结果需注入 ContextBuilder，因此用专门字段短暂持有（见 §5.1）。
 """
 
 from __future__ import annotations
@@ -35,5 +36,9 @@ class RootState(TypedDict, total=False):
     confirmation: dict[str, Any] | None
     status: str
     errors: Annotated[list[dict[str, Any]], operator.add]
+    # ── 记忆层字段（仅对话首尾读写，ReAct 循环不碰）──
+    # load_memory 节点写入，供 ContextBuilder 第 ②⑤ 块注入。
+    user_profile: dict[str, Any] | None
+    recalled_memories: list[dict[str, Any]]
     # Event 用于 SSE、审计和调试，不能记录密钥或未脱敏敏感字段。
     events: Annotated[list[dict[str, Any]], operator.add]

@@ -15,13 +15,17 @@ try:
 except ImportError:  # LangGraph versions before the rename expose MemorySaver.
     from langgraph.checkpoint.memory import MemorySaver as InMemorySaver
 
-from .nodes import (
+from ..nodes.nodes import (
     assemble_analysis,
     compose_response,
     confirm_user,
     dispatch_workflow,
     finish,
     load_portfolio_context,
+    make_compose_response_node,
+    make_load_memory_node,
+    make_load_portfolio_context_node,
+    make_persist_memory_node,
     resolve_instrument,
     run_analysis,
     validate_analysis,
@@ -37,27 +41,63 @@ def route_stage(state: RootState) -> str:
     return state.get("next_stage") or "finish"
 
 
-def build_root_graph(checkpointer=None):
+def build_root_graph(
+    checkpointer=None,
+    memory_store=None,
+    query_agent=None,
+    summary_model=None,
+    gateway_adapter=None,
+    research_agent=None,
+    java_adapter=None,
+):
     """构建顶层动态流程。
 
-    开发环境使用 InMemorySaver 方便测试；生产环境必须从 Runtime 注入
-    PostgreSQL 或 Redis Checkpointer，Graph 拓扑和节点代码不随之改变。
+    所有可选注入参数遵循同一原则：有注入走增强版（LLM/记忆/MCP/Java），无注入
+    走规则版降级，保证 Graph 在任何环境都能跑。Application Runtime 负责装配。
+
+    - checkpointer：状态持久化，默认 InMemorySaver。
+    - memory_store：有则在首尾插入 load/persist 记忆节点（Mem0）。
+    - query_agent：有则 query_graph 用 LLM 版理解节点。
+    - summary_model：有则 compose_response 用 LLM 版总结。
+    - gateway_adapter + research_agent：有则 market_data_graph 走真实 MCP ReAct。
+    - java_adapter：有则 load_portfolio_context 走真实 Java 服务（内部自带 mock 降级）。
     """
 
     graph = StateGraph(RootState)
-    graph.add_node("query_graph", build_query_graph())
+
+    # 记忆首部节点：有 memory_store 时才加入（工厂函数闭包绑定实例）
+    has_memory = memory_store is not None
+    if has_memory:
+        graph.add_node("load_memory", make_load_memory_node(memory_store))
+
+    graph.add_node("query_graph", build_query_graph(query_agent=query_agent))
     graph.add_node("dispatch_workflow", dispatch_workflow)
     graph.add_node("resolve_instrument", resolve_instrument)
-    graph.add_node("market_data_graph", build_market_data_graph())
-    graph.add_node("load_portfolio_context", load_portfolio_context)
+    graph.add_node("market_data_graph", build_market_data_graph(gateway_adapter=gateway_adapter, research_agent=research_agent))
+    # 有 java_adapter 用工厂节点（真实 Java + 内部降级），否则用默认 mock
+    portfolio_node = make_load_portfolio_context_node(java_adapter) if java_adapter is not None else load_portfolio_context
+    graph.add_node("load_portfolio_context", portfolio_node)
     graph.add_node("assemble_analysis", assemble_analysis)
     graph.add_node("run_analysis", run_analysis)
     graph.add_node("validate_analysis", validate_analysis)
-    graph.add_node("compose_response", compose_response)
+    # 有 summary_model 用工厂版，否则用原版 compose_response
+    compose_node = make_compose_response_node(summary_model) if summary_model is not None else compose_response
+    graph.add_node("compose_response", compose_node)
     graph.add_node("confirm_user", confirm_user)
+
+    # 记忆尾部节点
+    if has_memory:
+        graph.add_node("persist_memory", make_persist_memory_node(memory_store))
+
     graph.add_node("finish", finish)
 
-    graph.add_edge(START, "query_graph")
+    # 入口：有记忆时先 load_memory 再 query_graph，否则直接 query_graph
+    if has_memory:
+        graph.add_edge(START, "load_memory")
+        graph.add_edge("load_memory", "query_graph")
+    else:
+        graph.add_edge(START, "query_graph")
+
     graph.add_edge("query_graph", "dispatch_workflow")
     graph.add_conditional_edges(
         "dispatch_workflow",
@@ -86,7 +126,14 @@ def build_root_graph(checkpointer=None):
         "confirm_user",
     ):
         graph.add_edge(node, "dispatch_workflow")
-    graph.add_edge("finish", END)
+
+    # 出口：有记忆时 finish 之前先 persist_memory
+    if has_memory:
+        graph.add_edge("finish", "persist_memory")
+        graph.add_edge("persist_memory", END)
+    else:
+        graph.add_edge("finish", END)
+
     return graph.compile(checkpointer=checkpointer or InMemorySaver())
 
 

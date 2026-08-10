@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
-from stockwise_analysis.graph.root_graph import initial_state
+from stockwise_analysis.runtimes.langgraph.graphs.root_graph import initial_state
 from stockwise_analysis.runtime.application import StockWiseApplication, create_application
 from stockwise_analysis.runtime.context import RunContext
 from stockwise_analysis.runtime.recovery import graph_config

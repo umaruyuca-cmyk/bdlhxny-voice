@@ -1,41 +1,138 @@
 """应用装配入口。
 
-这里只负责组装配置、Checkpointer 和 Root Graph，不包含业务节点逻辑。生产
-部署时替换 Checkpointer 实现即可，不需要修改 Graph 拓扑。
+负责把所有组件（LLM、Memory、Gateway、Agent）按配置创建并注入到 Root Graph。
+装配原则：每个组件都走"有配置用真实版、无配置降级"的路径，保证应用在任何
+环境（无 API Key、无 Mem0、无 MCP）都能启动并跑通流程——只是质量从 LLM 降到规则。
+
+生产部署时替换 Checkpointer 实现即可，不需要修改 Graph 拓扑。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from stockwise_analysis.config import Settings
-from stockwise_analysis.graph.root_graph import build_root_graph
+from stockwise_analysis.runtimes.langgraph.agents.query_agent import create_query_agent
+from stockwise_analysis.runtimes.langgraph.agents.research_agent import create_research_agent
+from stockwise_analysis.runtimes.langgraph.agents.summary_model import create_summary_model
+from stockwise_analysis.runtimes.langgraph.graphs.root_graph import build_root_graph
 
 from .errors import ConfigurationError
+from .llm import create_llm
+
+# Java API 地址的环境变量名（与 config 一致）
+_JAVA_API_BASE_URL_ENV = "JAVA_API_BASE_URL"
 
 
 @dataclass
 class StockWiseApplication:
-    """封装已编译的 Root Graph 与其运行配置。"""
+    """已装配的应用实例，持有 Graph 和所有注入的组件。"""
 
     settings: Settings
-    graph: Any
+    graph: Any  # 编译后的 LangGraph
+    # 持有组件引用供调试和可观测性使用
+    llm: Any | None = None
+    memory_store: Any | None = None
+    gateway_adapter: Any | None = None
+    query_agent: Any | None = None
+    summary_model: Any | None = None
+    research_agent: Any | None = None
 
 
-def create_application(settings: Settings | None = None, checkpointer: Any | None = None) -> StockWiseApplication:
-    """创建应用实例。
+def create_application(settings: Settings | None = None) -> StockWiseApplication:
+    """从 Settings 装配完整应用。
 
-    当前默认内存 Checkpointer 仅用于本地开发和测试；生产启动时必须注入
-    PostgreSQL 或 Redis 的持久化实现。
+    装配顺序：LLM → Memory → Gateway → Agents → Root Graph。
+    每一步都可能降级（无 Key/无依赖），降级信息记日志但不阻断启动。
     """
+    settings = settings or Settings.from_environment()
 
-    resolved_settings = settings or Settings.from_environment()
-    if resolved_settings.environment == "production" and checkpointer is None:
+    # ── 0. 生产环境安全校验：不允许静默退化到内存 Checkpointer ──
+    # 内存 Checkpointer 重启即丢状态，生产环境必须用 PG/Redis 持久化。
+    if settings.environment == "production" and settings.checkpointer_backend == "memory":
         raise ConfigurationError(
-            "production requires an injected persistent Checkpointer; InMemorySaver is development-only"
+            "生产环境不允许使用 memory Checkpointer，请配置 PostgreSQL 或 Redis 后端。"
         )
-    return StockWiseApplication(
-        settings=resolved_settings,
-        graph=build_root_graph(checkpointer=checkpointer),
+
+    # ── 1. LLM（有 DeepSeek Key 用真实，无则 None 触发各 Agent 降级）──
+    llm = create_llm(
+        api_key=settings.deepseek_api_key,
+        base_url=settings.mem0.llm_base_url,
+        model=settings.mem0.llm_model,
     )
+
+    # ── 2. 记忆层（Mem0 后端不可用时降级 NoOp）──
+    memory_store = _create_memory(settings)
+
+    # ── 3. MCP Gateway（创建 client，云端不在线时调用会失败但启动不阻断）──
+    gateway_adapter = _create_gateway(settings)
+
+    # ── 4. Agents（按 LLM 有无自动选 LLM 版或规则版）──
+    query_agent = create_query_agent(llm)
+    summary_model = create_summary_model(llm)
+    # Research Agent 默认规则版；comprehensive 类型由 graph 内部按需升级
+    research_agent = create_research_agent(llm, analysis_type="")
+
+    # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
+    # base_url 未配置时 Adapter 内部自动 mock 降级（见 java_data_adapter.py）
+    import os as _os
+
+    java_adapter = _create_java_adapter(_os.getenv(_JAVA_API_BASE_URL_ENV))
+
+    # ── 5. Root Graph（注入全部组件）──
+    graph = build_root_graph(
+        memory_store=memory_store,
+        query_agent=query_agent,
+        summary_model=summary_model,
+        gateway_adapter=gateway_adapter,
+        research_agent=research_agent,
+        java_adapter=java_adapter,
+    )
+
+    return StockWiseApplication(
+        settings=settings,
+        graph=graph,
+        llm=llm,
+        memory_store=memory_store,
+        gateway_adapter=gateway_adapter,
+        query_agent=query_agent,
+        summary_model=summary_model,
+        research_agent=research_agent,
+    )
+
+
+def _create_memory(settings: Settings) -> Any:
+    """创建记忆存储，Mem0 不可用时降级 NoOp。"""
+    from stockwise_analysis.memory.mem0.mem0_store import create_memory_store
+
+    return create_memory_store(
+        mem0_llm_model=settings.mem0.llm_model,
+        mem0_llm_api_key=settings.mem0.llm_api_key,
+        mem0_llm_base_url=settings.mem0.llm_base_url,
+        mem0_embedder_model=settings.mem0.embedder_model,
+        mem0_embedder_api_key=settings.mem0.embedder_api_key,
+        mem0_embedder_base_url=settings.mem0.embedder_base_url,
+    )
+
+
+def _create_gateway(settings: Settings) -> Any:
+    """创建 MCP Gateway Adapter。
+
+    即使云端 MCP 不在线也允许启动（调用时才失败）。这与"降级不阻断启动"
+    原则一致——Gateway 只是把 client 创建出来，连接探测发生在首次调用。
+    """
+    from stockwise_analysis.integrations.mcp.adapter import create_adapter_from_settings
+
+    return create_adapter_from_settings(settings)
+
+
+def _create_java_adapter(base_url: str | None) -> Any:
+    """创建 Java 数据适配器（Phase 4）。
+
+    base_url 未配置时返回的 Adapter 内部自动 mock 降级——持仓/账户返回
+    确定性 mock 数据（带 is_mock 标记），保证开发环境和测试可跑通完整流程。
+    """
+    from stockwise_analysis.tools.java_data_adapter import create_java_adapter
+
+    return create_java_adapter(base_url=base_url)
