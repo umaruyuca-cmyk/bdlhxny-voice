@@ -21,6 +21,10 @@ class RootState(TypedDict, total=False):
     # 列表字段采用 reducer 追加，避免子图更新时覆盖先前的轨迹。
     conversation: Annotated[list[dict[str, Any]], operator.add]
     intent: dict[str, Any]
+    # 执行模式选择输出（v2.1 §3）：direct_response / single_capability / agent_loop
+    intent_route: dict[str, Any]
+    # 会话实体表（v2.1 §7.3）：本会话出现过的标的/指数/行业等，供指代消解与跨轮标的继承
+    entities: Annotated[list[dict[str, Any]], operator.add]
     needs_clarification: bool
     clarification_request: dict[str, Any] | None
     workflow_plan: dict[str, Any]

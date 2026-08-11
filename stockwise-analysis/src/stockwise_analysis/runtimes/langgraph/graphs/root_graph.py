@@ -19,12 +19,14 @@ from ..nodes.nodes import (
     assemble_analysis,
     compose_response,
     confirm_user,
+    direct_response_node,
     dispatch_workflow,
     finish,
     load_portfolio_context,
     make_compose_response_node,
     make_load_memory_node,
     make_load_portfolio_context_node,
+    make_persist_history_node,
     make_persist_memory_node,
     make_run_analysis_node,
     make_resolve_instrument_node,
@@ -43,6 +45,12 @@ def route_stage(state: RootState) -> str:
     return state.get("next_stage") or "finish"
 
 
+def route_after_query(state: RootState) -> str:
+    """query_graph 后：direct_response 走快路径直接回答；其他进 dispatch_workflow。"""
+    mode = state.get("intent_route", {}).get("mode", "agent_loop")
+    return "direct_response" if mode == "direct_response" else "dispatch"
+
+
 def build_root_graph(
     checkpointer=None,
     memory_store=None,
@@ -54,6 +62,8 @@ def build_root_graph(
     java_adapter=None,
     context_builder=None,
     analysis_capability=None,
+    web_search_adapter=None,
+    history_store=None,
 ):
     """构建顶层动态流程。
 
@@ -77,6 +87,7 @@ def build_root_graph(
         graph.add_node("load_memory", make_load_memory_node(memory_store))
 
     graph.add_node("query_graph", build_query_graph(query_agent=query_agent, context_builder=context_builder))
+    graph.add_node("direct_response", direct_response_node)
     graph.add_node("dispatch_workflow", dispatch_workflow)
     # 有 gateway 时标的解析走真实 Gateway（审查文档 §4.6），否则 mock
     resolve_node = make_resolve_instrument_node(gateway_adapter) if gateway_adapter is not None else resolve_instrument
@@ -88,6 +99,8 @@ def build_root_graph(
             gateway_adapter=gateway_adapter,
             research_agent=research_agent,
             llm_research_agent=llm_research_agent,
+            web_search_adapter=web_search_adapter,
+            java_adapter=java_adapter,
         ),
     )
     # 有 java_adapter 用工厂节点（真实 Java + 内部降级），否则用默认 mock
@@ -106,7 +119,15 @@ def build_root_graph(
     if has_memory:
         graph.add_node("persist_memory", make_persist_memory_node(memory_store))
 
+    # 分析历史节点（v2.1 §9.3：与 Mem0 分离，记录运行事实供审计/历史查询）
+    has_history = history_store is not None
+    if has_history:
+        graph.add_node("persist_history", make_persist_history_node(history_store))
+
     graph.add_node("finish", finish)
+
+    # direct_response 快路径：直接回答后跳过 dispatch_workflow，直接 finish
+    graph.add_edge("direct_response", "finish")
 
     # 入口：有记忆时先 load_memory 再 query_graph，否则直接 query_graph
     if has_memory:
@@ -115,7 +136,11 @@ def build_root_graph(
     else:
         graph.add_edge(START, "query_graph")
 
-    graph.add_edge("query_graph", "dispatch_workflow")
+    graph.add_conditional_edges(
+        "query_graph",
+        route_after_query,
+        {"direct_response": "direct_response", "dispatch": "dispatch_workflow"},
+    )
     graph.add_conditional_edges(
         "dispatch_workflow",
         route_stage,
@@ -144,8 +169,15 @@ def build_root_graph(
     ):
         graph.add_edge(node, "dispatch_workflow")
 
-    # 出口：有记忆时 finish 之前先 persist_memory
-    if has_memory:
+    # 出口链（v2.1 §9.3）：finish → persist_history(有) → persist_memory(有) → END
+    if has_history and has_memory:
+        graph.add_edge("finish", "persist_history")
+        graph.add_edge("persist_history", "persist_memory")
+        graph.add_edge("persist_memory", END)
+    elif has_history:
+        graph.add_edge("finish", "persist_history")
+        graph.add_edge("persist_history", END)
+    elif has_memory:
         graph.add_edge("finish", "persist_memory")
         graph.add_edge("persist_memory", END)
     else:
@@ -154,14 +186,19 @@ def build_root_graph(
     return graph.compile(checkpointer=checkpointer or InMemorySaver())
 
 
-def initial_state(run_id: str, request: dict[str, Any], user_id: str | None = None) -> RootState:
-    """初始化一次运行所需的最小 State，避免 API 层直接拼装内部字段。"""
+def initial_state(run_id: str, request: dict[str, Any], user_id: str | None = None, thread_id: str | None = None) -> RootState:
+    """初始化一次运行所需的最小 State，避免 API 层直接拼装内部字段。
+
+    thread_id 为 None 时默认等于 run_id（单次运行）；多轮对话传入已有 thread_id
+    以延续会话状态（v2.1 P0-7：thread_id 与 run_id 分离）。
+    """
     return {
         "run_id": run_id,
-        "thread_id": run_id,
+        "thread_id": thread_id or run_id,
         "user_id": user_id,
         "request": request,
         "conversation": [],
+        "entities": [],
         "observations": [],
         "errors": [],
         "events": [],

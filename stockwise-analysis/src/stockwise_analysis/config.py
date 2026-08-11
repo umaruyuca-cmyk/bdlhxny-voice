@@ -77,6 +77,13 @@ class Settings:
     # ── 记忆层 ──
     mem0: Mem0Config = field(default_factory=Mem0Config)
 
+    # ── web-search-wrapper（网络搜索服务，HTTP 非 MCP）──
+    # 双凭证：agent_id（x-agent-id）+ token（x-search-token），见 wrapper auth.js
+    web_search_base_url: str | None = None
+    web_search_agent_id: str | None = None
+    web_search_token: str | None = None
+    web_search_timeout_seconds: float = 20.0
+
     # ── 模型凭证（供记忆层和后续 Agent 使用）──
     deepseek_api_key: str | None = None
     qwen3_base_url: str | None = None
@@ -118,4 +125,8 @@ class Settings:
             ),
             deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
             qwen3_base_url=os.getenv("QWEN3_BASE_URL"),
+            web_search_base_url=os.getenv("WEB_SEARCH_BASE_URL"),
+            web_search_agent_id=os.getenv("WEB_SEARCH_AGENT_ID"),
+            web_search_token=os.getenv("WEB_SEARCH_TOKEN"),
+            web_search_timeout_seconds=float(os.getenv("WEB_SEARCH_TIMEOUT", "20")),
         )

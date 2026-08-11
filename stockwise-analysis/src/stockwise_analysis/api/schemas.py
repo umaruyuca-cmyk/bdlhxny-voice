@@ -16,6 +16,7 @@ class RunRequest(BaseModel):
     message: str
     symbol: str | None = None
     user_id: str | None = None
+    thread_id: str | None = None  # v2.1 P0-7：传入则延续已有会话，否则新建
     require_confirmation: bool = False
     scope: str | None = None
 

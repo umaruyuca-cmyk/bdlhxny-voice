@@ -128,6 +128,8 @@ def build_market_data_graph(
     research_agent: Any | None = None,
     llm_research_agent: Any | None = None,
     max_react_rounds: int = _DEFAULT_MAX_REACT_ROUNDS,
+    web_search_adapter: Any | None = None,
+    java_adapter: Any | None = None,
 ):
     """构建市场数据获取子图（审查文档 §4.5 执行矩阵）。
 
@@ -154,7 +156,7 @@ def build_market_data_graph(
         graph.add_node("build_market_query", build_market_query)
         graph.add_node("execute_fast_path_quote", _make_fast_path_quote_node(gateway_adapter))
         graph.add_node("select_action", _make_select_action_node(research_agent, llm_research_agent))
-        graph.add_node("execute_tool", _make_execute_tool_node(gateway_adapter))
+        graph.add_node("execute_tool", _make_execute_tool_node(gateway_adapter, web_search_adapter, java_adapter))
         graph.add_node("normalize_observation", _normalize_observations_node)
         graph.add_node("evaluate_market_data", evaluate_market_data)
 
@@ -305,8 +307,15 @@ def _make_fast_path_quote_node(gateway_adapter: Any):
     return execute_fast_path_quote
 
 
-def _make_execute_tool_node(gateway_adapter: Any):
-    """构建工具执行节点：通过 Gateway 调用统一能力（同步工厂，返回异步节点）。"""
+def _make_execute_tool_node(gateway_adapter: Any, web_search_adapter: Any | None = None, java_adapter: Any | None = None):
+    """构建工具执行节点：按能力前缀路由到对应 adapter（同步工厂，返回异步节点）。
+
+    能力前缀路由（架构文档 §13）：
+    - research.*  → web_search_adapter（网络搜索，HTTP 非 MCP）
+    - portfolio.* / user.* → java_adapter（用户数据，Java API）
+    - 其他（market.* 等） → gateway_adapter（MCP 金融数据）
+    各 adapter 失败时内部降级，这里只做分发。
+    """
 
     async def execute_tool(state: RootState) -> dict:
         action_data = state.get("_current_action", {})
@@ -322,8 +331,13 @@ def _make_execute_tool_node(gateway_adapter: Any):
                 "budget_exhausted": True,
                 "events": [event(state, "tool.blocked", "execute_tool", {"capability": capability, "reason": "budget_exceeded"})],
             }
-        # Gateway 返回 Observation；网络失败由 Gateway 内部 fallback 处理
-        observation = await gateway_adapter.execute(capability, arguments, run_id=run_id)
+        # 能力前缀路由：research./portfolio./user. 走独立 adapter，其他走 MCP gateway
+        if capability.startswith("research.") and web_search_adapter is not None:
+            observation = await web_search_adapter.execute(capability, arguments)
+        elif (capability.startswith("portfolio.") or capability.startswith("user.")) and java_adapter is not None:
+            observation = await java_adapter.execute(capability, arguments)
+        else:
+            observation = await gateway_adapter.execute(capability, arguments, run_id=run_id)
         return {
             "_pending_observation": observation.model_dump(),
             "tool_calls_used": used + 1,

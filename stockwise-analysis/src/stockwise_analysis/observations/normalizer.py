@@ -46,6 +46,11 @@ class ObservationNormalizer:
         if not isinstance(data, dict):
             return observation
 
+        # research.web_search：data 已是结构化 JSON（web_search_adapter 直接放入），
+        # 不走 raw_text 解析路径，只做轻量结果清洗。
+        if observation.capability == "research.web_search":
+            return self._normalize_web_search(observation, data)
+
         raw_text = data.get("raw_text", "")
 
         # ── 服务端吞错识别（error=true 藏在正常响应里）──
@@ -91,6 +96,45 @@ class ObservationNormalizer:
             provenance=observation.provenance,
             error_code=code,
             error_message=message,
+        )
+
+    def _normalize_web_search(self, observation: Observation, data: dict) -> Observation:
+        """research.web_search 结果清洗：data 已是 wrapper 结构化响应。
+
+        wrapper 响应：{schemaVersion, requestId, provider, results[], errors[]}。
+        这里只做字段裁剪（保留 title/url/snippet/domain/publishedAt/relevanceScore），
+        不做内容分析（分析由 Agent/LLM 做）。mock 数据（is_mock=True）原样保留。
+        """
+        if data.get("is_mock"):
+            return observation  # mock 数据不二次清洗，保留 is_mock 标记
+
+        results = data.get("results", [])
+        errors = data.get("errors", [])
+        cleaned_results = [
+            {
+                "title": r.get("title"),
+                "url": r.get("url"),
+                "domain": r.get("domain"),
+                "snippet": r.get("snippet"),
+                "published_at": r.get("publishedAt"),
+                "relevance_score": r.get("relevanceScore"),
+                "source_type": r.get("sourceType"),
+            }
+            for r in results
+            if r.get("url")  # 丢弃无 url 的无效结果
+        ]
+        status = "PARTIAL" if errors and cleaned_results else observation.status
+        quality = DataQuality(
+            completeness=min(1.0, len(cleaned_results) / 5.0) if cleaned_results else 0.0,
+            quality_status="OK" if cleaned_results else "PARTIAL",
+        )
+        return Observation(
+            observation_id=observation.observation_id,
+            capability=observation.capability,
+            status=status,
+            data={"results": cleaned_results, "errors": errors, "request_id": data.get("requestId"), "provider": data.get("provider")},
+            data_quality=quality,
+            provenance=observation.provenance,
         )
 
     def _generic_parse(self, observation: Observation, raw_text: str) -> Observation:

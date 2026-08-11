@@ -41,6 +41,8 @@ class StockWiseApplication:
     research_agent: Any | None = None
     llm_research_agent: Any | None = None
     analysis_capability: Any | None = None
+    web_search_adapter: Any | None = None
+    history_store: Any | None = None
 
 
 def create_application(settings: Settings | None = None) -> StockWiseApplication:
@@ -89,6 +91,10 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         token=_os.getenv("JAVA_API_TOKEN"),
     )
 
+    # ── 4.5b web-search 适配器（网络搜索，HTTP 非 MCP）──
+    # base_url 未配置时 Adapter 内部自动 mock 降级（见 web_search_adapter.py）
+    web_search_adapter = _create_web_search_adapter(settings)
+
     # ── 4.6 ContextBuilder（审查文档 §4.4：七块上下文组装）──
     # 从 ToolRegistry 组装工具清单；Memory 召回内容由 load_memory 节点写入
     # state，ContextBuilder 只做组装不做 I/O。
@@ -96,6 +102,11 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
     from stockwise_analysis.tools.analysis_capability import create_analysis_capability
 
     analysis_capability = create_analysis_capability()
+
+    # ── 4.7 分析历史存储（v2.1 §9.3：审计/历史查询，与 Mem0 分离）──
+    from .history import create_history_store
+
+    history_store = create_history_store()
 
     # ── 5. Root Graph（注入全部组件）──
     graph = build_root_graph(
@@ -109,6 +120,8 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         java_adapter=java_adapter,
         context_builder=context_builder,
         analysis_capability=analysis_capability,
+        web_search_adapter=web_search_adapter,
+        history_store=history_store,
     )
 
     return StockWiseApplication(
@@ -123,6 +136,8 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         research_agent=research_agent,
         llm_research_agent=llm_research_agent,
         analysis_capability=analysis_capability,
+        web_search_adapter=web_search_adapter,
+        history_store=history_store,
     )
 
 
@@ -160,6 +175,23 @@ def _create_java_adapter(base_url: str | None, *, production: bool, token: str |
     from stockwise_analysis.tools.java_data_adapter import create_java_adapter
 
     return create_java_adapter(base_url=base_url, production=production, token=token)
+
+
+def _create_web_search_adapter(settings: Settings) -> Any:
+    """创建 web-search 适配器（架构文档 §13.4）。
+
+    base_url 未配置时：开发环境 mock 降级（带 is_mock 标记），生产环境
+    返回 UNAVAILABLE（不伪造搜索结果）。
+    """
+    from stockwise_analysis.tools.web_search_adapter import create_web_search_adapter
+
+    return create_web_search_adapter(
+        base_url=settings.web_search_base_url,
+        timeout_seconds=settings.web_search_timeout_seconds,
+        production=(settings.environment == "production"),
+        agent_id=settings.web_search_agent_id,
+        token=settings.web_search_token,
+    )
 
 
 def _create_context_builder() -> Any:

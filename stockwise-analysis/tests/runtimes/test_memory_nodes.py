@@ -47,8 +47,8 @@ async def test_confirmed_knowledge_saved():
     store = RecordingMemoryStore()
     node = make_persist_memory_node(store)
     await node(_state_with_result(confirmation={"confirmed": True}))
-    # 应有两次 add：常规沉淀 + 已确认知识
-    assert len(store.added) == 2
+    # v2.1 §9.2：不写常规摘要，只写已确认知识 → 1 次 add
+    assert len(store.added) == 1
     knowledge_adds = [a for a in store.added if a[2].get("knowledge_type") == "confirmed"]
     assert len(knowledge_adds) == 1
     assert "已确认结论" in knowledge_adds[0][0]
@@ -66,10 +66,9 @@ async def test_rejected_confirmation_not_saved_as_knowledge():
 
 
 @pytest.mark.asyncio
-async def test_no_confirmation_only_regular_persist():
-    """无用户确认时，只做常规沉淀。"""
+async def test_no_confirmation_not_persisted():
+    """v2.1 §9.2：无用户确认时不自动写记忆（不写临时摘要）。"""
     store = RecordingMemoryStore()
     node = make_persist_memory_node(store)
     await node(_state_with_result(confirmation=None))
-    assert len(store.added) == 1  # 只有常规沉淀
-    assert store.added[0][2].get("knowledge_type") is None
+    assert len(store.added) == 0  # 无确认不写任何记忆

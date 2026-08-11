@@ -1,1176 +1,671 @@
 # StockWise 金融随身管家
-# 需求更新版（LangGraph + Mem0 当前实施基线）
+# 需求文档（冻结基线版）
 
-> 版本：v1.0
-> 状态：当前需求基线
+> 版本：v2.1
+> 状态：当前需求基线（取代 v2.0，合并 27 号修改意见）
 > 适用项目：`stockwise-analysis`
 > 当前运行时：LangGraph
 > 当前记忆层：Mem0
 > 当前数据接入：MCP + Java Data API
 > 当前分析能力：Python Analysis Capability
 >
-> 本文档是新的需求更新版，不修改主开发文档
-> `23-全新股票分析系统-统一开发实施Prompt.md`。
-> 后续开发以本文档作为“金融随身管家形态”的补充需求说明；如果本文档与主 Prompt 的固定股票流程发生冲突，以本文档中关于“对话优先、动态工具选择、非固定路由”的要求为新的调整方向。
+> 本 v2.1 是产品与架构需求的**唯一基线**。23 号文档（`23-全新股票分析系统-统一开发实施Prompt.md`）
+> 在 v2.1 重写完成前，仅作为现有代码迁移参考；其与 v2.1 冲突的流程、字段和验收要求不再新增实现。
+> 所有开发任务必须同时引用：v2.1 需求、迁移清单（§16）、对应验收测试（§19）。
 >
-> 当前阶段暂不引入 Letta、Hermes、Phoenix、Langfuse、DeepEval、Promptfoo、Garak 或其他新增 Agent 平台。本文档只要求把现有 LangGraph + Mem0 + MCP + Java API 体系做完整。
+> v2.1 相对 v2.0 的变更（合并 27 号修改意见）：
+> - P0-1：声明唯一需求来源，禁止双文档并行指导；
+> - P0-2：「意图分流」统一改称「执行模式选择」，避免误解为无边界；
+> - P0-3：IntentRoute 契约补全 + 降级规则 + 名称解析边界定稿；
+> - P0-4：冻结 Planner/Executor/TaskPlan/AgentAction 职责与重规划规则；
+> - P0-5：Guardrails（策略判断）与 Tool Gateway（技术执行）职责分离，四时点校验；
+> - P0-6：只读边界 + 用户身份不信任客户端；
+> - P0-7：thread_id（持续对话）与 run_id（单次执行）拆分；
+> - P1：QueryIntent 改造、记忆收窄、Analysis History 定义、宏观能力列外部依赖；
+> - P2：LOAD_SKILL 暂不开放、DIRECT_RESPONSE 只答稳定知识、SSE schema、动态预算上限。
+>
+> 当前阶段不引入 Letta、Hermes、Phoenix 等新平台，只把现有 LangGraph + Mem0 + MCP + Java API 体系做完整。
+
+---
+
+## 0. 核心原则（不可变）
+
+1. 没有股票代码不等于无法回答；
+2. Agent 只能提出计划或动作，不能直接访问 MCP、Java API、数据库或 `domain/` 内部；
+3. 工具调用、预算、权限、只读限制和恢复仍由外层运行时控制；
+4. 指标、风险和回测等金融计算必须保持确定性、可复现；
+5. Checkpointer、分析历史和长期记忆必须分开；
+6. **当前版本仅提供只读分析、研究辅助和知识解释**，不下单、不调仓、不修改账户；
+7. **用户身份与账户权限只能来自已认证会话/服务端令牌，不得直接信任请求体中的 user_id**。
 
 ---
 
 ## 1. 需求背景
 
-StockWise 不再被定义为只能围绕单只股票代码运行的固定分析系统，而是定义为：
-
-> 面向金融领域的通用对话式智能管家（Financial Personal Assistant）。
-
-用户可以像使用通用对话助手一样与系统交流，但系统的专业范围重点集中在：
-
-- 股票和证券市场；
-- 指数、板块和行业；
-- 宏观经济和跨市场影响；
-- 新闻、公告和事件分析；
-- 用户持仓和风险分析；
-- 投资知识解释；
-- 基于真实数据的金融研究辅助。
-
-系统不要求每个问题都包含股票代码，也不要求每个问题都先归类为某一个固定业务流程。
-
-例如以下问题都属于合法输入：
+StockWise 是面向金融领域的通用对话式智能管家（Financial Personal Assistant），不要求每个问题包含股票代码或归类为固定业务流程。合法输入示例：
 
 ```text
-美国非农数据对中国 A 股有什么影响？
-最近新能源板块为什么波动比较大？
-帮我比较两个行业的估值和资金流向。
-刚才提到的那只股票最近风险怎么样？
-我的持仓整体暴露在哪些风险上？
-什么是市盈率？
-最近市场为什么持续下跌？
-如果美联储继续加息，A 股可能受到哪些影响？
+什么是市盈率？                              ← 知识问答，直接回答
+600519 现在多少钱？                         ← 单点数据（已给代码），单能力查询
+茅台现价？                                  ← 名称需解析，进 Agent Loop
+美国非农数据对中国 A 股有什么影响？         ← 复杂研究，进 Agent Loop
+我的持仓整体暴露在哪些风险上？              ← 持仓分析，进 Agent Loop
+刚才提到的那只股票最近风险怎么样？          ← 上下文引用，进 Agent Loop
 ```
-
-系统需要根据问题内容动态判断：
-
-- 是否可以直接回答；
-- 是否需要读取会话记忆；
-- 是否需要调用 MCP 数据工具；
-- 是否需要调用 Java 用户数据工具；
-- 是否需要加载某个分析 Skill；
-- 是否需要多个工具连续调用；
-- 是否需要向用户补充提问；
-- 是否需要用户确认高风险操作。
 
 ---
 
-## 2. 本次需求更新的核心结论
-
-### 2.1 从固定工作流改为对话式 Agent
-
-旧模式：
+## 2. 核心架构决策：三层分层
 
 ```text
-用户问题
-  → QueryIntent
-  → 固定 route
-  → 固定分析流程
-  → 返回结果
+┌─────────────────────────────────────────────────────┐
+│ 第一层：执行模式选择（轻量分类，非固定业务 route）   │
+│   用户问题 → 判断：直接回答 / 单能力 / Agent Loop    │
+│   拿不准时偏向 Agent Loop；快路径可升级              │
+└───────────────────────┬─────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────┐
+│ 第二层：Agent Loop（planner-executor-guardrails）    │
+│   Planner  → 先产出动态 TaskPlan                    │
+│   Executor → 选可执行步骤，产出 AgentAction          │
+│   Guardrails → 四时点校验（计划/动作/数据/回答）     │
+│   有界循环，重规划默认最多 2 次                      │
+└───────────────────────┬─────────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────────┐
+│ 第三层：确定性计算（domain/ 独立，零框架依赖）       │
+│   统一能力 → Tool Gateway → Observation 标准化       │
+│   → AnalysisInput → domain/ 分析 → AnalysisResult    │
+└─────────────────────────────────────────────────────┘
 ```
 
-新模式：
-
-```text
-用户问题
-  → 金融管家 Agent
-  → 自主判断下一步行动
-  → 直接回答 / 调用工具 / 加载 Skill / 继续分析 / 询问用户
-  → 返回结果
-```
-
-LangGraph 仍然负责状态、循环、工具执行、预算、中断和恢复，但不再被实现成一组必须命中的固定业务路线。
-
-### 2.2 Route 不再作为用户问题的强制分类
-
-`route_type`、`analysis_type` 等字段可以在迁移期间保留，但只能用于：
-
-- 兼容已有代码；
-- 记录本次运行的执行信息；
-- 选择已有分析能力的执行配置；
-- 生成监控和审计信息。
-
-它们不能再承担以下职责：
-
-- 要求所有问题必须命中某个固定类型；
-- 要求用户必须提供股票代码；
-- 决定唯一的完整执行流程；
-- 代替 Agent 进行下一步行动判断；
-- 将宏观、行业、市场和跨市场问题强行压缩为股票分析。
-
-### 2.3 QueryIntent 不再等于执行路线
-
-`QueryIntent（问题意图）`只负责表达用户想完成什么事情，例如：
-
-```text
-用户想了解美国非农数据与中国 A 股之间的影响关系。
-```
-
-它不直接决定：
-
-- 调用哪个 MCP 工具；
-- 调用多少次工具；
-- 是否执行 ReAct；
-- 是否调用 Java API；
-- 是否加载哪个具体 Skill。
-
-这些判断属于 Agent 的执行决策和工具选择阶段。
-
-### 2.4 当前不引入新的 Agent 平台
-
-当前只完成已有系统：
-
-```text
-LangGraph       Agent 状态和执行循环
-Mem0            会话外长期记忆
-MCP             外部金融数据工具
-Java Data API   用户、账户和持仓数据
-Python Analysis 本地确定性分析能力
-FastAPI/SSE     对外服务接口和流式输出
-```
-
-Letta 只保留未来替换运行时的边界，不在当前阶段实现。
+执行模式选择**不是固定业务工作流分类**。它只决定本轮采用直接回答、单能力查询还是受控 Agent Loop；它不决定复杂研究的具体工具、分析步骤或最终结论。这样既避免旧式"问题必须命中预设类别"的限制，又避免被误解为"完全没有路由或边界"。
 
 ---
 
-## 3. 产品定位与用户体验
+## 3. 第一层：执行模式选择
 
-### 3.1 产品定位
+### 3.1 三个出口
 
-StockWise 是一个金融领域的对话式 Agent，而不是一个只能执行固定菜单的查询接口。
+| 出口 | 适用 | 执行 | 示例 |
+|---|---|---|---|
+| 直接回答 | 稳定知识解释 | LLM 单次调用，不调工具 | 什么是市盈率？ |
+| 单能力查询 | 单点数据、单一事实，且标的已解析为 symbol | 一次统一能力调用 | 600519 现价？ |
+| Agent Loop | 复杂研究、多实体、跨市场、名称需解析 | planner 规划 + executor 执行 | 非农对 A 股影响？ |
 
-用户不需要了解：
-
-- 应该使用哪个 route；
-- 应该调用哪个 MCP；
-- 应该传入哪个接口参数；
-- 应该选择哪个分析类型；
-- 是否需要先提供股票代码。
-
-用户只需要自然语言描述目标。
-
-### 3.2 对话连续性
-
-系统必须支持上下文引用：
-
-```text
-用户：帮我看看某行业最近的表现。
-系统：返回行业分析。
-用户：那它和另一个行业相比怎么样？
-系统：解析“它”和“另一个行业”的上下文关系。
-用户：如果我持有其中相关股票，风险大吗？
-系统：结合前文实体和用户持仓继续分析。
-```
-
-系统需要保留：
-
-- 当前会话消息；
-- 当前 Agent 执行状态；
-- 已解析实体；
-- 已获取的 Observation；
-- 上一轮工具结果；
-- 用户已经确认的条件；
-- 必要的长期用户偏好。
-
-### 3.3 回答自由性与金融边界
-
-系统可以自由理解开放式金融问题，但不能：
-
-- 编造实时行情；
-- 把未查询到的数据当成真实数据；
-- 将分析意见伪装成确定性收益承诺；
-- 未经确认执行交易或修改用户敏感资料；
-- 绕过工具白名单直接访问 MCP、数据库或 Java 服务；
-- 因为用户没有提供股票代码就停止所有分析。
-
----
-
-## 4. 当前系统范围
-
-### 4.1 当前必须支持
-
-| 能力 | 是否必须 | 说明 |
-|---|---:|---|
-| 通用金融问答 | 是 | 可直接由模型回答的基础问题 |
-| 股票和指数数据查询 | 是 | 通过 MCP 获取最新或历史数据 |
-| 市场整体分析 | 是 | 不要求股票代码 |
-| 板块和行业分析 | 是 | 不要求单只股票代码 |
-| 宏观经济分析 | 是 | 支持宏观指标和市场影响解释 |
-| 跨市场影响分析 | 是 | 例如海外宏观事件对中国 A 股的影响 |
-| 新闻和事件分析 | 是 | 以工具获取的外部内容为依据 |
-| 用户持仓分析 | 是 | 通过 Java Data API 获取持仓数据 |
-| 多轮上下文对话 | 是 | 解析“刚才那只”“这两个行业”等引用 |
-| 多工具连续调用 | 是 | 由 Agent 根据执行结果决定是否继续 |
-| 结构化数据分析 | 是 | 交给 Python Analysis Capability |
-| 流式输出 | 是 | 通过现有 FastAPI/SSE 服务返回事件 |
-
-### 4.2 当前不支持
-
-当前阶段不实现：
-
-- 真实下单、撤单和交易执行；
-- 未经确认修改用户风险偏好；
-- 未经确认生成并执行交易计划；
-- 无限循环 ReAct；
-- Agent 直接访问数据库；
-- Agent 直接调用 MCP 原始工具；
-- Skill 内部自行查询外部市场数据；
-- 强制引入 Letta 或其他 Agent 平台；
-- 强制引入新的可观测性或评测平台；
-- 把普通分析结果都写入长期记忆。
-
----
-
-## 5. 总体技术架构
-
-```text
-┌─────────────────────────────────────────┐
-│ StockWise Assistant Service              │
-│ FastAPI + SSE                            │
-│                                         │
-│ LangGraph Agent Runtime                  │
-│ Conversation State                       │
-│ Agent Decision Loop                      │
-│ Context Builder                          │
-│ Interrupt / Resume                       │
-└──────────────────┬──────────────────────┘
-                   │
-       ┌───────────┼───────────┐
-       ▼           ▼           ▼
-   Mem0 Memory   Tool Gateway  Skill Adapter
-   记忆层        工具网关       分析能力适配器
-       │           │           │
-       │     ┌─────┴─────┐     │
-       │     ▼           ▼     │
-       │   MCP         Java API│
-       │   金融数据     用户数据│
-       │                   ▼   │
-       └────────────── Python Analysis
-                       Capability
-                       确定性分析
-```
-
-### 5.1 LangGraph 的职责
-
-LangGraph 是当前 Agent Runtime（智能体运行时），负责：
-
-- 管理对话和运行状态；
-- 执行 Agent 决策循环；
-- 控制工具调用；
-- 接收工具返回的 Observation；
-- 判断是否继续、回答或询问用户；
-- 管理预算和最大循环次数；
-- 管理 `interrupt()` 和 `Command(resume=...)`；
-- 通过 Checkpointer 保存可恢复状态；
-- 向 SSE 输出过程事件。
-
-LangGraph 不应被实现为“每个问题必须命中的固定 Route 列表”。
-
-### 5.2 Mem0 的职责
-
-Mem0 负责：
-
-- 用户偏好；
-- 用户长期投资目标；
-- 用户风险偏好；
-- 用户明确要求记住的信息；
-- 对后续对话有帮助的稳定事实。
-
-Mem0 不负责：
-
-- 当前 Graph 状态保存；
-- MCP 原始响应缓存；
-- 工具调用过程控制；
-- 代替 Checkpointer；
-- 代替分析历史记录；
-- 自动将每一次普通回答写入长期记忆。
-
-### 5.3 Tool Gateway 的职责
-
-Agent 不能直接看到和调用两个 MCP 的原始工具集合，而应该通过统一的 Tool Gateway（工具网关）调用能力。
-
-统一能力示例：
-
-```text
-market.resolve_instrument
-market.get_realtime_quote
-market.get_historical_prices
-market.get_financial_statements
-market.get_valuation
-market.get_industry_context
-market.get_money_flow
-market.get_news
-macro.get_indicator
-macro.get_release_history
-portfolio.get_current_positions
-portfolio.get_account_snapshot
-portfolio.get_transaction_history
-user.get_risk_profile
-```
-
-Tool Gateway 负责：
-
-- 参数 Schema 校验；
-- MCP 和 Java API 适配；
-- 工具白名单；
-- 超时和重试；
-- 数据源选择；
-- MCP 响应解析；
-- `error: true` 业务错误识别；
-- Observation 标准化；
-- 数据来源和时间记录；
-- 失败和降级处理。
-
-### 5.4 Analysis Capability 的职责
-
-Python Analysis Capability 只接收已经标准化的数据：
-
-```text
-AnalysisInput → AnalysisResult
-```
-
-它可以负责：
-
-- 指标计算；
-- 风险计算；
-- 技术指标；
-- 估值计算；
-- 历史事件窗口统计；
-- 数据对比；
-- 结果结构化总结。
-
-它不能负责：
-
-- 查询 MCP；
-- 查询 Java 数据库；
-- 发起 HTTP 查询；
-- 决定用户意图；
-- 决定是否继续调用工具；
-- 直接修改记忆；
-- 直接执行交易。
-
----
-
-## 6. Agent 主流程需求
-
-### 6.1 主 Graph
-
-```text
-receive_request
-  ↓
-load_context
-  ↓
-preprocess_message
-  ↓
-agent_decide
-  ├─ DIRECT_RESPONSE
-  ├─ CALL_TOOL
-  ├─ LOAD_SKILL
-  ├─ ASK_USER
-  ├─ REQUEST_CONFIRMATION
-  └─ FINISH
-  ↓
-execute_action
-  ↓
-normalize_observation
-  ↓
-agent_decide
-  ↓
-compose_response
-  ↓
-persist_run_and_memory
-  ↓
-finish
-```
-
-### 6.2 节点类型
-
-| 节点类型 | 中文 | 使用场景 |
-|---|---|---|
-| `CODE` | 确定性代码节点 | 状态检查、预算、Schema 校验、结果合并 |
-| `DIRECT_LLM` | 单次模型调用 | 普通解释、最终表达、简单问答 |
-| `STRUCTURED_LLM` | 结构化模型调用 | 意图理解、动作决策、结果校验 |
-| `TOOL_ONLY` | 工具调用节点 | MCP、Java API、内部计算工具 |
-| `BOUNDED_REACT_AGENT` | 有界 ReAct Agent | 需要多轮选择工具的复杂研究任务 |
-| `SUBGRAPH` | LangGraph 子图 | 可独立运行的专业分析能力 |
-| `INTERRUPT` | 中断节点 | 关键歧义、权限缺失、高风险确认 |
-
-### 6.3 简单问题处理
-
-对于可以直接回答的问题，不能强制创建复杂任务计划：
-
-```text
-用户问题
-  → load_context
-  → agent_decide
-  → DIRECT_RESPONSE
-  → 返回回答
-```
-
-### 6.4 数据问题处理
-
-对于需要最新数据的问题：
-
-```text
-用户问题
-  → agent_decide
-  → 选择统一 Tool
-  → Tool Gateway
-  → MCP / Java API
-  → Observation
-  → agent_decide
-  → 分析或继续查询
-```
-
-### 6.5 复杂研究问题处理
-
-对于宏观、跨市场、历史事件或多实体问题，Agent 可以先生成短期任务计划，但任务计划是本次运行的动态产物，不是固定业务 Route。
-
-例如：
-
-```text
-用户：美国非农数据对中国 A 股有什么影响？
-
-Agent 动态决定：
-1. 查询最近一期美国非农数据
-2. 查询美国失业率和薪资数据
-3. 查询美元、利率或人民币汇率变化
-4. 查询中国 A 股市场表现
-5. 必要时查询历史事件窗口
-6. 分析宏观影响传导链
-7. 生成带数据时间和限制说明的回答
-```
-
-这个过程不要求生成一个固定的 `cross_market_route`，而是由 Agent 根据任务需要动态调用能力。
-
----
-
-## 7. QueryIntent 需求
-
-### 7.1 QueryIntent 的定位
-
-`QueryIntent` 仅用于表达用户问题，不负责执行。
-
-推荐保留并扩展为：
+### 3.2 IntentRoute 契约（冻结）
 
 ```python
-class QueryIntent(BaseModel):
-    request_summary: str
-    goals: list[IntentGoal] = Field(default_factory=list)
-    entities: list[IntentEntity] = Field(default_factory=list)
-    time_range: TimeRange | None = None
-    requested_dimensions: list[str] = Field(default_factory=list)
-    output_preferences: dict[str, Any] = Field(default_factory=dict)
-    conversation_references: list[str] = Field(default_factory=list)
-    assumptions: list[str] = Field(default_factory=list)
+from typing import Literal
+from pydantic import BaseModel, Field
+
+
+class ToolProposal(BaseModel):
+    capability: str
+    arguments: dict[str, object] = Field(default_factory=dict)
+
+
+class IntentRoute(BaseModel):
+    mode: Literal["direct_response", "single_capability", "agent_loop"]
+    reason: str
     confidence: float | None = None
-    clarification_suggestion: str | None = None
-    extensions: dict[str, Any] = Field(default_factory=dict)
+    direct_answer: str | None = None      # direct_response 可带预览
+    tool_proposal: ToolProposal | None = None  # single_capability 带建议工具
 ```
 
-### 7.2 目标和实体
+### 3.3 降级与升级规则（冻结）
 
-```python
-class IntentGoal(BaseModel):
-    goal_id: str
-    goal_type: str
-    description: str
-    entity_refs: list[str] = Field(default_factory=list)
-    requested_outputs: list[str] = Field(default_factory=list)
+1. `direct_response` 仅适用于**不依赖实时金融事实**的知识解释；涉及时点、价格、公告、政策、宏观数据、市场状态的内容，必须经数据能力或显式说明信息时效限制。
+2. `single_capability` 的工具建议仍必须经过实体解析、参数校验和 Guardrails；它指"一次用户可见的统一能力调用"，内部主备路由由 Tool Gateway 完成。
+3. **LLM 不可用、解析失败、置信度低或出现歧义时，默认进入 `agent_loop`**（宁可复杂不要漏）。
+4. **快路径发现数据不足时必须升级到 `agent_loop`**，并记录升级事件。
+5. 拿不准时偏向 `agent_loop`。
 
+### 3.4 名称解析边界（定稿）
 
-class IntentEntity(BaseModel):
-    entity_id: str
-    entity_type: str
-    name: str
-    symbol: str | None = None
-    market: str | None = None
-    role: str | None = None
-    resolution_status: str = "UNRESOLVED"
-    attributes: dict[str, Any] = Field(default_factory=dict)
-```
+> "茅台现价"若未提供证券代码，由谁解析？定稿如下：
 
-支持的实体不应只包含股票：
+**采用方案 B：先执行 `market.resolve_instrument`，再执行行情能力。因此名称未解析的问题不属于 `single_capability`，走 `agent_loop`。**
+
+理由：保持 `single_capability` "一次统一能力调用"的纯粹性；名称解析统一由 `resolve_instrument` 能力负责，不在各行情能力内部重复实现。仅当用户已提供 symbol（如 600519）时，`single_capability` 才直接调用行情能力。
 
 ```text
-instrument     股票或证券
-index          指数
-sector         板块
-industry       行业
-market         市场
-portfolio      用户持仓
-macro          宏观指标或宏观事件
-news_topic     新闻主题
-concept        概念
-unknown        暂时无法分类的实体
+用户给 symbol（600519 现价）→ single_capability（quote）
+用户给名称（茅台现价）      → agent_loop（planner: resolve → quote）
 ```
-
-### 7.3 意图理解规则
-
-QueryIntent Agent 必须：
-
-- 支持开放式自然语言；
-- 支持多个目标；
-- 支持多个实体；
-- 支持跨市场关系；
-- 支持没有股票代码的问题；
-- 支持上下文引用；
-- 保留无法解析的原始实体；
-- 使用结构化输出；
-- 不直接调用 MCP、Java 或数据库；
-- 不自行猜测股票代码；
-- 不直接决定是否 `interrupt()`；
-- 不因为字段为空就强制中断。
-
-`analysis_type` 可以暂时保留，但只能作为旧代码兼容字段或执行配置派生字段。
 
 ---
 
-## 8. Agent Action 决策
+## 4. 第二层：Agent Loop
 
-Agent 的核心输出不是固定 Route，而是下一步动作。
+### 4.1 职责冻结表（不可重叠）
 
-建议使用：
+| 概念 | 唯一职责 | 不负责 |
+|---|---|---|
+| QueryIntent | 表达用户诉求、实体、时间范围、引用 | 选工具、决定中断 |
+| IntentRoute | 选择本轮执行模式 | 生成复杂研究步骤 |
+| TaskPlan | 定义目标、步骤、依赖、预算预估 | 执行工具 |
+| Executor | 从计划中选一个可执行步骤，产出当前 AgentAction | 绕过 Guardrails |
+| AgentAction | 某一轮的具体动作请求 | 改写整个计划 |
+| Guardrails | 允许、拒绝、改写或要求补充（策略判断） | 执行工具、技术调用 |
+| Tool Gateway | 调用外部统一能力并标准化 Observation（技术执行） | 决定业务策略 |
+
+### 4.2 Planner 与 TaskPlan
+
+Planner 接收 QueryIntent + 已解析实体 + 召回记忆，产出**动态 TaskPlan**（本次运行产物，非固定业务 route）。
+
+```python
+class TaskStep(BaseModel):
+    step_id: str
+    goal_id: str
+    kind: Literal["call_tool", "load_skill", "analyze", "respond"]
+    depends_on: list[str] = []
+    input_ref: list[str] = []          # 引用前面步骤的产出
+    expected_output: str | None = None
+    status: Literal["pending", "running", "completed", "failed", "skipped"] = "pending"
+    idempotency_key: str | None = None  # 重规划时不重复执行已成功且幂等的步骤
+
+
+class TaskPlan(BaseModel):
+    plan_id: str
+    plan_version: int = 1
+    goals: list[TaskGoal]
+    steps: list[TaskStep]
+    estimated_tool_calls: int
+    depends_on: dict[str, list[str]] = {}
+```
+
+运行状态必须记录：
+
+```text
+plan_version、replan_count、max_replans（默认 2）、completed_step_ids、failed_step_ids
+```
+
+### 4.3 Executor 与 AgentAction
+
+Executor 从计划中选下一个依赖已满足的步骤，产出 AgentAction：
 
 ```python
 class AgentAction(BaseModel):
     action_type: Literal[
-        "DIRECT_RESPONSE",
-        "CALL_TOOL",
-        "LOAD_SKILL",
-        "ASK_USER",
-        "REQUEST_CONFIRMATION",
-        "FINISH",
+        "DIRECT_RESPONSE", "CALL_TOOL", "LOAD_SKILL",
+        "ANALYZE", "ASK_USER", "REQUEST_CONFIRMATION",
+        "REPLAN", "FINISH",
     ]
     reason: str
     tool_name: str | None = None
-    tool_arguments: dict[str, Any] = Field(default_factory=dict)
+    tool_arguments: dict = {}
     skill_name: str | None = None
     question: str | None = None
-    expected_output: str | None = None
+    step_id: str | None = None  # 关联计划步骤
 ```
 
-Agent 决策必须经过代码层校验：
+Executor 内部对**单个步骤的意外**（主源失败、字段缺失）可用局部有界 ReAct 自适应，但整体流程由 plan 驱动，不是扁平 ReAct。
 
-- 工具是否在白名单；
-- 参数是否符合 Schema；
-- 用户是否有权限；
-- 是否超出本次预算；
-- 是否属于只读能力；
-- 是否需要用户确认；
-- 是否已经获得足够的 Observation。
+### 4.4 重规划规则（冻结）
 
-模型可以提出动作，但不能绕过代码层直接执行动作。
+- 重规划只能**追加或替换尚未执行的步骤**，不能抹掉已获得的 Observation；
+- 已成功且带 `idempotency_key` 的步骤不重复执行；
+- 默认 `max_replans = 2`，超出后停止并输出当前可用结果（LIMITED）。
 
----
+### 4.5 Guardrails（策略判断，一等公民）
 
-## 9. Skill 需求
+Guardrails 是独立策略层，与 AgentAction 平级，**不与 Tool Gateway 重复**。
 
-### 9.1 Skill 的定位
-
-当前 Skill 只负责分析、计算和总结，不负责查询数据。
+职责边界：
 
 ```text
-MCP / Java API
-  → 获取数据
-  → Observation Normalizer
-  → AnalysisInput
-  → Skill / Python Analysis Capability
-  → AnalysisResult
+Guardrails：策略判断
+  - 是否允许该动作（白名单策略、只读/无副作用）
+  - 是否超过预算（轮数/工具次数/时长/重规划次数）
+  - 是否具备用户权限
+  - 最终回答是否夸大、编造或伪装确定性
+
+Tool Gateway：技术执行
+  - 统一能力到原始工具的白名单技术映射
+  - 参数 Schema 验证与转换
+  - MCP/Java 调用、超时、重试、主备切换
+  - 服务端吞错识别
+  - Observation 标准化
 ```
 
-### 9.2 Skill 可以做什么
+校验结果统一为：
 
-- 根据标准化行情计算指标；
-- 根据财务数据完成基本面分析；
-- 根据估值数据进行估值解释；
-- 根据宏观和市场数据分析影响关系；
-- 根据历史事件数据进行窗口统计；
-- 根据持仓数据进行风险分析；
-- 生成结构化分析结论。
+```python
+class GuardrailResult(BaseModel):
+    decision: Literal["allow", "block", "modify", "ask_user"]
+    reasons: list[str] = Field(default_factory=list)
+    replacement_action: AgentAction | None = None  # modify 时提供
+    audit_code: str | None = None
+```
 
-### 9.3 Skill 不可以做什么
-
-- 直接调用 MCP；
-- 直接调用 Java API；
-- 直接访问数据库；
-- 自己发起网络请求；
-- 自行补查缺失数据；
-- 直接决定用户下一步动作；
-- 直接写入 Mem0；
-- 直接执行交易；
-- 返回没有来源和数据时间的结论。
-
-### 9.4 Skill 调用形式
-
-普通分析优先使用确定性 Python 能力：
+**四时点校验**（不混为一个 check_output）：
 
 ```text
-AnalysisInput → Python Analysis Capability → AnalysisResult
+计划生成后：Plan Guardrail       （计划是否合理、工具是否在白名单、是否超预算）
+工具调用前：Action Guardrail     （动作是否允许、权限、只读）
+Observation 标准化后：Data-quality Guardrail  （数据是否可用、是否缺失关键字段）
+最终回答生成后：Response Guardrail  （是否编造、是否伪装确定性、是否带来源时间）
 ```
-
-只有在需要自然语言解释、复杂推理或结果总结时，才使用模型节点。
-
-远程 Node Skill 或其他 Skill 服务暂不作为当前阶段依赖。
 
 ---
 
-## 10. ReAct 需求
+## 5. 第三层：确定性计算
 
-### 10.1 ReAct 的使用边界
-
-ReAct（推理-行动循环）不是所有问题的默认模式。
-
-以下场景不需要 ReAct：
-
-- 基础金融知识解释；
-- 已有完整数据的结果总结；
-- 单一工具即可完成的查询；
-- 确定性指标计算；
-- 最终回答生成。
-
-以下场景可以使用有界 ReAct：
-
-- 需要连续调用多个数据工具；
-- 第一个工具结果决定下一个工具；
-- 数据源不完整，需要判断是否继续检索；
-- 跨市场、宏观事件或历史事件研究；
-- 多实体比较；
-- 需要在多个合法数据能力中动态选择。
-
-### 10.2 ReAct 执行约束
+### 5.1 数据/分析分离
 
 ```text
-Agent Decide
-  → Tool Gateway
-  → Observation
-  → Agent Decide
+统一能力 → Tool Gateway → Observation Normalizer → Observation
+  → AnalysisInput → domain/ Python Analysis（零框架依赖）→ AnalysisResult
 ```
 
-必须限制：
+### 5.2 边界
 
-- 最大 ReAct 轮数；
-- 最大工具调用次数；
-- 单次工具超时时间；
-- 总请求预算；
-- 单个子任务预算；
-- 失败重试次数；
-- 重复工具调用次数。
+- Agent 只编排，不进 domain/ 内部；
+- domain/ 不 import LangGraph/LangChain/Mem0/MCP，纯确定性；
+- MCP 返回原始数据，domain/ 负责计算；MCP 预计算指标最多作校验；
+- 防未来函数：所有指标只依赖截至当前数据点。
 
-ReAct Agent 不得：
+### 5.3 Skill 定位
 
-- 直接调用 MCP 原始客户端；
-- 直接访问数据库；
-- 修改用户数据；
-- 修改长期记忆；
-- 无限循环；
-- 以工具失败为理由编造数据。
+当前 Skill = Python Analysis Capability，只分析计算总结，**不查询数据**。
+
+> **P2 收敛**：第一阶段不开放 `LOAD_SKILL` 动态加载外部 Skill，先将 Python Analysis Capability 作为受控确定性能力调用。普通分析优先确定性能力；需自然语言解释时才用模型节点。远程 Node Skill 暂不作依赖。
 
 ---
 
-## 11. 中断与用户确认
+## 6. QueryIntent（P1-1，先于 Planner 改造）
 
-### 11.1 不应触发中断的情况
+```python
+class IntentEntity(BaseModel):
+    entity_id: str
+    entity_type: Literal["instrument", "index", "sector", "industry",
+                         "market", "portfolio", "macro", "news_topic",
+                         "concept", "unknown"]
+    raw_text: str
+    normalized_value: str | None = None
+    symbol: str | None = None
+    resolution_status: Literal["unresolved", "resolved", "ambiguous"] = "unresolved"
+    confidence: float | None = None
 
-以下情况不得因为缺少股票代码而中断：
 
-- 市场整体趋势；
-- 宏观经济问题；
-- 跨市场影响问题；
-- 行业和板块分析；
-- 指数分析；
-- 金融知识解释；
-- 可以基于合理默认范围回答的问题；
-- 非关键字段缺失但仍可输出部分结果的问题。
+class ConversationReference(BaseModel):
+    raw_reference: str           # "刚才那只"
+    candidate_entity_ids: list[str] = []
+    resolution_status: Literal["unresolved", "resolved", "ambiguous"] = "unresolved"
 
-### 11.2 可以触发中断的情况
 
-只在继续执行会导致明显错误或风险时中断：
+class QueryIntent(BaseModel):
+    request_summary: str
+    goals: list[IntentGoal] = []
+    entities: list[IntentEntity] = []
+    conversation_references: list[ConversationReference] = []
+    time_range: TimeRange | None = None  # 含是否为推断值
+    clarification_suggestion: str | None = None
+    confidence: float | None = None
+    # analysis_type 仅作旧流程 fallback，不再作强制中断/固定数据需求/预算唯一依据
+    analysis_type: str | None = None
+```
 
-- 比较任务缺少比较对象；
-- 股票名称对应多个候选且无法消歧；
-- 用户说“刚才那只”但会话中不存在对应实体；
-- 用户要求分析个人持仓，但身份或权限不可用；
-- 时间范围对结果影响重大且无法合理推断；
-- 用户要求执行交易或修改敏感信息；
-- 即将产生外部副作用且缺少确认。
-
-### 11.3 普通分析不要求保存确认
-
-普通分析完成后：
-
-- 自动由 Checkpointer 保存运行状态；
-- 自动记录必要的 Analysis History；
-- 不询问用户“是否保存本次分析”；
-- 只在用户明确要求记住或修改敏感画像时写入长期记忆；
-- 交易、调仓、修改风险偏好等高风险动作必须确认。
+`check_missing_context` 语义改为：**是否存在无法合理默认且会明显改变答案的关键信息**，绝不等于"没有 symbol"。
 
 ---
 
-## 12. 记忆和状态需求
+## 7. 上下文与对话连续性（P0-7：thread vs run 拆分）
 
-必须区分以下四类数据：
+### 7.1 两个 ID
 
-| 类型 | 作用 | 存储方式 |
+```text
+thread_id：一段持续对话，保存会话消息、实体表和可恢复状态；
+run_id：thread 中一次独立执行，记录事件、预算、计划和分析历史。
+```
+
+### 7.2 API 规则
+
+```text
+首次请求：服务端创建 thread_id + run_id；
+后续对话：客户端传已存在且属于当前认证用户的 thread_id，服务端新建 run_id；
+interrupt 恢复：使用原 thread_id 和原 run_id 的 checkpoint。
+```
+
+### 7.3 会话实体表
+
+以 `thread_id` 为范围，候选实体必须带：来源消息、解析时间、置信度。指代消解（"刚才那只"）：
+- 单候选 → 直接继续；
+- 多候选 → 向用户提问消歧；
+- 无候选 → 询问补充。
+
+---
+
+## 8. 中断与用户确认
+
+### 8.1 不应中断
+
+市场整体、宏观、跨市场、行业板块、指数、金融知识、可基于合理默认回答的问题、非关键字段缺失但仍可输出部分结果的问题——不得因缺股票代码中断。
+
+### 8.2 可以中断
+
+比较缺对象、股票名多候选无法消歧、"刚才那只"无对应实体、持仓分析权限不可用、时间范围影响重大且无法推断、执行交易或修改敏感信息、即将产生外部副作用且缺确认。
+
+### 8.3 普通分析不要求保存确认
+
+普通分析完成：Checkpointer 自动保存运行状态，记录 Analysis History，**不询问"是否保存"**，不自动写长期记忆。
+
+> `REQUEST_CONFIRMATION` 当前版本仅为未来具有外部副作用的能力预留；遇到交易请求应返回"不支持执行交易，可提供分析建议"。
+
+---
+
+## 9. 记忆与状态（四类区分 + P1-2 收窄 + P1-3 Analysis History）
+
+| 类型 | 作用 | 存储 |
 |---|---|---|
 | Conversation State | 当前对话和 Agent 状态 | LangGraph State |
 | Checkpoint | 中断后恢复 | LangGraph Checkpointer |
-| Analysis History | 历史分析记录和审计 | 当前项目持久化层 |
+| Analysis History | 历史分析记录和审计 | 持久化层（见 9.3） |
 | Long-term Memory | 用户长期偏好和稳定事实 | Mem0 |
 
-### 12.1 Mem0 读取
+### 9.1 Mem0 读取
 
-在一次对话开始时，可以读取：
+对话开始读：用户画像、风险偏好、投资目标、最近相关记忆。失败则无记忆继续，不阻断主流程。
 
-- 用户画像；
-- 风险偏好；
-- 投资目标；
-- 最近相关记忆。
+### 9.2 Mem0 写入（P1-2 收窄）
 
-Mem0 读取失败时，主流程仍然可以继续执行，只能减少上下文，不得导致整个请求失败。
+只写：用户明确要求记住的稳定偏好、已确认的风险偏好和长期目标、明确稳定对后续对话有帮助的事实。
 
-### 12.2 Mem0 写入
+**不自动写**：临时行情、未确认推断、原始 MCP 响应、账户敏感信息、一次性结论。
 
-只保存对未来有价值的信息：
-
-- 用户明确要求记住的内容；
-- 稳定的用户偏好；
-- 用户确认后的风险偏好；
-- 长期投资目标；
-- 对后续对话有帮助的稳定事实。
-
-不要自动保存：
-
-- 每次普通行情数据；
-- 每次临时分析结论；
-- 未经确认的风险偏好推断；
-- 敏感账户信息；
-- MCP 原始响应全文。
-
-### 12.3 Letta 迁移边界
-
-当前不实现 Letta，但代码必须避免把 Mem0 直接写死在所有业务节点中。
-
-建议通过抽象接口隔离：
-
-```python
-class MemoryProvider(Protocol):
-    async def recall(self, user_id: str, query: str): ...
-    async def save(self, user_id: str, content: str): ...
-    async def get_profile(self, user_id: str): ...
-```
-
-当前实现：
+### 9.3 Analysis History（P1-3 定义）
 
 ```text
-Mem0MemoryProvider
+history_id、thread_id、run_id、authenticated_user_id、
+request_snapshot、intent_snapshot、plan_version、
+observations_summary、analysis_result、
+source_timestamps、status、created_at、retention_policy
 ```
 
-未来如果切换 Letta，只替换 Provider 或 Runtime Adapter，不修改 MCP、Java API、AnalysisInput 和 AnalysisResult 契约。
+明确：保存范围、查询权限（仅本人）、保留期限、脱敏策略、删除机制。
 
 ---
 
-## 13. Observation 和数据质量
+## 10. Observation 与数据质量
 
-所有工具结果必须先转成统一的 Observation，再交给 Agent 或分析能力。
-
-Observation 至少包含：
+所有工具结果先转统一 Observation：
 
 ```text
-observation_id
-capability
-status
-data
-source
-source_tool
-requested_at
-data_time
-quality
-provenance
-error
-limitations
+observation_id  capability  status  data
+source  source_tool  requested_at  data_time
+quality  provenance  error  limitations
 ```
 
-### 13.1 MCP 响应解析
+### 10.1 吞错识别
 
-不能只依赖 MCP 协议层的 `isError`。
+MCP 返回 `{"error": true, "message": "..."}` 即使协议层 isError=false，必须标准化为 `Observation.status = FAILED`。
 
-如果 MCP 返回：
+### 10.2 数据状态
+
+```text
+SUCCESS  PARTIAL  FAILED  LIMITED  NOT_REQUIRED
+```
+
+模型必须据状态生成回答，不得隐藏数据缺失。
+
+---
+
+## 11. 运行预算与降级（P2-4 具体上限）
+
+### 11.1 动态预算上限（冻结）
+
+```text
+执行模式选择模型调用：≤ 1 次
+计划模型调用：≤ 2 次（含 1 次重规划）
+单工具超时：20s（含云端 RTT）
+单次 Java 工具超时：10s
+最大工具调用数：按模式分档（direct=0 / single=1 / loop≤14）
+最大重规划数：2
+最大运行时长：240s（comprehensive 上限）
+单次分析能力调用：60s
+```
+
+预算耗尽后返回固定格式：`status=LIMITED` + limitations 说明"因预算限制停止"。
+
+### 11.2 降级
+
+- 工具失败：重试或切备用（akshare-one source=xueqiu/sina）；
+- 非关键缺失：PARTIAL 继续；
+- 关键缺失：LIMITED；
+- 全数据源失败：结构化失败；
+- Mem0 失败：无记忆继续；
+- 分析能力失败：已获取数据 + 失败说明；
+- 超预算：停止，返回当前可用结果。
+
+不得用 stock-wrapper 或旧接口作隐式备用源。
+
+---
+
+## 12. 统一能力与 Tool Gateway
+
+```text
+market.resolve_instrument        market.get_realtime_quote
+market.get_historical_prices     market.get_financial_statements
+market.get_valuation             market.get_industry_context
+market.get_money_flow            market.get_news
+portfolio.get_current_positions  portfolio.get_account_snapshot
+portfolio.get_transaction_history user.get_risk_profile
+```
+
+> **P1-4 宏观能力列外部依赖**：`macro.get_indicator`、`macro.get_release_history` 的数据源、Schema、时效、降级未验证前，**不纳入第一阶段验收**。在 macro.* 验收完成前，"非农对 A 股影响"等场景不得承诺基于真实宏观数据完成，可用市场代理 + 明确说明数据限制。
+
+Tool Gateway 负责技术执行（白名单映射、Schema、MCP/Java 调用、超时重试、主备切换、吞错识别、Observation 标准化）。
+
+> **只读边界（P0-6）**：Tool Gateway 白名单中**不得出现**下单、撤单、调仓、资金划转、账户修改等写能力。
+
+---
+
+## 13. API 与事件流（P0-7 + P2-3）
+
+### 13.1 请求
 
 ```json
 {
-  "error": true,
-  "message": "upstream service failed"
-}
-```
-
-即使 MCP 协议层连接成功，也必须被标准化为：
-
-```text
-Observation.status = FAILED
-```
-
-不能把服务端业务错误当作正常数据交给分析层。
-
-### 13.2 数据状态
-
-至少支持：
-
-```text
-SUCCESS       数据完整
-PARTIAL       数据部分可用
-FAILED        工具调用失败
-LIMITED       预算或数据源限制导致无法继续
-NOT_REQUIRED  当前问题不需要该数据
-```
-
-模型必须根据 Observation 的状态生成回答，不得隐藏数据缺失。
-
----
-
-## 14. 运行预算和降级
-
-预算是一次 Agent 运行的系统资源预算，不是用户投资金额。
-
-预算至少限制：
-
-- 模型调用次数；
-- ReAct 最大轮数；
-- Tool 调用次数；
-- 单个 Tool 超时；
-- 总请求时长；
-- 子任务时长；
-- Analysis Capability 调用次数。
-
-### 14.1 动态预算原则
-
-不再只按一个固定 `analysis_type` 分配全部预算，而是根据当前运行实际需要动态消耗：
-
-```text
-总预算
-├─ Agent 决策预算
-├─ Tool 调用预算
-├─ ReAct 循环预算
-├─ Analysis Capability 预算
-└─ 最终回答预算
-```
-
-### 14.2 降级原则
-
-- 工具失败：重试或选择已定义的备用能力；
-- 非关键数据缺失：返回 `PARTIAL`，继续分析；
-- 关键数据缺失：返回 `LIMITED`，明确说明限制；
-- 所有数据源失败：停止继续猜测，返回结构化失败结果；
-- Mem0 失败：无记忆继续运行；
-- 分析能力失败：返回已获取数据和分析失败说明；
-- 超出预算：停止调用并返回当前可用结果。
-
-不允许使用已明确废弃的 `stock-wrapper` 或旧查询接口作为隐式备用数据源。
-
----
-
-## 15. API 和事件流
-
-当前继续使用 FastAPI + SSE。
-
-### 15.1 请求入口
-
-请求至少包含：
-
-```json
-{
-  "thread_id": "conversation-thread-id",
-  "user_id": "user-id",
+  "thread_id": "已存在则传，首次省略由服务端创建",
+  "user_id": "由认证令牌解析，不直接信任请求体",
   "message": "美国非农数据对中国A股有什么影响？",
   "metadata": {}
 }
 ```
 
-### 15.2 事件类型
+### 13.2 事件（P2-3 公共 schema）
 
-建议支持：
+事件需定义：公共 schema、排序规则、是否允许重复、错误码、脱敏规范。
 
 ```text
-run.started
-context.loaded
-agent.decided
-tool.started
-tool.completed
-tool.failed
-observation.created
-skill.started
-skill.completed
-interrupt.required
-response.delta
-response.completed
-run.completed
-run.failed
+run.started  intent.routed  context.loaded  plan.created
+guardrail.checked  agent.decided  tool.started  tool.completed
+tool.failed  observation.created  skill.started  skill.completed
+replan.triggered  upgrade.to_agent_loop  interrupt.required
+response.delta  response.completed  run.completed  run.failed
 ```
 
-### 15.3 恢复执行
+> `response.delta` 在未实现真实 token 流之前**不得作为已交付能力**声明。
 
-发生中断时：
+### 13.3 恢复
 
-1. 使用 Checkpointer 保存状态；
-2. 向前端发送 `interrupt.required`；
-3. 返回需要用户补充或确认的内容；
-4. 使用相同 `thread_id`；
-5. 通过 `Command(resume=...)` 恢复执行；
-6. 不重复执行已经完成的工具调用。
+中断：Checkpointer 保存 → 发 `interrupt.required` → 返回需补充内容 → 同 thread_id + 原 run_id 用 `Command(resume=...)` 恢复 → 不重复已成功且幂等的步骤。
 
 ---
 
-## 16. 关键验收场景
+## 14. 关键验收场景
 
-### 场景一：普通金融知识
+| 场景 | 输入 | 期望路径 |
+|---|---|---|
+| 知识问答 | 什么是市盈率？ | direct_response，不调工具，不要求股票代码 |
+| 单点数据(已解析) | 600519 现价？ | single_capability，一次 quote |
+| 名称需解析 | 茅台现价？ | agent_loop（planner: resolve → quote） |
+| 单股分析 | 分析某股最近走势 | agent_loop，planner 规划取数+分析 |
+| 市场整体 | 最近 A 股为什么波动大？ | agent_loop，不要求股票代码 |
+| 跨市场 | 非农对 A 股影响？ | agent_loop，macro.* 未验收前用市场代理+说明限制 |
+| 上下文引用 | 刚才那只股票风险怎样？ | thread 实体表消解，单候选直接继续 |
+| 持仓分析 | 结合持仓分析风险 | Java portfolio，校验认证用户权限 |
+| 高风险操作 | 帮我调仓 | 返回"不支持执行交易，可提供分析建议" |
+| 工具错误 | MCP 返回 error:true | 吞错→FAILED→重试/降级，不伪装成功 |
+| 兜底升级 | direct_response 发现需数据 | 升级 agent_loop，记录 upgrade 事件 |
+| 无 LLM 降级 | LLM 不可用 | 安全降级到 agent_loop（规则版 planner） |
 
-```text
-用户：什么是市盈率？
-```
+---
 
-期望：
-
-- 不调用 MCP；
-- 不要求股票代码；
-- 不触发 interrupt；
-- 直接返回解释。
-
-### 场景二：单只股票数据分析
-
-```text
-用户：分析某股票最近一个月的走势。
-```
-
-期望：
-
-- 解析股票实体；
-- 必要时调用 `market.resolve_instrument`；
-- 调用历史价格能力；
-- 标准化 Observation；
-- 调用 Python 分析能力；
-- 返回带数据时间的分析结果。
-
-### 场景三：市场整体问题
+## 15. 目标流程（四时点 Guardrail 嵌入）
 
 ```text
-用户：最近中国 A 股为什么波动比较大？
+START
+  → 认证上下文 + 读取会话状态/记忆
+  → QueryIntent 解析（实体、引用、时间范围）
+  → 执行模式选择
+      ├─ direct_response
+      │    → Response Guardrail → END
+      ├─ single_capability
+      │    → Action Guardrail → Tool Gateway → Observation
+      │    → Data-quality Guardrail → Response Guardrail → END
+      └─ agent_loop
+           → Planner → Plan Guardrail
+           → Executor 选下一步 → Action Guardrail
+           → Tool Gateway / 确定性 Analysis Capability
+           → Observation → Data-quality Guardrail
+           → 继续 / 局部重试 / 重规划（≤2次）/ 总结
+           → Response Guardrail → END
 ```
 
-期望：
+所有外部数据路径：`统一能力 → Tool Gateway → Observation Normalizer → Observation`
+所有确定性分析：`Observation → AnalysisInput → domain/ → AnalysisResult`
 
-- 不要求股票代码；
-- 可以查询市场和新闻数据；
-- 根据已有 Observation 分析；
-- 数据不完整时说明限制。
+---
 
-### 场景四：跨市场问题
+## 16. 与现有代码的迁移清单
 
-```text
-用户：美国非农数据对中国 A 股有什么影响？
-```
-
-期望：
-
-- 识别宏观事件和中国 A 股市场两个实体；
-- 不要求用户指定股票；
-- 动态选择宏观、汇率、利率、A 股和历史事件能力；
-- 必要时使用有界 ReAct；
-- 最终回答包含影响传导链、可能受影响的市场维度和数据限制；
-- 不生成固定 `cross_market_route` 作为强制前置条件。
-
-### 场景五：上下文引用
-
-```text
-用户：刚才提到的那只股票最近风险怎么样？
-```
-
-期望：
-
-- 从当前会话解析实体；
-- 若只有一个明确候选，直接继续；
-- 若存在多个候选，才向用户提问；
-- 不要求用户重新输入所有信息。
-
-### 场景六：用户持仓分析
-
-```text
-用户：结合我的持仓分析一下风险。
-```
-
-期望：
-
-- 调用 Java `portfolio` 能力；
-- 校验用户身份和权限；
-- 不直接访问 Java 数据库；
-- 分析持仓集中度、行业暴露和风险指标；
-- 普通分析不要求保存确认。
-
-### 场景七：高风险操作
-
-```text
-用户：根据这个分析直接帮我调仓。
-```
-
-期望：
-
-- 可以先分析；
-- 任何真实副作用操作必须单独确认；
-- 未确认前不得调用交易执行能力；
-- 当前阶段如果没有交易工具，应明确说明暂不支持。
-
-### 场景八：工具错误
-
-期望：
-
-- 解析 MCP 返回体中的业务错误；
-- 创建 `FAILED` Observation；
-- 按策略重试或降级；
-- 不把错误对象交给模型伪装成正常数据；
-- 最终回答明确说明数据不可用。
+| 当前模块/行为 | v2.1 目标 | 迁移处理 |
+|---|---|---|
+| `check_missing_context` 强制 symbol | 按真实歧义和风险决定补问 | 重写 |
+| `build_data_requirements` 按 analysis_type 固定 | Planner 动态生成 TaskPlan | 保留为无 LLM fallback，逐步替换 |
+| `dispatch_workflow` 消费固定 WorkflowPlan | 通用 Executor 消费动态步骤 | 重构（复用 WorkflowPlan 结构） |
+| `select_action` 仅市场取数 | 有界通用步骤执行器 | 扩展，Agent 不直接执行工具 |
+| 节点/Gateway 分散校验 | 独立 Guardrails 策略层 | 抽取策略，保留 Gateway 技术校验 |
+| `RootState` 无会话实体表 | 支持引用消解 | 新增实体表、plan_version、运行计数 |
+| `persist_memory` 自动沉淀摘要 | 只写稳定/明确/确认后记忆 | 收窄 |
+| `confirm_user` 询问是否保存 | 普通分析直接结束 | 删除；仅留未来副作用确认 |
+| API 用 run_id 充当 thread_id | 长对话与单次运行分离 | API + Checkpointer 重构 |
+| `routing_policy` 仅 market.* | 支持宏观/跨市场 | 先验证新增 macro.*，后开放验收 |
+| user_id 直接用请求体 | 认证令牌解析 | 认证中间件 |
+| 无 Analysis History 持久化 | 历史记录层 | 新增（见 9.3） |
 
 ---
 
 ## 17. 开发实施顺序
 
-### 阶段一：主流程语义修正
+### 阶段一：执行模式选择 + 语义修正（低风险高价值）
+- 新增执行模式选择节点（STRUCTURED_LLM，三 mode 输出 + 降级/升级）；
+- 删除"缺股票代码统一中断"、"普通分析统一询问保存"；
+- 加 direct_response 快路径 + 兜底升级；
+- 名称解析边界按 §3.4 定稿（名称→agent_loop）；
+- 保留固定 WorkflowPlan 作 fallback。
 
-- 保留现有 LangGraph 和 Mem0；
-- 将 Root Graph 调整为 Agent Loop；
-- 保留 `QueryIntent`，但取消其固定路由职责；
-- 增加 `AgentAction`；
-- 删除“缺少股票代码就统一中断”的逻辑；
-- 删除“普通分析结束统一询问是否保存”的逻辑；
-- 增加直接回答路径；
-- 增加多工具连续调用路径。
+### 阶段二：planner-executor + Guardrails
+- WorkflowPlan 升级为 planner 动态生成 TaskPlan（含 step_id/idempotency_key）；
+- select_action 扩展为通用 executor；
+- 抽 `guardrails/` 独立策略层（四时点：Plan/Action/Data-quality/Response）；
+- Guardrails 与 Tool Gateway 职责分离；
+- 重规划机制（≤2 次，不抹已得 Observation）。
 
-### 阶段二：工具和分析边界固化
+### 阶段三：上下文与记忆
+- thread_id/run_id 拆分（API + Checkpointer）；
+- state 新增会话实体表 + 指代消解；
+- Mem0 写入收窄；
+- Analysis History 持久化层；
+- 认证中间件（user_id 不信任请求体）。
 
-- 统一 MCP 和 Java Tool Gateway；
-- 完善 Observation Normalizer；
-- 统一处理 `error: true` 业务错误；
-- 确认 Tool 白名单和参数 Schema；
-- 确保 Skill 只消费标准化输入；
-- 确保 Python Analysis Capability 不查询数据。
-
-### 阶段三：上下文和记忆完善
-
-- 完成上下文引用解析；
-- 完成 Mem0 首尾读写；
-- 完成 Checkpointer 恢复；
-- 区分会话状态、分析历史和长期记忆；
-- 完成普通分析自动结束机制。
-
-### 阶段四：复杂问题和有界 ReAct
-
-- 支持跨市场问题；
-- 支持宏观事件问题；
-- 支持多实体问题；
-- 支持动态工具选择；
-- 设置 ReAct 轮次和预算；
-- 处理部分数据缺失和多工具失败。
+### 阶段四：复杂研究 + 宏观能力
+- macro.* 验证接入（外部依赖，验收前不承诺场景）；
+- planner 多步计划 + executor 局部 ReAct；
+- 动态预算跟踪器（按 §11.1 上限）；
+- 部分缺失与多工具失败处理。
 
 ### 阶段五：回归验收
-
-- 运行所有现有测试；
-- 增加金融对话场景测试；
-- 增加无股票代码测试；
-- 增加多实体和上下文引用测试；
-- 增加工具错误和预算耗尽测试；
-- 增加 Checkpointer 恢复测试；
-- 增加普通回答不写长期记忆的测试。
+- 现有测试全绿；
+- 新增对话场景测试（无股票代码/多实体/上下文引用/工具错误/预算耗尽/Checkpointer 恢复/普通回答不写长期记忆/Guardrail 审计事件）。
 
 ---
 
-## 18. 必须遵守的工程约束
+## 18. 阶段验收门槛（可测）
 
-1. Agent 不得直接访问数据库。
-2. Agent 不得直接调用 MCP 原始客户端。
-3. MCP 必须通过 Tool Gateway 接入。
-4. Java 用户数据必须通过 Java API 接入。
-5. Skill 不负责查询数据。
-6. Analysis Capability 不依赖 LangGraph、LangChain、Mem0 或 MCP。
-7. QueryIntent 不直接决定工具。
-8. QueryIntent 不直接触发 interrupt。
-9. 没有股票代码不代表无法分析。
-10. 普通分析不要求用户确认保存。
-11. 所有工具结果必须先标准化为 Observation。
-12. 工具业务错误不得被当成正常响应。
-13. ReAct 必须有界。
-14. Checkpointer 不等于长期记忆。
-15. 未完成的目标不得被伪装成已完成。
-16. 数据不足时必须显式返回限制。
-17. 当前阶段不得以引入新 Agent 平台替代已有问题修复。
-18. 当前阶段不实现 Letta、Hermes、Phoenix 或其他新增组件。
+### 阶段一完成条件
+1. "什么是市盈率"不调工具、不要求股票代码；
+2. "600519 现价"符合 single_capability 语义（已解析 symbol）；
+3. "茅台现价"走 agent_loop（名称先 resolve）；
+4. "最近 A 股为什么波动大"不因缺 symbol 中断；
+5. 快路径发现缺实时数据能升级 Agent Loop；
+6. 无 LLM 或分流输出非法时安全降级到 Agent Loop；
+7. 普通分析不弹"是否保存"；
+8. 普通分析不自动写长期记忆。
+
+### 阶段二完成条件
+1. 任一工具动作调用前可输出 Guardrail 审计事件；
+2. 非白名单、写操作、无权限、预算耗尽动作不可到达 Gateway；
+3. 重规划不重复执行已成功且幂等的步骤；
+4. Tool Gateway 失败统一转为 FAILED 或 LIMITED Observation；
+5. Agent/Graph/Gateway/domain 职责边界有独立单元测试；
+6. 四时点 Guardrail 各自有测试。
+
+### 阶段三及以后完成条件
+1. 相同 thread_id 的上下文引用可正确消解；
+2. 用户无法访问他人会话、持仓或分析历史（认证隔离）；
+3. 宏观场景仅在真实 macro.* 验收后开放；
+4. 所有最终回答显式反映数据时间、来源、缺失和限制。
 
 ---
 
-## 19. 当前交付标准
+## 19. 工程约束（必须遵守）
 
-本需求文档对应的当前版本完成后，系统至少应具备以下行为：
+1. Agent 不得直接访问数据库或 MCP 原始客户端。
+2. MCP 必须经 Tool Gateway 接入；Java 数据经 Java API。
+3. **Guardrails 是一等公民**：所有 AgentAction/TaskPlan/最终回答显式过对应时点校验，策略不散落到节点。
+4. **Guardrails（策略）与 Tool Gateway（技术）职责分离，不重复**。
+5. Skill/Analysis Capability 不查询数据，不依赖 LangGraph/LangChain/Mem0/MCP。
+6. QueryIntent 不直接决定工具，不直接触发 interrupt。
+7. 没有股票代码不代表无法分析。
+8. 普通分析不要求用户确认保存。
+9. 所有工具结果先标准化为 Observation；业务错误不得当正常响应。
+10. ReAct 必须有界；planner-executor 优于扁平 ReAct；重规划≤2 次。
+11. Checkpointer / Analysis History / Long-term Memory / Conversation State 四类严格区分。
+12. 数据不足必须显式返回限制，不编造。
+13. 执行模式选择拿不准偏向 agent_loop；快路径可升级。
+14. **当前版本只读，白名单禁写能力；user_id 不信任请求体，必须认证令牌解析**。
+15. thread_id（持续对话）与 run_id（单次执行）分离。
+16. 第一阶段不开放 LOAD_SKILL；DIRECT_RESPONSE 只答稳定知识。
+17. 当前阶段不引入 Letta/Hermes/Phoenix 等新平台。
+18. 确定性计算（domain/）零框架依赖，Agent 碰不到内部。
+
+---
+
+## 20. Letta 迁移边界
+
+Letta 不属当前范围，但代码保留迁移可能。迁移时可替换：LangGraph Runtime、Mem0 Provider、对话状态管理。迁移必须保持稳定：MCP Tool 契约、Java API 契约、Observation 契约、AnalysisInput/AnalysisResult 契约、Skill 契约、权限约束、Guardrails 规则、高风险确认规则。
+
+因此当前开发不得把业务数据结构、工具实现、记忆存储、分析能力、权限判断、Guardrails 规则写死到 LangGraph 节点内部——通过抽象接口隔离，让 runtime 可替换、Guardrails 可复用。
+
+---
+
+## 21. 当前交付标准
+
+完成后系统应能：
 
 ```text
-用户可以自然语言提问
-  → Agent 判断是否直接回答或调用工具
-  → 工具通过 Gateway 执行
-  → 工具结果统一为 Observation
-  → Agent 根据结果决定是否继续
-  → Analysis Capability 完成确定性分析
-  → 模型生成最终回答
+用户自然语言提问
+  → 执行模式选择（direct_response / single_capability / agent_loop）
+  → agent_loop 内 planner 规划 + executor 执行 + 四时点 guardrails 校验
+  → 工具经 Gateway 执行，结果标准化为 Observation
+  → 确定性计算完成分析
+  → 模型生成最终回答（带来源时间、限制说明）
   → 普通分析直接结束
 ```
 
-必须能够处理：
+必须能处理：单股、多股、市场行业、宏观（macro.* 验收后）、跨市场、持仓、知识问答、连续上下文、数据不完整与工具失败。
 
-- 单股票问题；
-- 多股票问题；
-- 市场和行业问题；
-- 宏观问题；
-- 跨市场影响问题；
-- 用户持仓问题；
-- 一般金融知识问题；
-- 连续上下文问题；
-- 数据不完整和工具失败问题。
-
-最终交付的重点不是增加更多固定 Route，而是证明 Agent 能够在金融领域内根据用户问题动态选择下一步行动，并且在工具、数据、权限和预算约束下稳定完成对话。
-
----
-
-## 20. 后续 Letta 迁移要求
-
-Letta 不属于当前实施范围，但当前代码需要保留迁移可能性。
-
-迁移时可能替换：
-
-```text
-LangGraph Agent Runtime
-Mem0 Memory Provider
-当前对话状态管理方式
-```
-
-迁移时必须保持稳定：
-
-```text
-MCP Tool 契约
-Java Data API 契约
-Observation 契约
-AnalysisInput / AnalysisResult 契约
-金融分析 Skill 契约
-用户权限约束
-高风险确认规则
-```
-
-因此当前开发不得把以下内容写死到 LangGraph 节点内部：
-
-- 所有业务数据结构；
-- 所有工具具体实现；
-- 所有记忆存储细节；
-- 所有分析能力实现；
-- 所有用户权限判断。
-
-当前目标是先把金融对话式 Agent 的行为和边界做正确，再决定是否用 Letta 重写 Agent Runtime，而不是提前同时维护两套运行时。
+交付重点不是增加更多固定 route，而是证明 Agent 能在金融领域内**分层可控地**动态选择行动：简单问题快、复杂问题稳、全程有校验、数据不编造、权限不越界、会话可延续。

@@ -44,10 +44,11 @@ class InMemoryRunStore:
         return self._runs.get(run_id)
 
 
-def config_for(run_id: str, user_id: str | None = None) -> dict[str, Any]:
-    """构建统一恢复配置；所有 API 路径都复用同一 thread_id。"""
+def config_for(run_id: str, user_id: str | None = None, thread_id: str | None = None) -> dict[str, Any]:
+    """构建统一恢复配置；thread_id 优先用传入值（多轮对话），否则等于 run_id。"""
 
-    return graph_config(RunContext(thread_id=run_id, run_id=run_id, user_id=user_id))
+    tid = thread_id or run_id
+    return graph_config(RunContext(thread_id=tid, run_id=run_id, user_id=user_id))
 
 
 def public_state(run_id: str, state: dict[str, Any]) -> RunResponse:
@@ -99,12 +100,13 @@ def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1
 
     @router.post("/agent-runs")
     async def create_run(payload: RunRequest) -> RunResponse:
-        """创建并运行新的分析线程。"""
+        """创建并运行新的分析线程。thread_id 可选，传入则延续已有会话（v2.1 P0-7）。"""
         run_id = str(uuid4())
+        thread_id = payload.thread_id or run_id  # 未传则新建会话
         request = payload.model_dump(exclude_none=True)
         state = await application.graph.ainvoke(
-            initial_state(run_id, request, payload.user_id),
-            config=config_for(run_id, payload.user_id),
+            initial_state(run_id, request, payload.user_id, thread_id=thread_id),
+            config=config_for(run_id, payload.user_id, thread_id=thread_id),
         )
         store.put(run_id, state)
         return public_state(run_id, state)

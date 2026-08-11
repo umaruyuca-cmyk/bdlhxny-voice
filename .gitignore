@@ -35,4 +35,5 @@ skills/**/portfolio.json
 
 # Agent 工具本地状态（不提交）
 .workbuddy-ai/
+.workbuddy/
 .zcode/

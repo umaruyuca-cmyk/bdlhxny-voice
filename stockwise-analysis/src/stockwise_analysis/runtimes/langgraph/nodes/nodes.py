@@ -42,7 +42,11 @@ def event(state: RootState, event_type: str, node: str, payload: dict[str, Any] 
 
 
 def receive_request(state: RootState) -> dict[str, Any]:
-    """规范化 API 输入并标记一次新的 Graph 运行开始。"""
+    """规范化 API 输入并标记一次新的 Graph 运行开始。
+
+    同时把用户消息写入 conversation（v2.1 §7：短期记忆累积），供 ContextBuilder
+    截断和跨轮上下文使用。
+    """
     request = state.get("request") or {}
     if isinstance(request, str):
         request = {"message": request}
@@ -50,37 +54,140 @@ def receive_request(state: RootState) -> dict[str, Any]:
     return {
         "request": request,
         "status": "RUNNING",
+        "conversation": [{"role": "user", "content": request.get("message", ""), "run_id": state.get("run_id", "")}],
         "events": [event(state, "run.started", "receive_request", {"request": request})],
     }
 
 
-def understand_request(state: RootState) -> dict[str, Any]:
-    """解析当前请求的最小意图。
+def _enrich_intent_with_context(state: RootState, intent: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """跨轮标的继承（v2.1 §7.3）：缺 symbol 时从会话实体表找最近标的继承。
 
-    当前规则实现仅用于 Phase 0/1 骨架验证；生产版本应委托 Query Agent 输出
-    受 Pydantic 契约约束的意图，而不是继续扩展关键词判断。
+    返回 (enriched_intent, entities_addition)。entities_addition 含本轮解析出的标的，
+    供写入 state.entities 供后续轮次继承。
     """
-    # Graph 节点只依赖 Agent 输出契约；当前使用确定性替身，后续替换为 LLM。
+    entities_addition: list[dict[str, Any]] = []
+    symbol = intent.get("symbol")
+    if not symbol:
+        # 从会话实体表找最近的 instrument 标的继承
+        for ent in reversed(state.get("entities", [])):
+            if ent.get("entity_type") == "instrument" and ent.get("symbol"):
+                symbol = ent["symbol"]
+                intent["symbol"] = symbol
+                intent["_symbol_inherited"] = True  # 标记本次标的来自跨轮继承
+                break
+    # 本轮有标的则写入实体表，供后续轮次继承
+    if symbol:
+        entities_addition.append({
+            "entity_id": str(uuid4()),
+            "entity_type": "instrument",
+            "symbol": symbol,
+            "raw_text": str(state.get("request", {}).get("message", "")),
+            "resolution_status": "resolved",
+            "source_run_id": state.get("run_id", ""),
+        })
+    return intent, entities_addition
+
+
+def understand_request(state: RootState) -> dict[str, Any]:
+    """解析当前请求的最小意图，并做跨轮标的继承（v2.1 §7.3）。
+
+    当前规则实现用于骨架验证；生产版本应委托 Query Agent 输出受 Pydantic 契约
+    约束的意图。缺 symbol 时从会话实体表继承前文标的。
+    """
     intent = RuleBasedQueryAgent().understand(state.get("request", {})).model_dump()
+    intent, entities_addition = _enrich_intent_with_context(state, intent)
     return {
         "intent": intent,
+        "entities": entities_addition,
         "confirmation_required": intent["requires_confirmation"],
         "events": [event(state, "query.understood", "understand_request", intent)],
     }
 
 
 def check_missing_context(state: RootState) -> dict[str, Any]:
-    """检查是否缺少执行数据计划所必需的标的或分析范围。"""
+    """检查是否存在无法合理默认且会明显改变答案的关键信息（v2.1 §8）。
+
+    不再因缺少 symbol 强制中断——宏观/行业/知识问答等问题不需要股票代码。
+    只在"确实需要标的且无法合理默认"时才补问。
+    """
     intent = state.get("intent", {})
-    missing = []
-    if not intent.get("symbol"):
+    analysis_type = intent.get("analysis_type", "market_snapshot")
+    missing: list[str] = []
+
+    # 知识问答/市场整体/综合/宏观类不需要 symbol，不补问。
+    # 单股分析类（technical/fundamental/valuation/portfolio_impact）确实需要标的。
+    needs_symbol = analysis_type in {"technical", "fundamental", "valuation", "portfolio_impact"}
+    if needs_symbol and not intent.get("symbol"):
         missing.append("symbol")
-    if not intent.get("analysis_type"):
-        missing.append("analysis_type")
+
     return {
         "needs_clarification": bool(missing),
         "clarification_request": {"reason": "missing_context", "required_fields": missing} if missing else None,
         "events": [event(state, "query.context_checked", "check_missing_context", {"missing": missing})],
+    }
+
+
+def route_execution(state: RootState) -> dict[str, Any]:
+    """执行模式选择（v2.1 §3）：direct_response / single_capability / agent_loop。
+
+    规则版降级（无 LLM）：基于 QueryIntent 判断。生产可注入 LLM 版（本阶段先规则版）。
+    - 知识问答（含"什么是/解释/定义"等）→ direct_response，不调工具；
+    - 有 symbol 且 market_snapshot → single_capability（一次 quote）；
+    - 其他（含名称需解析、复杂研究）→ agent_loop；拿不准偏向 agent_loop。
+    """
+    from stockwise_analysis.contracts.route import IntentRoute, ToolProposal
+
+    intent = state.get("intent", {})
+    analysis_type = intent.get("analysis_type", "market_snapshot")
+    symbol = intent.get("symbol")
+    message = str(state.get("request", {}).get("message", ""))
+
+    # 知识问答关键词 → direct_response（不依赖实时金融事实）
+    knowledge_keywords = ("什么是", "解释", "定义", "含义", "什么意思", "怎么理解", "是指")
+    if any(kw in message for kw in knowledge_keywords):
+        route = IntentRoute(mode="direct_response", reason="知识问答，无需工具", confidence=0.8)
+        return {"intent_route": route.model_dump(), "events": [event(state, "intent.routed", "route_execution", {"mode": "direct_response"})]}
+
+    # 有 symbol 且单点查询 → single_capability（v2.1 §3.4：已解析 symbol 才走单能力）
+    if symbol and analysis_type == "market_snapshot":
+        route = IntentRoute(
+            mode="single_capability",
+            reason="单点数据查询，标的已解析",
+            confidence=0.8,
+            tool_proposal=ToolProposal(capability="market.get_realtime_quote", arguments={"symbol": symbol}),
+        )
+        return {"intent_route": route.model_dump(), "events": [event(state, "intent.routed", "route_execution", {"mode": "single_capability"})]}
+
+    # 其他 → agent_loop（含名称需解析、复杂研究；拿不准偏向 agent_loop）
+    route = IntentRoute(mode="agent_loop", reason="复杂研究或名称需解析，走 planner", confidence=0.6)
+    return {"intent_route": route.model_dump(), "events": [event(state, "intent.routed", "route_execution", {"mode": "agent_loop"})]}
+
+
+def direct_response_node(state: RootState) -> dict[str, Any]:
+    """direct_response 快路径（v2.1 §3）：不调工具/不分析，直接生成回答。
+
+    基于 intent_route.direct_answer 或简单模板生成 final_response。
+    生产环境应由 LLM 生成；当前规则版用模板兜底。
+    发现需要实时数据时由调用方升级到 agent_loop（记录 upgrade 事件）。
+    """
+    route_data = state.get("intent_route", {})
+    direct_answer = route_data.get("direct_answer")
+    message = str(state.get("request", {}).get("message", ""))
+
+    if not direct_answer:
+        direct_answer = f"关于「{message}」：这是一个金融知识问题。当前规则版未接入 LLM 直接回答能力，生产环境应由 LLM 生成解释。"
+
+    response = {
+        "analysis_id": state.get("run_id", ""),
+        "answer": direct_answer,
+        "mode": "direct_response",
+        "limitations": ["规则版直接回答，未接入 LLM；生产环境应由 LLM 生成"],
+    }
+    return {
+        "final_response": response,
+        "status": "SUCCESS",
+        "conversation": [{"role": "assistant", "content": response, "run_id": state.get("run_id", "")}],
+        "events": [event(state, "response.completed", "direct_response_node", {"mode": "direct_response"})],
     }
 
 
@@ -125,6 +232,18 @@ def build_data_requirements(state: RootState) -> dict[str, Any]:
     if analysis_type in {"valuation", "comprehensive"}:
         requirements.append(
             DataRequirement(requirement_id="valuation", capability="market.get_valuation", required=True, reason="估值分析需要估值数据", arguments={"symbol": symbol})
+        )
+    # comprehensive 补充网络搜索（市场/板块/宏观背景，非关键，缺失不阻断）
+    if analysis_type == "comprehensive":
+        symbol_or_topic = symbol or state.get("intent", {}).get("scope") or "A股市场"
+        requirements.append(
+            DataRequirement(
+                requirement_id="web_search",
+                capability="research.web_search",
+                required=False,
+                reason="综合分析需要市场最新动态和新闻舆情",
+                arguments={"query": f"{symbol_or_topic} 最新动态", "mode": "NEWS", "max_results": 5},
+            )
         )
     # portfolio 由独立节点 load_portfolio_context 处理，不列入 ReAct requirements
     return {
@@ -408,11 +527,15 @@ def validate_analysis(state: RootState) -> dict[str, Any]:
 
 
 def compose_response(state: RootState) -> dict[str, Any]:
-    """构建暂定响应；Phase 3 将由 Summary Model 输出用户可读解释。"""
+    """构建暂定响应，并写入 conversation（v2.1 §7 短期记忆累积）。"""
     result = AnalysisResult.model_validate(state.get("analysis_result", {}))
     response = DeterministicSummaryModel().compose(result)
     complete = _complete_current_task(state)
-    complete.update({"final_response": response, "events": [event(state, "response.composed", "compose_response")]})
+    complete.update({
+        "final_response": response,
+        "conversation": [{"role": "assistant", "content": response, "run_id": state.get("run_id", "")}],
+        "events": [event(state, "response.composed", "compose_response")],
+    })
     return complete
 
 
@@ -488,24 +611,12 @@ def make_persist_memory_node(memory_store: Any):
         user_id = state.get("user_id")
         events: list[dict[str, Any]] = []
         if user_id:
-            # ── 1. 常规沉淀：用户问题 + 分析结论摘要 ──
-            message = str(state.get("request", {}).get("message", ""))
-            result = state.get("analysis_result", {})
-            conclusions = result.get("conclusions", []) if isinstance(result, dict) else []
-            summary_parts = [f"用户问：{message}"] if message else []
-            for c in conclusions[:3]:
-                summary_parts.append(f"结论：{c.get('text', c) if isinstance(c, dict) else c}")
-            content = " | ".join(summary_parts)
-            if content:
-                try:
-                    await memory_store.add(content, user_id, metadata={"run_id": state.get("run_id")})
-                    events.append(event(state, "memory.written", "persist_memory", {"content_len": len(content)}))
-                except Exception as exc:
-                    events.append(event(state, "memory.write_failed", "persist_memory", {"error": str(exc)[:120]}))
-
-            # ── 2. 用户确认后的知识入库（Phase 4）──
+            # v2.1 §9.2：不自动写临时摘要（用户问+结论），只写用户确认后的稳定知识。
+            # 临时行情、未确认推断、一次性结论不得自动写入 Mem0。
             confirmation = state.get("confirmation")
             confirmed = confirmation is not None and not _is_negative_confirmation(confirmation)
+            result = state.get("analysis_result", {})
+            conclusions = result.get("conclusions", []) if isinstance(result, dict) else []
             if confirmed and conclusions:
                 knowledge = " | ".join(
                     f"已确认结论：{c.get('text', c) if isinstance(c, dict) else c}"
@@ -529,6 +640,39 @@ def make_persist_memory_node(memory_store: Any):
         return {"events": events}
 
     return persist_memory
+
+
+def make_persist_history_node(history_store: Any):
+    """构建分析历史写入节点（v2.1 §9.3）。
+
+    在 finish 后执行一次，把本次运行的关键快照写入历史存储（审计 + 历史查询）。
+    失败仅记事件不阻塞主流程。与 Mem0 长期记忆分离：History 记录运行事实，
+    Mem0 记录用户偏好。
+    """
+    from stockwise_analysis.contracts.history import AnalysisHistoryRecord
+
+    async def persist_history(state: RootState) -> dict[str, Any]:
+        try:
+            record = AnalysisHistoryRecord(
+                history_id=str(uuid4()),
+                thread_id=state.get("thread_id", state.get("run_id", "")),
+                run_id=state.get("run_id", ""),
+                authenticated_user_id=state.get("user_id"),
+                request_snapshot=state.get("request", {}),
+                intent_snapshot=state.get("intent", {}),
+                observations_summary=[
+                    {"capability": o.get("capability"), "status": o.get("status")}
+                    for o in state.get("observations", [])
+                ],
+                analysis_result=state.get("analysis_result"),
+                status=state.get("status", "RUNNING"),
+            )
+            history_store.save(record)
+            return {"events": [event(state, "history.saved", "persist_history", {"history_id": record.history_id})]}
+        except Exception as exc:
+            return {"events": [event(state, "history.save_failed", "persist_history", {"error": str(exc)[:120]})]}
+
+    return persist_history
 
 
 def _is_negative_confirmation(confirmation: Any) -> bool:
@@ -583,8 +727,10 @@ def make_understand_request_node(query_agent: Any, context_builder: Any = None):
             intent = query_agent.understand(request, extra_context=extra_context).model_dump()
         except TypeError:
             intent = query_agent.understand(request).model_dump()
+        intent, entities_addition = _enrich_intent_with_context(state, intent)
         return {
             "intent": intent,
+            "entities": entities_addition,
             "confirmation_required": intent["requires_confirmation"],
             "events": [event(state, "query.understood", "understand_request", intent)],
         }
@@ -603,7 +749,11 @@ def make_compose_response_node(summary_model: Any):
         result = AnalysisResult.model_validate(state.get("analysis_result", {}))
         response = summary_model.compose(result)
         complete = _complete_current_task(state)
-        complete.update({"final_response": response, "events": [event(state, "response.composed", "compose_response")]})
+        complete.update({
+            "final_response": response,
+            "conversation": [{"role": "assistant", "content": response, "run_id": state.get("run_id", "")}],
+            "events": [event(state, "response.composed", "compose_response")],
+        })
         return complete
 
     return compose_with_model
