@@ -40,6 +40,7 @@ class StockWiseApplication:
     summary_model: Any | None = None
     research_agent: Any | None = None
     llm_research_agent: Any | None = None
+    analysis_capability: Any | None = None
 
 
 def create_application(settings: Settings | None = None) -> StockWiseApplication:
@@ -92,6 +93,9 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
     # 从 ToolRegistry 组装工具清单；Memory 召回内容由 load_memory 节点写入
     # state，ContextBuilder 只做组装不做 I/O。
     context_builder = _create_context_builder()
+    from stockwise_analysis.tools.analysis_capability import create_analysis_capability
+
+    analysis_capability = create_analysis_capability()
 
     # ── 5. Root Graph（注入全部组件）──
     graph = build_root_graph(
@@ -104,6 +108,7 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         llm_research_agent=llm_research_agent,
         java_adapter=java_adapter,
         context_builder=context_builder,
+        analysis_capability=analysis_capability,
     )
 
     return StockWiseApplication(
@@ -117,6 +122,7 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         summary_model=summary_model,
         research_agent=research_agent,
         llm_research_agent=llm_research_agent,
+        analysis_capability=analysis_capability,
     )
 
 

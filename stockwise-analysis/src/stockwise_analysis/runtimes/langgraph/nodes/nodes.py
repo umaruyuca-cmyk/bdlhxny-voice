@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -18,6 +19,7 @@ from stockwise_analysis.contracts.analysis import AnalysisInput, AnalysisResult,
 from stockwise_analysis.contracts.observation import DataQuality, Observation, ProvenanceRecord
 from stockwise_analysis.contracts.data_requirements import DataRequirement
 from stockwise_analysis.contracts.workflow import TaskSpec, WorkflowPlan
+from stockwise_analysis.runtime.budgets import budget_for
 
 from ..graphs.state import RootState
 
@@ -127,8 +129,11 @@ def build_data_requirements(state: RootState) -> dict[str, Any]:
     # portfolio 由独立节点 load_portfolio_context 处理，不列入 ReAct requirements
     return {
         "data_requirements": [item.model_dump() for item in requirements],
+        "budget": asdict(budget_for(analysis_type)),
+        "tool_calls_used": 0,
+        "budget_exhausted": False,
         "workflow_plan": _plan_for(state, analysis_type, bool(intent.get("requires_portfolio"))),
-        "events": [event(state, "workflow.planned", "build_data_requirements", {"analysis_type": analysis_type})],
+        "events": [event(state, "workflow.planned", "build_data_requirements", {"analysis_type": analysis_type, "budget": asdict(budget_for(analysis_type))})],
     }
 
 
@@ -364,20 +369,34 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
     return result
 
 
-def run_analysis(state: RootState) -> dict[str, Any]:
+def _run_analysis_with_adapter(state: RootState, analysis_capability: Any) -> dict[str, Any]:
     """执行 Python Analysis Engine。
 
     节点只读取 AnalysisInput，委托 domain/analysis_engine.analyze 完成确定性
     计算（技术指标/风险/信号），不在这里实现任何计算逻辑。未来替换为独立
     Skill 时由 AnalysisCapabilityAdapter 负责通信，节点接口保持不变。
     """
-    from stockwise_analysis.domain.analysis_engine import analyze
-
     analysis_input = AnalysisInput.model_validate(state.get("analysis_input", {}))
-    result = analyze(analysis_input)
+    result = analysis_capability.analyze(analysis_input)
     complete = _complete_current_task(state)
     complete.update({"analysis_result": result.model_dump(), "events": [event(state, "analysis.completed", "run_analysis", {"status": result.status})]})
     return complete
+
+
+def make_run_analysis_node(analysis_capability: Any):
+    """创建分析能力节点，隔离 Graph 与 Python/远程分析实现。"""
+
+    def run_analysis_with_adapter(state: RootState) -> dict[str, Any]:
+        return _run_analysis_with_adapter(state, analysis_capability)
+
+    return run_analysis_with_adapter
+
+
+def run_analysis(state: RootState) -> dict[str, Any]:
+    """兼容旧调用的默认分析节点；生产 Graph 应通过 Adapter 注入实现。"""
+    from stockwise_analysis.tools.analysis_capability import PythonAnalysisCapabilityAdapter
+
+    return _run_analysis_with_adapter(state, PythonAnalysisCapabilityAdapter())
 
 
 def validate_analysis(state: RootState) -> dict[str, Any]:

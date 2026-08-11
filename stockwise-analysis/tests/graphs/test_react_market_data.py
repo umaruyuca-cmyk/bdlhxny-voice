@@ -187,3 +187,50 @@ async def test_async_nodes_supported():
     result = await graph.ainvoke(state)
     assert result["_react_round"] == 1
     assert gateway.calls[0][0] == "market.get_realtime_quote"
+
+
+@pytest.mark.asyncio
+async def test_market_snapshot_fast_path_calls_realtime_quote_without_react():
+    """market_snapshot 必须实际取行情，且不应让 Research Agent 参与决策。"""
+
+    gateway = FakeGateway({"market.get_realtime_quote": _observation("market.get_realtime_quote")})
+
+    class FailingResearchAgent:
+        def choose_next_action(self, observations, remaining_requirements):
+            raise AssertionError("market_snapshot should bypass ReAct")
+
+    graph = build_market_data_graph(
+        gateway_adapter=gateway,
+        research_agent=FailingResearchAgent(),
+    )
+    state = _initial_state(
+        [{"capability": "market.get_realtime_quote", "arguments": {"symbol": "600519"}}]
+    )
+    state["intent"] = {"symbol": "600519", "analysis_type": "market_snapshot"}
+    state["budget"] = {"react_round_limit": 0, "tool_call_limit": 3}
+
+    result = await graph.ainvoke(state)
+
+    assert gateway.calls == [("market.get_realtime_quote", {"symbol": "600519"})]
+    assert {item["capability"] for item in result["observations"]} == {"market.get_realtime_quote"}
+    assert result["tool_calls_used"] == 1
+
+
+@pytest.mark.asyncio
+async def test_tool_call_budget_stops_react_before_gateway_call():
+    """达到工具调用预算时返回结构化失败 Observation，而不是继续调用外部服务。"""
+
+    gateway = FakeGateway({"market.get_realtime_quote": _observation("market.get_realtime_quote")})
+    agent = FakeResearchAgent(["market.get_realtime_quote"])
+    graph = build_market_data_graph(gateway_adapter=gateway, research_agent=agent)
+    state = _initial_state(
+        [{"capability": "market.get_realtime_quote", "arguments": {"symbol": "600519"}}]
+    )
+    state["budget"] = {"react_round_limit": 4, "tool_call_limit": 0}
+    state["tool_calls_used"] = 0
+
+    result = await graph.ainvoke(state)
+
+    assert gateway.calls == []
+    assert result["budget_exhausted"] is True
+    assert result["observations"][0]["error_code"] == "BUDGET_EXCEEDED"

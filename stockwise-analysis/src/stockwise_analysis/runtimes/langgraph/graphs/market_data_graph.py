@@ -13,10 +13,8 @@ ReAct 边界：Agent 只输出结构化动作（choose_next_action），不直�
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
-from uuid import uuid4
-
 from typing import Any, TypedDict
+from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 
@@ -114,7 +112,14 @@ def execute_mock_market_tool(state: RootState) -> dict:
 def evaluate_market_data(state: RootState) -> dict:
     """完成市场数据任务；真实版本将在此检查缺失、冲突和降级结果。"""
     result = _complete_current_task(state)
-    result["events"] = [event(state, "market.data_evaluated", "evaluate_market_data", {"status": "PARTIAL_MOCK"})]
+    statuses = [item.get("status") for item in state.get("observations", [])]
+    if state.get("budget_exhausted"):
+        status = "LIMITED"
+    elif statuses and all(item == "SUCCESS" for item in statuses):
+        status = "OK"
+    else:
+        status = "PARTIAL"
+    result["events"] = [event(state, "market.data_evaluated", "evaluate_market_data", {"status": status})]
     return result
 
 
@@ -147,13 +152,18 @@ def build_market_data_graph(
     if gateway_adapter is not None and research_agent is not None:
         # ── 真实 ReAct 模式 ──
         graph.add_node("build_market_query", build_market_query)
+        graph.add_node("execute_fast_path_quote", _make_fast_path_quote_node(gateway_adapter))
         graph.add_node("select_action", _make_select_action_node(research_agent, llm_research_agent))
         graph.add_node("execute_tool", _make_execute_tool_node(gateway_adapter))
         graph.add_node("normalize_observation", _normalize_observations_node)
         graph.add_node("evaluate_market_data", evaluate_market_data)
 
         graph.add_edge(START, "build_market_query")
-        graph.add_edge("build_market_query", "select_action")
+        graph.add_conditional_edges(
+            "build_market_query",
+            _route_after_market_query,
+            {"fast_path": "execute_fast_path_quote", "react": "select_action"},
+        )
         # select_action → execute_tool（有动作）或 evaluate（finish）
         graph.add_conditional_edges(
             "select_action",
@@ -161,6 +171,7 @@ def build_market_data_graph(
             {"execute": "execute_tool", "finish": "evaluate_market_data"},
         )
         graph.add_edge("execute_tool", "normalize_observation")
+        graph.add_edge("execute_fast_path_quote", "evaluate_market_data")
         # normalize → 回到 select_action 继续 ReAct 循环（受轮数限制）
         graph.add_conditional_edges(
             "normalize_observation",
@@ -236,6 +247,64 @@ def _route_after_action(state: RootState) -> str:
     return "finish" if action.get("action") == "finish" else "execute"
 
 
+def _route_after_market_query(state: RootState) -> str:
+    """market_snapshot 直接执行实时行情工具，其他分析类型进入 ReAct。"""
+    return "fast_path" if state.get("intent", {}).get("analysis_type") == "market_snapshot" else "react"
+
+
+def _budget_limit(state: RootState, name: str) -> int | None:
+    budget = state.get("budget") or {}
+    value = budget.get(name)
+    return int(value) if value is not None else None
+
+
+def _budget_exceeded_observation(capability: str) -> Observation:
+    return Observation(
+        observation_id=str(uuid4()),
+        capability=capability,
+        status="FAILED",
+        data=None,
+        data_quality=DataQuality(quality_status="INVALID", known_unavailable=[capability]),
+        error_code="BUDGET_EXCEEDED",
+        error_message="analysis budget does not allow another tool call",
+    )
+
+
+def _quote_arguments(state: RootState) -> dict[str, Any]:
+    for requirement in state.get("data_requirements", []):
+        if requirement.get("capability") == "market.get_realtime_quote":
+            return requirement.get("arguments") or {}
+    symbol = state.get("intent", {}).get("symbol") or state.get("request", {}).get("symbol")
+    return {"symbol": symbol} if symbol else {}
+
+
+def _make_fast_path_quote_node(gateway_adapter: Any):
+    """market_snapshot 的确定性实时行情路径：只调用 quote，不启动 Agent/ReAct。"""
+
+    async def execute_fast_path_quote(state: RootState) -> dict[str, Any]:
+        capability = "market.get_realtime_quote"
+        used = state.get("tool_calls_used", 0)
+        limit = _budget_limit(state, "tool_call_limit")
+        if limit is not None and used >= limit:
+            observation = _budget_exceeded_observation(capability)
+            return {
+                "observations": [observation.model_dump()],
+                "budget_exhausted": True,
+                "events": [event(state, "tool.blocked", "execute_fast_path_quote", {"capability": capability, "reason": "budget_exceeded"})],
+            }
+        observation = await gateway_adapter.execute(capability, _quote_arguments(state), run_id=state.get("run_id", ""))
+        from stockwise_analysis.observations.normalizer import ObservationNormalizer
+
+        normalized = ObservationNormalizer().normalize(observation)
+        return {
+            "observations": [normalized.model_dump()],
+            "tool_calls_used": used + 1,
+            "events": [event(state, "tool.finished", "execute_fast_path_quote", {"capability": capability, "status": normalized.status})],
+        }
+
+    return execute_fast_path_quote
+
+
 def _make_execute_tool_node(gateway_adapter: Any):
     """构建工具执行节点：通过 Gateway 调用统一能力（同步工厂，返回异步节点）。"""
 
@@ -244,10 +313,20 @@ def _make_execute_tool_node(gateway_adapter: Any):
         capability = action_data.get("action", "")
         arguments = action_data.get("arguments", {})
         run_id = state.get("run_id", "")
+        used = state.get("tool_calls_used", 0)
+        limit = _budget_limit(state, "tool_call_limit")
+        if limit is not None and used >= limit:
+            observation = _budget_exceeded_observation(capability)
+            return {
+                "_pending_observation": observation.model_dump(),
+                "budget_exhausted": True,
+                "events": [event(state, "tool.blocked", "execute_tool", {"capability": capability, "reason": "budget_exceeded"})],
+            }
         # Gateway 返回 Observation；网络失败由 Gateway 内部 fallback 处理
         observation = await gateway_adapter.execute(capability, arguments, run_id=run_id)
         return {
             "_pending_observation": observation.model_dump(),
+            "tool_calls_used": used + 1,
             "events": [event(state, "tool.finished", "execute_tool", {"capability": capability, "status": observation.status})],
         }
 
@@ -273,8 +352,11 @@ def _make_react_router(max_rounds: int):
     """构建 ReAct 循环路由器：未达上限且需求未满足则继续，否则停止。"""
 
     def router(state: RootState) -> str:
+        if state.get("budget_exhausted"):
+            return "stop"
         round_count = state.get("_react_round", 0)
-        if round_count >= max_rounds:
+        configured_limit = _budget_limit(state, "react_round_limit")
+        if round_count >= (configured_limit if configured_limit is not None else max_rounds):
             return "stop"
         # 检查是否还有未满足的需求
         observations = state.get("observations", [])

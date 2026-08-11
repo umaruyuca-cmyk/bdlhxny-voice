@@ -71,6 +71,27 @@ def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1
     store = InMemoryRunStore()
     router = APIRouter(prefix=api_prefix)
 
+    async def load_run_state(run_id: str) -> dict[str, Any] | None:
+        """优先从 LangGraph Checkpointer 读取状态，内存快照只作兼容兜底。
+
+        Checkpointer 的 StateSnapshot 会把 interrupt 保存在 ``tasks`` 中，
+        不一定直接放进 ``values['__interrupt__']``，这里统一投影成 API 契约。
+        """
+        try:
+            snapshot = await application.graph.aget_state(config_for(run_id))
+        except (AttributeError, KeyError, RuntimeError, TypeError):
+            snapshot = None
+        if snapshot is not None and getattr(snapshot, "values", None):
+            state = dict(snapshot.values)
+            interrupts: list[dict[str, Any]] = []
+            for task in getattr(snapshot, "tasks", ()) or ():
+                for item in getattr(task, "interrupts", ()) or ():
+                    interrupts.append({"id": item.id, "value": item.value})
+            if interrupts:
+                state["__interrupt__"] = interrupts
+            return state
+        return store.get(run_id)
+
     @router.get("/health")
     async def health() -> dict[str, str]:
         """本地健康检查。"""
@@ -90,7 +111,7 @@ def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1
 
     @router.get("/agent-runs/{run_id}")
     async def get_run(run_id: str) -> RunResponse:
-        state = store.get(run_id)
+        state = await load_run_state(run_id)
         if state is None:
             raise HTTPException(status_code=404, detail="run not found")
         return public_state(run_id, state)
@@ -98,11 +119,12 @@ def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1
     @router.post("/agent-runs/{run_id}/resume")
     async def resume_run(run_id: str, payload: ResumeRequest) -> RunResponse:
         """使用同一 LangGraph thread_id 恢复用户补充/确认后的运行。"""
-        if store.get(run_id) is None:
+        state_before_resume = await load_run_state(run_id)
+        if state_before_resume is None:
             raise HTTPException(status_code=404, detail="run not found")
         state = await application.graph.ainvoke(
             Command(resume=payload.value),
-            config=config_for(run_id),
+            config=config_for(run_id, state_before_resume.get("user_id")),
         )
         store.put(run_id, state)
         return public_state(run_id, state)
@@ -110,7 +132,7 @@ def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1
     async def event_stream(run_id: str) -> AsyncIterator[str]:
         index = 0
         while True:
-            state = store.get(run_id)
+            state = await load_run_state(run_id)
             if state is None:
                 yield encode_event("error", {"message": "run not found"})
                 return
@@ -124,7 +146,7 @@ def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1
 
     @router.get("/agent-runs/{run_id}/events")
     async def stream_events(run_id: str):
-        if store.get(run_id) is None:
+        if await load_run_state(run_id) is None:
             raise HTTPException(status_code=404, detail="run not found")
         return StreamingResponse(event_stream(run_id), media_type="text/event-stream")
 

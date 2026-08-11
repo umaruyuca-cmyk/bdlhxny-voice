@@ -14,8 +14,8 @@ import logging
 from typing import Any
 
 from stockwise_analysis.contracts.analysis import AnalysisInput
-from stockwise_analysis.domain.analysis_engine import analyze
 
+from .analysis_capability import create_analysis_capability
 from .registry import ToolRegistry
 
 logger = logging.getLogger("stockwise_analysis.tools.analysis")
@@ -30,7 +30,7 @@ def _analyze_handler(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         analysis_input = AnalysisInput.model_validate(args)
-        result = analyze(analysis_input)
+        result = create_analysis_capability().analyze(analysis_input)
         return result.model_dump()
     except Exception as exc:
         logger.error("分析工具调用失败: %s", exc)

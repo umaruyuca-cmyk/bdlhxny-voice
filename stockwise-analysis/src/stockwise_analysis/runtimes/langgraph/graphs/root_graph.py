@@ -26,6 +26,7 @@ from ..nodes.nodes import (
     make_load_memory_node,
     make_load_portfolio_context_node,
     make_persist_memory_node,
+    make_run_analysis_node,
     make_resolve_instrument_node,
     resolve_instrument,
     run_analysis,
@@ -52,6 +53,7 @@ def build_root_graph(
     llm_research_agent=None,
     java_adapter=None,
     context_builder=None,
+    analysis_capability=None,
 ):
     """构建顶层动态流程。
 
@@ -92,7 +94,8 @@ def build_root_graph(
     portfolio_node = make_load_portfolio_context_node(java_adapter) if java_adapter is not None else load_portfolio_context
     graph.add_node("load_portfolio_context", portfolio_node)
     graph.add_node("assemble_analysis", assemble_analysis)
-    graph.add_node("run_analysis", run_analysis)
+    analysis_node = make_run_analysis_node(analysis_capability) if analysis_capability is not None else run_analysis
+    graph.add_node("run_analysis", analysis_node)
     graph.add_node("validate_analysis", validate_analysis)
     # 有 summary_model 用工厂版，否则用原版 compose_response
     compose_node = make_compose_response_node(summary_model) if summary_model is not None else compose_response

@@ -27,6 +27,10 @@ class RootState(TypedDict, total=False):
     current_task_id: str | None
     next_stage: str | None
     data_requirements: list[dict[str, Any]]
+    # analysis_type 对应的运行预算，由 build_data_requirements 写入，子图只消费并更新计数。
+    budget: dict[str, Any]
+    tool_calls_used: int
+    budget_exhausted: bool
     # 所有外部结果必须先标准化为 Observation，再进入分析输入。
     observations: Annotated[list[dict[str, Any]], operator.add]
     analysis_input: dict[str, Any] | None
