@@ -32,12 +32,14 @@ class StockWiseApplication:
     settings: Settings
     graph: Any  # 编译后的 LangGraph
     # 持有组件引用供调试和可观测性使用
+    checkpointer: Any | None = None
     llm: Any | None = None
     memory_store: Any | None = None
     gateway_adapter: Any | None = None
     query_agent: Any | None = None
     summary_model: Any | None = None
     research_agent: Any | None = None
+    llm_research_agent: Any | None = None
 
 
 def create_application(settings: Settings | None = None) -> StockWiseApplication:
@@ -48,12 +50,11 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
     """
     settings = settings or Settings.from_environment()
 
-    # ── 0. 生产环境安全校验：不允许静默退化到内存 Checkpointer ──
-    # 内存 Checkpointer 重启即丢状态，生产环境必须用 PG/Redis 持久化。
-    if settings.environment == "production" and settings.checkpointer_backend == "memory":
-        raise ConfigurationError(
-            "生产环境不允许使用 memory Checkpointer，请配置 PostgreSQL 或 Redis 后端。"
-        )
+    # ── 0. Checkpointer（审查文档 §4.3：按配置创建，生产注入持久化后端）──
+    # memory 后端在 production 被 create_checkpointer 拒绝（ConfigurationError）。
+    from .checkpointers import create_checkpointer
+
+    checkpointer = create_checkpointer(settings)
 
     # ── 1. LLM（有 DeepSeek Key 用真实，无则 None 触发各 Agent 降级）──
     llm = create_llm(
@@ -71,34 +72,51 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
     # ── 4. Agents（按 LLM 有无自动选 LLM 版或规则版）──
     query_agent = create_query_agent(llm)
     summary_model = create_summary_model(llm)
-    # Research Agent 默认规则版；comprehensive 类型由 graph 内部按需升级
-    research_agent = create_research_agent(llm, analysis_type="")
+    # Research Agent 双版本（审查文档 §4.5 执行矩阵）：
+    # - research_agent：规则版（technical/fundamental 等有限自适应）；
+    # - llm_research_agent：comprehensive 用 LLM 版（无 LLM 时也降级规则版）。
+    research_agent = create_research_agent(llm, analysis_type="technical")
+    llm_research_agent = create_research_agent(llm, analysis_type="comprehensive")
 
     # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
     # base_url 未配置时 Adapter 内部自动 mock 降级（见 java_data_adapter.py）
     import os as _os
 
-    java_adapter = _create_java_adapter(_os.getenv(_JAVA_API_BASE_URL_ENV))
+    java_adapter = _create_java_adapter(
+        _os.getenv(_JAVA_API_BASE_URL_ENV),
+        production=(settings.environment == "production"),
+        token=_os.getenv("JAVA_API_TOKEN"),
+    )
+
+    # ── 4.6 ContextBuilder（审查文档 §4.4：七块上下文组装）──
+    # 从 ToolRegistry 组装工具清单；Memory 召回内容由 load_memory 节点写入
+    # state，ContextBuilder 只做组装不做 I/O。
+    context_builder = _create_context_builder()
 
     # ── 5. Root Graph（注入全部组件）──
     graph = build_root_graph(
+        checkpointer=checkpointer,
         memory_store=memory_store,
         query_agent=query_agent,
         summary_model=summary_model,
         gateway_adapter=gateway_adapter,
         research_agent=research_agent,
+        llm_research_agent=llm_research_agent,
         java_adapter=java_adapter,
+        context_builder=context_builder,
     )
 
     return StockWiseApplication(
         settings=settings,
         graph=graph,
+        checkpointer=checkpointer,
         llm=llm,
         memory_store=memory_store,
         gateway_adapter=gateway_adapter,
         query_agent=query_agent,
         summary_model=summary_model,
         research_agent=research_agent,
+        llm_research_agent=llm_research_agent,
     )
 
 
@@ -127,12 +145,33 @@ def _create_gateway(settings: Settings) -> Any:
     return create_adapter_from_settings(settings)
 
 
-def _create_java_adapter(base_url: str | None) -> Any:
-    """创建 Java 数据适配器（Phase 4）。
+def _create_java_adapter(base_url: str | None, *, production: bool, token: str | None) -> Any:
+    """创建 Java 数据适配器（Phase 4，审查文档 §5.3）。
 
-    base_url 未配置时返回的 Adapter 内部自动 mock 降级——持仓/账户返回
-    确定性 mock 数据（带 is_mock 标记），保证开发环境和测试可跑通完整流程。
+    base_url 未配置时：开发环境 mock 降级（带 is_mock 标记），生产环境
+    返回 UNAVAILABLE（不伪造持仓结论）。
     """
     from stockwise_analysis.tools.java_data_adapter import create_java_adapter
 
-    return create_java_adapter(base_url=base_url)
+    return create_java_adapter(base_url=base_url, production=production, token=token)
+
+
+def _create_context_builder() -> Any:
+    """创建 ContextBuilder（审查文档 §4.4）。
+
+    工具清单从 ToolRegistry 组装（确定性）；ContextBuilder 本身不做 I/O，
+    Memory 召回内容由 load_memory 节点写入 state 后传入。
+    """
+    from stockwise_analysis.runtimes.langgraph.context import ContextBuilder
+    from stockwise_analysis.tools.registry import ToolRegistry
+
+    registry = ToolRegistry()
+    # 注册分析能力工具（供工具清单块使用）
+    from stockwise_analysis.tools.analysis_tool import register_analysis_tools
+
+    register_analysis_tools(registry)
+    tool_manifest = [
+        {"name": t.name, "description": t.description, "read_only": t.read_only}
+        for t in registry.list()
+    ]
+    return ContextBuilder(tool_manifest=tool_manifest)

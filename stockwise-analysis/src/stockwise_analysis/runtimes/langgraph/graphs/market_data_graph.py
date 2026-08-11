@@ -16,12 +16,28 @@ from datetime import date
 from typing import Any
 from uuid import uuid4
 
+from typing import Any, TypedDict
+
 from langgraph.graph import END, START, StateGraph
 
 from stockwise_analysis.contracts.observation import DataQuality, Observation, ProvenanceRecord
 
 from ..nodes.nodes import _complete_current_task, event, now_iso
 from .state import RootState
+
+
+class _MarketDataOutput(TypedDict, total=False):
+    """Market Data Graph 子图的受限输出 schema。
+
+    只包含子图负责的字段，刻意排除 workflow_plan——防止子图入口快照覆盖
+    主图调度进度（resolve_instrument 等任务被重复执行的根因）。
+    """
+
+    observations: list[dict[str, Any]]
+    events: list[dict[str, Any]]
+    _react_round: int
+    _current_action: dict[str, Any]
+    _pending_observation: dict[str, Any] | None
 
 # ReAct 轮数上限（默认值，comprehensive 可由调用方覆盖）
 _DEFAULT_MAX_REACT_ROUNDS = 6
@@ -105,21 +121,33 @@ def evaluate_market_data(state: RootState) -> dict:
 def build_market_data_graph(
     gateway_adapter: Any | None = None,
     research_agent: Any | None = None,
+    llm_research_agent: Any | None = None,
     max_react_rounds: int = _DEFAULT_MAX_REACT_ROUNDS,
 ):
-    """构建市场数据获取子图。
+    """构建市场数据获取子图（审查文档 §4.5 执行矩阵）。
 
-    gateway_adapter / research_agent 为可选注入：
-    - 都注入：走真实 MCP ReAct 循环（Agent 决策 → Gateway 执行 → 标准化）；
+    gateway_adapter / research_agent / llm_research_agent 为可选注入：
+    - 都注入：走真实 MCP ReAct 循环，select_action 节点在运行时按
+      analysis_type 选择 agent（comprehensive 用 LLM 版，其他用规则版）；
     - 都不传：走 mock 路径（execute_mock_market_tool），保证测试无网络依赖。
+
+    执行矩阵（运行时由 select_action 决策）：
+    - market_snapshot：确定性快路径，不启动 ReAct（直接 finish）；
+    - technical/fundamental/valuation/portfolio_impact：有限自适应 ReAct
+      （规则版 agent 按 DataRequirement 顺序执行）；
+    - comprehensive：完整有界 ReAct（LLM 版 agent 自主决策）。
     """
 
+    # 子图必须输出 workflow_plan：evaluate_market_data 里的 _complete_current_task
+    # 会把 market_data 任务标记 COMPLETED 并随子图输出回主图。LangGraph 子图
+    # 对 dict 字段按"入口快照演化"合并（最小实验已验证），因此 resolve 的
+    # COMPLETED 状态会被保留，不会被覆盖回 RUNNING。
     graph = StateGraph(RootState)
 
     if gateway_adapter is not None and research_agent is not None:
         # ── 真实 ReAct 模式 ──
         graph.add_node("build_market_query", build_market_query)
-        graph.add_node("select_action", _make_select_action_node(research_agent))
+        graph.add_node("select_action", _make_select_action_node(research_agent, llm_research_agent))
         graph.add_node("execute_tool", _make_execute_tool_node(gateway_adapter))
         graph.add_node("normalize_observation", _normalize_observations_node)
         graph.add_node("evaluate_market_data", evaluate_market_data)
@@ -150,19 +178,48 @@ def build_market_data_graph(
         graph.add_edge("execute_mock_market_tool", "evaluate_market_data")
         graph.add_edge("evaluate_market_data", END)
 
+    # 子图只输出自己负责的字段（observations/events/ReAct 内部状态），
+    # 不输出 workflow_plan——避免子图入口快照覆盖主图的调度进度，
+    # 导致 resolve_instrument 等任务被重复执行（冒烟发现的 bug）。
     return graph.compile()
 
 
 # ── 真实 ReAct 模式的节点工厂 ──
 
 
-def _make_select_action_node(research_agent: Any):
-    """构建 ReAct 决策节点：让 Research Agent 选下一个动作。"""
+def _make_select_action_node(research_agent: Any, llm_research_agent: Any = None):
+    """构建 ReAct 决策节点：按运行时 analysis_type 选择 Agent（审查文档 §4.5）。
+
+    执行矩阵（运行时决策，不依赖构建时类型）：
+    - market_snapshot：直接 finish（确定性快路径，不启动 ReAct）；
+    - comprehensive 且有 LLM agent：用 LLM 版自主决策；
+    - 其他：规则版按 DataRequirement 顺序（有限自适应）。
+    """
 
     def select_action(state: RootState) -> dict:
+        analysis_type = state.get("intent", {}).get("analysis_type", "market_snapshot")
+
+        # market_snapshot 快路径：不经 ReAct，直接 finish
+        if analysis_type == "market_snapshot":
+            return {
+                "_react_round": state.get("_react_round", 0),
+                "_current_action": {"action": "finish", "arguments": {}, "reason": "快路径不启动 ReAct"},
+                "events": [event(state, "model.decision", "select_action", {"action": "finish", "mode": "fast_path"})],
+            }
+
+        # 按 analysis_type 选 agent：comprehensive 用 LLM 版，其他用规则版
+        agent = llm_research_agent if (analysis_type == "comprehensive" and llm_research_agent is not None) else research_agent
         observations = state.get("observations", [])
         requirements = state.get("data_requirements", [])
-        action = research_agent.choose_next_action(observations, requirements)
+        action = agent.choose_next_action(observations, requirements)
+        # finish 是终止决策，不计入 ReAct 轮次（轮次只统计实际工具调用），
+        # 但字段必须保留（保持 state 类型稳定，避免下游 KeyError）
+        if action.is_finish:
+            return {
+                "_react_round": state.get("_react_round", 0),
+                "_current_action": action.model_dump(),
+                "events": [event(state, "model.decision", "select_action", {"action": "finish"})],
+            }
         round_count = state.get("_react_round", 0) + 1
         return {
             "_react_round": round_count,

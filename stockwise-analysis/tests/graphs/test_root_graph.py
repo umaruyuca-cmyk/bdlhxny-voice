@@ -1,6 +1,6 @@
 from langgraph.types import Command
 
-from stockwise_analysis.graph.root_graph import build_root_graph, initial_state
+from stockwise_analysis.runtimes.langgraph.graphs.root_graph import build_root_graph, initial_state
 
 
 def test_dynamic_snapshot_workflow_completes_with_mock_data():

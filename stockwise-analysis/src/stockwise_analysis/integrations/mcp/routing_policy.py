@@ -52,6 +52,9 @@ DEFAULT_ROUTES: dict[str, RoutePolicy] = {
     "market.resolve_instrument": RoutePolicy(
         capability="market.resolve_instrument",
         primary=RouteTarget(mcp="cn-financial-mcp", tool="search_stock"),
+        # 参数翻译：统一层用 symbol，cn-financial 的 search_stock 需要 keyword
+        # （实测 2026-08-06：传 symbol 会解析失败，传 keyword 返回有效 JSON）
+        param_map={"symbol": "keyword"},
     ),
     "market.get_realtime_quote": RoutePolicy(
         capability="market.get_realtime_quote",
@@ -106,20 +109,50 @@ def translate_arguments(
 ) -> dict[str, Any]:
     """把统一能力的参数翻译为目标 MCP 工具的参数。
 
-    主要处理 akshare-one 的 interval vs period 差异：
-    - 统一层用 period=daily/weekly/monthly
-    - akshare-one 需要 interval=day/week/month
-    其他参数直接透传。
+    处理两类差异：
+    1. 静态 key/value 映射（param_map）：akshare-one 的 interval vs period；
+    2. 动态参数转换：lookback_days（统一层的"往前看 N 天"）→ start_date/
+       end_date 日期区间——cn-financial 的 get_historical_price 不认识
+       lookback_days，会返回异常数据（实测 2026-08-06：忽略未知参数返回
+       含负值的脏数据，导致 MA 为负）。
     """
     policy = get_route(capability)
-    if policy is None or not policy.param_map:
+    if policy is None:
         return dict(unified_args)
 
     translated: dict[str, Any] = {}
     for key, value in unified_args.items():
-        # 先翻译 key（period→interval）
-        mapped_key = policy.param_map.get(key, key)
-        # 再翻译 value（daily→day）
-        mapped_value = policy.param_map.get(str(value), value)
+        # lookback_days → start_date/end_date 日期区间（动态计算）
+        if key == "lookback_days" and value:
+            start, end = _lookback_date_range(int(value))
+            translated["start_date"] = start
+            translated["end_date"] = end
+            continue
+        # 静态 key/value 映射（period→interval、daily→day、symbol→keyword）
+        mapped_key = policy.param_map.get(key, key) if policy.param_map else key
+        mapped_value = policy.param_map.get(str(value), value) if policy.param_map else value
         translated[mapped_key] = mapped_value
     return translated
+
+
+def _lookback_date_range(lookback_days: int) -> tuple[str, str]:
+    """把 lookback_days 转成 [start_date, end_date] 日期字符串。
+
+    用 A 股交易日历往前推 N 个交易日（比自然日更贴近"N 根K线"语义），
+    从当前日期往前找第 N 个交易日作为 start_date，今天作为 end_date。
+    """
+    from datetime import date, timedelta
+
+    from stockwise_analysis.domain.trading_calendar import create_trading_calendar
+
+    calendar = create_trading_calendar()
+    end = date.today()
+    # 从 end 往前数 N 个交易日（含 end 当天）
+    start = end
+    count = 0
+    while count < lookback_days:
+        if calendar.is_trading_day(start):
+            count += 1
+        if count < lookback_days:
+            start -= timedelta(days=1)
+    return start.isoformat(), end.isoformat()

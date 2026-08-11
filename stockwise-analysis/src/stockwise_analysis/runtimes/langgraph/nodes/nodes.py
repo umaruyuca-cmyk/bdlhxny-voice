@@ -105,8 +105,11 @@ def build_data_requirements(state: RootState) -> dict[str, Any]:
     intent = state.get("intent", {})
     analysis_type = intent.get("analysis_type", "market_snapshot")
     symbol = intent.get("symbol") or state.get("request", {}).get("symbol")
+    # 注意：data_requirements 只含"市场数据能力"（由 Market Data Graph 的
+    # ReAct 处理）。resolve_instrument 和 portfolio 由独立节点执行（resolve_
+    # instrument / load_portfolio_context），若列入 requirements 会导致
+    # ReAct 循环重复执行它们（审查冒烟发现的 bug）。
     requirements = [
-        DataRequirement(requirement_id="instrument", capability="market.resolve_instrument", required=True, reason="确认分析标的", arguments={"symbol": symbol}),
         DataRequirement(requirement_id="market", capability="market.get_realtime_quote", required=True, reason="获取当前市场数据", arguments={"symbol": symbol}),
     ]
     if analysis_type in {"technical", "comprehensive", "portfolio_impact"}:
@@ -121,10 +124,7 @@ def build_data_requirements(state: RootState) -> dict[str, Any]:
         requirements.append(
             DataRequirement(requirement_id="valuation", capability="market.get_valuation", required=True, reason="估值分析需要估值数据", arguments={"symbol": symbol})
         )
-    if intent.get("requires_portfolio"):
-        requirements.append(
-            DataRequirement(requirement_id="portfolio", capability="portfolio.get_current_positions", required=True, reason="持仓影响分析需要用户持仓", arguments={"user_id": state.get("user_id")})
-        )
+    # portfolio 由独立节点 load_portfolio_context 处理，不列入 ReAct requirements
     return {
         "data_requirements": [item.model_dump() for item in requirements],
         "workflow_plan": _plan_for(state, analysis_type, bool(intent.get("requires_portfolio"))),
@@ -176,7 +176,11 @@ def _complete_current_task(state: RootState) -> dict[str, Any]:
 
 
 def resolve_instrument(state: RootState) -> dict[str, Any]:
-    """标的解析节点；Phase 2 将替换为 market.resolve_instrument Gateway 调用。"""
+    """标的解析节点（无 gateway 注入时的 Mock 兜底）。
+
+    生产环境由 Application Runtime 注入 Gateway 版本（见下方工厂），
+    标的解析必须经由 MarketDataGateway 而非在节点内拼接（审查文档 §4.6）。
+    """
     intent = state.get("intent", {})
     symbol = intent.get("symbol") or state.get("request", {}).get("symbol")
     instrument = InstrumentRef(symbol=str(symbol), name=f"标的 {symbol}")
@@ -191,6 +195,40 @@ def resolve_instrument(state: RootState) -> dict[str, Any]:
     result = _complete_current_task(state)
     result.update({"observations": [observation.model_dump()], "events": [event(state, "tool.completed", "resolve_instrument", {"capability": observation.capability})]})
     return result
+
+
+def make_resolve_instrument_node(gateway_adapter: Any):
+    """构建标的解析节点（工厂函数，审查文档 §4.6）。
+
+    有 gateway 注入时：标的解析经由 MarketDataGateway 执行
+    market.resolve_instrument，返回结果经 normalizer 标准化后写入
+    observations。解析失败时触发 interrupt 请求补充或返回结构化失败，
+    不允许在节点中拼接"标的名称"。
+    """
+    from stockwise_analysis.observations.normalizer import ObservationNormalizer
+
+    async def resolve_with_gateway(state: RootState) -> dict[str, Any]:
+        intent = state.get("intent", {})
+        symbol = intent.get("symbol") or state.get("request", {}).get("symbol")
+        if not symbol:
+            # 无标的 → 触发中断请求补充
+            answer = interrupt({"reason": "missing_symbol", "message": "请提供要分析的股票代码。"})
+            symbol = str(answer.get("symbol", answer)) if isinstance(answer, dict) else str(answer)
+
+        raw_obs = await gateway_adapter.execute(
+            "market.resolve_instrument",
+            {"symbol": symbol},
+            run_id=state.get("run_id", ""),
+        )
+        normalized = ObservationNormalizer().normalize(raw_obs)
+        result = _complete_current_task(state)
+        result.update({
+            "observations": [normalized.model_dump()],
+            "events": [event(state, "tool.completed", "resolve_instrument", {"capability": "market.resolve_instrument", "status": normalized.status})],
+        })
+        return result
+
+    return resolve_with_gateway
 
 
 def load_portfolio_context(state: RootState) -> dict[str, Any]:
@@ -237,31 +275,92 @@ def make_load_portfolio_context_node(java_adapter: Any):
 
 
 def assemble_analysis(state: RootState) -> dict[str, Any]:
-    """将标准化 Observation 组装为纯分析契约 AnalysisInput。"""
+    """将标准化 Observation 组装为纯分析契约 AnalysisInput（审查文档 §4.7）。
+
+    按 capability 映射全部数据域到 AnalysisInput 对应字段：
+    financial_data / valuation_data / industry_context / news_context /
+    overseas_context 全部装配，不再只装行情和历史。
+    缺失字段写入 data_quality.known_unavailable 和 limitations（如实标记，
+    不伪造成功数据）。
+    """
     observations = [Observation.model_validate(item) for item in state.get("observations", [])]
-    instrument_data = next((item.data for item in observations if item.capability == "market.resolve_instrument"), {})
-    quote = next((item.data for item in observations if item.capability == "market.get_realtime_quote"), None)
-    history = next((item.data for item in observations if item.capability == "market.get_historical_prices"), [])
-    portfolio = next((item.data for item in observations if item.capability == "portfolio.get_current_positions"), None)
-    provenance = [record for item in observations for record in item.provenance]
-    quality_ok = all(item.status == "SUCCESS" and item.data_quality.quality_status == "OK" for item in observations)
+
+    # capability → AnalysisInput 字段的映射
+    _CAPABILITY_TO_FIELD = {
+        "market.resolve_instrument": "instrument",
+        "market.get_realtime_quote": "realtime_quote",
+        "market.get_historical_prices": "historical_prices",
+        "market.get_financial_statements": "financial_data",
+        "market.get_valuation": "valuation_data",
+        "market.get_industry_context": "industry_context",
+        "market.get_news": "news_context",
+        "portfolio.get_current_positions": "portfolio_context",
+        "market.get_overseas": "overseas_context",  # 预留：MCP 暂不覆盖外围面
+    }
+
+    assembled: dict[str, Any] = {}
+    known_unavailable: list[str] = []
+    provenance: list[Any] = []
+
+    for obs in observations:
+        field = _CAPABILITY_TO_FIELD.get(obs.capability)
+        if field is None:
+            continue
+        provenance.extend(obs.provenance)
+        if obs.status == "SUCCESS" and obs.data is not None:
+            if field == "historical_prices":
+                assembled[field] = obs.data if isinstance(obs.data, list) else []
+            elif field == "news_context":
+                # news 解析为 {"items": [...]}，提取列表
+                assembled[field] = obs.data.get("items", []) if isinstance(obs.data, dict) else []
+            elif field == "instrument":
+                assembled[field] = obs.data
+            else:
+                assembled[field] = obs.data
+        else:
+            # 失败/缺失的数据域如实标记
+            known_unavailable.append(obs.capability)
+
+    # 默认值：必须存在的字段
+    instrument_data = assembled.get("instrument") or {"symbol": (state.get("intent", {}).get("symbol") or "unknown")}
+
+    # 数据质量：completeness 按"本分析类型实际请求的 DataRequirement 中已满足
+    # 的比例"计算，而非全局域数——market_snapshot 只需 quote，不应因财报缺失
+    # 被扣分。缺失进 known_unavailable。
+    required_capabilities = {req.get("capability") for req in state.get("data_requirements", [])}
+    fulfilled = {obs.capability for obs in observations if obs.status == "SUCCESS" and obs.capability in _CAPABILITY_TO_FIELD}
+    if required_capabilities:
+        completeness = len(required_capabilities & fulfilled) / len(required_capabilities)
+    else:
+        completeness = len(fulfilled) / max(len(_CAPABILITY_TO_FIELD), 1)
+    quality_status = "OK" if completeness >= 1.0 else ("PARTIAL" if completeness >= 0.5 else "INVALID")
     quality = DataQuality(
-        completeness=sum(item.data_quality.completeness for item in observations) / max(len(observations), 1),
+        completeness=round(completeness, 2),
         freshness="REALTIME",
-        quality_status="OK" if quality_ok else "PARTIAL",
+        quality_status=quality_status,
+        known_unavailable=known_unavailable,
     )
+
     analysis_input = AnalysisInput(
         analysis_id=state.get("run_id", str(uuid4())),
         analysis_type=state.get("intent", {}).get("analysis_type", "market_snapshot"),
         instrument=InstrumentRef.model_validate(instrument_data),
-        realtime_quote=quote,
-        historical_prices=history,
-        portfolio_context=portfolio,
+        realtime_quote=assembled.get("realtime_quote"),
+        historical_prices=assembled.get("historical_prices", []),
+        financial_data=assembled.get("financial_data"),
+        valuation_data=assembled.get("valuation_data"),
+        industry_context=assembled.get("industry_context"),
+        news_context=assembled.get("news_context", []),
+        portfolio_context=assembled.get("portfolio_context"),
+        overseas_context=assembled.get("overseas_context"),
         data_quality=quality,
         provenance=provenance,
     )
     result = _complete_current_task(state)
-    result.update({"analysis_input": analysis_input.model_dump(), "events": [event(state, "analysis.input_assembled", "assemble_analysis")]})
+    result.update({
+        "analysis_input": analysis_input.model_dump(),
+        "events": [event(state, "analysis.input_assembled", "assemble_analysis", {"known_unavailable": known_unavailable})],
+    })
     return result
 
 
@@ -434,15 +533,37 @@ def _is_negative_confirmation(confirmation: Any) -> bool:
 # 让 Application Runtime 注入 LLM 版 Agent 和 ContextBuilder。无注入时降级回规则版。
 
 
-def make_understand_request_node(query_agent: Any):
+def make_understand_request_node(query_agent: Any, context_builder: Any = None):
     """构建带 ContextBuilder 的理解节点（工厂函数）。
 
     注入的 query_agent 可以是 RuleBasedQueryAgent（无 LLM）或 LlmQueryAgent
-    （有 LLM）。节点内部组装上下文后委托 agent.understand 输出意图。
+    （有 LLM）。context_builder 可选注入：组装七块上下文（画像/记忆/本轮数据）
+    传给 agent，让 LLM 理解时能感知用户画像和历史记忆（审查文档 §4.4）。
+    无注入时行为不变。
     """
 
     def understand_with_context(state: RootState) -> dict[str, Any]:
-        intent = query_agent.understand(state.get("request", {})).model_dump()
+        request = state.get("request", {})
+        extra_context: dict[str, Any] | None = None
+        if context_builder is not None:
+            ctx = context_builder.build(
+                user_profile=state.get("user_profile"),
+                conversation=state.get("conversation", []),
+                recalled_memories=state.get("recalled_memories", []),
+                round_data=state.get("observations", []),
+                user_input=request,
+            )
+            # 只把语义/确定性块传给 agent（避免把工具清单等冗余塞给意图识别）
+            extra_context = {
+                "user_profile": ctx.blocks["user_profile"].content if "user_profile" in ctx.blocks else {},
+                "recalled_memories": ctx.blocks["recalled_memories"].content if "recalled_memories" in ctx.blocks else [],
+            }
+
+        # LlmQueryAgent 支持 extra_context 参数；规则版忽略它
+        try:
+            intent = query_agent.understand(request, extra_context=extra_context).model_dump()
+        except TypeError:
+            intent = query_agent.understand(request).model_dump()
         return {
             "intent": intent,
             "confirmation_required": intent["requires_confirmation"],

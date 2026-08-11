@@ -26,6 +26,7 @@ from ..nodes.nodes import (
     make_load_memory_node,
     make_load_portfolio_context_node,
     make_persist_memory_node,
+    make_resolve_instrument_node,
     resolve_instrument,
     run_analysis,
     validate_analysis,
@@ -48,7 +49,9 @@ def build_root_graph(
     summary_model=None,
     gateway_adapter=None,
     research_agent=None,
+    llm_research_agent=None,
     java_adapter=None,
+    context_builder=None,
 ):
     """构建顶层动态流程。
 
@@ -61,6 +64,7 @@ def build_root_graph(
     - summary_model：有则 compose_response 用 LLM 版总结。
     - gateway_adapter + research_agent：有则 market_data_graph 走真实 MCP ReAct。
     - java_adapter：有则 load_portfolio_context 走真实 Java 服务（内部自带 mock 降级）。
+    - context_builder：有则理解节点用七块上下文（审查文档 §4.4）。
     """
 
     graph = StateGraph(RootState)
@@ -70,10 +74,20 @@ def build_root_graph(
     if has_memory:
         graph.add_node("load_memory", make_load_memory_node(memory_store))
 
-    graph.add_node("query_graph", build_query_graph(query_agent=query_agent))
+    graph.add_node("query_graph", build_query_graph(query_agent=query_agent, context_builder=context_builder))
     graph.add_node("dispatch_workflow", dispatch_workflow)
-    graph.add_node("resolve_instrument", resolve_instrument)
-    graph.add_node("market_data_graph", build_market_data_graph(gateway_adapter=gateway_adapter, research_agent=research_agent))
+    # 有 gateway 时标的解析走真实 Gateway（审查文档 §4.6），否则 mock
+    resolve_node = make_resolve_instrument_node(gateway_adapter) if gateway_adapter is not None else resolve_instrument
+    graph.add_node("resolve_instrument", resolve_node)
+    # research_agent（规则版）+ llm_research_agent（comprehensive 用，审查 §4.5）
+    graph.add_node(
+        "market_data_graph",
+        build_market_data_graph(
+            gateway_adapter=gateway_adapter,
+            research_agent=research_agent,
+            llm_research_agent=llm_research_agent,
+        ),
+    )
     # 有 java_adapter 用工厂节点（真实 Java + 内部降级），否则用默认 mock
     portfolio_node = make_load_portfolio_context_node(java_adapter) if java_adapter is not None else load_portfolio_context
     graph.add_node("load_portfolio_context", portfolio_node)

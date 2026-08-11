@@ -20,17 +20,22 @@ def route_after_context(state: RootState) -> str:
     return "clarify" if state.get("needs_clarification") else "plan"
 
 
-def build_query_graph(query_agent=None):
+def build_query_graph(query_agent=None, context_builder=None):
     """构建问题理解子图。
 
     query_agent 为可选注入：传入 QueryAgent 实例时，understand_request 节点
     使用 LLM 版（或注入的规则版）；不传时用默认 RuleBasedQueryAgent。
+    context_builder 为可选注入：组装七块上下文传给 agent（审查文档 §4.4）。
     无论哪种，interrupt 和计划契约不变。
     """
 
     graph = StateGraph(RootState)
     # 有注入 agent 时用工厂版节点（闭包绑定 agent），否则用原版
-    understand_node = make_understand_request_node(query_agent) if query_agent is not None else understand_request
+    understand_node = (
+        make_understand_request_node(query_agent, context_builder)
+        if query_agent is not None
+        else understand_request
+    )
 
     graph.add_node("receive_request", receive_request)
     graph.add_node("understand_request", understand_node)

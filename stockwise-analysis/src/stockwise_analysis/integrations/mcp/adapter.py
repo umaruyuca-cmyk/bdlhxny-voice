@@ -58,22 +58,25 @@ class McpGatewayAdapter:
             return _failed_observation(capability, f"未注册的统一能力: {capability}", run_id)
 
         # 尝试首选
-        result = await self._try_target(capability, policy.primary, arguments, run_id)
-        if result is not None:
-            return result
+        primary_obs = await self._try_target(capability, policy.primary, arguments, run_id)
+        if primary_obs is not None:
+            return primary_obs
 
-        # 首选失败，尝试 fallback（最多 1 次）
+        # 首选失败（网络异常/协议错误/服务端吞错），尝试 fallback（最多 1 次）。
+        # 审查文档 §4.2：协议错误和吞错都必须视为一次失败尝试，触发备用源。
         if policy.fallback is not None:
-            logger.info("能力 %s 首选失败，切换 fallback", capability)
+            logger.info("能力 %s 首选失败，切换 fallback (mcp=%s)", capability, policy.fallback.mcp)
             result = await self._try_target(capability, policy.fallback, arguments, run_id, fallback=True)
             if result is not None:
                 return result
 
-        # 两者都失败
+        # 两者都失败：写入 known_unavailable 语义（data_quality）
+        logger.warning("能力 %s 主备均不可用 (primary=%s, fallback=%s)", capability, policy.primary.mcp, policy.fallback.mcp if policy.fallback else "none")
         return _failed_observation(
             capability,
             f"主备均不可用: primary={policy.primary.mcp}, fallback={policy.fallback.mcp if policy.fallback else 'none'}",
             run_id,
+            known_unavailable=True,
         )
 
     async def _try_target(
@@ -109,55 +112,100 @@ class McpGatewayAdapter:
         text = raw.get("text", "")
         is_error = raw.get("is_error", False)
 
-        # 协议层错误（工具抛异常）直接失败
+        # 协议层错误（工具抛异常）→ 视为失败尝试，返回 None 触发 fallback
         if is_error:
-            logger.warning("MCP 协议层错误 capability=%s: %s", capability, text[:200])
-            return Observation(
-                observation_id=str(uuid4()),
-                capability=capability,
-                status="FAILED",
-                data=None,
-                data_quality=DataQuality(quality_status="INVALID"),
-                provenance=[_provenance(target, run_id, elapsed_ms, fallback)],
-                error_code="MCP_TOOL_ERROR",
-                error_message=text[:500],
-            )
+            logger.warning("MCP 协议层错误 capability=%s mcp=%s: %s", capability, target.mcp, text[:200])
+            return None
 
-        # 成功（含服务端吞错，由 normalizer 二次判定）
+        # 服务端吞错（error:true 藏在正常响应里）→ 同样视为失败尝试，
+        # 返回 None 触发 fallback。审查文档 §4.2 要求吞错必须触发备用源。
+        if _detect_swallowed_error(text) is not None:
+            logger.warning("MCP 服务端吞错 capability=%s mcp=%s: %s", capability, target.mcp, text[:150])
+            return None
+
+        # 成功：包 raw_text 供 normalizer 按 capability 解析为业务数据
         return Observation(
             observation_id=str(uuid4()),
             capability=capability,
             status="SUCCESS",
             data={"raw_text": text, "source_used": target.source},
             data_quality=DataQuality(completeness=1.0, quality_status="OK"),
-            provenance=[_provenance(target, run_id, elapsed_ms, fallback)],
+            provenance=[_provenance(target, run_id, elapsed_ms, fallback, raw_text=text)],
         )
 
 
-def _provenance(target: RouteTarget, run_id: str, elapsed_ms: int, fallback: bool) -> ProvenanceRecord:
-    """构建单条溯源记录。"""
+def _provenance(
+    target: RouteTarget,
+    run_id: str,
+    elapsed_ms: int,
+    fallback: bool,
+    raw_text: str = "",
+) -> ProvenanceRecord:
+    """构建单条溯源记录（审查文档 §6.1：补耗时/原始引用）。
+
+    raw_reference 只保留原始响应的受控引用（截断），不直接进 AnalysisInput。
+    """
     from datetime import datetime, timezone
     return ProvenanceRecord(
         source=target.mcp,
         tool=target.tool,
         request_id=run_id or None,
         retrieved_at=datetime.now(timezone.utc).isoformat(),
+        elapsed_ms=elapsed_ms,
         fallback_used=fallback,
+        raw_reference=raw_text[:200] if raw_text else None,
     )
 
 
-def _failed_observation(capability: str, message: str, run_id: str) -> Observation:
-    """构建失败 Observation。"""
+def _failed_observation(
+    capability: str,
+    message: str,
+    run_id: str,
+    *,
+    known_unavailable: bool = False,
+) -> Observation:
+    """构建失败 Observation。
+
+    known_unavailable=True 时在 data_quality.known_unavailable 里记录该能力
+    ——审查文档 §4.2 要求主备均失败时写入 known_unavailable，供分析层
+    如实标记"该数据域不可用"而非编造。
+    """
+    dq = DataQuality(quality_status="INVALID")
+    if known_unavailable:
+        dq = DataQuality(quality_status="INVALID", known_unavailable=[capability])
     return Observation(
         observation_id=str(uuid4()),
         capability=capability,
         status="FAILED",
         data=None,
-        data_quality=DataQuality(quality_status="INVALID"),
+        data_quality=dq,
         provenance=[],
         error_code="MCP_UNAVAILABLE",
         error_message=message,
     )
+
+
+def _detect_swallowed_error(raw_text: str) -> str | None:
+    """检测服务端吞错（error:true 藏在正常响应里）。
+
+    与 normalizer 的检测逻辑一致，但这里只做"是否失败"判定（用于 fallback
+    决策），业务解析仍由 normalizer 完成——避免重复解析。
+    """
+    import json
+
+    if not raw_text:
+        return None
+    try:
+        parsed: Any = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(parsed, dict) and parsed.get("error") is True:
+        return str(parsed.get("message", "未知错误"))
+    if isinstance(parsed, list) and parsed:
+        first = parsed[0]
+        if isinstance(first, dict) and first.get("error") is True:
+            return str(first.get("message", "未知错误"))
+    return None
 
 
 def create_adapter_from_settings(settings: Any) -> McpGatewayAdapter:

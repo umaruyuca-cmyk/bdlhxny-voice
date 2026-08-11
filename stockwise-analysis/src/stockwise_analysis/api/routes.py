@@ -1,7 +1,10 @@
-"""FastAPI 路由。
+"""FastAPI 路由（审查文档 §6.3：api_prefix 由应用工厂统一注册）。
 
 路由不实现业务编排，只负责把 HTTP 请求转换为一次 Root Graph 调用，并在
 interrupt() 返回时保留 thread_id 供客户端恢复。
+
+api_prefix 来自 Settings.api_prefix，不再硬编码 /api/v1——配置与实际
+行为保持一致。
 """
 
 from __future__ import annotations
@@ -11,12 +14,12 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from stockwise_analysis.runtimes.langgraph.graphs.root_graph import initial_state
-from stockwise_analysis.runtime.application import StockWiseApplication, create_application
+from stockwise_analysis.runtime.application import StockWiseApplication
 from stockwise_analysis.runtime.context import RunContext
 from stockwise_analysis.runtime.recovery import graph_config
 
@@ -41,11 +44,6 @@ class InMemoryRunStore:
         return self._runs.get(run_id)
 
 
-store = InMemoryRunStore()
-application: StockWiseApplication = create_application()
-app = FastAPI(title="StockWise Analysis Workflow", version="0.1.0")
-
-
 def config_for(run_id: str, user_id: str | None = None) -> dict[str, Any]:
     """构建统一恢复配置；所有 API 路径都复用同一 thread_id。"""
 
@@ -66,67 +64,69 @@ def public_state(run_id: str, state: dict[str, Any]) -> RunResponse:
     )
 
 
-@app.get("/api/v1/health")
-async def health() -> dict[str, str]:
-    """本地健康检查；就绪检查将在外部依赖接入后单独提供。"""
+def create_api_app(application: StockWiseApplication, api_prefix: str = "/api/v1") -> FastAPI:
+    """按配置创建 FastAPI 应用，路由统一挂在 api_prefix 下（审查 §6.3）。"""
 
-    return {"status": "UP", "service": "stockwise-analysis"}
+    app = FastAPI(title="StockWise Analysis Workflow", version="0.1.0")
+    store = InMemoryRunStore()
+    router = APIRouter(prefix=api_prefix)
 
+    @router.get("/health")
+    async def health() -> dict[str, str]:
+        """本地健康检查。"""
+        return {"status": "UP", "service": "stockwise-analysis"}
 
-@app.post("/api/v1/agent-runs")
-async def create_run(payload: RunRequest) -> RunResponse:
-    """创建并运行新的分析线程。"""
+    @router.post("/agent-runs")
+    async def create_run(payload: RunRequest) -> RunResponse:
+        """创建并运行新的分析线程。"""
+        run_id = str(uuid4())
+        request = payload.model_dump(exclude_none=True)
+        state = await application.graph.ainvoke(
+            initial_state(run_id, request, payload.user_id),
+            config=config_for(run_id, payload.user_id),
+        )
+        store.put(run_id, state)
+        return public_state(run_id, state)
 
-    run_id = str(uuid4())
-    request = payload.model_dump(exclude_none=True)
-    state = await application.graph.ainvoke(
-        initial_state(run_id, request, payload.user_id),
-        config=config_for(run_id, payload.user_id),
-    )
-    store.put(run_id, state)
-    return public_state(run_id, state)
-
-
-@app.get("/api/v1/agent-runs/{run_id}")
-async def get_run(run_id: str) -> RunResponse:
-    state = store.get(run_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail="run not found")
-    return public_state(run_id, state)
-
-
-@app.post("/api/v1/agent-runs/{run_id}/resume")
-async def resume_run(run_id: str, payload: ResumeRequest) -> RunResponse:
-    """使用同一 LangGraph thread_id 恢复用户补充/确认后的运行。"""
-
-    if store.get(run_id) is None:
-        raise HTTPException(status_code=404, detail="run not found")
-    state = await application.graph.ainvoke(
-        Command(resume=payload.value),
-        config=config_for(run_id),
-    )
-    store.put(run_id, state)
-    return public_state(run_id, state)
-
-
-async def event_stream(run_id: str) -> AsyncIterator[str]:
-    index = 0
-    while True:
+    @router.get("/agent-runs/{run_id}")
+    async def get_run(run_id: str) -> RunResponse:
         state = store.get(run_id)
         if state is None:
-            yield encode_event("error", {"message": "run not found"})
-            return
-        events = state.get("events", [])
-        while index < len(events):
-            yield encode_event("workflow", events[index])
-            index += 1
-        if state.get("final_response") or state.get("__interrupt__"):
-            return
-        await asyncio.sleep(0.1)
+            raise HTTPException(status_code=404, detail="run not found")
+        return public_state(run_id, state)
 
+    @router.post("/agent-runs/{run_id}/resume")
+    async def resume_run(run_id: str, payload: ResumeRequest) -> RunResponse:
+        """使用同一 LangGraph thread_id 恢复用户补充/确认后的运行。"""
+        if store.get(run_id) is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        state = await application.graph.ainvoke(
+            Command(resume=payload.value),
+            config=config_for(run_id),
+        )
+        store.put(run_id, state)
+        return public_state(run_id, state)
 
-@app.get("/api/v1/agent-runs/{run_id}/events")
-async def stream_events(run_id: str):
-    if store.get(run_id) is None:
-        raise HTTPException(status_code=404, detail="run not found")
-    return StreamingResponse(event_stream(run_id), media_type="text/event-stream")
+    async def event_stream(run_id: str) -> AsyncIterator[str]:
+        index = 0
+        while True:
+            state = store.get(run_id)
+            if state is None:
+                yield encode_event("error", {"message": "run not found"})
+                return
+            events = state.get("events", [])
+            while index < len(events):
+                yield encode_event("workflow", events[index])
+                index += 1
+            if state.get("final_response") or state.get("__interrupt__"):
+                return
+            await asyncio.sleep(0.1)
+
+    @router.get("/agent-runs/{run_id}/events")
+    async def stream_events(run_id: str):
+        if store.get(run_id) is None:
+            raise HTTPException(status_code=404, detail="run not found")
+        return StreamingResponse(event_stream(run_id), media_type="text/event-stream")
+
+    app.include_router(router)
+    return app

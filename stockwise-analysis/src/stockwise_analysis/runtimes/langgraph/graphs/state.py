@@ -40,5 +40,14 @@ class RootState(TypedDict, total=False):
     # load_memory 节点写入，供 ContextBuilder 第 ②⑤ 块注入。
     user_profile: dict[str, Any] | None
     recalled_memories: list[dict[str, Any]]
+
+    # ── Market Data Graph 内部状态（P0 修复：必须声明才能跨节点可靠传递）──
+    # select_action → execute_tool → normalize_observation 之间的临时数据。
+    # 语义均为"覆盖"（标量/单值），不得使用 list reducer，否则子图会无限循环
+    # 并最终触发 GraphRecursionError。
+    _current_action: dict[str, Any]          # Research Agent 选出的当前动作
+    _pending_observation: dict[str, Any] | None  # execute_tool 产出、待 normalize 的 Observation
+    _react_round: int                        # ReAct 轮次计数，达到上限强制停止
+
     # Event 用于 SSE、审计和调试，不能记录密钥或未脱敏敏感字段。
     events: Annotated[list[dict[str, Any]], operator.add]

@@ -56,6 +56,9 @@ class Settings:
     checkpointer_backend: str = "memory"
     api_prefix: str = "/api/v1"
     max_event_wait_seconds: float = 30.0
+    # 生产 Checkpointer 连接参数（postgres/redis 后端使用）
+    postgres_dsn: str | None = None
+    redis_url: str | None = None
 
     # ── MCP 数据源（两个服务传输协议不同，必须分别配置）──
     mcp_akshare_one: McpSourceConfig = field(
@@ -91,6 +94,8 @@ class Settings:
             checkpointer_backend=os.getenv("STOCKWISE_CHECKPOINTER_BACKEND", "memory"),
             api_prefix=os.getenv("STOCKWISE_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("STOCKWISE_MAX_EVENT_WAIT_SECONDS", "30")),
+            postgres_dsn=os.getenv("POSTGRES_DSN"),
+            redis_url=os.getenv("REDIS_URL"),
             mcp_akshare_one=McpSourceConfig(
                 transport=os.getenv("AKSHARE_ONE_MCP_TRANSPORT", "streamable_http"),
                 endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "http://118.25.178.86:8083/mcp"),

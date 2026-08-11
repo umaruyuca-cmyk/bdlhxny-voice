@@ -66,7 +66,9 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
 
     # ── 按分析类型计算 ──
     if analysis_type in {"technical", "comprehensive", "fundamental"} and has_history:
-        technical = _technical_analysis(prices, analysis_input, limitations)
+        # 提取 OHLC 供 ATR/支撑阻力使用（审查文档 §6.2：补齐指标接线）
+        highs, lows, closes = _extract_ohlc(analysis_input.historical_prices)
+        technical = _technical_analysis(prices, analysis_input, limitations, highs=highs, lows=lows, closes=closes)
         calculated.update(technical["indicators"])
         signals.extend(technical["signals"])
         risk_flags.extend(technical["risk_flags"])
@@ -165,8 +167,12 @@ def _technical_analysis(
     prices: list[float],
     analysis_input: AnalysisInput,
     limitations: list[str],
+    *,
+    highs: list[float] | None = None,
+    lows: list[float] | None = None,
+    closes: list[float] | None = None,
 ) -> dict[str, Any]:
-    """技术指标 + 信号 + 风险标记。"""
+    """技术指标 + 信号 + 风险标记（审查文档 §6.2：补齐 ATR/支撑阻力接线）。"""
 
     indicators: dict[str, Any] = {}
 
@@ -188,6 +194,17 @@ def _technical_analysis(
     # RSI
     rsi = ind.rsi_series(prices, INDICATOR_PARAMS["rsi_window"])
     indicators["rsi"] = _round_last(rsi)
+
+    # ATR（需要 OHLC；审查文档 §6.2）
+    if highs and lows and closes and len(highs) == len(lows) == len(closes):
+        atr = ind.atr_series(highs, lows, closes, INDICATOR_PARAMS["atr_window"])
+        indicators["atr"] = _round_last(atr)
+
+    # 支撑/阻力位（需要 OHLC）
+    if highs and lows:
+        sr = risk_metrics.support_resistance(highs, lows, INDICATOR_PARAMS["lookback"])
+        indicators["support"] = _round(sr.get("support"))
+        indicators["resistance"] = _round(sr.get("resistance"))
 
     # 风险类（technical 也带基础波动率和回撤）
     returns = _simple_returns(prices)

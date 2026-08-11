@@ -83,7 +83,7 @@ class LlmQueryAgent:
         self._llm = llm
         self._fallback = RuleBasedQueryAgent()
 
-    def understand(self, request: dict[str, Any]) -> QueryIntent:
+    def understand(self, request: dict[str, Any], extra_context: dict[str, Any] | None = None) -> QueryIntent:
         # 无 LLM 直接走规则版
         if self._llm is None:
             return self._fallback.understand(request)
@@ -93,9 +93,22 @@ class LlmQueryAgent:
             return self._fallback.understand(request)
 
         try:
+            # 组装用户消息：问题 + ContextBuilder 提供的上下文（画像/记忆等）
+            user_content = _QUERY_USER_TEMPLATE.format(message=message)
+            if extra_context:
+                context_lines = []
+                profile = extra_context.get("user_profile") or {}
+                if profile:
+                    context_lines.append(f"用户画像：{profile}")
+                memories = extra_context.get("recalled_memories") or []
+                if memories:
+                    context_lines.append(f"历史记忆：{[m.get('content', '') for m in memories]}")
+                if context_lines:
+                    user_content += "\n\n参考上下文：\n" + "\n".join(context_lines)
+
             response = self._llm.invoke([
                 {"role": "system", "content": _QUERY_SYSTEM_PROMPT},
-                {"role": "user", "content": _QUERY_USER_TEMPLATE.format(message=message)},
+                {"role": "user", "content": user_content},
             ])
             # DeepSeek 返回的 content 是 JSON 字符串
             raw = response.content if hasattr(response, "content") else str(response)

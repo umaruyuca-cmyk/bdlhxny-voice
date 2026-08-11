@@ -1,15 +1,32 @@
 # StockWise Analysis
 
-StockWise 的 Python 分析流程服务。当前实现完成 Phase 0 / Phase 1 的可运行
-LangGraph 骨架：动态 `WorkflowPlan`、Root Graph、Query Graph、用户中断恢复、
-结构化 Observation、AnalysisInput/AnalysisResult 契约和本地 Mock Tool。
+StockWise 的 Python 分析流程服务（LangGraph + Mem0 主版本）。
+
+当前实现完成 Phase 0 / 1 / 2 / 4 的可运行闭环：动态 `WorkflowPlan` 调度、
+Root / Query / Market Data Graph、有界 ReAct 执行矩阵、Mem0 记忆层（首尾读写）、
+ContextBuilder 七块上下文、MCP 双传输接入（SSE + Streamable HTTP）、
+确定性分析引擎（技术指标/风险/组合影响/回测）、Checkpointer 工厂、SSE API。
+
+## 架构分层
+
+```text
+api/                  FastAPI + SSE 事件流（api_prefix 由 Settings 提供）
+runtimes/langgraph/   主版本编排（graphs/agents/nodes/context）
+memory/               Mem0 记忆层（base 抽象 + mem0 实现 + NoOp 降级）
+integrations/mcp/     MCP 接入（SSE + Streamable HTTP 双传输，实测路由）
+tools/                ToolRegistry + 分析能力工具 + Java 数据适配器
+observations/         Observation 标准化（含服务端吞错识别）
+domain/               确定性计算（零框架依赖）：指标/风险/回测/策略/交易日历
+```
 
 ## 当前边界
 
-- 已实现：流程状态、Checkpointer、`interrupt()/resume`、SSE API、测试骨架；
-- 未实现：真实 MCP Gateway、Java Data Adapter、Letta Memory Adapter、生产级
-  PostgreSQL/Redis Checkpointer、真实模型 Agent；
-- Mock 数据只用于流程测试，不能用于任何真实市场结论。
+- 已实现：流程状态、Checkpointer 工厂（memory/postgres/redis）、`interrupt()/resume`、
+  SSE API、MCP 实测路由（xueqiu/sina 异构备份）、fallback 降级、服务端吞错识别、
+  Mem0 记忆降级、Java 数据适配（生产禁 mock）、交易日历、确定性分析引擎；
+- 未实现：Letta 对比 Runtime（主版本稳定后启动）、真实下单/撤单、Node Skill 独立部署评估；
+- Mock 数据只用于流程测试（带 is_mock 标记），不能用于任何真实市场结论；
+- 生产环境：需配置 `DEEPSEEK_API_KEY`、`POSTGRES_DSN`/`REDIS_URL`、两个 MCP endpoint。
 
 ## 本地运行
 
@@ -21,17 +38,8 @@ uv run uvicorn stockwise_analysis.main:app --reload
 ## 测试
 
 ```powershell
-uv run pytest tests -q
+uv run --extra dev python -m pytest tests -q
 ```
 
-## 目录职责
-
-- `runtime/`：配置、预算、错误、恢复与应用装配；
-- `graph/`：Root Graph、子图、State 和节点；
-- `contracts/`：跨层稳定契约；
-- `tools/`：统一工具注册与运行时；
-- `mcp/`：Phase 2 的底层 MCP 连接与适配；
-- `agents/`：Query、Research 和 Summary Agent；
-- `observation/`：外部结果标准化、质量和溯源；
-- `domain/`：确定性领域计算；
-- `skill/`：可选分析能力/Skill 适配边界。
+覆盖：Workflow 调度、ReAct 回归（Fake Gateway）、MCP 解析/fallback、记忆降级、
+分析引擎可复现性、回测无未来函数、交易日历、API 前缀。
