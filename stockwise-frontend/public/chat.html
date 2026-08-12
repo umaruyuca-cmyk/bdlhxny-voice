@@ -17,7 +17,7 @@
         <span class="brand-mark">GRID</span>
         <span class="brand-sub">研究所</span>
       </a>
-      <button class="icon-btn" id="sidebarCollapse" type="button" aria-label="收起侧边栏">
+      <button class="icon-btn" id="sidebarCollapse" type="button" aria-label="收起历史记录" aria-controls="sidebar" aria-expanded="true">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
       </button>
     </div>
@@ -45,6 +45,7 @@
       </button>
       <span class="topbar-title" id="chatTitle">新的对话</span>
       <span class="topbar-model">Grid Researcher</span>
+      <button class="account-chip" id="accountButton" type="button">登录</button>
     </header>
 
     <div class="scroll" id="scroll">
@@ -119,6 +120,29 @@
       </svg>
     </div>
   </main>
+</div>
+
+<div class="auth-overlay" id="authModal" hidden>
+  <section class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <h2 id="authTitle">登录 StockWise</h2>
+    <div id="authLoginPanel">
+      <label for="authUsername">账号</label>
+      <input id="authUsername" autocomplete="username" placeholder="输入账号">
+      <label for="authPassword">密码</label>
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="输入密码">
+      <p class="auth-error" id="authError"></p>
+      <div class="auth-actions">
+        <button class="auth-primary" id="authLogin" type="button">登录</button>
+        <button id="authApply" type="button">一键申请账号</button>
+      </div>
+    </div>
+    <div id="authAppliedPanel" hidden>
+      <p>账号已经生成，请立即保存。初始密码只显示这一次。</p>
+      <div class="credential"><span>账号</span><strong id="appliedUsername"></strong></div>
+      <div class="credential"><span>初始密码</span><strong id="appliedPassword"></strong></div>
+      <button class="auth-primary auth-continue" id="authContinue" type="button">我已保存，进入对话</button>
+    </div>
+  </section>
 </div>
 
 <div class="toast" id="toast"></div>

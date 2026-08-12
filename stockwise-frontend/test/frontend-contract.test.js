@@ -91,8 +91,8 @@ test("工作站空白态布局与运行追踪行为完整", async () => {
   ]);
 
   assert.match(html, /id="composerWrap"/);
-  assert.match(css, /width:min\(820px,calc\(100% - 40px\)\)/);
-  assert.match(css, /\.main\.runs-open \.chat-panel\{padding-right:376px\}/);
+  assert.match(css, /width:min\(768px,calc\(100% - 48px\)\)/);
+  assert.match(css, /\.main\.runs-open \.chat-panel\{padding-right:0\}/);
   assert.match(script, /classList\.add\("runs-open"\)/);
   assert.doesNotMatch(script, /\n\s*showRunPanel\(\);\s*$/m);
   assert.match(html, /class="brand-wordmark">GRID</);

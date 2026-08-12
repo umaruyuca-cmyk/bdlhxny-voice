@@ -32,6 +32,7 @@ class WebSearchAdapter(Protocol):
 
     async def execute(self, capability: str, arguments: dict) -> Observation:
         """调用白名单 web-search API 并转换为 Observation。"""
+        ...
 
 
 # web-search 白名单能力，Adapter 只允许这些

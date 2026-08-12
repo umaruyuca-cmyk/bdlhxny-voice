@@ -39,7 +39,7 @@ class ObservationNormalizer:
 
     def normalize(self, observation: Observation) -> Observation:
         """标准化单个 Observation（不修改原始对象）。"""
-        if observation.status != "SUCCESS":
+        if observation.status not in {"SUCCESS", "PARTIAL"}:
             return observation
 
         data = observation.data
@@ -70,10 +70,12 @@ class ObservationNormalizer:
             return Observation(
                 observation_id=observation.observation_id,
                 capability=observation.capability,
-                status="SUCCESS",
+                status=observation.status,
                 data=parsed,
-                data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+                data_quality=observation.data_quality,
                 provenance=observation.provenance,
+                error_code=observation.error_code,
+                error_message=observation.error_message,
             )
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             logger.warning("能力 %s 响应解析失败: %s", observation.capability, exc)
@@ -245,6 +247,25 @@ def _parse_financial(raw: str) -> dict[str, Any]:
     统一包一层。
     """
     parsed = _JSON_LOADER(raw)
+    if isinstance(parsed, dict) and any(
+        name in parsed
+        for name in ("balance_sheet", "income_statement", "cash_flow_statement")
+    ):
+        statements: dict[str, Any] = {}
+        for name in ("balance_sheet", "income_statement", "cash_flow_statement"):
+            value = parsed.get(name)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                statements[name] = value[0] if value and isinstance(value[0], dict) else value
+            else:
+                statements[name] = value
+        if not statements:
+            raise ValueError("financial statements 响应为空")
+        return {
+            "statements": statements,
+            "available_statements": sorted(statements),
+        }
     if isinstance(parsed, list):
         if not parsed:
             raise ValueError("financial 响应为空")

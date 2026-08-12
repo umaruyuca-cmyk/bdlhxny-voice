@@ -59,9 +59,40 @@ ALTER TABLE public.user_configs
     ADD COLUMN IF NOT EXISTS cash DECIMAL(14,2) DEFAULT 0;
 ALTER TABLE public.user_configs
     ADD COLUMN IF NOT EXISTS cash_reserve_ratio DECIMAL(4,3) DEFAULT 0.20;
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS risk_tolerance VARCHAR(20);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS preferred_sectors VARCHAR(500);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS forbidden_symbols VARCHAR(500);
 
 COMMENT ON TABLE public.user_configs IS '用户偏好配置表';
 COMMENT ON COLUMN public.user_configs.cash_reserve_ratio IS '现金保留比例，最低0.15';
+
+-- ============================================================
+-- 3.1 已发生交易历史（只读分析输入，不是订单表）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.portfolio_transactions (
+    id               BIGSERIAL PRIMARY KEY,
+    user_id          BIGINT NOT NULL,
+    symbol           VARCHAR(12) NOT NULL,
+    name             VARCHAR(100),
+    transaction_type VARCHAR(20) NOT NULL
+        CHECK (transaction_type IN ('BUY','SELL','DIVIDEND','FEE','TRANSFER')),
+    quantity         DECIMAL(16,4),
+    price            DECIMAL(14,4),
+    amount           DECIMAL(16,2),
+    currency         VARCHAR(8) NOT NULL DEFAULT 'CNY',
+    trade_date       DATE NOT NULL,
+    note             VARCHAR(500),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pt_user_trade_date
+    ON public.portfolio_transactions(user_id, trade_date DESC, id DESC);
+
+COMMENT ON TABLE public.portfolio_transactions IS
+    '已发生交易的只读历史，仅供分析，不代表订单或交易执行';
 
 -- ============================================================
 -- 4. 分析历史

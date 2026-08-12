@@ -99,6 +99,27 @@ DEFAULT_ROUTES: dict[str, RoutePolicy] = {
 }
 
 
+# 完整财报是一个统一能力，但底层需要三次原始工具调用。每张表独立主备，
+# 允许其中一张降级而不丢弃另外两张已经取得的数据。
+FINANCIAL_STATEMENT_ROUTES: dict[str, RoutePolicy] = {
+    "balance_sheet": RoutePolicy(
+        capability="market.get_financial_statements",
+        primary=RouteTarget(mcp="cn-financial-mcp", tool="get_balance_sheet"),
+        fallback=RouteTarget(mcp="akshare-one-mcp", tool="get_balance_sheet"),
+    ),
+    "income_statement": RoutePolicy(
+        capability="market.get_financial_statements",
+        primary=RouteTarget(mcp="cn-financial-mcp", tool="get_income_statement"),
+        fallback=RouteTarget(mcp="akshare-one-mcp", tool="get_income_statement"),
+    ),
+    "cash_flow_statement": RoutePolicy(
+        capability="market.get_financial_statements",
+        primary=RouteTarget(mcp="cn-financial-mcp", tool="get_cash_flow_statement"),
+        fallback=RouteTarget(mcp="akshare-one-mcp", tool="get_cash_flow"),
+    ),
+}
+
+
 def get_route(capability: str) -> RoutePolicy | None:
     """查询统一能力的路由策略。未注册的能力返回 None。"""
     return DEFAULT_ROUTES.get(capability)

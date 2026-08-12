@@ -7,8 +7,22 @@ State 是短期运行记忆：它随 Checkpointer 保存并可由同一 ``thread
 
 from __future__ import annotations
 
-import operator
 from typing import Annotated, Any, TypedDict
+
+
+def merge_state_items(
+    current: list[dict[str, Any]],
+    updates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """合并增量或子图快照，同时保留真正重复出现的新消息/事件。"""
+
+    existing = list(current or [])
+    incoming = list(updates or [])
+    if incoming[: len(existing)] == existing:
+        return incoming
+    if existing[: len(incoming)] == incoming:
+        return existing
+    return existing + incoming
 
 
 class RootState(TypedDict, total=False):
@@ -19,15 +33,17 @@ class RootState(TypedDict, total=False):
     user_id: str | None
     request: dict[str, Any]
     # 列表字段采用 reducer 追加，避免子图更新时覆盖先前的轨迹。
-    conversation: Annotated[list[dict[str, Any]], operator.add]
+    conversation: Annotated[list[dict[str, Any]], merge_state_items]
     intent: dict[str, Any]
     # 执行模式选择输出（v2.1 §3）：direct_response / single_capability / agent_loop
     intent_route: dict[str, Any]
     # 会话实体表（v2.1 §7.3）：本会话出现过的标的/指数/行业等，供指代消解与跨轮标的继承
-    entities: Annotated[list[dict[str, Any]], operator.add]
+    entities: Annotated[list[dict[str, Any]], merge_state_items]
     needs_clarification: bool
     clarification_request: dict[str, Any] | None
     workflow_plan: dict[str, Any]
+    # 本轮仅向 Research Agent 暴露的统一能力候选，不包含 MCP 原始工具。
+    capability_candidates: list[dict[str, Any]]
     current_task_id: str | None
     next_stage: str | None
     data_requirements: list[dict[str, Any]]
@@ -35,15 +51,19 @@ class RootState(TypedDict, total=False):
     budget: dict[str, Any]
     tool_calls_used: int
     budget_exhausted: bool
+    # 统一能力覆盖结果：COMPLETE / PARTIAL / LIMITED。
+    coverage: dict[str, Any]
     # 所有外部结果必须先标准化为 Observation，再进入分析输入。
-    observations: Annotated[list[dict[str, Any]], operator.add]
+    observations: Annotated[list[dict[str, Any]], merge_state_items]
+    # 多轮线程中本次运行的 Observation 起始位置，避免旧行情满足新一轮需求。
+    _observation_start_index: int
     analysis_input: dict[str, Any] | None
     analysis_result: dict[str, Any] | None
     final_response: dict[str, Any] | None
     confirmation_required: bool
     confirmation: dict[str, Any] | None
     status: str
-    errors: Annotated[list[dict[str, Any]], operator.add]
+    errors: Annotated[list[dict[str, Any]], merge_state_items]
     # ── 记忆层字段（仅对话首尾读写，ReAct 循环不碰）──
     # load_memory 节点写入，供 ContextBuilder 第 ②⑤ 块注入。
     user_profile: dict[str, Any] | None
@@ -58,4 +78,4 @@ class RootState(TypedDict, total=False):
     _react_round: int                        # ReAct 轮次计数，达到上限强制停止
 
     # Event 用于 SSE、审计和调试，不能记录密钥或未脱敏敏感字段。
-    events: Annotated[list[dict[str, Any]], operator.add]
+    events: Annotated[list[dict[str, Any]], merge_state_items]

@@ -43,6 +43,7 @@
 | [整体调用逻辑.drawio](diagrams/整体调用逻辑.drawio) | 当前请求入口、路由、Skill、搜索、记忆与模型调用逻辑 |
 | [schema.sql](db/schema.sql) | 数据库建表语句 |
 | [docker-compose.yml](deploy/docker-compose.yml) | 容器化部署配置 |
+| [DOMAIN_DEPLOYMENT.md](deploy/DOMAIN_DEPLOYMENT.md) | `bdlhxny.com` HTTPS 路由、MCP 子域名和公网端口收口手册 |
 
 ## 快速开始
 

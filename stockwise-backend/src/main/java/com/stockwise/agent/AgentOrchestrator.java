@@ -31,6 +31,7 @@ import com.stockwise.skill.SkillRegistry;
 import com.stockwise.entity.AgentStep;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -53,6 +54,9 @@ import java.util.concurrent.RejectedExecutionException;
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(
+        name = "stockwise.legacy-agent-runtime.enabled",
+        havingValue = "true")
 public class AgentOrchestrator {
 
     private static final long SSE_TIMEOUT = 300_000L;

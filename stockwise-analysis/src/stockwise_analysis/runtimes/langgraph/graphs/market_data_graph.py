@@ -19,8 +19,9 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from stockwise_analysis.contracts.observation import DataQuality, Observation, ProvenanceRecord
+from stockwise_analysis.tools.coverage import evaluate_coverage
 
-from ..nodes.nodes import _complete_current_task, event, now_iso
+from ..nodes.nodes import _complete_current_task, current_run_observations, event, now_iso
 from .state import RootState
 
 
@@ -110,16 +111,22 @@ def execute_mock_market_tool(state: RootState) -> dict:
 
 
 def evaluate_market_data(state: RootState) -> dict:
-    """完成市场数据任务；真实版本将在此检查缺失、冲突和降级结果。"""
+    """完成市场数据任务，并区分关键能力与可选能力的缺失。"""
     result = _complete_current_task(state)
-    statuses = [item.get("status") for item in state.get("observations", [])]
-    if state.get("budget_exhausted"):
-        status = "LIMITED"
-    elif statuses and all(item == "SUCCESS" for item in statuses):
-        status = "OK"
-    else:
-        status = "PARTIAL"
-    result["events"] = [event(state, "market.data_evaluated", "evaluate_market_data", {"status": status})]
+    coverage = evaluate_coverage(
+        state.get("data_requirements", []),
+        current_run_observations(state),
+    )
+    if state.get("budget_exhausted") and coverage.status == "COMPLETE":
+        # 正常情况下预算耗尽会伴随缺失；保留防御性降级，避免错误标记完整。
+        coverage = coverage.model_copy(update={"status": "PARTIAL"})
+    result["coverage"] = coverage.model_dump()
+    result["events"] = [event(
+        state,
+        "market.data_evaluated",
+        "evaluate_market_data",
+        coverage.model_dump(),
+    )]
     return result
 
 
@@ -222,8 +229,18 @@ def _make_select_action_node(research_agent: Any, llm_research_agent: Any = None
 
         # 按 analysis_type 选 agent：comprehensive 用 LLM 版，其他用规则版
         agent = llm_research_agent if (analysis_type == "comprehensive" and llm_research_agent is not None) else research_agent
-        observations = state.get("observations", [])
-        requirements = state.get("data_requirements", [])
+        observations = current_run_observations(state)
+        attempted = {obs.get("capability") for obs in observations if obs.get("capability")}
+        requirements = [
+            item for item in state.get("data_requirements", [])
+            if item.get("capability") not in attempted
+        ]
+        if not requirements:
+            return {
+                "_react_round": state.get("_react_round", 0),
+                "_current_action": {"action": "finish", "arguments": {}, "reason": "所有规划能力均已执行"},
+                "events": [event(state, "model.decision", "select_action", {"action": "finish", "mode": "coverage_complete"})],
+            }
         action = agent.choose_next_action(observations, requirements)
         # finish 是终止决策，不计入 ReAct 轮次（轮次只统计实际工具调用），
         # 但字段必须保留（保持 state 类型稳定，避免下游 KeyError）
@@ -323,6 +340,25 @@ def _make_execute_tool_node(gateway_adapter: Any, web_search_adapter: Any | None
         arguments = action_data.get("arguments", {})
         run_id = state.get("run_id", "")
         used = state.get("tool_calls_used", 0)
+        allowed = {
+            item.get("capability")
+            for item in state.get("data_requirements", [])
+            if item.get("capability")
+        }
+        if capability not in allowed:
+            observation = Observation(
+                observation_id=str(uuid4()),
+                capability=capability or "unknown",
+                status="FAILED",
+                data=None,
+                data_quality=DataQuality(quality_status="INVALID"),
+                error_code="CAPABILITY_NOT_ALLOWED",
+                error_message="research action is outside the per-turn capability whitelist",
+            )
+            return {
+                "_pending_observation": observation.model_dump(),
+                "events": [event(state, "tool.blocked", "execute_tool", {"capability": capability, "reason": "not_allowed"})],
+            }
         limit = _budget_limit(state, "tool_call_limit")
         if limit is not None and used >= limit:
             observation = _budget_exceeded_observation(capability)
@@ -373,10 +409,10 @@ def _make_react_router(max_rounds: int):
         if round_count >= (configured_limit if configured_limit is not None else max_rounds):
             return "stop"
         # 检查是否还有未满足的需求
-        observations = state.get("observations", [])
-        fulfilled = {o.get("capability") for o in observations if o.get("status") == "SUCCESS"}
+        observations = current_run_observations(state)
+        attempted = {o.get("capability") for o in observations if o.get("capability")}
         requirements = state.get("data_requirements", [])
-        remaining = [r for r in requirements if r.get("capability") not in fulfilled]
+        remaining = [r for r in requirements if r.get("capability") not in attempted]
         return "continue" if remaining else "stop"
 
     return router

@@ -67,11 +67,11 @@ Analysis Capability              基于输入数据完成分析、计算和总�
 mcp:
   akshare_one:
     transport: streamable_http       # Streamable HTTP
-    endpoint: ${AKSHARE_ONE_MCP_ENDPOINT}   # http://118.25.178.86:8083/mcp
+    endpoint: ${AKSHARE_ONE_MCP_ENDPOINT}   # https://akshare-mcp.bdlhxny.com/mcp
     timeout_seconds: 20
   cn_financial:
     transport: sse                    # SSE
-    endpoint: ${CN_FINANCIAL_MCP_ENDPOINT}  # http://118.25.178.86:8000/sse
+    endpoint: ${CN_FINANCIAL_MCP_ENDPOINT}  # https://cn-financial-mcp.bdlhxny.com/sse
     timeout_seconds: 20
 ```
 

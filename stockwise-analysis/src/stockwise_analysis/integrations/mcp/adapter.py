@@ -12,6 +12,8 @@ Observation 标准化（normalizer 做）。
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import time
 from typing import Any
@@ -20,7 +22,13 @@ from uuid import uuid4
 from stockwise_analysis.contracts.observation import DataQuality, Observation, ProvenanceRecord
 
 from .client import McpClient, create_mcp_client
-from .routing_policy import RouteTarget, get_route, translate_arguments
+from .routing_policy import (
+    FINANCIAL_STATEMENT_ROUTES,
+    RoutePolicy,
+    RouteTarget,
+    get_route,
+    translate_arguments,
+)
 
 logger = logging.getLogger("stockwise_analysis.mcp.adapter")
 
@@ -53,6 +61,9 @@ class McpGatewayAdapter:
         服务端吞错（{"error":true}）不在这里判定，由调用方经 normalizer
         二次处理；本方法只关注协议层错误和连接失败。
         """
+        if capability == "market.get_financial_statements":
+            return await self._execute_financial_statements(arguments, run_id)
+
         policy = get_route(capability)
         if policy is None:
             return _failed_observation(capability, f"未注册的统一能力: {capability}", run_id)
@@ -77,6 +88,73 @@ class McpGatewayAdapter:
             f"主备均不可用: primary={policy.primary.mcp}, fallback={policy.fallback.mcp if policy.fallback else 'none'}",
             run_id,
             known_unavailable=True,
+        )
+
+    async def _execute_financial_statements(
+        self,
+        arguments: dict[str, Any],
+        run_id: str,
+    ) -> Observation:
+        """并行取得三大报表；每张表独立执行主备降级。"""
+
+        async def fetch(name: str, policy: RoutePolicy) -> tuple[str, Observation | None]:
+            result = await self._try_target(
+                "market.get_financial_statements",
+                policy.primary,
+                arguments,
+                run_id,
+            )
+            if result is None and policy.fallback is not None:
+                result = await self._try_target(
+                    "market.get_financial_statements",
+                    policy.fallback,
+                    arguments,
+                    run_id,
+                    fallback=True,
+                )
+            return name, result
+
+        fetched = await asyncio.gather(*(
+            fetch(name, policy)
+            for name, policy in FINANCIAL_STATEMENT_ROUTES.items()
+        ))
+        statements: dict[str, Any] = {}
+        provenance: list[ProvenanceRecord] = []
+        missing: list[str] = []
+        for name, observation in fetched:
+            if observation is None:
+                missing.append(name)
+                continue
+            provenance.extend(observation.provenance)
+            raw_text = observation.data.get("raw_text", "") if isinstance(observation.data, dict) else ""
+            try:
+                statements[name] = json.loads(raw_text)
+            except (json.JSONDecodeError, TypeError):
+                statements[name] = raw_text
+
+        if not statements:
+            return _failed_observation(
+                "market.get_financial_statements",
+                "三大财务报表主备数据源均不可用",
+                run_id,
+                known_unavailable=True,
+            )
+
+        completeness = len(statements) / len(FINANCIAL_STATEMENT_ROUTES)
+        status = "SUCCESS" if not missing else "PARTIAL"
+        return Observation(
+            observation_id=str(uuid4()),
+            capability="market.get_financial_statements",
+            status=status,
+            data={"raw_text": json.dumps(statements, ensure_ascii=False)},
+            data_quality=DataQuality(
+                completeness=completeness,
+                quality_status="OK" if not missing else "PARTIAL",
+                known_unavailable=[f"financial.{name}" for name in missing],
+            ),
+            provenance=provenance,
+            error_code="FINANCIAL_STATEMENTS_PARTIAL" if missing else None,
+            error_message=f"缺少报表: {', '.join(missing)}" if missing else None,
         )
 
     async def _try_target(
@@ -195,8 +273,18 @@ def _detect_swallowed_error(raw_text: str) -> str | None:
 
     if not raw_text:
         return None
+    stripped = raw_text.strip()
+    # 部分 MCP 服务把工具异常包装成普通文本，同时协议层仍返回 isError=false。
+    # 这类响应必须在 Adapter 层判为失败，才能触发备用数据源。
+    text_error_prefixes = (
+        "Error calling tool ",
+        "Error executing tool ",
+        "Tool execution failed",
+    )
+    if stripped.startswith(text_error_prefixes):
+        return stripped
     try:
-        parsed: Any = json.loads(raw_text)
+        parsed: Any = json.loads(stripped)
     except (json.JSONDecodeError, TypeError):
         return None
     if isinstance(parsed, dict) and parsed.get("error") is True:

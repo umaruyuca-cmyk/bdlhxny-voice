@@ -17,6 +17,7 @@ class AnalysisCapabilityAdapter(Protocol):
 
     def analyze(self, analysis_input: AnalysisInput) -> AnalysisResult:
         """根据标准化输入执行确定性分析并返回结构化结果。"""
+        ...
 
 
 class PythonAnalysisCapabilityAdapter:

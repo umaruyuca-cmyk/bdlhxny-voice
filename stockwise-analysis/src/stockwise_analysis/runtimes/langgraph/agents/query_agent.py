@@ -27,6 +27,7 @@ class QueryAgent(Protocol):
 
     def understand(self, request: dict[str, Any]) -> QueryIntent:
         """仅理解用户请求，禁止直接查询 MCP、Java 或数据库。"""
+        ...
 
 
 class RuleBasedQueryAgent:

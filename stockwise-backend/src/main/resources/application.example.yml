@@ -47,6 +47,13 @@ spring:
         model: qwen3-embedding:0.6b
 
 stockwise:
+  legacy-agent-runtime:
+    # 正式架构关闭 Java Agent 编排，所有分析请求进入 Python LangGraph。
+    enabled: false
+  java-data:
+    # 生产环境必须开启，防止内部数据接口在无身份凭证时回退单用户模式。
+    require-authenticated: true
+    internal-token: "使用高强度随机内部令牌"
   embedding:
     api-key: "你的DashScope API Key"
   stock-analysis:

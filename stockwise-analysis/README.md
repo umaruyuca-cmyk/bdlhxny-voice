@@ -5,7 +5,7 @@ StockWise 的 Python 分析流程服务（LangGraph + Mem0 主版本）。
 当前实现完成 Phase 0 / 1 / 2 / 4 的可运行闭环：动态 `WorkflowPlan` 调度、
 Root / Query / Market Data Graph、有界 ReAct 执行矩阵、Mem0 记忆层（首尾读写）、
 ContextBuilder 七块上下文、MCP 双传输接入（SSE + Streamable HTTP）、
-确定性分析引擎（技术指标/风险/组合影响/回测）、Checkpointer 工厂、SSE API。
+确定性分析引擎（技术指标/风险/组合影响/回测）、Checkpointer 工厂、JWT 隔离的聊天 SSE API。
 
 ## 架构分层
 
@@ -18,6 +18,9 @@ tools/                ToolRegistry + 分析能力工具 + Java 数据适配器
 observations/         Observation 标准化（含服务端吞错识别）
 domain/               确定性计算（零框架依赖）：指标/风险/回测/策略/交易日历
 ```
+
+对话入口统一为 Root Graph：知识问答走一次直接 LLM 调用（非 ReAct、无 Tool），
+复杂市场研究才进入有界 ReAct 子图；标的解析、计算和校验保持确定性节点。
 
 ## 当前边界
 
@@ -34,6 +37,9 @@ domain/               确定性计算（零框架依赖）：指标/风险/回�
 uv sync --extra dev
 uv run uvicorn stockwise_analysis.main:app --reload
 ```
+
+前端开发服务器默认把聊天请求代理到 `127.0.0.1:8000`。生产容器监听
+`127.0.0.1:8090`，并使用异步 PostgreSQL Checkpointer 与 PostgreSQL 会话目录。
 
 ## 测试
 

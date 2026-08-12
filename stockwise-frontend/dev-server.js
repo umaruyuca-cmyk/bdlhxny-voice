@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8082", 10);
-const backendUrl = new URL(process.env.STOCKWISE_BACKEND_URL || "http://127.0.0.1:8080");
+const backendUrl = new URL(process.env.STOCKWISE_BACKEND_URL || "http://127.0.0.1:8081");
+const analysisUrl = new URL(process.env.STOCKWISE_ANALYSIS_URL || "http://127.0.0.1:8000");
 const publicDirectory = fileURLToPath(new URL("./public/", import.meta.url));
 const prototypeDirectory = fileURLToPath(new URL("./prototypes/", import.meta.url));
 
@@ -30,7 +31,7 @@ const server = http.createServer(async (request, response) => {
   try {
     const requestUrl = new URL(request.url || "/", `http://${request.headers.host || host}`);
     if (requestUrl.pathname.startsWith("/api/")) {
-      proxyApi(request, response);
+      proxyApi(request, response, apiTarget(requestUrl.pathname));
       return;
     }
     if (requestUrl.pathname.startsWith("/prototypes/")) {
@@ -51,8 +52,8 @@ const server = http.createServer(async (request, response) => {
 /**
  * 将 API 请求和响应按流传输，避免缓冲问答接口的 SSE 数据。
  */
-function proxyApi(request, response) {
-  const targetUrl = new URL(request.url || "/", backendUrl);
+function proxyApi(request, response, upstream) {
+  const targetUrl = new URL(request.url || "/", upstream);
   const requestClient = targetUrl.protocol === "https:" ? https : http;
   const headers = { ...request.headers, host: targetUrl.host };
 
@@ -72,13 +73,13 @@ function proxyApi(request, response) {
   });
 
   proxyRequest.on("error", error => {
-    console.error(`无法连接后端 ${backendUrl.origin}:`, error.message);
+    console.error(`无法连接后端 ${upstream.origin}:`, error.message);
     if (!response.headersSent) {
       response.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
     }
     response.end(JSON.stringify({
       error: "BACKEND_UNAVAILABLE",
-      message: `本地后端不可用: ${backendUrl.origin}`
+      message: `本地后端不可用: ${upstream.origin}`
     }));
   });
 
@@ -86,7 +87,17 @@ function proxyApi(request, response) {
 }
 
 /**
- * 从 public 目录提供静态资源，并按 URL 映射首页与两个 Agent 工作站。
+ * 新版聊天由 Python Root Graph 提供；认证和用户领域仍由 Java 提供。
+ */
+function apiTarget(pathname) {
+  if (pathname.startsWith("/api/v1/chat/") || pathname.startsWith("/api/v1/conversations")) {
+    return analysisUrl;
+  }
+  return backendUrl;
+}
+
+/**
+ * 从 public 目录提供静态资源；/agent 是统一助手，/workspace 保留旧工作站。
  */
 async function serveStatic(requestPath, request, response, rootDirectory) {
   // 1. 保持文档目录有尾部斜杠，确保相对 CSS/图片资源在开发服务器中正确解析。
@@ -98,9 +109,9 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
   let target = requestPath;
   if (requestPath === "/") target = "/index.html";
   else if (requestPath === "/workspace") target = "/workspace.html";
-  else if (requestPath === "/agent" || requestPath === "/agent/") target = "/workspace.html";
-  else if (requestPath === "/agent/general") target = "/workspace.html?name=general";
-  else if (requestPath === "/agent/stock") target = "/workspace.html?name=stock";
+  else if (requestPath === "/workspace/") target = "/workspace.html";
+  else if (requestPath === "/agent" || requestPath === "/agent/") target = "/chat.html";
+  else if (requestPath.startsWith("/agent/")) target = "/chat.html";
   else if (requestPath === "/docs" || requestPath === "/docs/") target = "/docs/index.html";
   else if (requestPath.startsWith("/docs/")) {
     const docPath = requestPath.slice("/docs/".length);
@@ -148,7 +159,8 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
 
 server.listen(port, host, () => {
   console.log(`StockWise 前端: http://${host}:${port}`);
-  console.log(`API 代理目标: ${backendUrl.origin}`);
+  console.log(`Java API: ${backendUrl.origin}`);
+  console.log(`Python Analysis API: ${analysisUrl.origin}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

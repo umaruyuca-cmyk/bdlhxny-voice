@@ -70,6 +70,14 @@ stockwise:
   legacy-stock-agent:
     # 旧版直连Skill/DeepSeek入口默认关闭，正式页面只走AgentOrchestrator
     enabled: ${LEGACY_STOCK_AGENT_ENABLED:false}
+  legacy-agent-runtime:
+    # 新的 Agent 主流程由 Python LangGraph 承载；仅迁移回滚时显式开启旧 Java 入口。
+    enabled: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:false}
+  java-data:
+    # 生产环境必须设为 true，并由 Python 传递有效用户 JWT；开发环境可回退单用户身份。
+    require-authenticated: ${JAVA_DATA_REQUIRE_AUTHENTICATED:false}
+    # Python -> Java 的服务间凭证；不得与用户 JWT 或外部 API Key 共用。
+    internal-token: ${JAVA_DATA_INTERNAL_TOKEN:}
   execution:
     agent:
       core-threads: ${AGENT_CORE_THREADS:4}

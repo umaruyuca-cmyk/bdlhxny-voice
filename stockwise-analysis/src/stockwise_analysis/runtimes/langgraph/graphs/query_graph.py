@@ -8,6 +8,7 @@ from ..nodes.nodes import (
     build_data_requirements,
     check_missing_context,
     make_understand_request_node,
+    make_build_data_requirements_node,
     understand_request,
     interrupt_for_clarification,
     receive_request,
@@ -31,7 +32,7 @@ def route_after_context(state: RootState) -> str:
     return "clarify" if state.get("needs_clarification") else "plan"
 
 
-def build_query_graph(query_agent=None, context_builder=None):
+def build_query_graph(query_agent=None, context_builder=None, capability_registry=None):
     """构建问题理解子图（v2.1 §3 含执行模式选择）。
 
     流程：understand → route_execution
@@ -53,7 +54,12 @@ def build_query_graph(query_agent=None, context_builder=None):
     graph.add_node("route_execution", route_execution)
     graph.add_node("check_missing_context", check_missing_context)
     graph.add_node("interrupt_for_clarification", interrupt_for_clarification)
-    graph.add_node("build_data_requirements", build_data_requirements)
+    plan_node = (
+        make_build_data_requirements_node(capability_registry)
+        if capability_registry is not None
+        else build_data_requirements
+    )
+    graph.add_node("build_data_requirements", plan_node)
 
     graph.add_edge(START, "receive_request")
     graph.add_edge("receive_request", "understand_request")

@@ -14,6 +14,7 @@ from typing import Any
 
 from stockwise_analysis.config import Settings
 from stockwise_analysis.runtimes.langgraph.agents.query_agent import create_query_agent
+from stockwise_analysis.runtimes.langgraph.agents.direct_response_model import create_direct_response_model
 from stockwise_analysis.runtimes.langgraph.agents.research_agent import create_research_agent
 from stockwise_analysis.runtimes.langgraph.agents.summary_model import create_summary_model
 from stockwise_analysis.runtimes.langgraph.graphs.root_graph import build_root_graph
@@ -37,27 +38,41 @@ class StockWiseApplication:
     memory_store: Any | None = None
     gateway_adapter: Any | None = None
     query_agent: Any | None = None
+    direct_response_model: Any | None = None
     summary_model: Any | None = None
     research_agent: Any | None = None
     llm_research_agent: Any | None = None
     analysis_capability: Any | None = None
     web_search_adapter: Any | None = None
     history_store: Any | None = None
+    run_registry: Any | None = None
+    chat_session_store: Any | None = None
+    capability_registry: Any | None = None
 
 
-def create_application(settings: Settings | None = None) -> StockWiseApplication:
+def create_application(
+    settings: Settings | None = None,
+    *,
+    checkpointer_override: Any | None = None,
+) -> StockWiseApplication:
     """从 Settings 装配完整应用。
 
     装配顺序：LLM → Memory → Gateway → Agents → Root Graph。
     每一步都可能降级（无 Key/无依赖），降级信息记日志但不阻断启动。
     """
     settings = settings or Settings.from_environment()
+    if settings.auth_required and not settings.jwt_secret:
+        raise ConfigurationError("启用用户隔离时必须配置 JWT_SECRET")
 
     # ── 0. Checkpointer（审查文档 §4.3：按配置创建，生产注入持久化后端）──
     # memory 后端在 production 被 create_checkpointer 拒绝（ConfigurationError）。
     from .checkpointers import create_checkpointer
 
-    checkpointer = create_checkpointer(settings)
+    checkpointer = (
+        checkpointer_override
+        if checkpointer_override is not None
+        else create_checkpointer(settings)
+    )
 
     # ── 1. LLM（有 DeepSeek Key 用真实，无则 None 触发各 Agent 降级）──
     llm = create_llm(
@@ -74,6 +89,7 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
 
     # ── 4. Agents（按 LLM 有无自动选 LLM 版或规则版）──
     query_agent = create_query_agent(llm)
+    direct_response_model = create_direct_response_model(llm)
     summary_model = create_summary_model(llm)
     # Research Agent 双版本（审查文档 §4.5 执行矩阵）：
     # - research_agent：规则版（technical/fundamental 等有限自适应）；
@@ -88,17 +104,20 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
     java_adapter = _create_java_adapter(
         _os.getenv(_JAVA_API_BASE_URL_ENV),
         production=(settings.environment == "production"),
-        token=_os.getenv("JAVA_API_TOKEN"),
+        token=_os.getenv("JAVA_DATA_INTERNAL_TOKEN") or _os.getenv("JAVA_API_TOKEN"),
     )
 
     # ── 4.5b web-search 适配器（网络搜索，HTTP 非 MCP）──
     # base_url 未配置时 Adapter 内部自动 mock 降级（见 web_search_adapter.py）
     web_search_adapter = _create_web_search_adapter(settings)
 
-    # ── 4.6 ContextBuilder（审查文档 §4.4：七块上下文组装）──
-    # 从 ToolRegistry 组装工具清单；Memory 召回内容由 load_memory 节点写入
+    # ── 4.6 统一能力目录 + ContextBuilder（审查文档 §4.4）──
+    from stockwise_analysis.tools.capabilities import build_default_capability_registry
+
+    capability_registry = build_default_capability_registry()
+    # 从 CapabilityRegistry 组装能力清单；Memory 召回内容由 load_memory 节点写入
     # state，ContextBuilder 只做组装不做 I/O。
-    context_builder = _create_context_builder()
+    context_builder = _create_context_builder(capability_registry)
     from stockwise_analysis.tools.analysis_capability import create_analysis_capability
 
     analysis_capability = create_analysis_capability()
@@ -108,11 +127,26 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
 
     history_store = create_history_store()
 
+    # ── 4.8 运行定位索引（run_id → thread_id）──
+    # API 实例重建后仍可通过应用级索引定位 Checkpointer 中的真实 thread_id。
+    from .run_registry import create_run_registry
+
+    run_registry = create_run_registry()
+
+    # ── 4.9 前端聊天会话目录（Chat API 外观层，不参与 Graph 业务路由）──
+    from .chat_sessions import create_chat_session_store
+
+    chat_session_store = create_chat_session_store(
+        environment=settings.environment,
+        postgres_dsn=settings.postgres_dsn,
+    )
+
     # ── 5. Root Graph（注入全部组件）──
     graph = build_root_graph(
         checkpointer=checkpointer,
         memory_store=memory_store,
         query_agent=query_agent,
+        direct_response_model=direct_response_model,
         summary_model=summary_model,
         gateway_adapter=gateway_adapter,
         research_agent=research_agent,
@@ -122,6 +156,7 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         history_store=history_store,
+        capability_registry=capability_registry,
     )
 
     return StockWiseApplication(
@@ -132,12 +167,16 @@ def create_application(settings: Settings | None = None) -> StockWiseApplication
         memory_store=memory_store,
         gateway_adapter=gateway_adapter,
         query_agent=query_agent,
+        direct_response_model=direct_response_model,
         summary_model=summary_model,
         research_agent=research_agent,
         llm_research_agent=llm_research_agent,
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         history_store=history_store,
+        run_registry=run_registry,
+        chat_session_store=chat_session_store,
+        capability_registry=capability_registry,
     )
 
 
@@ -194,22 +233,12 @@ def _create_web_search_adapter(settings: Settings) -> Any:
     )
 
 
-def _create_context_builder() -> Any:
+def _create_context_builder(capability_registry: Any) -> Any:
     """创建 ContextBuilder（审查文档 §4.4）。
 
-    工具清单从 ToolRegistry 组装（确定性）；ContextBuilder 本身不做 I/O，
+    工具清单从 CapabilityRegistry 组装（确定性）；ContextBuilder 本身不做 I/O，
     Memory 召回内容由 load_memory 节点写入 state 后传入。
     """
     from stockwise_analysis.runtimes.langgraph.context import ContextBuilder
-    from stockwise_analysis.tools.registry import ToolRegistry
-
-    registry = ToolRegistry()
-    # 注册分析能力工具（供工具清单块使用）
-    from stockwise_analysis.tools.analysis_tool import register_analysis_tools
-
-    register_analysis_tools(registry)
-    tool_manifest = [
-        {"name": t.name, "description": t.description, "read_only": t.read_only}
-        for t in registry.list()
-    ]
+    tool_manifest = [spec.manifest() for spec in capability_registry.list()]
     return ContextBuilder(tool_manifest=tool_manifest)

@@ -12,7 +12,8 @@ services:
     container_name: stockwise-backend
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      # 仅供同机 Nginx/联调访问，不把 Backend 直接暴露到公网。
+      - "127.0.0.1:8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -51,6 +52,10 @@ services:
       - EPISODIC_MEMORY_RECENT_FALLBACK_LIMIT=${EPISODIC_MEMORY_RECENT_FALLBACK_LIMIT:-3}
       - STOCKWISE_SINGLE_USER_ID=${STOCKWISE_SINGLE_USER_ID:-1}
       - LEGACY_STOCK_AGENT_ENABLED=${LEGACY_STOCK_AGENT_ENABLED:-false}
+      - LEGACY_JAVA_AGENT_RUNTIME_ENABLED=${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
+      - JWT_SECRET=${JWT_SECRET}
+      - JAVA_DATA_INTERNAL_TOKEN=${JAVA_DATA_INTERNAL_TOKEN}
+      - JAVA_DATA_REQUIRE_AUTHENTICATED=${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
       - AGENT_CORE_THREADS=${AGENT_CORE_THREADS:-4}
       - AGENT_MAX_THREADS=${AGENT_MAX_THREADS:-16}
       - AGENT_QUEUE_CAPACITY=${AGENT_QUEUE_CAPACITY:-100}

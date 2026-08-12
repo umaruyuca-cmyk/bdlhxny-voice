@@ -65,6 +65,15 @@ def test_market_snapshot_needs_only_quote():
     assert "snapshot" in result.calculated_indicators
 
 
+def test_market_snapshot_without_quote_is_explicitly_limited():
+    """实时行情缺失时不得生成“分析完成”类结论。"""
+    result = analyze(_make_input("market_snapshot", bars=[], quote=None, quality="OK"))
+
+    assert result.status == "LIMITED"
+    assert any("实时行情数据缺失" in item for item in result.limitations)
+    assert result.conclusions == [{"text": "数据不足，无法形成可靠分析结论", "confidence": "LOW"}]
+
+
 def test_comprehensive_includes_risk():
     """comprehensive 应包含年化收益/夏普/回撤。"""
     result = analyze(_make_input("comprehensive"))

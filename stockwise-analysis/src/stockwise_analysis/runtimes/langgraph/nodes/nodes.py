@@ -17,9 +17,13 @@ from stockwise_analysis.runtimes.langgraph.agents.query_agent import RuleBasedQu
 from stockwise_analysis.runtimes.langgraph.agents.summary_model import DeterministicSummaryModel
 from stockwise_analysis.contracts.analysis import AnalysisInput, AnalysisResult, InstrumentRef
 from stockwise_analysis.contracts.observation import DataQuality, Observation, ProvenanceRecord
-from stockwise_analysis.contracts.data_requirements import DataRequirement
 from stockwise_analysis.contracts.workflow import TaskSpec, WorkflowPlan
 from stockwise_analysis.runtime.budgets import budget_for
+from stockwise_analysis.tools.capabilities import (
+    CapabilityRegistry,
+    build_default_capability_registry,
+)
+from stockwise_analysis.tools.requirement_planner import CapabilityRequirementPlanner
 
 from ..graphs.state import RootState
 
@@ -54,9 +58,18 @@ def receive_request(state: RootState) -> dict[str, Any]:
     return {
         "request": request,
         "status": "RUNNING",
+        "_observation_start_index": len(state.get("observations", [])),
         "conversation": [{"role": "user", "content": request.get("message", ""), "run_id": state.get("run_id", "")}],
         "events": [event(state, "run.started", "receive_request", {"request": request})],
     }
+
+
+def current_run_observations(state: RootState) -> list[dict[str, Any]]:
+    """只返回本次运行产生的 Observation，排除同线程历史轮次数据。"""
+
+    observations = state.get("observations", [])
+    start = int(state.get("_observation_start_index", 0) or 0)
+    return observations[start:]
 
 
 def _enrich_intent_with_context(state: RootState, intent: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -202,58 +215,94 @@ def interrupt_for_clarification(state: RootState) -> dict[str, Any]:
     )
     answer = answer if isinstance(answer, dict) else {"message": str(answer)}
     request = {**state.get("request", {}), **answer}
+    clarification_text = str(answer.get("message") or answer.get("symbol") or "").strip()
     return {
         "request": request,
         "needs_clarification": False,
+        "conversation": ([{
+            "role": "user",
+            "content": clarification_text,
+            "run_id": state.get("run_id", ""),
+        }] if clarification_text else []),
         "events": [event(state, "user.clarification_received", "interrupt_for_clarification", answer)],
     }
 
 
-def build_data_requirements(state: RootState) -> dict[str, Any]:
-    """由意图生成统一数据能力需求和可执行 WorkflowPlan。"""
+def make_direct_response_node(direct_response_model: Any):
+    """创建一次直接模型调用节点；该节点不是 ReAct，不具备工具访问能力。"""
+
+    def answer_without_tools(state: RootState) -> dict[str, Any]:
+        message = str(state.get("request", {}).get("message", "")).strip()
+        answer = direct_response_model.answer(message)
+        response = {
+            "analysis_id": state.get("run_id", ""),
+            "answer": answer,
+            "mode": "direct_response",
+            "limitations": [],
+        }
+        return {
+            "final_response": response,
+            "status": "SUCCESS",
+            "conversation": [{
+                "role": "assistant",
+                "content": response,
+                "run_id": state.get("run_id", ""),
+            }],
+            "events": [event(
+                state,
+                "response.completed",
+                "direct_response_node",
+                {"mode": "direct_llm", "uses_tools": False},
+            )],
+        }
+
+    return answer_without_tools
+
+
+def _build_data_requirements(
+    state: RootState,
+    capability_registry: CapabilityRegistry,
+) -> dict[str, Any]:
+    """由确定性策略生成需求、候选白名单和可执行 WorkflowPlan。"""
     intent = state.get("intent", {})
     analysis_type = intent.get("analysis_type", "market_snapshot")
-    symbol = intent.get("symbol") or state.get("request", {}).get("symbol")
-    # 注意：data_requirements 只含"市场数据能力"（由 Market Data Graph 的
-    # ReAct 处理）。resolve_instrument 和 portfolio 由独立节点执行（resolve_
-    # instrument / load_portfolio_context），若列入 requirements 会导致
-    # ReAct 循环重复执行它们（审查冒烟发现的 bug）。
-    requirements = [
-        DataRequirement(requirement_id="market", capability="market.get_realtime_quote", required=True, reason="获取当前市场数据", arguments={"symbol": symbol}),
-    ]
-    if analysis_type in {"technical", "comprehensive", "portfolio_impact"}:
-        requirements.append(
-            DataRequirement(requirement_id="history", capability="market.get_historical_prices", required=True, reason="技术分析需要历史价格", arguments={"symbol": symbol, "lookback_days": 120})
-        )
-    if analysis_type in {"fundamental", "valuation", "comprehensive"}:
-        requirements.append(
-            DataRequirement(requirement_id="financial", capability="market.get_financial_statements", required=analysis_type != "valuation", reason="基本面分析需要财务数据", arguments={"symbol": symbol})
-        )
-    if analysis_type in {"valuation", "comprehensive"}:
-        requirements.append(
-            DataRequirement(requirement_id="valuation", capability="market.get_valuation", required=True, reason="估值分析需要估值数据", arguments={"symbol": symbol})
-        )
-    # comprehensive 补充网络搜索（市场/板块/宏观背景，非关键，缺失不阻断）
-    if analysis_type == "comprehensive":
-        symbol_or_topic = symbol or state.get("intent", {}).get("scope") or "A股市场"
-        requirements.append(
-            DataRequirement(
-                requirement_id="web_search",
-                capability="research.web_search",
-                required=False,
-                reason="综合分析需要市场最新动态和新闻舆情",
-                arguments={"query": f"{symbol_or_topic} 最新动态", "mode": "NEWS", "max_results": 5},
-            )
-        )
+    planner = CapabilityRequirementPlanner(capability_registry)
+    requirements = planner.plan(intent, state.get("request", {}))
+    candidates = planner.candidate_manifest(analysis_type)
+
+    # resolve_instrument 和 portfolio 仍由独立节点执行，不能重复列入 ReAct
+    # requirements；候选目录也只包含本轮可能进入数据子图的能力。
     # portfolio 由独立节点 load_portfolio_context 处理，不列入 ReAct requirements
     return {
         "data_requirements": [item.model_dump() for item in requirements],
+        "capability_candidates": candidates,
         "budget": asdict(budget_for(analysis_type)),
         "tool_calls_used": 0,
         "budget_exhausted": False,
         "workflow_plan": _plan_for(state, analysis_type, bool(intent.get("requires_portfolio"))),
-        "events": [event(state, "workflow.planned", "build_data_requirements", {"analysis_type": analysis_type, "budget": asdict(budget_for(analysis_type))})],
+        "events": [event(state, "workflow.planned", "build_data_requirements", {
+            "analysis_type": analysis_type,
+            "budget": asdict(budget_for(analysis_type)),
+            "required_capabilities": [item.capability for item in requirements if item.required],
+            "optional_capabilities": [item.capability for item in requirements if not item.required],
+            "candidate_count": len(candidates),
+        })],
     }
+
+
+def build_data_requirements(state: RootState) -> dict[str, Any]:
+    """兼容默认 Graph 构建：使用当前代码支持的能力目录。"""
+
+    return _build_data_requirements(state, build_default_capability_registry())
+
+
+def make_build_data_requirements_node(capability_registry: CapabilityRegistry):
+    """注入应用级能力目录，确保规划、执行和可观测性使用同一白名单。"""
+
+    def build_with_registry(state: RootState) -> dict[str, Any]:
+        return _build_data_requirements(state, capability_registry)
+
+    return build_with_registry
 
 
 def _plan_for(state: RootState, analysis_type: str, requires_portfolio: bool) -> dict[str, Any]:
@@ -407,7 +456,7 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
     缺失字段写入 data_quality.known_unavailable 和 limitations（如实标记，
     不伪造成功数据）。
     """
-    observations = [Observation.model_validate(item) for item in state.get("observations", [])]
+    observations = [Observation.model_validate(item) for item in current_run_observations(state)]
 
     # capability → AnalysisInput 字段的映射
     _CAPABILITY_TO_FIELD = {
@@ -417,7 +466,9 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
         "market.get_financial_statements": "financial_data",
         "market.get_valuation": "valuation_data",
         "market.get_industry_context": "industry_context",
+        "market.get_money_flow": "money_flow_data",
         "market.get_news": "news_context",
+        "research.web_search": "news_context",
         "portfolio.get_current_positions": "portfolio_context",
         "market.get_overseas": "overseas_context",  # 预留：MCP 暂不覆盖外围面
     }
@@ -431,12 +482,19 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
         if field is None:
             continue
         provenance.extend(obs.provenance)
-        if obs.status == "SUCCESS" and obs.data is not None:
+        known_unavailable.extend(obs.data_quality.known_unavailable)
+        if obs.status in {"SUCCESS", "PARTIAL"} and obs.data is not None:
             if field == "historical_prices":
                 assembled[field] = obs.data if isinstance(obs.data, list) else []
             elif field == "news_context":
-                # news 解析为 {"items": [...]}，提取列表
-                assembled[field] = obs.data.get("items", []) if isinstance(obs.data, dict) else []
+                # MCP 新闻和 Web Search 都汇入证据列表，保留已有结果而非覆盖。
+                if isinstance(obs.data, dict):
+                    items = obs.data.get("items", obs.data.get("results", []))
+                elif isinstance(obs.data, list):
+                    items = obs.data
+                else:
+                    items = []
+                assembled.setdefault(field, []).extend(items if isinstance(items, list) else [])
             elif field == "instrument":
                 assembled[field] = obs.data
             else:
@@ -451,13 +509,31 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
     # 数据质量：completeness 按"本分析类型实际请求的 DataRequirement 中已满足
     # 的比例"计算，而非全局域数——market_snapshot 只需 quote，不应因财报缺失
     # 被扣分。缺失进 known_unavailable。
-    required_capabilities = {req.get("capability") for req in state.get("data_requirements", [])}
-    fulfilled = {obs.capability for obs in observations if obs.status == "SUCCESS" and obs.capability in _CAPABILITY_TO_FIELD}
-    if required_capabilities:
-        completeness = len(required_capabilities & fulfilled) / len(required_capabilities)
+    requirements = state.get("data_requirements", [])
+    selected_capabilities = {req.get("capability") for req in requirements if req.get("capability")}
+    required_capabilities = {
+        req.get("capability") for req in requirements
+        if req.get("required", True) and req.get("capability")
+    }
+    fulfilled = {
+        obs.capability for obs in observations
+        if obs.status in {"SUCCESS", "PARTIAL"} and obs.capability in _CAPABILITY_TO_FIELD
+    }
+    if selected_capabilities:
+        completeness = len(selected_capabilities & fulfilled) / len(selected_capabilities)
     else:
         completeness = len(fulfilled) / max(len(_CAPABILITY_TO_FIELD), 1)
-    quality_status = "OK" if completeness >= 1.0 else ("PARTIAL" if completeness >= 0.5 else "INVALID")
+    coverage = state.get("coverage", {})
+    missing_required = list(coverage.get("missing_required", []))
+    missing_optional = list(coverage.get("missing_optional", []))
+    known_unavailable = list(dict.fromkeys(known_unavailable + missing_required + missing_optional))
+    coverage_status = coverage.get("status")
+    if coverage_status == "LIMITED" or required_capabilities - fulfilled:
+        quality_status = "INVALID"
+    elif coverage_status == "PARTIAL" or completeness < 1.0:
+        quality_status = "PARTIAL"
+    else:
+        quality_status = "OK"
     quality = DataQuality(
         completeness=round(completeness, 2),
         freshness="REALTIME",
@@ -474,6 +550,7 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
         financial_data=assembled.get("financial_data"),
         valuation_data=assembled.get("valuation_data"),
         industry_context=assembled.get("industry_context"),
+        money_flow_data=assembled.get("money_flow_data"),
         news_context=assembled.get("news_context", []),
         portfolio_context=assembled.get("portfolio_context"),
         overseas_context=assembled.get("overseas_context"),

@@ -24,7 +24,8 @@ class ChatControllerTest {
     @Test
     void shouldUseServerUserAndNormalizedInstrument() {
         AgentOrchestrator orchestrator = mock(AgentOrchestrator.class);
-        SingleUserContext userContext = new SingleUserContext(7L, mock(AuthorizationService.class));
+        SingleUserContext userContext = mock(SingleUserContext.class);
+        when(userContext.requireAuthenticatedUserId()).thenReturn(7L);
         ChatController controller = new ChatController(orchestrator, userContext);
         SseEmitter emitter = new SseEmitter();
         ChatInstrument expected = new ChatInstrument("600519", "stock");
@@ -62,7 +63,8 @@ class ChatControllerTest {
     @Test
     void shouldReuseCanonicalSessionIdRestoredFromConversationDirectory() {
         AgentOrchestrator orchestrator = mock(AgentOrchestrator.class);
-        SingleUserContext userContext = new SingleUserContext(7L, mock(AuthorizationService.class));
+        SingleUserContext userContext = mock(SingleUserContext.class);
+        when(userContext.requireAuthenticatedUserId()).thenReturn(7L);
         ChatController controller = new ChatController(orchestrator, userContext);
         SseEmitter emitter = new SseEmitter();
         String canonicalSessionId = "stock_12345678-1234-1234-1234-123456789012";

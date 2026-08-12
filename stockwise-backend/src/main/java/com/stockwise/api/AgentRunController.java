@@ -6,6 +6,7 @@ import com.stockwise.entity.AgentRun;
 import com.stockwise.security.SingleUserContext;
 import com.stockwise.service.AgentRunService;
 import org.springframework.http.HttpStatus;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +23,9 @@ import java.util.UUID;
  */
 @RestController
 @RequestMapping("/api/v1/agent-runs")
+@ConditionalOnProperty(
+        name = "stockwise.legacy-agent-runtime.enabled",
+        havingValue = "true")
 public class AgentRunController {
 
     private final AgentRunService agentRunService;
@@ -38,7 +42,7 @@ public class AgentRunController {
     @GetMapping
     public List<AgentRun> list(@RequestParam(defaultValue = "20") int limit) {
         // 1. 当前为单用户工作站，运行记录统一归属服务端配置的用户。
-        return agentRunService.listRecent(singleUserContext.userId(), limit);
+        return agentRunService.listRecent(singleUserContext.requireAuthenticatedUserId(), limit);
     }
 
     /**
@@ -47,7 +51,7 @@ public class AgentRunController {
     @GetMapping("/{runId}")
     public AgentRunReplay replay(@PathVariable UUID runId) {
         try {
-            return agentRunService.replay(runId, singleUserContext.userId());
+            return agentRunService.replay(runId, singleUserContext.requireAuthenticatedUserId());
         } catch (NoSuchElementException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SecurityException e) {
@@ -61,7 +65,7 @@ public class AgentRunController {
     @GetMapping("/{runId}/skill-results")
     public AgentSkillResults skillResults(@PathVariable UUID runId) {
         try {
-            return agentRunService.skillResults(runId, singleUserContext.userId());
+            return agentRunService.skillResults(runId, singleUserContext.requireAuthenticatedUserId());
         } catch (NoSuchElementException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
         } catch (SecurityException e) {

@@ -7,6 +7,7 @@ import com.stockwise.dto.ChatStreamRequest;
 import com.stockwise.security.SingleUserContext;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +22,9 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 @RequestMapping("/api/v1/chat")
+@ConditionalOnProperty(
+        name = "stockwise.legacy-agent-runtime.enabled",
+        havingValue = "true")
 public class ChatController {
 
     private static final int MAX_MESSAGE_LENGTH = 4_000;
@@ -50,7 +54,7 @@ public class ChatController {
         }
         // 2. 单用户工作站始终使用服务端确定的用户 ID，客户端不得自行声明用户 ID。
         return orchestrator.handle(
-                singleUserContext.userId(),
+                singleUserContext.requireAuthenticatedUserId(),
                 resolveBackendSessionId(normalized.mode(), normalized.sessionId()),
                 normalized.mode(),
                 normalized.message(),

@@ -23,6 +23,14 @@ public class UserConfig {
 
     private BigDecimal cashReserveRatio;
 
+    private String riskTolerance;
+
+    /** 逗号分隔的行业偏好；Data API 转换为列表后再返回。 */
+    private String preferredSectors;
+
+    /** 逗号分隔的禁选标的；Data API 转换为列表后再返回。 */
+    private String forbiddenSymbols;
+
     private Boolean notificationEnabled;
 
     private Boolean morningBriefEnabled;

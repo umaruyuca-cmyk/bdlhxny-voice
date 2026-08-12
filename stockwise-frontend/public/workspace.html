@@ -68,7 +68,10 @@
           </button>
           <span class="mode-kicker" id="modeKicker"></span><strong id="chatTitle"></strong><small id="headSkill"></small>
         </div>
-        <div class="chat-head-right"><span id="headRunId" style="color:var(--text-3);font-size:10px"></span></div>
+        <div class="chat-head-right">
+          <span id="headRunId" style="color:var(--text-3);font-size:10px"></span>
+          <button class="account-chip" id="accountButton" type="button">登录</button>
+        </div>
       </header>
       <div class="instrument-bar">
         <div class="instrument-context">
@@ -490,6 +493,32 @@
   <div class="modal skill-result-modal">
     <div class="modal-head"><strong>本次 Skill 分析结果</strong><button class="ghost" type="button" data-close-skill-result>关闭</button></div>
     <div class="modal-body" id="modalSkillResultBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay auth-overlay" id="modalAuth" style="display:none">
+  <div class="modal auth-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="modal-head"><strong id="authTitle">登录 StockWise</strong></div>
+    <div class="modal-body">
+      <div id="authLoginPanel">
+        <p class="modal-intro">登录后，对话、运行状态、记忆和个人偏好将按账号独立保存。</p>
+        <label class="form-label" for="authUsername">账号</label>
+        <input class="form-input" id="authUsername" autocomplete="username" placeholder="输入账号">
+        <label class="form-label" for="authPassword">密码</label>
+        <input class="form-input" id="authPassword" type="password" autocomplete="current-password" placeholder="输入密码">
+        <div class="form-error" id="authError"></div>
+        <div class="auth-actions">
+          <button class="ac-btn primary" id="authLoginButton" type="button">登录</button>
+          <button class="ac-btn secondary" id="authApplyButton" type="button">一键申请账号</button>
+        </div>
+      </div>
+      <div id="authAppliedPanel" style="display:none">
+        <p class="auth-success">账号已生成并自动登录。请立即保存账号和初始密码，密码关闭后不再展示。</p>
+        <div class="credential-box"><span>账号</span><strong id="appliedUsername"></strong></div>
+        <div class="credential-box"><span>初始密码</span><strong id="appliedPassword"></strong></div>
+        <button class="ac-btn primary auth-continue" id="authContinueButton" type="button">我已保存，进入工作站</button>
+      </div>
+    </div>
   </div>
 </div>
 

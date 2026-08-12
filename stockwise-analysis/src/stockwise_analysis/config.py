@@ -56,6 +56,8 @@ class Settings:
     checkpointer_backend: str = "memory"
     api_prefix: str = "/api/v1"
     max_event_wait_seconds: float = 30.0
+    auth_required: bool = False
+    jwt_secret: str | None = None
     # 生产 Checkpointer 连接参数（postgres/redis 后端使用）
     postgres_dsn: str | None = None
     redis_url: str | None = None
@@ -64,13 +66,13 @@ class Settings:
     mcp_akshare_one: McpSourceConfig = field(
         default_factory=lambda: McpSourceConfig(
             transport="streamable_http",
-            endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "http://118.25.178.86:8083/mcp"),
+            endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "https://akshare-mcp.bdlhxny.com/mcp"),
         )
     )
     mcp_cn_financial: McpSourceConfig = field(
         default_factory=lambda: McpSourceConfig(
             transport="sse",
-            endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "http://118.25.178.86:8000/sse"),
+            endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "https://cn-financial-mcp.bdlhxny.com/sse"),
         )
     )
 
@@ -96,22 +98,31 @@ class Settings:
         保证一次请求生命周期内配置稳定。
         """
 
+        environment = os.getenv("STOCKWISE_ENV", "development")
+        auth_required_default = "true" if environment == "production" else "false"
+        jwt_secret = os.getenv("JWT_SECRET")
+        if not jwt_secret and environment != "production":
+            # 仅用于本地联调，与 Java 开发默认值一致；生产环境禁止使用。
+            jwt_secret = "StockWise-Default-JWT-Key-2026-Must-Override-In-Production!!!"
         return cls(
-            environment=os.getenv("STOCKWISE_ENV", "development"),
+            environment=environment,
             checkpointer_backend=os.getenv("STOCKWISE_CHECKPOINTER_BACKEND", "memory"),
             api_prefix=os.getenv("STOCKWISE_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("STOCKWISE_MAX_EVENT_WAIT_SECONDS", "30")),
+            auth_required=os.getenv("STOCKWISE_AUTH_REQUIRED", auth_required_default).lower()
+            in {"1", "true", "yes", "on"},
+            jwt_secret=jwt_secret,
             postgres_dsn=os.getenv("POSTGRES_DSN"),
             redis_url=os.getenv("REDIS_URL"),
             mcp_akshare_one=McpSourceConfig(
                 transport=os.getenv("AKSHARE_ONE_MCP_TRANSPORT", "streamable_http"),
-                endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "http://118.25.178.86:8083/mcp"),
+                endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "https://akshare-mcp.bdlhxny.com/mcp"),
                 timeout_seconds=float(os.getenv("AKSHARE_ONE_MCP_TIMEOUT", "20")),
                 token=os.getenv("AKSHARE_ONE_MCP_TOKEN"),
             ),
             mcp_cn_financial=McpSourceConfig(
                 transport=os.getenv("CN_FINANCIAL_MCP_TRANSPORT", "sse"),
-                endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "http://118.25.178.86:8000/sse"),
+                endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "https://cn-financial-mcp.bdlhxny.com/sse"),
                 timeout_seconds=float(os.getenv("CN_FINANCIAL_MCP_TIMEOUT", "20")),
                 token=os.getenv("CN_FINANCIAL_MCP_TOKEN"),
             ),

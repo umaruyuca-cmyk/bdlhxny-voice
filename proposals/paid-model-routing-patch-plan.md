@@ -841,7 +841,7 @@ WebSearch 测试还必须验证：
 部署验收结果：
 
 - 云端 `web-search-wrapper` 已加入 `searxng_default` 网络，通过 `http://searxng:8080` 访问 SearXNG。
-- Nginx `/api/search` 原部署转发到 `127.0.0.1:3002/api/search`；2026-07-30 因未备案域名受限，3002 临时映射公网并限制可信来源 IP，恢复 HTTPS 后必须撤销。
+- Nginx `/api/search` 转发到 `127.0.0.1:3002/api/search`；2026-08-09 域名备案与 HTTPS 入口已完成，临时公网 `3002` 映射应按 `deploy/DOMAIN_DEPLOYMENT.md` 验收后撤销。
 - 正确Token返回固定 `schemaVersion=1.0` 和标准化结果，错误Token返回401。
 - 本地真实请求曾获得5条结果且无错误，Java `HttpWebSearchGateway` 云端集成测试有成功记录。
 - SearXNG原始 `/search` 公网访问返回404。
@@ -850,7 +850,7 @@ WebSearch 测试还必须验证：
 
 - 在真实 PostgreSQL、Redis、Ollama 环境验证正式 SSE 聊天入口。
 - 根据前端事件消费情况验收 `route`、`modelTier`、`gateReason` 与行情固定 JSON 的展示。
-- 域名备案或替代 HTTPS 入口完成后关闭公网明文 3001/3002 端口。
+- 域名备案与 HTTPS 入口已完成；待新 Nginx 路由验收后，关闭公网明文 `3001/3002/8000/8080/8081/8082/8083` 端口，并对数据库、Redis 和 Ollama 端口做同样收口。
 
 ## 11. 本草案建议的默认决策
 

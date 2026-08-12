@@ -126,3 +126,102 @@ async def test_java_adapter_uses_explicit_path_not_capability():
 
     assert _JAVA_API_PATHS["portfolio.get_current_positions"] == "/api/portfolio/positions"
     assert "portfolio.get_current_positions" not in _JAVA_API_PATHS["portfolio.get_current_positions"]
+
+
+@pytest.mark.asyncio
+async def test_java_adapter_consumes_snake_case_contract(monkeypatch):
+    """Java Data API 的 snake_case DTO 可被 Python 原样消费并保留数据时间。"""
+    import httpx
+
+    captured_headers = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "metadata": {
+                    "user_id": 7,
+                    "authorization_scope": "SELF",
+                    "query_status": "SUCCESS",
+                    "data_time": "2026-08-09T00:00:00Z",
+                },
+                "positions": [{"symbol": "600519", "quantity": 100, "cost_price": 1500}],
+            }
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, *_args, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    adapter = HttpJavaDataAdapter(base_url="http://java-data", token="internal-secret")
+
+    obs = await adapter.execute("portfolio.get_current_positions", {"user_id": 7})
+
+    assert obs.status == "SUCCESS"
+    assert obs.data["positions"][0]["cost_price"] == 1500
+    assert obs.provenance[0].as_of == "2026-08-09T00:00:00Z"
+    assert captured_headers == {"X-Internal-Token": "internal-secret"}
+
+
+@pytest.mark.asyncio
+async def test_java_adapter_does_not_mock_a_configured_but_failed_service(monkeypatch):
+    """配置了真实 Java 地址后，调用失败不能静默伪造成 mock 持仓。"""
+    import httpx
+
+    class FailingClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FailingClient())
+    adapter = HttpJavaDataAdapter(base_url="http://java-data", production=False)
+
+    obs = await adapter.execute("portfolio.get_current_positions", {"user_id": 7})
+
+    assert obs.status == "UNAVAILABLE"
+    assert obs.data is None
+
+
+@pytest.mark.asyncio
+async def test_java_adapter_propagates_not_configured_status(monkeypatch):
+    """Java 明确返回未配置时，Python 不得把空风险画像标记为成功。"""
+    import httpx
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"metadata": {"query_status": "NOT_CONFIGURED"}, "risk_tolerance": None}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    adapter = HttpJavaDataAdapter(base_url="http://java-data")
+
+    obs = await adapter.execute("user.get_risk_profile", {"user_id": 7})
+
+    assert obs.status == "PARTIAL"
+    assert obs.error_code == "JAVA_DATA_NOT_CONFIGURED"

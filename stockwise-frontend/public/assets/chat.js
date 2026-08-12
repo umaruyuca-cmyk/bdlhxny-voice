@@ -21,11 +21,14 @@ var toastEl=document.getElementById("toast");
 
 /* ---------- 常量与状态 ---------- */
 var MOCK=new URLSearchParams(location.search).has("mock");
-var STORAGE_KEY=MOCK?"grid.chat.mock.v2":"grid.chat.v1";
+var STORAGE_BASE=MOCK?"grid.chat.mock.v2":"grid.chat.v1";
+var AUTH_TOKEN_KEY="stockwise.auth.token.v1";
 var MOCK_VER_KEY="grid.chat.mock.ver";
 var MOCK_DATA_VERSION=3; /* mock 演示数据有变更时递增，旧缓存自动重建 */
 var MAX_SESSIONS=30;
 var MODE="general"; // 后端协议字段，单助手固定值
+var NATIVE_FETCH=window.fetch.bind(window);
+var AUTH={ready:MOCK,user:MOCK?{userId:"mock",username:"演示模式"}:null};
 
 var ST={
   sessions:[],
@@ -61,14 +64,26 @@ function toast(msg){
   toastEl._t=setTimeout(function(){toastEl.classList.remove("show");},2200);
 }
 function scrollBottom(){scrollBox.scrollTop=scrollBox.scrollHeight;}
+function storageKey(){return STORAGE_BASE+"."+(AUTH.user?AUTH.user.userId:"anonymous");}
+async function apiFetch(resource,options){
+  var next=Object.assign({},options||{});
+  next.headers=new Headers(next.headers||{});
+  var token=localStorage.getItem(AUTH_TOKEN_KEY);
+  if(token)next.headers.set("Authorization","Bearer "+token);
+  var response=await NATIVE_FETCH(resource,next);
+  if(response.status===401&&String(resource).indexOf("/api/v1/auth/")<0){
+    AUTH.ready=false;AUTH.user=null;localStorage.removeItem(AUTH_TOKEN_KEY);showAuth();
+  }
+  return response;
+}
 
 /* ---------- 会话存取 ---------- */
 function persist(){
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({sessions:ST.sessions,activeId:ST.activeId}));}catch(e){}
+  try{localStorage.setItem(storageKey(),JSON.stringify({sessions:ST.sessions,activeId:ST.activeId}));}catch(e){}
 }
 function restore(){
   try{
-    var raw=localStorage.getItem(STORAGE_KEY);
+    var raw=localStorage.getItem(storageKey());
     if(!raw)return;
     var data=JSON.parse(raw);
     ST.sessions=Array.isArray(data.sessions)?data.sessions:[];
@@ -143,7 +158,14 @@ function switchSession(id){
   var s=activeSession();
   if(s&&s.remote&&!s.loaded)loadSessionDetail(s);
 }
-function deleteSession(id){
+async function deleteSession(id){
+  var target=ST.sessions.find(function(s){return s.id===id;});
+  if(target&&target.remote&&!MOCK){
+    try{
+      var response=await apiFetch("/api/v1/conversations/"+encodeURIComponent(id),{method:"DELETE"});
+      if(!response.ok&&response.status!==404){toast("暂时无法删除该对话");return;}
+    }catch(e){toast("暂时无法删除该对话");return;}
+  }
   ST.sessions=ST.sessions.filter(function(s){return s.id!==id;});
   if(ST.activeId===id)ST.activeId=ST.sessions.length?ST.sessions[0].id:null;
   persist();
@@ -241,7 +263,7 @@ function regenerate(){
   var rows=messages.querySelectorAll(".msg:not(.user)");
   if(rows.length)rows[rows.length-1].remove();
   persist();
-  send(userMsg);
+  send(userMsg,true);
 }
 function createAgentRow(){
   var row=appendMessage("assistant","",true);
@@ -462,14 +484,16 @@ function handleEvent(data,row){
     scrollBottom();
   }else if(type==="clarification"){
     var options=(data.options||[]).filter(function(o){return o.label&&o.message;});
-    if(options.length){
-      if($(".typing",text))text.textContent="";
-      clearStatus(row);
-      addAskCard(row,data.prompt||"选择一个方向后继续。",options.map(function(o,i){
-        return {label:o.label,primary:i===0,message:o.message};
-      }));
-      scrollBottom();
-    }
+    if($(".typing",text))text.textContent="";
+    clearStatus(row);
+    addAskCard(row,data.prompt||"请补充完成分析所需的信息。",options.map(function(o,i){
+      return {label:o.label,primary:i===0,message:o.message};
+    }));
+    scrollBottom();
+    input.focus();
+    // clarification 已由 Graph interrupt 持久化；立即结束本次读取，解除发送锁，
+    // 用户随后输入或点击选项时由下一次 chat 请求恢复原线程。
+    return false;
   }else if(type==="done"){
     if(data.sessionId)adoptServerSessionId(data.sessionId);
     if($(".typing",text)){
@@ -515,11 +539,18 @@ function addAskCard(row,promptText,options){
     });
     wrap.appendChild(btn);
   });
+  if(!options.length){
+    var hint=document.createElement("span");
+    hint.className="ask-hint";
+    hint.textContent="请在下方输入框补充后继续";
+    wrap.appendChild(hint);
+  }
   body.appendChild(card);
 }
 
 /* ---------- 发送 ---------- */
-async function send(preset){
+async function send(preset,regenerateExisting){
+  if(!AUTH.ready){showAuth();return;}
   var value=(preset||input.value).trim();
   if(!value||ST.sending)return;
   ST.sending=true;
@@ -535,14 +566,14 @@ async function send(preset){
     ST.activeId=s.id;
   }
   if(!s.messages.length)s.title=value.length>24?value.slice(0,24)+"…":value;
-  s.messages.push({role:"user",content:value});
+  if(!regenerateExisting)s.messages.push({role:"user",content:value});
   s.updatedAt=now();
   persist();
   renderSessionList();
   chatTitle.textContent=s.title;
   hero.classList.add("hidden");
 
-  appendMessage("user",value,true);
+  if(!regenerateExisting)appendMessage("user",value,true);
   rebuildQnav();
   var row=createAgentRow();
   ST.streamText="";
@@ -562,10 +593,10 @@ async function send(preset){
   ST.controller=controller;
 
   try{
-    var response=await fetch("/api/v1/chat/stream",{
+    var response=await apiFetch("/api/v1/chat/stream",{
       method:"POST",
       headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
-      body:JSON.stringify({sessionId:s.id,mode:MODE,message:value,instrument:null}),
+      body:JSON.stringify({sessionId:s.id,mode:MODE,message:value,instrument:null,regenerate:!!regenerateExisting}),
       signal:controller.signal
     });
     if(!response.ok)throw new Error(await response.text()||("HTTP "+response.status));
@@ -706,7 +737,7 @@ function initMockTools(){
 /* ---------- 远端会话同步（静默失败） ---------- */
 async function syncRemoteSessions(){
   try{
-    var res=await fetch("/api/v1/conversations?mode="+MODE+"&limit="+MAX_SESSIONS);
+    var res=await apiFetch("/api/v1/conversations?mode="+MODE+"&limit="+MAX_SESSIONS);
     if(!res.ok)return;
     var remote=await res.json();
     if(!Array.isArray(remote))return;
@@ -735,7 +766,7 @@ async function syncRemoteSessions(){
 }
 async function loadSessionDetail(s){
   try{
-    var res=await fetch("/api/v1/conversations/"+encodeURIComponent(s.id));
+    var res=await apiFetch("/api/v1/conversations/"+encodeURIComponent(s.id));
     if(!res.ok)return;
     var detail=await res.json();
     var list=Array.isArray(detail.messages)?detail.messages:[];
@@ -748,6 +779,109 @@ async function loadSessionDetail(s){
     if(ST.activeId===s.id){renderSessionList();renderMessages();}
   }catch(e){}
 }
+
+/* ---------- 用户认证 ---------- */
+function showAuth(message){
+  var modal=document.getElementById("authModal");
+  modal.hidden=false;
+  document.getElementById("authLoginPanel").hidden=false;
+  document.getElementById("authAppliedPanel").hidden=true;
+  document.getElementById("authError").textContent=message||"";
+  setTimeout(function(){document.getElementById("authUsername").focus();},0);
+}
+function updateAccount(){
+  document.getElementById("accountButton").textContent=AUTH.user?AUTH.user.username:"登录";
+}
+function resetForUser(){
+  ST.sessions=[];ST.activeId=null;ST.sending=false;ST.streamText="";ST.controller=null;
+  restore();
+  renderSessionList();
+  renderMessages();
+  updateAccount();
+  if(!MOCK)syncRemoteSessions();
+}
+function completeAuth(data){
+  AUTH.ready=true;
+  AUTH.user={userId:String(data.userId),username:data.username};
+  if(data.token)localStorage.setItem(AUTH_TOKEN_KEY,data.token);
+  document.getElementById("authPassword").value="";
+  document.getElementById("appliedPassword").textContent="";
+  document.getElementById("authModal").hidden=true;
+  resetForUser();
+  input.focus();
+}
+async function initializeAuth(){
+  if(MOCK){
+    restore();
+    var mockVer=null;
+    try{mockVer=localStorage.getItem(MOCK_VER_KEY);}catch(e){}
+    if(!ST.sessions.length||mockVer!==String(MOCK_DATA_VERSION)){
+      injectMockSessions();
+      persist();
+      try{localStorage.setItem(MOCK_VER_KEY,String(MOCK_DATA_VERSION));}catch(e){}
+    }
+    renderSessionList();renderMessages();updateAccount();initMockTools();
+    return;
+  }
+  var token=localStorage.getItem(AUTH_TOKEN_KEY);
+  if(!token){showAuth();return;}
+  try{
+    var response=await NATIVE_FETCH("/api/v1/auth/me",{headers:{Authorization:"Bearer "+token}});
+    if(response.ok){completeAuth(Object.assign(await response.json(),{token:token}));return;}
+    if(response.status===401||response.status===403)localStorage.removeItem(AUTH_TOKEN_KEY);
+    showAuth(response.status>=500?"登录服务暂时不可用，请稍后重试":"登录状态已失效，请重新登录");
+  }catch(e){
+    // 网络故障不删除仍可能有效的 Token。
+    showAuth("暂时无法连接登录服务，请稍后重试");
+  }
+}
+async function login(){
+  var username=document.getElementById("authUsername").value.trim();
+  var password=document.getElementById("authPassword").value;
+  var error=document.getElementById("authError");
+  if(!username||password.length<6){error.textContent="请输入账号和至少 6 位密码";return;}
+  error.textContent="正在登录…";
+  try{
+    var response=await NATIVE_FETCH("/api/v1/auth/login",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({username:username,password:password})
+    });
+    var data=await response.json();
+    if(!response.ok)throw new Error(data.error||"登录失败");
+    completeAuth(data);
+  }catch(e){error.textContent=e.message||"登录服务暂时不可用";}
+}
+async function applyAccount(){
+  var button=document.getElementById("authApply");
+  var error=document.getElementById("authError");
+  button.disabled=true;error.textContent="正在生成账号…";
+  try{
+    var response=await NATIVE_FETCH("/api/v1/auth/apply",{method:"POST"});
+    var data=await response.json();
+    if(!response.ok)throw new Error(data.error||"账号生成失败");
+    localStorage.setItem(AUTH_TOKEN_KEY,data.token);
+    AUTH.user={userId:String(data.userId),username:data.username};
+    document.getElementById("authLoginPanel").hidden=true;
+    document.getElementById("authAppliedPanel").hidden=false;
+    document.getElementById("appliedUsername").textContent=data.username;
+    document.getElementById("appliedPassword").textContent=data.initialPassword;
+    document.getElementById("authContinue").onclick=function(){completeAuth(data);};
+  }catch(e){error.textContent=e.message||"账号申请服务暂时不可用";}
+  finally{button.disabled=false;}
+}
+
+document.getElementById("authLogin").addEventListener("click",login);
+document.getElementById("authApply").addEventListener("click",applyAccount);
+document.getElementById("authPassword").addEventListener("keydown",function(e){if(e.key==="Enter")login();});
+document.getElementById("accountButton").addEventListener("click",function(){
+  if(!AUTH.ready){showAuth();return;}
+  if(MOCK)return;
+  if(window.confirm("退出当前账号？")){
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    document.getElementById("authPassword").value="";
+    location.reload();
+  }
+});
 
 /* ---------- 输入框 ---------- */
 function autoGrow(){
@@ -775,10 +909,22 @@ document.querySelectorAll(".suggest").forEach(function(btn){
 
 /* ---------- 侧边栏 ---------- */
 newChatBtn.addEventListener("click",newChat);
-document.getElementById("sidebarCollapse").addEventListener("click",function(){
-  sidebar.classList.toggle("collapsed");
+var sidebarCollapse=document.getElementById("sidebarCollapse");
+function setSidebarCollapsed(collapsed){
+  sidebar.classList.toggle("collapsed",collapsed);
+  sidebarCollapse.setAttribute("aria-expanded",String(!collapsed));
+  sidebarCollapse.setAttribute("aria-label",collapsed?"展开历史记录":"收起历史记录");
+  sidebarCollapse.title=collapsed?"展开历史记录":"收起历史记录";
+}
+sidebarCollapse.addEventListener("click",function(){
+  if(window.innerWidth<=860){
+    sidebar.classList.remove("open");
+    return;
+  }
+  setSidebarCollapsed(!sidebar.classList.contains("collapsed"));
 });
 document.getElementById("mobileMenu").addEventListener("click",function(){
+  setSidebarCollapsed(false);
   sidebar.classList.toggle("open");
 });
 document.addEventListener("click",function(e){
@@ -801,20 +947,7 @@ toBottom.addEventListener("click",function(){
 });
 
 /* ---------- 启动 ---------- */
-restore();
-if(MOCK){
-  var mockVer=null;
-  try{mockVer=localStorage.getItem(MOCK_VER_KEY);}catch(e){}
-  if(!ST.sessions.length||mockVer!==String(MOCK_DATA_VERSION)){
-    injectMockSessions();
-    persist();
-    try{localStorage.setItem(MOCK_VER_KEY,String(MOCK_DATA_VERSION));}catch(e){}
-  }
-}
-renderSessionList();
-renderMessages();
-if(!MOCK)syncRemoteSessions();
-else initMockTools();
+void initializeAuth();
 autoGrow();
 
 })();

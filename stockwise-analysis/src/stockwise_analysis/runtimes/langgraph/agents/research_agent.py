@@ -40,6 +40,7 @@ class ResearchAgent(Protocol):
 
     def choose_next_action(self, observations: list[dict], remaining_requirements: list[dict]) -> ResearchAction:
         """仅提出一个只读统一工具动作；不得直接执行工具。"""
+        ...
 
 
 class RuleBasedResearchAgent:
@@ -70,9 +71,9 @@ class RuleBasedResearchAgent:
 
 # ── LLM 版（comprehensive 类型用）──
 _RESEARCH_SYSTEM_PROMPT = (
-    "你是市场数据获取决策器。基于已有观测和剩余需求，选择下一个要调用的只读数据工具。"
+    "你是市场数据获取决策器。只能从用户消息提供的剩余统一能力中选择下一个只读能力。"
     "只输出 JSON：{\"action\": \"统一能力名\", \"arguments\": {...}, \"reason\": \"原因\"}。"
-    "所有需求满足时输出 {\"action\": \"finish\"}。不得输出写操作或非数据工具。"
+    "所有需求满足时输出 {\"action\": \"finish\"}。不得发明能力名，不得输出 MCP 原始工具名、写操作或非数据工具。"
 )
 
 
@@ -100,7 +101,16 @@ class LlmResearchAgent:
             ])
             raw = response.content if hasattr(response, "content") else str(response)
             data = json.loads(self._extract_json(raw))
-            return ResearchAction(**data)
+            action = ResearchAction(**data)
+            allowed = {
+                str(item.get("capability"))
+                for item in remaining_requirements
+                if item.get("capability")
+            }
+            if not action.is_finish and action.action not in allowed:
+                logger.warning("LLM 选择了候选白名单外能力 %s，降级回规则版", action.action)
+                return self._fallback.choose_next_action(observations, remaining_requirements)
+            return action
         except (json.JSONDecodeError, ValidationError, Exception) as exc:
             logger.warning("LLM ReAct 决策失败，降级回规则版: %s", exc)
             return self._fallback.choose_next_action(observations, remaining_requirements)

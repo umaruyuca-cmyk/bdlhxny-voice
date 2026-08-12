@@ -57,10 +57,16 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
     signals: list[dict[str, Any]] = []
     risk_flags: list[dict[str, Any]] = []
     limitations: list[str] = []
+    if analysis_input.data_quality.known_unavailable:
+        limitations.append(
+            "数据能力不可用: " + ", ".join(analysis_input.data_quality.known_unavailable)
+        )
 
     # ── 基础数据状态判断 ──
     has_history = len(prices) >= 20  # 至少够算 20 日窗口的指标
     has_quote = analysis_input.realtime_quote is not None
+    if analysis_type == "market_snapshot" and not has_quote:
+        limitations.append("实时行情数据缺失，无法生成市场快照")
     if not has_history and analysis_type != "market_snapshot":
         limitations.append("历史K线不足，无法计算技术指标与风险指标")
 
@@ -103,7 +109,11 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
     status = _decide_status(analysis_input, has_history, analysis_type, limitations)
 
     # ── 结论：由确定性信号生成，不依赖 LLM ──
-    conclusions = _build_conclusions(signals, risk_flags, analysis_type)
+    conclusions = (
+        [{"text": "数据不足，无法形成可靠分析结论", "confidence": "LOW"}]
+        if status == "LIMITED"
+        else _build_conclusions(signals, risk_flags, analysis_type)
+    )
 
     return AnalysisResult(
         analysis_id=analysis_input.analysis_id,
@@ -356,6 +366,11 @@ def _decide_status(
 
     base_quality = analysis_input.data_quality.quality_status
     if base_quality in ("INVALID", "FAILED"):
+        return "LIMITED"
+
+    # 市场快照的关键输入就是实时行情；即使上游质量标记错误地写成 OK，
+    # 缺少 quote 时也不能把空快照降成普通 PARTIAL。
+    if analysis_type == "market_snapshot" and analysis_input.realtime_quote is None:
         return "LIMITED"
 
     # 需要历史K线的类型但数据不足 → LIMITED。

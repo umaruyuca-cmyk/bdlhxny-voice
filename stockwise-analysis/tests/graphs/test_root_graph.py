@@ -1,6 +1,7 @@
 from langgraph.types import Command
 
 from stockwise_analysis.runtimes.langgraph.graphs.root_graph import build_root_graph, initial_state
+from stockwise_analysis.runtimes.langgraph.graphs.state import merge_state_items
 
 
 def test_dynamic_snapshot_workflow_completes_with_mock_data():
@@ -15,6 +16,44 @@ def test_dynamic_snapshot_workflow_completes_with_mock_data():
     assert result["final_response"]["analysis_id"] == run_id
     assert any(item["event_type"] == "run.finished" for item in result["events"])
     assert result["workflow_plan"]["revision"] > 0
+
+
+def test_nested_graph_outputs_do_not_duplicate_append_only_state():
+    """子图返回入口快照时，事件、Observation、实体和对话不得重复追加。"""
+    graph = build_root_graph()
+    run_id = "test-no-duplicate-state"
+    result = graph.invoke(
+        initial_state(run_id, {"message": "分析 600000"}),
+        config={"configurable": {"thread_id": run_id}},
+    )
+
+    for field, id_field in (
+        ("events", "event_id"),
+        ("observations", "observation_id"),
+        ("entities", "entity_id"),
+    ):
+        values = result.get(field, [])
+        ids = [item[id_field] for item in values if item.get(id_field)]
+        assert len(ids) == len(set(ids)), f"{field} contains duplicate ids"
+
+    conversation = result.get("conversation", [])
+    assert len(conversation) == len({repr(item) for item in conversation})
+
+
+def test_state_reducer_preserves_a_genuinely_repeated_new_message():
+    """相同内容作为新增量再次出现时应保留，不能按内容全局去重。"""
+    first = {"role": "user", "content": "继续分析", "run_id": "run-1"}
+    repeated = {"role": "user", "content": "继续分析", "run_id": "run-2"}
+
+    assert merge_state_items([first], [repeated]) == [first, repeated]
+
+
+def test_state_reducer_collapses_a_child_graph_full_snapshot():
+    """子图返回包含入口状态的完整列表时只合并新增尾部。"""
+    first = {"event_id": "event-1"}
+    second = {"event_id": "event-2"}
+
+    assert merge_state_items([first], [first, second]) == [first, second]
 
 
 def test_missing_context_interrupts_and_resume_continues_same_thread():

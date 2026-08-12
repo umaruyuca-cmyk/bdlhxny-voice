@@ -33,6 +33,7 @@ class AnalysisInput(BaseModel):
     financial_data: dict[str, Any] | None = None
     valuation_data: dict[str, Any] | None = None
     industry_context: dict[str, Any] | None = None
+    money_flow_data: dict[str, Any] | None = None
     news_context: list[dict[str, Any]] = Field(default_factory=list)
     portfolio_context: dict[str, Any] | None = None
     overseas_context: dict[str, Any] | None = None

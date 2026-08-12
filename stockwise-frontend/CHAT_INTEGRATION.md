@@ -1,8 +1,8 @@
 # 对话页（chat.html）· 后端对接文档
 
 > 适用页面：`public/chat.html` + `public/assets/chat-theme.css` + `public/assets/chat.js`（单助手对话页，2026-08 新版）。
-> 旧版双 Agent 工作站（workspace.html）的对接说明见 `API_INTEGRATION.md`，二者并存期间互不影响。
-> 本文档以后端（LangChain agent 服务）要实现/对齐的契约为目标整理，前端行为均以 `chat.js` 实际代码为准。
+> 旧版双 Agent 工作站（workspace.html）的对接说明见 `API_INTEGRATION.md`，当前仅保留 `/workspace` 兼容入口；默认 `/agent` 已切换到新版页面。
+> 本文档以 Python LangGraph 分析系统要实现/对齐的契约为目标整理，前端行为均以 `chat.js` 实际代码为准。页面不是某个 Agent 的专属 UI；Root Graph 负责系统流程，只有部分节点使用 Agent 或直接模型调用。
 
 ---
 
@@ -13,7 +13,7 @@
 | 页面地址（联调） | `http://127.0.0.1:8082/chat.html` |
 | 演示模式 | `http://127.0.0.1:8082/chat.html?mock=1`（不依赖后端，内置模拟事件流与演示数据） |
 | 静态服务 | `node dev-server.js`，默认端口 `8082`（`PORT` 可覆盖） |
-| API 代理 | 所有 `/api/*` 由 dev-server 透传到后端 `127.0.0.1:8080`（`STOCKWISE_BACKEND_URL` 可覆盖）；生产由 nginx 同规则代理 |
+| API 代理 | 认证/用户 API → Java `127.0.0.1:8081`（`STOCKWISE_BACKEND_URL`）；聊天/会话 → Python `127.0.0.1:8000`（`STOCKWISE_ANALYSIS_URL`）。生产 Python 使用 `127.0.0.1:8090` |
 | 前端构建 | 无构建，原生 HTML/CSS/JS，直接静态部署 |
 
 前端只请求**同源相对路径** `/api/v1/*`，不感知后端真实地址。
@@ -27,7 +27,10 @@
 | 1 | POST | `/api/v1/chat/stream` | 流式问答（SSE） | **必需** |
 | 2 | GET | `/api/v1/conversations?mode=general&limit=30` | 会话目录（侧边栏列表） | 可选（失败静默降级为纯本地列表） |
 | 3 | GET | `/api/v1/conversations/{sessionId}` | 会话消息快照（切换/刷新恢复） | 可选（同上） |
-| 4 | GET | `/api/v1/conversations/{sessionId}/messages?before={cursor}&limit=20` | 更早历史分页（上滑加载） | **预留，未实现**（见 §6.3） |
+| 4 | DELETE | `/api/v1/conversations/{sessionId}` | 删除当前用户的服务端会话 | 已实现 |
+| 5 | GET | `/api/v1/conversations/{sessionId}/messages?before={cursor}&limit=20` | 更早历史分页（上滑加载） | **预留，未实现**（见 §6.4） |
+
+真实模式下，上述接口均携带 Java 登录接口签发的 `Authorization: Bearer {JWT}`。Python 只信任 JWT 的 `sub` 作为 `user_id`，请求体不允许自行声明其他用户身份。
 
 > 旧版的 `agent-runs`、`skill-results`、`instrument`、`ask(NEED_INSTRUMENT)` 等能力，新页面**不调用**。mode 字段当前固定为 `general`。
 
@@ -41,6 +44,7 @@
 POST /api/v1/chat/stream
 Content-Type: application/json
 Accept: text/event-stream
+Authorization: Bearer {JWT}
 ```
 
 ```json
@@ -48,7 +52,8 @@ Accept: text/event-stream
   "sessionId": "s_xxx（客户端生成的临时 ID；已有服务端会话则传服务端 ID）",
   "mode": "general",
   "message": "用户输入的完整问题",
-  "instrument": null
+  "instrument": null,
+  "regenerate": false
 }
 ```
 
@@ -57,6 +62,7 @@ Accept: text/event-stream
 | `sessionId` | 新会话是客户端临时 ID（`s_` 前缀）。后端应在事件流中通过 `agent_run.sessionId` 或 `done.sessionId` 下发正式 ID，前端收到后自动替换本地临时 ID 并以正式 ID 续聊 |
 | `mode` | 固定 `"general"`（单助手，路由决策全部交给后端） |
 | `instrument` | 固定 `null`（前端已无标的选择 UI；如后端需要标的上下文，应通过 `clarification` 事件向用户索取） |
+| `regenerate` | 默认 `false`；重新生成时为 `true`，服务端替换上一条 assistant 快照，不重复追加用户问题 |
 
 ### 3.2 SSE 帧格式
 
@@ -77,7 +83,7 @@ data: {"type":"done","status":"COMPLETED","sessionId":"c9f1..."}
 | `status` | `step`（必需）, `skill`（可选） | 在 AI 消息上方显示阶段小字（流光动画）：`"{阶段文案} · {skill}…"`；首个 token 到达后自动消失 | 推荐 |
 | `token` | `content` | 增量追加到回答正文，带流式光标 | **必需** |
 | `agent_run` | `sessionId`, `runId`, `route` | 仅消费 `sessionId`：替换本地临时会话 ID | 推荐 |
-| `clarification` | `prompt`, `options[]` | 渲染「需要确认」卡片：prompt 为说明文字，options 渲染为按钮；点击按钮把 `options[i].message` 作为新提问自动发送 | 可选 |
+| `clarification` | `prompt`, `options[]` | 渲染「需要确认」卡片；有选项时点击回发，无选项时提示用户直接在输入框补充。下一条消息恢复同一 Graph run/checkpoint | 可选 |
 | `done` | `status`, `sessionId` | 收尾：停止流式光标、把整段回答存入会话历史。`status=REFUSED` 且回答为空时显示「请求已被护栏拦截：{reason}」 | **必需** |
 | `error` | `message` | 红字显示错误并中断当前流 | 推荐 |
 
@@ -169,7 +175,7 @@ GET /api/v1/conversations/{sessionId}
 
 | 项 | 值 |
 | --- | --- |
-| 真实模式存储 | localStorage `grid.chat.v1`（会话列表 + 消息） |
+| 真实模式存储 | localStorage `grid.chat.v1.{userId}`（会话列表 + 消息，按登录用户隔离） |
 | 演示模式存储 | localStorage `grid.chat.mock.v2` + 版本键 `grid.chat.mock.ver`（当前版本 3，改 mock 数据递增） |
 | 临时会话 ID | `s_{timestamp36}{random}`，收到服务端 `sessionId` 后原地替换 |
 | 会话标题 | 首条用户消息前 24 字；远端会话以 `session.title` 为准 |
@@ -178,21 +184,35 @@ GET /api/v1/conversations/{sessionId}
 
 ---
 
-## 6. 后端（LangChain agent）对接清单
+## 6. 后端（Python LangGraph 系统）对接清单
 
 ### 6.1 必须实现
 
-- [ ] `POST /api/v1/chat/stream`：SSE 流，至少发 `token` × N + 收尾 `done`（含 `status`、`sessionId`）。
-- [ ] 会话持久化：以 `sessionId` 聚合消息；`title` 可用首条用户问题生成。
-- [ ] 幂等/去重：同一 `sessionId` 多轮问答消息追加存储。
+- [x] `POST /api/v1/chat/stream`：SSE 流，由 Root Graph 执行并以 `done/error` 收尾。
+- [x] JWT 用户隔离：公开 `sessionId` 相同也不能跨用户读取、恢复或删除。
+- [x] 会话持久化：开发环境使用内存实现；生产环境强制 PostgreSQL。
+- [x] 多轮与恢复：普通续聊创建新 run；澄清续答从待恢复 checkpoint 继续。
+- [x] 重新生成去重：替换最后一条 assistant 快照，不重复用户消息。
 
 ### 6.2 建议实现
 
-- [ ] `status` 阶段事件：按 §3.4 的 step 值上报 LangChain 各环节（路由/检索/工具/生成），前端会显示成流光状态文字。
-- [ ] `clarification`：需要用户补充信息（如具体标的、分析口径）时发此事件，比纯文本追问体验好。
-- [ ] `GET /api/v1/conversations` 两个接口：保证刷新/换设备后会话可恢复。
+- [x] `status` 阶段事件：按顶层/子图节点更新映射为路由、规划、工具和生成阶段。
+- [x] `clarification`：Graph `interrupt()` 暂停，用户下一条消息通过 `Command(resume=...)` 恢复。
+- [x] 会话列表、详情和删除接口：刷新与换设备后可恢复，删除失败不会先清空本地记录。
 
-### 6.3 预留：历史消息分页（上滑加载）
+### 6.3 节点执行模式边界
+
+| 场景/节点 | 执行模式 | 是否 ReAct | Tool 权限 |
+| --- | --- | --- | --- |
+| `query_graph` | StateGraph 子图；意图理解可使用结构化 LLM，路由/缺失条件为确定性代码 | 否 | 无 |
+| `direct_response` | 一次受控 LLM 调用；模型不可用时确定性降级 | 否 | 无 |
+| `market_data_graph` 复杂研究 | 有预算、最大步数和结束条件的研究 Agent | 是 | 仅本轮候选能力白名单 |
+| 标的解析、组合读取、分析计算、校验 | 普通服务/确定性节点 | 否 | 仅节点显式绑定能力 |
+| `compose_response` | 对已验证 `AnalysisResult` 的一次 LLM 总结 | 否 | 无 |
+
+前端只展示阶段，不决定上述模式。Agent 不能决定 Root Graph 的终止条件，也不能绕过节点白名单直接调用任意 MCP tool。
+
+### 6.4 预留：历史消息分页（上滑加载）
 
 前端已完整实现「滚动到顶部 → 骨架条动画 → 前插更早消息 → 视口不跳动」，数据源当前是本地 `session.earlierBatches`。后端就绪后计划改为：
 
@@ -206,8 +226,8 @@ GET /api/v1/conversations/{sessionId}/messages?before={最早一条消息的游�
 
 ## 7. 联调步骤
 
-1. 启动后端服务（LangChain agent），确认 `POST /api/v1/chat/stream` 可用。
+1. 启动 Java 用户服务（本地 8081）和 Python LangGraph 服务（本地 8000），确认登录与聊天接口可用。
 2. `cd stockwise-frontend && node dev-server.js`（默认 8082）。
 3. 打开 `http://127.0.0.1:8082/chat.html?mock=1` 先确认前端交互基线（状态动画/流式/多轮/上滑加载/提问目录均为模拟数据）。
-4. 打开 `http://127.0.0.1:8082/chat.html` 走真实链路：发一条问题，观察状态小字 → 流式输出 → 落库；刷新页面确认会话恢复。
+4. 打开 `http://127.0.0.1:8082/agent` 走真实链路：登录后发一条问题，观察状态小字 → 流式输出 → 落库；刷新页面确认会话恢复。
 5. 验证澄清流程：构造一个需要补充信息的提问，确认 `clarification` 卡片渲染与选项回发。

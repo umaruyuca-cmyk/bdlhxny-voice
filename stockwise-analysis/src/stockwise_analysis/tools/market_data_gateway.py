@@ -16,3 +16,4 @@ class MarketDataGateway(Protocol):
 
     async def execute(self, capability: str, arguments: dict) -> Observation:
         """执行一个统一市场能力，并在内部处理路由、超时与降级。"""
+        ...

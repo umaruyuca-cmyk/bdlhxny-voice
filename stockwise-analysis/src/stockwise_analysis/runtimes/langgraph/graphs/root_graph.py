@@ -24,6 +24,7 @@ from ..nodes.nodes import (
     finish,
     load_portfolio_context,
     make_compose_response_node,
+    make_direct_response_node,
     make_load_memory_node,
     make_load_portfolio_context_node,
     make_persist_history_node,
@@ -56,6 +57,7 @@ def build_root_graph(
     memory_store=None,
     query_agent=None,
     summary_model=None,
+    direct_response_model=None,
     gateway_adapter=None,
     research_agent=None,
     llm_research_agent=None,
@@ -64,6 +66,7 @@ def build_root_graph(
     analysis_capability=None,
     web_search_adapter=None,
     history_store=None,
+    capability_registry=None,
 ):
     """构建顶层动态流程。
 
@@ -74,6 +77,7 @@ def build_root_graph(
     - memory_store：有则在首尾插入 load/persist 记忆节点（Mem0）。
     - query_agent：有则 query_graph 用 LLM 版理解节点。
     - summary_model：有则 compose_response 用 LLM 版总结。
+    - direct_response_model：知识问答的一次直接调用，不进入 ReAct/Tool Loop。
     - gateway_adapter + research_agent：有则 market_data_graph 走真实 MCP ReAct。
     - java_adapter：有则 load_portfolio_context 走真实 Java 服务（内部自带 mock 降级）。
     - context_builder：有则理解节点用七块上下文（审查文档 §4.4）。
@@ -86,8 +90,20 @@ def build_root_graph(
     if has_memory:
         graph.add_node("load_memory", make_load_memory_node(memory_store))
 
-    graph.add_node("query_graph", build_query_graph(query_agent=query_agent, context_builder=context_builder))
-    graph.add_node("direct_response", direct_response_node)
+    graph.add_node(
+        "query_graph",
+        build_query_graph(
+            query_agent=query_agent,
+            context_builder=context_builder,
+            capability_registry=capability_registry,
+        ),
+    )
+    direct_node = (
+        make_direct_response_node(direct_response_model)
+        if direct_response_model is not None
+        else direct_response_node
+    )
+    graph.add_node("direct_response", direct_node)
     graph.add_node("dispatch_workflow", dispatch_workflow)
     # 有 gateway 时标的解析走真实 Gateway（审查文档 §4.6），否则 mock
     resolve_node = make_resolve_instrument_node(gateway_adapter) if gateway_adapter is not None else resolve_instrument

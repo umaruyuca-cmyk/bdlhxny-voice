@@ -5,6 +5,30 @@
 # ============================================================
 
 services:
+  stockwise-analysis:
+    build:
+      context: ../stockwise-analysis
+      dockerfile: Dockerfile
+    container_name: stockwise-analysis
+    restart: unless-stopped
+    network_mode: host
+    command: ["uvicorn", "stockwise_analysis.main:app", "--host", "127.0.0.1", "--port", "8090"]
+    environment:
+      STOCKWISE_ENV: production
+      STOCKWISE_CHECKPOINTER_BACKEND: postgres
+      STOCKWISE_AUTH_REQUIRED: "true"
+      POSTGRES_DSN: ${POSTGRES_DSN}
+      JWT_SECRET: ${JWT_SECRET}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      JAVA_API_BASE_URL: http://127.0.0.1:8081
+      JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
+      AKSHARE_ONE_MCP_ENDPOINT: ${AKSHARE_ONE_MCP_ENDPOINT:-https://akshare-mcp.bdlhxny.com/mcp}
+      CN_FINANCIAL_MCP_ENDPOINT: ${CN_FINANCIAL_MCP_ENDPOINT:-https://cn-financial-mcp.bdlhxny.com/sse}
+      WEB_SEARCH_BASE_URL: http://127.0.0.1:3002
+      WEB_SEARCH_AGENT_ID: ${WEB_SEARCH_AGENT_ID:-stockwise}
+      WEB_SEARCH_TOKEN: ${WEB_SEARCH_AGENT_TOKEN}
+
   stockwise-backend:
     build:
       context: ../stockwise-backend
@@ -15,3 +39,10 @@ services:
     environment:
       # 云端只需选择prod，全部连接信息都由application-prod.yml提供。
       SPRING_PROFILES_ACTIVE: prod
+      JWT_SECRET: ${JWT_SECRET}
+      JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
+      JAVA_DATA_REQUIRE_AUTHENTICATED: ${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
+      LEGACY_JAVA_AGENT_RUNTIME_ENABLED: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
+      # Backend 只允许同机边缘 Nginx 访问，不直接监听公网网卡。
+      SERVER_ADDRESS: 127.0.0.1
+      SERVER_PORT: 8081

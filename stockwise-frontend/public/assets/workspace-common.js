@@ -16,6 +16,25 @@
       location.href=path;
     }
   }
+
+  const AUTH_TOKEN_KEY="stockwise.auth.token.v1";
+  const NATIVE_FETCH=window.fetch.bind(window);
+  const AUTH={ready:false,user:null,pendingQuestion:""};
+
+  async function apiFetch(resource,options={}){
+    const next={...options,headers:new Headers(options.headers||{})};
+    const token=localStorage.getItem(AUTH_TOKEN_KEY);
+    if(token)next.headers.set("Authorization","Bearer "+token);
+    const response=await NATIVE_FETCH(resource,next);
+    if(response.status===401&&!String(resource).includes("/api/v1/auth/")){
+      AUTH.ready=false;AUTH.user=null;localStorage.removeItem(AUTH_TOKEN_KEY);showAuthModal();
+    }
+    return response;
+  }
+
+  function userStorageKey(base){
+    return base+"."+(AUTH.user?.userId||"anonymous");
+  }
   const AGENTS=[
     {
       id:"general",
@@ -75,7 +94,7 @@
   const AGENT_MAP=Object.fromEntries(AGENTS.map(a=>[a.id,a]));
 
   const MAX_SESSIONS_PER_AGENT=20;
-  const SESSION_STORAGE_KEY="stockwise.sessions.v1";
+  const SESSION_STORAGE_KEY="stockwise.sessions.v2";
 
   const ST={
     mode:"stock",
@@ -117,7 +136,7 @@
 
   function restoreSessions(mode){
     try{
-      const raw=localStorage.getItem(SESSION_STORAGE_KEY);
+      const raw=localStorage.getItem(userStorageKey(SESSION_STORAGE_KEY));
       if(!raw)return null;
       const all=JSON.parse(raw);
       const list=all[mode];
@@ -139,7 +158,7 @@
           id:s.id,title:s.title,hasMessages:s.hasMessages,runId:s.runId,updatedAt:s.updatedAt||Date.now()
         }));
       }
-      localStorage.setItem(SESSION_STORAGE_KEY,JSON.stringify(data));
+      localStorage.setItem(userStorageKey(SESSION_STORAGE_KEY),JSON.stringify(data));
     }catch(e){/* 存储失败不影响使用 */}
   }
 
@@ -190,7 +209,7 @@
 
   function loadInstrument(){
     try{
-      return JSON.parse(localStorage.getItem("stockwise.currentInstrument")||"null");
+      return JSON.parse(localStorage.getItem(userStorageKey("stockwise.currentInstrument"))||"null");
     }catch(e){
       return null;
     }
@@ -198,8 +217,9 @@
 
   function saveInstrument(instrument){
     ST.currentInstrument=instrument;
-    if(instrument)localStorage.setItem("stockwise.currentInstrument",JSON.stringify(instrument));
-    else localStorage.removeItem("stockwise.currentInstrument");
+    const key=userStorageKey("stockwise.currentInstrument");
+    if(instrument)localStorage.setItem(key,JSON.stringify(instrument));
+    else localStorage.removeItem(key);
     renderInstrument();
   }
 
@@ -349,7 +369,7 @@
   async function loadSessionDetail(session){
     if(!session||session.draft)return;
     try{
-      const response=await fetch("/api/v1/conversations/"+encodeURIComponent(session.id));
+      const response=await apiFetch("/api/v1/conversations/"+encodeURIComponent(session.id));
       if(!response.ok)throw new Error("HTTP "+response.status);
       const detail=await response.json();
       const serverSession=detail.session||{};
@@ -371,7 +391,7 @@
     const list=ST.sessionsByMode[mode];
     const activeDraft=list.items.find(session=>session.id===list.activeId&&session.draft);
     try{
-      const response=await fetch("/api/v1/conversations?mode="+encodeURIComponent(mode)+"&limit="+MAX_SESSIONS_PER_AGENT);
+      const response=await apiFetch("/api/v1/conversations?mode="+encodeURIComponent(mode)+"&limit="+MAX_SESSIONS_PER_AGENT);
       if(!response.ok)throw new Error("HTTP "+response.status);
       const remote=await response.json();
       const drafts=list.items.filter(session=>session.draft);
@@ -475,6 +495,7 @@
   }
 
   async function send(text){
+    if(!AUTH.ready){showAuthModal();return;}
     const value=(text||input.value).trim();if(!value||ST.sending)return;
     ST.sending=true;input.value="";sendBtn.disabled=true;
     // 草稿会话发出首条消息后进入正式会话目录（上限 20 条）。
@@ -512,7 +533,7 @@
     ST.activeController=controller;
     const phase={last:null};
     try{
-      const response=await fetch("/api/v1/chat/stream",{
+      const response=await apiFetch("/api/v1/chat/stream",{
         method:"POST",
         headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
         body:JSON.stringify({
@@ -673,7 +694,7 @@
     if(runId)curS().runId=runId;
     if(!curS().runId){renderCurrentTrace();return;}
     try{
-      const response=await fetch("/api/v1/agent-runs/"+encodeURIComponent(curS().runId));
+      const response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(curS().runId));
       if(response.ok){
         const replay=await response.json();
         const trace=createTrace({runId:curS().runId,route:businessRouteForRun(replay.run||{})});
@@ -922,7 +943,7 @@
   async function loadStoredSkillResult(runId){
     if(!runId)return null;
     try{
-      const response=await fetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/skill-results");
+      const response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/skill-results");
       if(!response.ok)return null;
       const result=await response.json();
       return (result.items||[])
@@ -1233,7 +1254,7 @@
     renderQuickPrompts();
     updateSessionBadge();
     syncIdleChar();
-    void loadConversations(mode);
+    if(AUTH.ready)void loadConversations(mode);
   }
 
   function renderQuickPrompts(){
@@ -1377,7 +1398,7 @@
     list.innerHTML='<div class="empty">加载中…</div>';
     let data=null;
     try{
-      const r=await fetch("/api/v1/agent-runs?limit=20");
+      const r=await apiFetch("/api/v1/agent-runs?limit=20");
       if(r.ok){data=await r.json();}
     }catch(e){/* 后端不可用，回退 demo */}
 
@@ -1457,7 +1478,7 @@
     modal.style.display="grid";
     body.innerHTML='<div class="empty">加载中…</div>';
     try{
-      const r=await fetch("/api/v1/agent-runs/"+runId);
+      const r=await apiFetch("/api/v1/agent-runs/"+runId);
       const data=await r.json();
       const steps=data.steps||[];
       const routeStep=steps.find(step=>step.stepType==="ROUTE_DECISION");
@@ -1578,7 +1599,106 @@
     toast("已开始新的研究");
   }
 
+  function showAuthModal(){
+    const modal=document.getElementById("modalAuth");
+    if(modal)modal.style.display="grid";
+    document.getElementById("authLoginPanel").style.display="block";
+    document.getElementById("authAppliedPanel").style.display="none";
+    document.getElementById("authError").textContent="";
+    setTimeout(()=>document.getElementById("authUsername")?.focus(),0);
+  }
+
+  function updateAccountButton(){
+    const button=document.getElementById("accountButton");
+    if(button)button.textContent=AUTH.user?.username||"登录";
+  }
+
+  function resetWorkspaceForAuthenticatedUser(){
+    ST.sessionsByMode=Object.fromEntries(AGENTS.map(agent=>[agent.id,createSessionList(agent.id)]));
+    ST.currentInstrument=loadInstrument();
+    messages.replaceChildren();
+    updateAccountButton();
+    switchMode(ST.mode,false);
+  }
+
+  function completeAuthentication(data){
+    AUTH.ready=true;
+    AUTH.user={userId:String(data.userId),username:data.username};
+    if(data.token)localStorage.setItem(AUTH_TOKEN_KEY,data.token);
+    document.getElementById("modalAuth").style.display="none";
+    document.getElementById("appliedPassword").textContent="";
+    resetWorkspaceForAuthenticatedUser();
+    if(AUTH.pendingQuestion){
+      const question=AUTH.pendingQuestion;AUTH.pendingQuestion="";input.value=question;send(question);
+    }
+  }
+
+  async function initializeAuthentication(initialQuestion){
+    AUTH.pendingQuestion=initialQuestion||"";
+    const token=localStorage.getItem(AUTH_TOKEN_KEY);
+    if(token){
+      try{
+        const response=await NATIVE_FETCH("/api/v1/auth/me",{headers:{Authorization:"Bearer "+token}});
+        if(response.ok){
+          const profile=await response.json();
+          completeAuthentication({...profile,token});
+          return;
+        }
+      }catch(error){/* 登录服务暂不可用时进入登录页。 */}
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+    showAuthModal();
+  }
+
+  async function loginAccount(){
+    const username=document.getElementById("authUsername").value.trim();
+    const password=document.getElementById("authPassword").value;
+    const error=document.getElementById("authError");
+    if(!username||password.length<6){error.textContent="请输入账号和至少 6 位密码";return;}
+    error.textContent="正在登录…";
+    try{
+      const response=await NATIVE_FETCH("/api/v1/auth/login",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({username,password})
+      });
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"登录失败");
+      completeAuthentication(data);
+    }catch(reason){error.textContent=reason.message||"登录服务暂不可用";}
+  }
+
+  async function applyAccount(){
+    const error=document.getElementById("authError");
+    const button=document.getElementById("authApplyButton");
+    button.disabled=true;error.textContent="正在生成账号…";
+    try{
+      const response=await NATIVE_FETCH("/api/v1/auth/apply",{method:"POST"});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||"账号生成失败");
+      localStorage.setItem(AUTH_TOKEN_KEY,data.token);
+      AUTH.user={userId:String(data.userId),username:data.username};
+      document.getElementById("authLoginPanel").style.display="none";
+      document.getElementById("authAppliedPanel").style.display="block";
+      document.getElementById("appliedUsername").textContent=data.username;
+      document.getElementById("appliedPassword").textContent=data.initialPassword;
+      document.getElementById("authContinueButton").onclick=()=>completeAuthentication(data);
+    }catch(reason){error.textContent=reason.message||"账号申请服务暂不可用";}
+    finally{button.disabled=false;}
+  }
+
   document.getElementById("sendBtn").addEventListener("click",()=>send());
+  document.getElementById("authLoginButton").addEventListener("click",loginAccount);
+  document.getElementById("authApplyButton").addEventListener("click",applyAccount);
+  document.getElementById("authPassword").addEventListener("keydown",event=>{
+    if(event.key==="Enter")loginAccount();
+  });
+  document.getElementById("accountButton").addEventListener("click",()=>{
+    if(!AUTH.ready){showAuthModal();return;}
+    if(window.confirm("退出当前账号？本机保存的该账号会话目录不会被删除。")){
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      location.reload();
+    }
+  });
   composer.addEventListener("submit",e=>{e.preventDefault();send()});
   input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
   document.getElementById("newSession").addEventListener("click",newSession);
@@ -1707,10 +1827,7 @@
   document.body.dataset.mode=initMode;
   switchMode(initMode,false);
   const initialQuestion=(searchParams.get("q")||"").trim();
-  if(initialQuestion){
-    input.value=initialQuestion;
-    send();
-  }
+  void initializeAuthentication(initialQuestion);
 
   /* ===== 桌面宠物跟随当前 Agent（智能问答=六花，股市分析=茜） ===== */
   function syncIdleChar(){

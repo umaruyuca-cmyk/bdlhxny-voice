@@ -39,7 +39,7 @@ public class ConversationController {
             @RequestParam(required = false) String mode,
             @RequestParam(defaultValue = "20") int limit) {
         ChatMode chatMode = mode == null || mode.isBlank() ? null : ChatMode.from(mode);
-        return sessionService.listRecent(singleUserContext.userId(), chatMode, limit);
+        return sessionService.listRecent(singleUserContext.requireAuthenticatedUserId(), chatMode, limit);
     }
 
     /**
@@ -51,7 +51,7 @@ public class ConversationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sessionId 格式无效");
         }
         ConversationSessionService.ConversationDetail detail = sessionService.loadOwned(
-                singleUserContext.userId(), sessionId);
+                singleUserContext.requireAuthenticatedUserId(), sessionId);
         if (detail == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "会话不存在");
         }

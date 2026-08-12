@@ -15,6 +15,7 @@ class SummaryModel(Protocol):
 
     def compose(self, result: AnalysisResult) -> dict:
         """根据结构化 AnalysisResult 生成最终响应。"""
+        ...
 
 
 class DeterministicSummaryModel:

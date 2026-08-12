@@ -13,6 +13,7 @@ Python 不允许绕过 Java API 直接读取用户业务表。
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -26,6 +27,7 @@ class JavaDataAdapter(Protocol):
 
     async def execute(self, capability: str, arguments: dict) -> Observation:
         """调用白名单 Java Data API 并转换为 Observation。"""
+        ...
 
 
 # Java 白名单能力（架构文档 §13.3），Adapter 只允许这些
@@ -85,7 +87,10 @@ class HttpJavaDataAdapter:
         if path is None:
             return self._failed_observation(capability, f"Java API 无对应契约路径: {capability}")
 
-        headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+        # 服务间令牌证明调用方是 Python Runtime；个人 user_id 已在 Python API
+        # 通过用户 JWT 校验，个人 JWT 本身不进入 LangGraph State 或 Java Adapter。
+        headers = {"X-Internal-Token": self._token} if self._token else {}
+        started = time.monotonic()
         try:
             import httpx
 
@@ -97,20 +102,49 @@ class HttpJavaDataAdapter:
                 )
                 resp.raise_for_status()
                 data = resp.json()
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                metadata = data.get("metadata", {}) if isinstance(data, dict) else {}
+                query_status = str(metadata.get("query_status", "SUCCESS")).upper()
+                if query_status != "SUCCESS":
+                    return Observation(
+                        observation_id=str(uuid4()),
+                        capability=capability,
+                        status="PARTIAL",
+                        data=data,
+                        data_quality=DataQuality(
+                            completeness=0.0,
+                            quality_status="PARTIAL",
+                            known_unavailable=[capability],
+                        ),
+                        provenance=[ProvenanceRecord(
+                            source="java-api",
+                            tool=capability,
+                            as_of=metadata.get("data_time"),
+                            retrieved_at=_now_iso(),
+                            elapsed_ms=elapsed_ms,
+                        )],
+                        error_code=f"JAVA_DATA_{query_status}",
+                        error_message=f"Java Data API 查询状态: {query_status}",
+                    )
                 return Observation(
                     observation_id=str(uuid4()),
                     capability=capability,
                     status="SUCCESS",
                     data=data,
                     data_quality=DataQuality(completeness=1.0, quality_status="OK"),
-                    provenance=[ProvenanceRecord(source="java-api", tool=capability, retrieved_at=_now_iso())],
+                    provenance=[ProvenanceRecord(
+                        source="java-api",
+                        tool=capability,
+                        as_of=metadata.get("data_time"),
+                        retrieved_at=_now_iso(),
+                        elapsed_ms=elapsed_ms,
+                    )],
                 )
         except Exception as exc:
             logger.warning("Java API 调用失败 (capability=%s): %s", capability, exc)
-            # 生产环境：不降级 mock，返回 UNAVAILABLE（如实标记）
-            if self._production:
-                return self._unavailable_observation(capability, f"Java API 调用失败: {exc}")
-            return self._mock_observation(capability, arguments)
+            # 一旦显式配置真实 Java 地址，401/404/超时都必须如实返回不可用；
+            # mock 只允许用于完全未配置 base_url 的本地开发环境。
+            return self._unavailable_observation(capability, f"Java API 调用失败: {exc}")
 
     # ── mock 降级实现（开发环境/测试用，带 is_mock 标记）──
 

@@ -646,6 +646,25 @@ textarea::placeholder{color:#a7aebc}
 .form-error{min-height:18px;margin-top:5px;color:var(--red);font-size:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 .modal-actions .ac-btn{height:34px}
+.chat-head-right{display:flex;align-items:center;gap:10px}
+.account-chip{
+  height:28px;max-width:160px;padding:0 10px;border:1px solid var(--line);border-radius:999px;
+  background:var(--card);color:var(--text-2);font:inherit;font-size:10px;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.account-chip:hover{border-color:var(--primary);color:var(--primary)}
+.auth-overlay{z-index:240;background:rgba(20,24,32,.52);backdrop-filter:blur(5px)}
+.auth-modal{width:min(420px,92vw)}
+.auth-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.auth-actions .ac-btn,.auth-continue{height:40px}
+.auth-success{margin:0 0 14px;color:var(--text-2);font-size:12px;line-height:1.7}
+.credential-box{
+  display:grid;grid-template-columns:76px 1fr;align-items:center;gap:10px;margin:8px 0;
+  padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--fill-1);
+}
+.credential-box span{color:var(--text-3);font-size:11px}
+.credential-box strong{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;user-select:all}
+.auth-continue{width:100%;margin-top:12px}
 .step-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f0f1f4;font-size:12px}
 .step-no{
   width:24px;height:24px;flex:none;display:grid;place-items:center;border-radius:50%;
