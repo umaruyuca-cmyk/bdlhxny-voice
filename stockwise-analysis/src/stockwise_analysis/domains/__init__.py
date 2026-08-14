@@ -4,7 +4,7 @@
 - ``domain/``   = 确定性计算，禁止依赖 LangGraph / LangChain / MCP / Mem0；
 - ``domains/``  = 领域编排与跨层契约，可依赖 Adapter / Registry / Graph。
 
-本包第一阶段只承载契约，不承载任何业务执行逻辑。
+本包承载通用契约与领域运行时；具体金融计算仍只存在于 ``domain/``。
 """
 
 from .contracts import (
@@ -14,6 +14,7 @@ from .contracts import (
     DomainConstraint,
     DomainConflict,
     DomainContractModel,
+    DomainError,
     DomainFact,
     DomainFinding,
     DomainOperation,
@@ -33,6 +34,7 @@ __all__ = [
     "DomainConstraint",
     "DomainConflict",
     "DomainContractModel",
+    "DomainError",
     "DomainFact",
     "DomainFinding",
     "DomainOperation",

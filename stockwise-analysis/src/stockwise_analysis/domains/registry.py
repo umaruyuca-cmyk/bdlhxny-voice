@@ -1,10 +1,7 @@
 """领域运行时注册表（31 号统一开发实施 Prompt §7.1）。
 
-实施标记：``SW31-P1-DOMAIN-CONTRACTS``。当前注册表未接入现有运行路径。
-
-阶段 1 只建立注册表骨架；``FinanceRuntime``（阶段 2）通过
-``DomainRegistry.register("finance", runtime)`` 接入，认知层（阶段 5）
-通过 ``DomainRegistry.get("finance")`` 路由到对应领域运行时。
+M1 已将 ``FinanceRuntime`` 注册为 ``finance`` 领域；现有 Root Graph 仍是默认
+执行入口，后续认知层可通过本注册表显式路由到领域运行时。
 
 注册表只保存领域到运行时的稳定映射，不保存业务策略。
 """

@@ -1,10 +1,12 @@
 """应用装配入口。
 
-负责把所有组件（LLM、Memory、Gateway、Agent）按配置创建并注入到 Root Graph。
+负责把所有组件（LLM、Memory、Gateway、Agent）按配置创建并注入到 Root Graph，
+同时装配独立、非默认入口的 M1 Finance Runtime。
 装配原则：每个组件都走"有配置用真实版、无配置降级"的路径，保证应用在任何
 环境（无 API Key、无 Mem0、无 MCP）都能启动并跑通流程——只是质量从 LLM 降到规则。
 
-生产部署时替换 Checkpointer 实现即可，不需要修改 Graph 拓扑。
+Root Graph 的生产部署需替换 Checkpointer；M1 Finance Runtime 本身不接入
+Checkpointer，持久化与发布门禁由 M0 单独完成。
 """
 
 from __future__ import annotations
@@ -48,6 +50,8 @@ class StockWiseApplication:
     run_registry: Any | None = None
     chat_session_store: Any | None = None
     capability_registry: Any | None = None
+    domain_registry: Any | None = None
+    finance_runtime: Any | None = None
 
 
 def create_application(
@@ -122,6 +126,19 @@ def create_application(
 
     analysis_capability = create_analysis_capability()
 
+    # ── 4.6b M1 Finance Runtime（独立装配，不接默认 Root Graph 流量）──
+    from stockwise_analysis.domains.finance.runtime import create_finance_runtime
+    from stockwise_analysis.domains.registry import DomainRegistry
+
+    finance_runtime = create_finance_runtime(
+        capability_registry=capability_registry,
+        gateway_adapter=gateway_adapter,
+        web_search_adapter=web_search_adapter,
+        analysis_capability=analysis_capability,
+    )
+    domain_registry = DomainRegistry()
+    domain_registry.register("finance", finance_runtime)
+
     # ── 4.7 分析历史存储（v2.1 §9.3：审计/历史查询，与 Mem0 分离）──
     from .history import create_history_store
 
@@ -177,6 +194,8 @@ def create_application(
         run_registry=run_registry,
         chat_session_store=chat_session_store,
         capability_registry=capability_registry,
+        domain_registry=domain_registry,
+        finance_runtime=finance_runtime,
     )
 
 

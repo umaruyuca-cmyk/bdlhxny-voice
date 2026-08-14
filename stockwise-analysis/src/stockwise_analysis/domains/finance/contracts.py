@@ -1,7 +1,7 @@
 """金融领域边界契约（31 号统一开发实施 Prompt §7.3-§7.5、§9.2、§10.3）。
 
-实施标记：``SW31-P1-DOMAIN-CONTRACTS``。当前只提供严格 Schema，不包含
-Finance Runtime、StockResearchResult 构建器或 Suitability 策略实现。
+契约由 M1 ``FinanceRuntime`` 消费；当前只开放客观股票研究，Suitability 等
+个性化动作保持禁用并返回稳定错误。
 
 契约原则（对齐通用层 ``domains/contracts.py``）：
 - ``FinancialDomainRequest`` 扩展 ``DomainRequest``，禁止复制一套语义相同的基类；
@@ -22,6 +22,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from stockwise_analysis.contracts.analysis import AnalysisResult
 from stockwise_analysis.domains.contracts import (
     ConfidenceAssessment,
     DomainConflict,
@@ -60,13 +61,28 @@ class FinancialDomainRequest(DomainRequest):
 
     domain: Literal["finance"] = "finance"
     financial_intent: FinancialIntent = FinancialIntent.STOCK_RESEARCH
+    analysis_type: Literal[
+        "market_snapshot",
+        "technical",
+        "fundamental",
+        "valuation",
+        "comprehensive",
+    ] = "market_snapshot"
+    requested_topics: set[Literal[
+        "news",
+        "money_flow",
+        "industry",
+        "web_research",
+    ]] = Field(default_factory=set)
     instruments: list[FinancialInstrument] = Field(default_factory=list)
     requires_financial_snapshot: bool = False
 
     @model_validator(mode="after")
     def validate_finance_request(self) -> "FinancialDomainRequest":
-        if self.financial_intent in {FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY} and not self.instruments:
-            raise ValueError(f"{self.financial_intent} requires at least one instrument")
+        if self.financial_intent == FinancialIntent.STOCK_RESEARCH and len(self.instruments) != 1:
+            raise ValueError("STOCK_RESEARCH requires exactly one instrument")
+        if self.financial_intent == FinancialIntent.SUITABILITY and not self.instruments:
+            raise ValueError("SUITABILITY requires at least one instrument")
         return self
 
 
@@ -358,6 +374,7 @@ class FinancialDomainOutcome(DomainOutcome):
 
     domain: Literal["finance"] = "finance"
     financial_intent: FinancialIntent = FinancialIntent.STOCK_RESEARCH
+    analysis_result: AnalysisResult | None = None
     stock_research_result: StockResearchResult | None = None
     suitability: SuitabilityAssessment | None = None
     portfolio_impact: PortfolioImpact | None = None

@@ -35,6 +35,7 @@ class DomainOperation(StrEnum):
     """领域授权操作集合；代表"允许领域做什么"，不是认知层行动。"""
 
     READ_MARKET_DATA = "READ_MARKET_DATA"
+    READ_PUBLIC_RESEARCH = "READ_PUBLIC_RESEARCH"
     READ_PORTFOLIO = "READ_PORTFOLIO"
     READ_PROFILE = "READ_PROFILE"
     READ_FINANCIAL_GOALS = "READ_FINANCIAL_GOALS"
@@ -129,6 +130,15 @@ class ConfidenceAssessment(DomainContractModel):
     coverage_status: Literal["COMPLETE", "PARTIAL", "LIMITED"]
 
 
+class DomainError(DomainContractModel):
+    """稳定、可公开的领域失败信息。"""
+
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    field: str | None = None
+    retryable: bool = False
+
+
 class RequiredUserDecision(DomainContractModel):
     """领域结果需要用户做出的关键选择。"""
 
@@ -191,6 +201,13 @@ class DomainOutcome(DomainContractModel):
     risks: list[DomainRisk] = Field(default_factory=list)
     conflicts: list[DomainConflict] = Field(default_factory=list)
     confidence: ConfidenceAssessment
+    errors: list[DomainError] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     required_user_decisions: list[RequiredUserDecision] = Field(default_factory=list)
     suggested_followups: list[SuggestedFollowup] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_failure_errors(self) -> "DomainOutcome":
+        if self.status == "FAILED" and not self.errors:
+            raise ValueError("FAILED DomainOutcome requires at least one DomainError")
+        return self

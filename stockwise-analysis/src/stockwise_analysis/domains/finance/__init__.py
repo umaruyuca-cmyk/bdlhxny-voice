@@ -1,6 +1,6 @@
-"""金融领域契约层（标记：``SW31-P1-DOMAIN-CONTRACTS``）。
+"""金融领域的契约、授权、规划与 M1 薄运行时。
 
-第一阶段只承载金融领域的边界契约：
+公开边界包括：
 - ``FinancialDomainRequest / FinancialDomainOutcome``（扩展通用 DomainRequest/Outcome）；
 - ``FinancialSnapshot``（最小金融快照，阶段 4 Suitability 的输入）；
 - ``StockResearchResult``（客观研究结构化结果，阶段 3 下沉目标）；
@@ -41,9 +41,25 @@ from .contracts import (
     Technicals,
     Valuation,
 )
+from .authorization import (
+    ANALYSIS_CAPABILITY,
+    AuthorizationDecision,
+    FinanceCapabilityAuthorizationPolicy,
+    M1_OPERATION_CAPABILITIES,
+)
+from .planner import FinancePlan, FinancePlanner
+from .runtime import (
+    ApplicationFinanceCapabilityExecutor,
+    FinanceCapabilityExecutor,
+    FinanceRunState,
+    FinanceRuntime,
+    create_finance_runtime,
+)
 
 __all__ = [
     "AccountSnapshot",
+    "ANALYSIS_CAPABILITY",
+    "AuthorizationDecision",
     "ConcentrationConflict",
     "EvidenceConflict",
     "EvidenceFact",
@@ -53,6 +69,12 @@ __all__ = [
     "FinancialGoal",
     "FinancialInstrument",
     "FinancialIntent",
+    "FinanceCapabilityAuthorizationPolicy",
+    "FinancePlan",
+    "FinancePlanner",
+    "FinanceCapabilityExecutor",
+    "FinanceRunState",
+    "FinanceRuntime",
     "FinancialSnapshot",
     "Finding",
     "Fundamentals",
@@ -61,6 +83,7 @@ __all__ = [
     "LiquidityImpact",
     "LiquiditySnapshot",
     "MarketSnapshot",
+    "M1_OPERATION_CAPABILITIES",
     "MoneyFlow",
     "NewsEvent",
     "PortfolioImpact",
@@ -74,4 +97,6 @@ __all__ = [
     "SuitabilityCondition",
     "Technicals",
     "Valuation",
+    "ApplicationFinanceCapabilityExecutor",
+    "create_finance_runtime",
 ]

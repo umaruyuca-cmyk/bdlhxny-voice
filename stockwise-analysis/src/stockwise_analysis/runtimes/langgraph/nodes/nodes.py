@@ -456,111 +456,26 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
     缺失字段写入 data_quality.known_unavailable 和 limitations（如实标记，
     不伪造成功数据）。
     """
+    from stockwise_analysis.runtimes.shared import assemble_analysis_input
+
     observations = [Observation.model_validate(item) for item in current_run_observations(state)]
-
-    # capability → AnalysisInput 字段的映射
-    _CAPABILITY_TO_FIELD = {
-        "market.resolve_instrument": "instrument",
-        "market.get_realtime_quote": "realtime_quote",
-        "market.get_historical_prices": "historical_prices",
-        "market.get_financial_statements": "financial_data",
-        "market.get_valuation": "valuation_data",
-        "market.get_industry_context": "industry_context",
-        "market.get_money_flow": "money_flow_data",
-        "market.get_news": "news_context",
-        "research.web_search": "news_context",
-        "portfolio.get_current_positions": "portfolio_context",
-        "market.get_overseas": "overseas_context",  # 预留：MCP 暂不覆盖外围面
-    }
-
-    assembled: dict[str, Any] = {}
-    known_unavailable: list[str] = []
-    provenance: list[Any] = []
-
-    for obs in observations:
-        field = _CAPABILITY_TO_FIELD.get(obs.capability)
-        if field is None:
-            continue
-        provenance.extend(obs.provenance)
-        known_unavailable.extend(obs.data_quality.known_unavailable)
-        if obs.status in {"SUCCESS", "PARTIAL"} and obs.data is not None:
-            if field == "historical_prices":
-                assembled[field] = obs.data if isinstance(obs.data, list) else []
-            elif field == "news_context":
-                # MCP 新闻和 Web Search 都汇入证据列表，保留已有结果而非覆盖。
-                if isinstance(obs.data, dict):
-                    items = obs.data.get("items", obs.data.get("results", []))
-                elif isinstance(obs.data, list):
-                    items = obs.data
-                else:
-                    items = []
-                assembled.setdefault(field, []).extend(items if isinstance(items, list) else [])
-            elif field == "instrument":
-                assembled[field] = obs.data
-            else:
-                assembled[field] = obs.data
-        else:
-            # 失败/缺失的数据域如实标记
-            known_unavailable.append(obs.capability)
-
-    # 默认值：必须存在的字段
-    instrument_data = assembled.get("instrument") or {"symbol": (state.get("intent", {}).get("symbol") or "unknown")}
-
-    # 数据质量：completeness 按"本分析类型实际请求的 DataRequirement 中已满足
-    # 的比例"计算，而非全局域数——market_snapshot 只需 quote，不应因财报缺失
-    # 被扣分。缺失进 known_unavailable。
     requirements = state.get("data_requirements", [])
-    selected_capabilities = {req.get("capability") for req in requirements if req.get("capability")}
-    required_capabilities = {
-        req.get("capability") for req in requirements
-        if req.get("required", True) and req.get("capability")
-    }
-    fulfilled = {
-        obs.capability for obs in observations
-        if obs.status in {"SUCCESS", "PARTIAL"} and obs.capability in _CAPABILITY_TO_FIELD
-    }
-    if selected_capabilities:
-        completeness = len(selected_capabilities & fulfilled) / len(selected_capabilities)
-    else:
-        completeness = len(fulfilled) / max(len(_CAPABILITY_TO_FIELD), 1)
-    coverage = state.get("coverage", {})
-    missing_required = list(coverage.get("missing_required", []))
-    missing_optional = list(coverage.get("missing_optional", []))
-    known_unavailable = list(dict.fromkeys(known_unavailable + missing_required + missing_optional))
-    coverage_status = coverage.get("status")
-    if coverage_status == "LIMITED" or required_capabilities - fulfilled:
-        quality_status = "INVALID"
-    elif coverage_status == "PARTIAL" or completeness < 1.0:
-        quality_status = "PARTIAL"
-    else:
-        quality_status = "OK"
-    quality = DataQuality(
-        completeness=round(completeness, 2),
-        freshness="REALTIME",
-        quality_status=quality_status,
-        known_unavailable=known_unavailable,
-    )
-
-    analysis_input = AnalysisInput(
+    analysis_input = assemble_analysis_input(
         analysis_id=state.get("run_id", str(uuid4())),
         analysis_type=state.get("intent", {}).get("analysis_type", "market_snapshot"),
-        instrument=InstrumentRef.model_validate(instrument_data),
-        realtime_quote=assembled.get("realtime_quote"),
-        historical_prices=assembled.get("historical_prices", []),
-        financial_data=assembled.get("financial_data"),
-        valuation_data=assembled.get("valuation_data"),
-        industry_context=assembled.get("industry_context"),
-        money_flow_data=assembled.get("money_flow_data"),
-        news_context=assembled.get("news_context", []),
-        portfolio_context=assembled.get("portfolio_context"),
-        overseas_context=assembled.get("overseas_context"),
-        data_quality=quality,
-        provenance=provenance,
+        symbol=state.get("intent", {}).get("symbol") or "unknown",
+        observations=observations,
+        requirements=requirements,
     )
     result = _complete_current_task(state)
     result.update({
         "analysis_input": analysis_input.model_dump(),
-        "events": [event(state, "analysis.input_assembled", "assemble_analysis", {"known_unavailable": known_unavailable})],
+        "events": [event(
+            state,
+            "analysis.input_assembled",
+            "assemble_analysis",
+            {"known_unavailable": analysis_input.data_quality.known_unavailable},
+        )],
     })
     return result
 

@@ -17,6 +17,7 @@ from stockwise_analysis.cognitive.contracts import (
 from stockwise_analysis.domains.contracts import (
     ConfidenceAssessment,
     DomainBudget,
+    DomainError,
     DomainOperation,
     DomainOutcome,
     DomainRequest,
@@ -24,6 +25,7 @@ from stockwise_analysis.domains.contracts import (
 from stockwise_analysis.domains.finance.contracts import (
     FinancialDataMode,
     FinancialDomainRequest,
+    FinancialInstrument,
     FinancialIntent,
     FinancialSnapshot,
 )
@@ -97,13 +99,48 @@ def test_domain_outcome_rejects_final_chat_response_fields() -> None:
             final_response="不应由领域层生成",
         )
 
+    failed = DomainOutcome(
+        request_id="domain-1",
+        domain="finance",
+        status="FAILED",
+        confidence=confidence,
+        errors=[DomainError(code="ACTION_NOT_ENABLED", message="not enabled")],
+    )
+    assert failed.errors[0].code == "ACTION_NOT_ENABLED"
+    with pytest.raises(ValidationError, match="requires at least one DomainError"):
+        DomainOutcome(
+            request_id="domain-1",
+            domain="finance",
+            status="FAILED",
+            confidence=confidence,
+        )
+
 
 def test_financial_request_extends_domain_request_and_validates_intent() -> None:
-    with pytest.raises(ValidationError, match="requires at least one instrument"):
+    with pytest.raises(ValidationError, match="requires exactly one instrument"):
         FinancialDomainRequest(
             **_domain_request().model_dump(),
             financial_intent=FinancialIntent.STOCK_RESEARCH,
         )
+
+    with pytest.raises(ValidationError, match="requires exactly one instrument"):
+        FinancialDomainRequest(
+            **_domain_request().model_dump(),
+            financial_intent=FinancialIntent.STOCK_RESEARCH,
+            instruments=[
+                FinancialInstrument(symbol="600519"),
+                FinancialInstrument(symbol="000001"),
+            ],
+        )
+
+    research = FinancialDomainRequest(
+        **_domain_request().model_dump(),
+        instruments=[FinancialInstrument(symbol="600519")],
+        analysis_type="technical",
+        requested_topics={"news", "money_flow"},
+    )
+    assert research.analysis_type == "technical"
+    assert research.requested_topics == {"news", "money_flow"}
 
     planning = FinancialDomainRequest(
         **_domain_request(objective="评估财务目标").model_dump(),

@@ -65,6 +65,13 @@ _OPTIONAL_TRIGGERS: dict[str, tuple[str, ...]] = {
     "research.web_search": ("最新", "新闻", "消息", "事件", "政策", "舆情"),
 }
 
+REQUESTED_TOPIC_CAPABILITIES: dict[str, str] = {
+    "news": "market.get_news",
+    "money_flow": "market.get_money_flow",
+    "industry": "market.get_industry_context",
+    "web_research": "research.web_search",
+}
+
 
 class CapabilityRequirementPlanner:
     """从受控策略生成本轮需求和候选能力。"""
@@ -82,16 +89,57 @@ class CapabilityRequirementPlanner:
             if analysis_type == "comprehensive" or self._is_requested(capability, message):
                 selected.append(capability)
 
+        return self._build_requirements(selected, policy, intent, request)
+
+    def plan_explicit(
+        self,
+        *,
+        analysis_type: str,
+        symbol: str,
+        requested_topics: set[str] | frozenset[str] = frozenset(),
+    ) -> list[DataRequirement]:
+        """为 Finance Runtime 生成不依赖自由文本关键词的确定性计划。"""
+
+        try:
+            policy = REQUIREMENT_POLICIES[analysis_type]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported analysis_type: {analysis_type}") from exc
+
+        selected = list(policy.required)
+        if analysis_type == "comprehensive":
+            selected.extend(policy.optional)
+        else:
+            for topic in sorted(requested_topics):
+                try:
+                    capability = REQUESTED_TOPIC_CAPABILITIES[topic]
+                except KeyError as exc:
+                    raise ValueError(f"Unsupported requested_topic: {topic}") from exc
+                if capability not in policy.optional:
+                    raise ValueError(
+                        f"REQUESTED_TOPIC_NOT_ALLOWED: {topic} is not available for {analysis_type}"
+                    )
+                selected.append(capability)
+
+        intent = {"analysis_type": analysis_type, "symbol": symbol}
+        request = {"symbol": symbol}
+        return self._build_requirements(selected, policy, intent, request)
+
+    def _build_requirements(
+        self,
+        selected: list[str],
+        policy: RequirementPolicy,
+        intent: dict[str, Any],
+        request: dict[str, Any],
+    ) -> list[DataRequirement]:
         requirements: list[DataRequirement] = []
-        for index, capability in enumerate(selected):
+        for index, capability in enumerate(dict.fromkeys(selected)):
             if not self._registry.contains(capability):
                 raise ValueError(f"Requirement policy references unregistered capability: {capability}")
-            required = capability in policy.required
             requirements.append(
                 DataRequirement(
                     requirement_id=f"cap-{index + 1}-{capability.replace('.', '-')}",
                     capability=capability,
-                    required=required,
+                    required=capability in policy.required,
                     reason=self._reason(capability),
                     arguments=self._arguments(capability, intent, request),
                 )

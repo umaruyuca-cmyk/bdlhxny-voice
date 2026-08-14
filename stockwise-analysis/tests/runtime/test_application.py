@@ -24,3 +24,6 @@ def test_development_assembles_with_graceful_degradation():
     assert app.query_agent is not None  # 规则版 QueryAgent
     assert app.summary_model is not None  # 确定性版 SummaryModel
     assert app.gateway_adapter is not None  # Gateway 创建成功（连接探测延迟到调用时）
+    assert app.domain_registry.get("finance") is app.finance_runtime
+    assert app.finance_runtime is not None
+    assert not hasattr(app.finance_runtime, "checkpointer")
