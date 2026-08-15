@@ -24,6 +24,10 @@ from .contracts import (
     Fundamentals,
     GoalImpact,
     IndustryContext,
+    InstrumentCandidate,
+    InstrumentMention,
+    InstrumentResolutionOutcome,
+    InstrumentResolutionRequest,
     LiquidityImpact,
     LiquiditySnapshot,
     MarketSnapshot,
@@ -49,6 +53,10 @@ from .authorization import (
     M3_OPERATION_CAPABILITIES,
 )
 from .planner import FinancePlan, FinancePlanner
+from .instrument_resolver import (
+    FinanceInstrumentResolver,
+    RESOLVE_INSTRUMENT_CAPABILITY,
+)
 from .research_builder import StockResearchResultBuilder
 from .snapshot_builder import (
     FinancialSnapshotBuilder,
@@ -59,6 +67,12 @@ from .snapshot_builder import (
 from .valuation_builder import (
     PortfolioValuationBuilder,
     PortfolioValuationError,
+)
+from .suitability_preflight import (
+    PENDING_RULE_IDS,
+    PENDING_RULE_SET_VERSION,
+    SuitabilityPreflight,
+    SuitabilityPreflightError,
 )
 from .runtime import (
     ApplicationFinanceCapabilityExecutor,
@@ -93,6 +107,7 @@ __all__ = [
     "FinanceCapabilityExecutor",
     "FinanceRunState",
     "FinanceRuntime",
+    "FinanceInstrumentResolver",
     "FINANCE_DESCRIPTOR",
     "FinancialSnapshot",
     "FinancialSnapshotBuilder",
@@ -101,6 +116,10 @@ __all__ = [
     "Fundamentals",
     "GoalImpact",
     "IndustryContext",
+    "InstrumentCandidate",
+    "InstrumentMention",
+    "InstrumentResolutionOutcome",
+    "InstrumentResolutionRequest",
     "LiquidityImpact",
     "LiquiditySnapshot",
     "MarketSnapshot",
@@ -113,7 +132,10 @@ __all__ = [
     "PORTFOLIO_HEALTH_MANIFEST",
     "PortfolioValuationBuilder",
     "PortfolioValuationError",
+    "PENDING_RULE_IDS",
+    "PENDING_RULE_SET_VERSION",
     "ResearchRisk",
+    "RESOLVE_INSTRUMENT_CAPABILITY",
     "RiskBudgetImpact",
     "RiskProfile",
     "Scenario",
@@ -123,6 +145,8 @@ __all__ = [
     "SnapshotIdentityError",
     "SuitabilityAssessment",
     "SuitabilityCondition",
+    "SuitabilityPreflight",
+    "SuitabilityPreflightError",
     "SUITABILITY_MANIFEST",
     "Technicals",
     "Valuation",

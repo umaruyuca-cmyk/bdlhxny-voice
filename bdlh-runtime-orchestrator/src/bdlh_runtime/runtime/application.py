@@ -121,7 +121,7 @@ def create_application(
     capability_registry = build_default_capability_registry()
     # 从 CapabilityRegistry 组装能力清单；Memory 召回内容由 load_memory 节点写入
     # state，ContextBuilder 只做组装不做 I/O。
-    context_builder = _create_context_builder(capability_registry)
+    context_builder = _create_context_builder(capability_registry, memory_store=memory_store)
     from bdlh_runtime.tools.analysis_capability import create_analysis_capability
 
     analysis_capability = create_analysis_capability()
@@ -264,12 +264,15 @@ def _create_web_search_adapter(settings: Settings) -> Any:
     )
 
 
-def _create_context_builder(capability_registry: Any) -> Any:
+def _create_context_builder(capability_registry: Any, *, memory_store: Any) -> Any:
     """创建 ContextBuilder（审查文档 §4.4）。
 
     工具清单从 CapabilityRegistry 组装（确定性）；ContextBuilder 本身不做 I/O，
     Memory 召回内容由 load_memory 节点写入 state 后传入。
     """
-    from bdlh_runtime.runtimes.langgraph.context import ContextBuilder
+    from bdlh_runtime.runtimes.langgraph.context import ContextBuilder, ContextService
     tool_manifest = [spec.manifest() for spec in capability_registry.list()]
-    return ContextBuilder(tool_manifest=tool_manifest)
+    return ContextService(
+        builder=ContextBuilder(tool_manifest=tool_manifest),
+        memory_store=memory_store,
+    )

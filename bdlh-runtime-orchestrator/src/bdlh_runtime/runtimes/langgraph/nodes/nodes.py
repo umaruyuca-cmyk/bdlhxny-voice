@@ -697,17 +697,29 @@ def make_understand_request_node(query_agent: Any, context_builder: Any = None):
     无注入时行为不变。
     """
 
-    def understand_with_context(state: RootState) -> dict[str, Any]:
+    async def understand_with_context(state: RootState) -> dict[str, Any]:
         request = state.get("request", {})
         extra_context: dict[str, Any] | None = None
         if context_builder is not None:
-            ctx = context_builder.build(
-                user_profile=state.get("user_profile"),
-                conversation=state.get("conversation", []),
-                recalled_memories=state.get("recalled_memories", []),
-                round_data=state.get("observations", []),
-                user_input=request,
-            )
+            if getattr(context_builder, "is_context_service", False):
+                ctx = await context_builder.build(
+                    user_id=state.get("user_id"),
+                    conversation=state.get("conversation", []),
+                    round_data=state.get("observations", []),
+                    user_input=request,
+                    purpose="classify",
+                    budget="small",
+                )
+            else:
+                ctx = context_builder.build(
+                    user_profile=state.get("user_profile"),
+                    conversation=state.get("conversation", []),
+                    recalled_memories=state.get("recalled_memories", []),
+                    round_data=state.get("observations", []),
+                    user_input=request,
+                    purpose="classify",
+                    budget="small",
+                )
             # 只把语义/确定性块传给 agent（避免把工具清单等冗余塞给意图识别）
             extra_context = {
                 "user_profile": ctx.blocks["user_profile"].content if "user_profile" in ctx.blocks else {},

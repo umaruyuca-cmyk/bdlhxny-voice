@@ -56,6 +56,58 @@ class FinancialInstrument(DomainContractModel):
     market: str = "CN"
 
 
+class InstrumentMention(DomainContractModel):
+    """Cognitive 提取、由 Finance 解析的证券提及。"""
+
+    raw_text: str = Field(min_length=1)
+    normalized_text: str = Field(min_length=1)
+    mention_type: Literal["CODE", "NAME", "ALIAS", "REFERENCE"]
+    market_hint: str | None = None
+    exchange_hint: str | None = None
+    context_entity_ref: str | None = None
+
+
+class InstrumentCandidate(DomainContractModel):
+    """带来源的受控证券主数据候选。"""
+
+    instrument: FinancialInstrument
+    canonical_symbol: str = Field(min_length=1)
+    exchange: str = Field(min_length=1)
+    currency: str | None = None
+    match_type: Literal["EXACT_CODE", "EXACT_NAME", "EXACT_ALIAS", "FUZZY"]
+    source_refs: list[str] = Field(min_length=1)
+
+
+class InstrumentResolutionRequest(DomainRequest):
+    """Finance 的预研究解析请求；不是新的金融业务意图或隐藏工具调用。"""
+
+    domain: Literal["finance"] = "finance"
+    mention: InstrumentMention
+    allowed_instrument_types: set[Literal["stock", "etf", "index", "fund", "bond"]] = Field(
+        default_factory=lambda: {"stock"}
+    )
+    max_candidates: int = Field(default=5, ge=1, le=5)
+
+
+class InstrumentResolutionOutcome(DomainOutcome):
+    """证券解析的结构化结果；Cognitive 仅按该状态路由。"""
+
+    domain: Literal["finance"] = "finance"
+    resolution_status: Literal["RESOLVED", "AMBIGUOUS", "NOT_FOUND", "UNAVAILABLE"]
+    selected: InstrumentCandidate | None = None
+    candidates: list[InstrumentCandidate] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> "InstrumentResolutionOutcome":
+        if self.resolution_status == "RESOLVED" and self.selected is None:
+            raise ValueError("RESOLVED requires a selected candidate")
+        if self.resolution_status != "RESOLVED" and self.selected is not None:
+            raise ValueError("only RESOLVED may carry a selected candidate")
+        if self.resolution_status == "AMBIGUOUS" and not self.candidates:
+            raise ValueError("AMBIGUOUS requires at least one candidate")
+        return self
+
+
 class FinancialDomainRequest(DomainRequest):
     """一次金融领域调用的输入边界。"""
 

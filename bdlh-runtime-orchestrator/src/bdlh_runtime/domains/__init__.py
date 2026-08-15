@@ -26,6 +26,7 @@ from .contracts import (
     SuggestedFollowup,
 )
 from .registry import DomainRegistry
+from .dispatcher import DomainDispatcher, DomainRuntime
 
 __all__ = [
     "ConfidenceAssessment",
@@ -42,6 +43,8 @@ __all__ = [
     "DomainRequest",
     "DomainRisk",
     "DomainRegistry",
+    "DomainDispatcher",
+    "DomainRuntime",
     "GoalRef",
     "RequiredUserDecision",
     "SuggestedFollowup",

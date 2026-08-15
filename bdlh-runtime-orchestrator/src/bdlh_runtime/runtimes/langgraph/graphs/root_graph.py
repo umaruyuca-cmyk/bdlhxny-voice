@@ -25,7 +25,6 @@ from ..nodes.nodes import (
     load_portfolio_context,
     make_compose_response_node,
     make_direct_response_node,
-    make_load_memory_node,
     make_load_portfolio_context_node,
     make_persist_history_node,
     make_persist_memory_node,
@@ -74,7 +73,7 @@ def build_root_graph(
     走规则版降级，保证 Graph 在任何环境都能跑。Application Runtime 负责装配。
 
     - checkpointer：状态持久化，默认 InMemorySaver。
-    - memory_store：有则在首尾插入 load/persist 记忆节点（Mem0）。
+    - memory_store：有则在出口插入受控的长期记忆写入节点（Mem0）；读取只经 Context Service。
     - query_agent：有则 query_graph 用 LLM 版理解节点。
     - summary_model：有则 compose_response 用 LLM 版总结。
     - direct_response_model：知识问答的一次直接调用，不进入 ReAct/Tool Loop。
@@ -85,10 +84,8 @@ def build_root_graph(
 
     graph = StateGraph(RootState)
 
-    # 记忆首部节点：有 memory_store 时才加入（工厂函数闭包绑定实例）
+    # Mem0 读取只允许发生在 ADR-015 Context Service；本图只保留出口写入。
     has_memory = memory_store is not None
-    if has_memory:
-        graph.add_node("load_memory", make_load_memory_node(memory_store))
 
     graph.add_node(
         "query_graph",
@@ -145,12 +142,7 @@ def build_root_graph(
     # direct_response 快路径：直接回答后跳过 dispatch_workflow，直接 finish
     graph.add_edge("direct_response", "finish")
 
-    # 入口：有记忆时先 load_memory 再 query_graph，否则直接 query_graph
-    if has_memory:
-        graph.add_edge(START, "load_memory")
-        graph.add_edge("load_memory", "query_graph")
-    else:
-        graph.add_edge(START, "query_graph")
+    graph.add_edge(START, "query_graph")
 
     graph.add_conditional_edges(
         "query_graph",

@@ -19,7 +19,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from bdlh_runtime.domains.contracts import DomainRequest
+from bdlh_runtime.domains.contracts import DomainOutcome, DomainRequest
 
 #: 未启用行动的稳定审计码（§7.2）：不能静默降级为 RESPOND。
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
@@ -72,6 +72,58 @@ class CognitiveAction(BaseModel):
         if self.action_type != CognitiveActionType.INVOKE_DOMAIN and self.domain_request is not None:
             raise ValueError("only INVOKE_DOMAIN may carry a domain_request payload")
         return self
+
+
+class InputEvent(BaseModel):
+    """M4 顶层编排的严格入口；身份与会话均由网关注入。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=20_000)
+    run_id: str | None = None
+
+
+class CognitiveState(BaseModel):
+    """M4 编排的最小可审计状态；不保存原始供应商数据或隐藏推理。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event: InputEvent
+    situation_summary: str | None = None
+    uncertainty_codes: list[str] = Field(default_factory=list)
+    action: CognitiveAction | None = None
+    domain_request: DomainRequest | None = None
+    domain_outcome: DomainOutcome | None = None
+    communication_plan: "CommunicationPlan | None" = None
+    public_events: list[str] = Field(default_factory=list)
+    error_codes: list[str] = Field(default_factory=list)
+
+
+class CommunicationPlan(BaseModel):
+    """表达计划，只引用领域结果，不得修改领域事实。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    response_kind: Literal["ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED"]
+    summary: str = Field(min_length=1)
+    required_fields: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
+class PublicResponse(BaseModel):
+    """对 SSE/JSON 稳定暴露的 M4 回复契约。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    response_kind: Literal["ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED"]
+    message: str = Field(min_length=1)
+    evidence_refs: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    audit_codes: list[str] = Field(default_factory=list)
 
 
 def is_action_enabled(action_type: CognitiveActionType) -> bool:

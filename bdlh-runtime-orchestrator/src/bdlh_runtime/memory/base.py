@@ -1,8 +1,8 @@
 """记忆层统一抽象。
 
 所有记忆实现（Mem0、降级 NoOp、未来其他后端）都遵守这套接口。LangGraph
-版只在对话首尾调用 search/get_profile 和 add，ReAct 循环中不碰记忆——
-这是保证流程确定性的关键边界（见架构文档 v3.1 §5.1）。
+版只允许 Context Service 在入口读取 search/get_profile，并由 Run 出口写入 add；
+ReAct 循环中不碰记忆——这是保证流程确定性的关键边界（ADR-015）。
 
 为什么用 Protocol 而非 ABC：记忆实现可能是异步的（Mem0 内部调 LLM），
 Protocol 允许实现自行决定是否 async，调用方通过统一签名适配。

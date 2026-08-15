@@ -4,5 +4,6 @@
 """
 
 from .context_builder import CONTEXT_BLOCKS, BuiltContext, ContextBlock, ContextBuilder
+from .context_service import ContextService
 
-__all__ = ["CONTEXT_BLOCKS", "BuiltContext", "ContextBlock", "ContextBuilder"]
+__all__ = ["CONTEXT_BLOCKS", "BuiltContext", "ContextBlock", "ContextBuilder", "ContextService"]

@@ -4,10 +4,22 @@
 Action Policy 等运行时在阶段 5 实现。
 """
 
-from .contracts import ACTION_NOT_ENABLED, CognitiveAction, CognitiveActionType
+from .contracts import (
+    ACTION_NOT_ENABLED,
+    CognitiveAction,
+    CognitiveActionType,
+    CognitiveState,
+    CommunicationPlan,
+    InputEvent,
+    PublicResponse,
+)
 
 __all__ = [
     "ACTION_NOT_ENABLED",
     "CognitiveAction",
     "CognitiveActionType",
+    "CognitiveState",
+    "CommunicationPlan",
+    "InputEvent",
+    "PublicResponse",
 ]

@@ -23,8 +23,11 @@ from .contracts import (
     FinancialDomainOutcome,
     FinancialDomainRequest,
     FinancialIntent,
+    InstrumentResolutionOutcome,
+    InstrumentResolutionRequest,
     StockResearchResult,
 )
+from .instrument_resolver import FinanceInstrumentResolver
 from .planner import FinancePlanner
 from .research_builder import StockResearchResultBuilder
 from .snapshot_builder import USER_SNAPSHOT_CAPABILITIES
@@ -114,13 +117,33 @@ class FinanceRuntime:
         authorization: FinanceCapabilityAuthorizationPolicy,
         executor: FinanceCapabilityExecutor,
         research_builder: StockResearchResultBuilder | None = None,
+        instrument_resolver: FinanceInstrumentResolver | None = None,
     ) -> None:
         self._planner = planner
         self._authorization = authorization
         self._executor = executor
         self._research_builder = research_builder or StockResearchResultBuilder()
+        self._instrument_resolver = instrument_resolver
 
-    async def run(self, request: FinancialDomainRequest) -> FinancialDomainOutcome:
+    async def run(
+        self, request: FinancialDomainRequest | InstrumentResolutionRequest
+    ) -> FinancialDomainOutcome | InstrumentResolutionOutcome:
+        if isinstance(request, InstrumentResolutionRequest):
+            if self._instrument_resolver is None:
+                return InstrumentResolutionOutcome(
+                    request_id=request.request_id,
+                    domain="finance",
+                    status="LIMITED",
+                    resolution_status="UNAVAILABLE",
+                    confidence=ConfidenceAssessment(
+                        level="LOW",
+                        reasons=["Finance instrument resolver is not configured"],
+                        coverage_status="LIMITED",
+                    ),
+                    errors=[DomainError(code="RESOLVER_NOT_CONFIGURED", message="Finance instrument resolver is not configured")],
+                    limitations=["Finance instrument resolver is not configured"],
+                )
+            return await self._instrument_resolver.resolve(request)
         if request.financial_intent != FinancialIntent.STOCK_RESEARCH:
             return self._failed(
                 request,
@@ -382,4 +405,9 @@ def create_finance_runtime(
         authorization=authorization,
         executor=executor,
         research_builder=StockResearchResultBuilder(),
+        instrument_resolver=FinanceInstrumentResolver(
+            registry=capability_registry,
+            authorization=authorization,
+            executor=executor,
+        ),
     )

@@ -13,6 +13,7 @@ ContextBuilder 是纯函数式的：它不持有状态，只把传入的各来�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from typing import Any
 
 # 7 块上下文的固定顺序，与架构文档 §6 一致
@@ -46,6 +47,10 @@ class BuiltContext:
     """组装完成的完整上下文。"""
 
     blocks: dict[str, ContextBlock] = field(default_factory=dict)
+    purpose: str = "answer"
+    token_budget: int = 1800
+    tokens_estimate: int = 0
+    dropped: list[str] = field(default_factory=list)
 
     def to_prompt_dict(self) -> dict[str, Any]:
         """转为可直接喂给 LLM 的 dict（去掉确定性标记，只留内容）。"""
@@ -99,13 +104,15 @@ class ContextBuilder:
         recalled_memories: list[dict[str, Any]],
         round_data: list[dict[str, Any]] | None,
         user_input: dict[str, Any],
+        purpose: str = "answer",
+        budget: str | int = "default",
     ) -> BuiltContext:
         """组装完整上下文。
 
         所有参数来自 RootState（load_memory 节点写入的画像/记忆、
         conversation 累积的对话、本轮 observations 作为 round_data）。
         """
-        ctx = BuiltContext()
+        ctx = BuiltContext(purpose=purpose, token_budget=self._resolve_budget(budget))
 
         # ① 系统提示（固定，确定性）
         ctx.blocks["system_prompt"] = ContextBlock(
@@ -124,6 +131,8 @@ class ContextBuilder:
 
         # ④ 近期对话历史（带截断，确定性）
         truncated = conversation[-self._max_turns :] if conversation else []
+        if conversation and len(truncated) < len(conversation):
+            ctx.dropped.append("conversation:older_turns")
         ctx.blocks["conversation"] = ContextBlock(
             name="conversation", content=truncated, deterministic=True
         )
@@ -143,4 +152,36 @@ class ContextBuilder:
             name="user_input", content=user_input or {}, deterministic=True
         )
 
+        self._trim_to_budget(ctx)
         return ctx
+
+    @staticmethod
+    def _resolve_budget(budget: str | int) -> int:
+        if isinstance(budget, int):
+            if budget <= 0:
+                raise ValueError("Context token budget must be positive")
+            return budget
+        presets = {"small": 600, "default": 1800, "heavy": 4000}
+        try:
+            return presets[budget]
+        except KeyError as exc:
+            raise ValueError(f"Unknown Context budget: {budget}") from exc
+
+    @staticmethod
+    def _estimate_tokens(value: Any) -> int:
+        return max(1, len(json.dumps(value, ensure_ascii=False, default=str)) // 4)
+
+    def _trim_to_budget(self, context: BuiltContext) -> None:
+        """按 ADR-015 的优先级确定性裁剪，永不删除当前用户输入。"""
+        def estimate() -> int:
+            return sum(self._estimate_tokens(block.content) for block in context.blocks.values())
+
+        for name in ("recalled_memories", "conversation", "round_data", "tool_manifest"):
+            while estimate() > context.token_budget:
+                content = context.blocks[name].content
+                if not isinstance(content, list) or not content:
+                    break
+                context.blocks[name].content = content[-1:] if name == "conversation" else content[:1]
+                context.dropped.append(f"{name}:budget")
+                break
+        context.tokens_estimate = estimate()
