@@ -1,8 +1,8 @@
 # BDLH Agent Runtime Runtime 定位与 Skill 扩展说明
 
 > **文档性质：定位与扩展面说明，用于对外表述与新人理解**
-> **权威声明：本文不是生产决策来源。发生冲突时以 [00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) 为准；已生效的定位决策见 [ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)、[ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md)、[ADR-011](./ADR-011-Memory分层与晋升边界.md)、[ADR-012](./ADR-012-多Skill与多Agent演进门槛.md)、[ADR-013](./ADR-013-RAG作为可插拔KnowledgeSkill的边界.md)**
-> **版本：v1.1　日期：2026-08-11**
+> **权威声明：本文不是生产决策来源。发生冲突时以 [00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) 为准；已生效的定位决策见 [ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)、[ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md)、[ADR-011](./ADR-011-Memory分层与晋升边界.md)、[ADR-012](./ADR-012-多Skill与多Agent演进门槛.md)、[ADR-013](./ADR-013-RAG作为可插拔KnowledgeSkill的边界.md)、[ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)、[ADR-015](./ADR-015-Context组装服务与压缩策略.md)**
+> **版本：v1.2　日期：2026-08-11**
 > **本文不重复 00 号文档的分层正文、契约定义与迁移计划**
 
 ## 1. 一句话定位
@@ -31,7 +31,8 @@ BDLH Agent Runtime 是一个**通用 Agent Runtime / 编排内核**：它把「�
 | 不确定必须显式 | 结果状态区分 `COMPLETE / PARTIAL / LIMITED / FAILED`，禁止把有限结果包装成确定结论 |
 | 数据真实性不能被伪装 | `LIVE / USER_CONFIRMED / TEST_FIXTURE / MOCK / UNAVAILABLE` 分级，测试数据不得进入真实结论 |
 | 每一步都要能被拦下来 | 四时点治理：规划时、行动时、数据返回时、表达前 |
-| 记忆不是账本 | 记忆分五层，业务真源独立于记忆，且记忆不能自行晋升为真源 |
+| 记忆不是账本 | 记忆分五层（ADR-011），业务真源独立于记忆，且记忆不能自行晋升为真源；进模由 Context 组装器按预算裁剪（ADR-015），存储 ≠ 上下文 |
+| 暂停可恢复、换题不串跑 | 系统截断与用户 Pause 共用 pending/checkpoint；同 session 经 Turn Router 决定 resume / 新 run / 先确认（ADR-014） |
 | 失败要可预期 | 依赖分级、预算与截止时间、幂等键、结构化错误、可回滚的迁移 |
 
 这些关注点不含任何金融语义，因此更换业务领域时不需要重写。

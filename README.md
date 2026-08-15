@@ -54,6 +54,8 @@
 | [ADR-011](docs/architecture/ADR-011-Memory分层与晋升边界.md) | Memory 五层分层与晋升边界 | `APPROVED` |
 | [ADR-012](docs/architecture/ADR-012-多Skill与多Agent演进门槛.md) | 多 Skill 与多 Agent 演进门槛 | `APPROVED` |
 | [ADR-013](docs/architecture/ADR-013-RAG作为可插拔KnowledgeSkill的边界.md) | RAG 作为可插拔 Knowledge Skill 的边界 | `APPROVED`（实施未排期） |
+| [ADR-014](docs/architecture/ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md) | 系统/用户截断 Pause·Resume 与 Turn Router | `APPROVED` |
+| [ADR-015](docs/architecture/ADR-015-Context组装服务与压缩策略.md) | Context 组装与压缩（挂靠 ADR-011） | `APPROVED` |
 
 ### 设计、评审与运维
 

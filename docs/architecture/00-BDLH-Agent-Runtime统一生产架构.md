@@ -1,10 +1,10 @@
 # BDLH Agent Runtime 统一生产架构
 
 > **文档状态：生产架构唯一权威基线**  
-> **架构版本：v1.6**  
+> **架构版本：v1.7**  
 > **生效日期：2026-08-11**  
 > **适用范围：`bdlh-runtime-orchestrator`、Java 用户数据服务、前端/API Gateway、外部数据服务及生产基础设施**  
-> **当前实施状态：目标架构已冻结；M1 已完成独立开发，M0 门禁未关闭，尚未进入生产路径切换**  
+> **当前实施状态：目标架构已冻结；M1 已完成独立开发，M0 门禁未关闭，尚未进入生产路径切换；ADR-014/015 契约已批准，Pause/Turn Router 与 Context 预算压缩按迁移切片落地**  
 > **配套架构图：[00-BDLH-Agent-Runtime生产架构.drawio](./00-BDLH-Agent-Runtime生产架构.drawio)**
 
 ## 产品身份（定位声明，不编号）
@@ -76,6 +76,7 @@ BDLH Agent Runtime 的产品身份是**通用 Agent Runtime / 编排内核**：�
 | v1.4 | 2026-08-11 | 文档与代码现状对齐 + 通用化沉淀：§0.2 补登记 `TRANSITION`/`DEVELOPMENT_COMPLETE`/`RELEASE_BLOCKED`；§3 更新 Dispatcher（已带 descriptor）、SkillManifest（已落地 ADR-010 §6.1）、PortfolioValuationBuilder（M3 完成）、Toolset/能力计数；§4 拓扑图插入 Domain Dispatcher 节点并与 §1 主线对齐；§4.2 内核行去金融词；§10.1 补 Toolset 命名规则、§10.2 标注为 finance 实例；§13.2/§15.3 拆分为通用内核规则 + finance 域实例标注 |
 | v1.5 | 2026-08-11 | 修正实施状态残留：统一 ADR-010 已落地、PortfolioValuationBuilder 已完成但尚未发布的表述；同步 M3、§20、§23.1 与 01 号说明的术语和 Skill 状态 |
 | v1.6 | 2026-08-11 | 收口文档治理与状态语义：更新 §0.1 的历史文档称呼；补充基础设施级 `CURRENT` 不等于默认切流的说明；§19.1 登记 manifest/descriptor 启动校验测试 |
+| v1.7 | 2026-08-11 | 合成桌面 Resume/记忆草案与现网契约：§2.1/§8/§9/§12 吸收 [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)（系统/用户截断同构、Turn Router）与 [ADR-015](./ADR-015-Context组装服务与压缩策略.md)（Context 组装挂靠 ADR-011，禁止第二套 L 编号）；§23.1 登记两份 ADR |
 
 版本号只反映本文的表述与登记变化；阶段范围、契约字段语义与发布门禁的任何调整必须另有 ADR。
 
@@ -134,6 +135,8 @@ Nginx / API Gateway                                  [内核]
 - 预算、超时、重试、熔断与降级语义；
 - Communication Plan 与 Response Verification；
 - 多轮会话、流式输出、运行查询与中断恢复；
+- 系统主动截断与用户 Pause 的可恢复暂停（checkpoint + `pending_*`），以及同 session 入口 Turn Router（`resume` / `new_turn` / `ask_which`，见 [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)）；
+- 按预算组装进模上下文（Context Service，见 [ADR-015](./ADR-015-Context组装服务与压缩策略.md)），与 ADR-011 Memory 分层正交；
 - 状态、会话、运行索引、历史、审计与任务的持久化；
 - 结构化日志、指标与 SLO。
 
@@ -213,7 +216,11 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 | Toolset Registry | `TRANSITION` | 六个 finance 域派生分组已存在并接入 M1 Finance Planner；PORTFOLIO_READ 含估值重算能力 | 继续分层暴露能力并服务后续 Research/Suitability |
 | 四时点 Guardrails | `FOUNDATION` | 只有契约和 Protocol | 切换前必须全部实现并接线 |
 | Observation / Coverage | `CURRENT` | 已有标准化与覆盖判断 | 进入所有外部数据路径 |
-| Mem0 | `CURRENT` | 可用时增强、失败降级 NoOp | 保持非关键路径，不存权威业务事实 |
+| Mem0 | `CURRENT` | 可用时增强、失败降级 NoOp | 保持非关键路径，不存权威业务事实；读写收敛见 ADR-015 |
+| Context 组装 | `CURRENT` / `TARGET` | `ContextBuilder` 七块组装已存在 | 对齐 ADR-015：purpose/budget、窗口主路径、dropped 可观测；不另起第二套组装语义 |
+| 系统 interrupt + pending resume | `CURRENT` | Chat 路径写 `pending_*` 并可 `Command(resume)` | 保留；必须叠加 ADR-014 Turn Router，禁止有 pending 默认盲目 resume |
+| 用户 Pause（Esc） | `TARGET` | 尚无 `/pause` 与协作式停止 | ADR-014：Pause API + 安全点停 + `PAUSED_BY_USER` |
+| Turn Router | `TARGET` | 有 pending 时倾向直接 resume | ADR-014：`resume` / `new_turn` / `ask_which` |
 | Checkpointer | `CURRENT` | 生产可使用 PostgreSQL | 必须持久化并隔离命名空间 |
 | Chat Session | `CURRENT` | 生产已有 PostgreSQL Store | 继续持久化和用户隔离 |
 | Run Registry | `FOUNDATION` | 当前只有内存实现 | 上线前迁移 PostgreSQL |
@@ -518,14 +525,15 @@ Scheduler 不缓存上次结论，不自行调用 LLM，不自行生成通知内
 |---|---|---|
 | `user_id` | 服务端认证用户 | 用户级 |
 | `session_id` | 前端会话目录 | 多轮会话 |
-| `thread_id` | LangGraph Checkpoint 线程 | 多轮状态 |
+| `thread_id` | LangGraph Checkpoint 线程（公开值在 Chat 路径上等于 `session_id`；内部 key 含 `user_id` 前缀隔离） | 多轮状态 |
 | `run_id` | 单次 API/Graph 执行 | 单次运行 |
+| `pending_*` | 会话上可恢复书签：`pending_run_id` / `pending_thread_id` / `pending_checkpoint_id` | 从暂停到恢复/放弃 |
 | `request_id` | 单次领域调用 | Domain Request |
 | `task_id` | 持续任务 | 第二阶段 |
 | `observation_id` | 一次标准化观察 | 单次数据调用 |
 | `capability_execution_id` | 能力执行审计与幂等 | 单次能力调用 |
 
-`run_id` 与 `thread_id` 不得混用。生产 Run Registry 必须持久化两者映射。
+`run_id` 与 `thread_id` 不得混用。生产 Run Registry 必须持久化 `run_id → {thread_id, user_id, checkpoint_id, status}`。同 `session_id` 默认同时至多一个可恢复 pending run；同会话换方向不换 `session_id`，必须 abandon 旧 run 后开新 `run_id`（[ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)）。
 
 ### 8.2 跨层对象
 
@@ -562,6 +570,16 @@ PublicResponse
 COMPLETE / PARTIAL / LIMITED / FAILED / WAITING_USER
 ```
 
+Run（执行态，与领域结果分离；见 [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)）：
+
+```text
+RUNNING / WAITING_USER / PAUSED_BY_USER / COMPLETED / FAILED / CANCELLED / ABANDONED
+```
+
+- `WAITING_USER`：系统主动截断（如 `interrupt()`）；
+- `PAUSED_BY_USER`：用户 Esc → Pause（可 resume）；仅前端 abort SSE 不得记为可恢复 Pause；
+- `CANCELLED` / `ABANDONED`：不可再 resume，必须清理 `pending_*`。
+
 Observation：
 
 ```text
@@ -595,6 +613,8 @@ LIVE / USER_CONFIRMED / TEST_FIXTURE / MOCK / UNAVAILABLE
 
 Memory 的分层模型（L0 工作记忆 / L1 会话记录 / L2 检索知识 / L3 长期语义 / L4 业务真源）与「记忆不得自行晋升为业务真源」的边界见 [ADR-011](./ADR-011-Memory分层与晋升边界.md)。其中 L4 不属于记忆体系：账户、持仓、风险画像与审计历史永远从权威业务存储读取，记忆层的同名字段只是派生或提示。`MEMORY_CONFIRMED` 必须携带服务端 `confirmation_ref`，否则等同 `INFERRED`，不得驱动高影响规则。
 
+**禁止**在文档或代码中并行维护与 ADR-011 冲突的另一套 L0–L4 编号。工程职责（Dialog / Run / Facts / Mem0 / 组装）到 ADR-011 层的唯一映射见 [ADR-015](./ADR-015-Context组装服务与压缩策略.md) §3。
+
 ### 9.2 Checkpoint 隔离
 
 - Checkpoint key 至少包含 `user_id + thread_id + namespace`；
@@ -614,6 +634,36 @@ Memory 的分层模型（L0 工作记忆 / L1 会话记录 / L2 检索知识 / L
 - Checkpointer；
 - Task Store；
 - 幂等记录。
+
+### 9.4 Context 组装与压缩
+
+进模上下文由 **Context Service（组装器）** 按 `purpose` / `budget` 只读拼装，不是新的记忆存储层。规则真源：[ADR-015](./ADR-015-Context组装服务与压缩策略.md)。
+
+硬约束：
+
+1. **存储 ≠ 上下文**：L1 保存完整对话原文；进模只取窗口（+ 可选滚动摘要），禁止每轮全量加载会话再 LLM 压缩作为主路径；
+2. **近因优先**：当前用户输入 > 本轮工具/证据摘要 > 近期对话窗口 > L4 事实短卡片 > L3 语义召回；
+3. **`user_input` 不得被压缩丢弃**；超预算时 `dropped[]` 必须可观测；
+4. **Mem0（L3）读点**仅在 Context 组装；**写点**仅在 Run 出口 Memory Writer，禁止对话全文同步进 Mem0；
+5. L3 / L2 失败可降级为空召回；L0 / L1 / L4 属生产关键路径，不得静默降级为「假装有完整记忆」。
+
+现有 `ContextBuilder` 七块组装是合法实现起点，须逐步对齐 bundle / budget / provenance，而不是另起第二套组装语义。
+
+### 9.5 可恢复暂停与会话入口路由
+
+系统主动截断与用户 Esc Pause 同构为可恢复暂停；同 session 下一条消息必须经 Turn Router，**禁止有 `pending` 就默认 `Command(resume)`**。规则真源：[ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)。
+
+摘要：
+
+```text
+系统 interrupt / 用户 Pause
+  → 安全点 checkpoint + pending_* + Run 状态（WAITING_USER | PAUSED_BY_USER）
+  → 下一句：resume 同 run_id | abandon 后新 run_id | ask_which 仅确认
+```
+
+- 仅前端停止消费 SSE ≠ Pause；Pause 必须后端协作停止并返回 `resumable` 确认；
+- 执行进度不得用 Mem0 替代 checkpoint；
+- 主 UX 保持普通打字，不引入侧边栏式暂停控制台作为主路径。
 
 ## 10. Capability、Toolset 与供应商
 
@@ -667,7 +717,7 @@ planning_compute
 - 不得触发新的 Capability；
 - HTML/Markdown 必须清洗；
 - 引用时保留来源；
-- 超长内容先截断和结构化，不直接注入全部上下文。
+- 超长内容先截断和结构化，不直接注入全部上下文（进模预算与压缩阶梯见 [ADR-015](./ADR-015-Context组装服务与压缩策略.md)）。
 
 ## 11. 四时点 Guardrails
 
@@ -734,10 +784,14 @@ GET    /api/v1/conversations/{session_id}
 DELETE /api/v1/conversations/{session_id}
 POST   /api/v1/agent-runs
 GET    /api/v1/agent-runs/{run_id}
+POST   /api/v1/agent-runs/{run_id}/pause
 POST   /api/v1/agent-runs/{run_id}/resume
+POST   /api/v1/agent-runs/{run_id}/cancel
 GET    /api/v1/agent-runs/{run_id}/events
 GET    /api/v1/health
 ```
+
+`/chat/stream` 在存在 `pending_*` 时必须先经 Turn Router（[ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)），再决定 resume、abandon+新 run 或会话层确认；`ask_which` 不得调用主分析图。`/pause` 是截断控制面，不是日常对话面；前端对话请求仍只稳定传 `sessionId` + `message`，身份走 JWT。
 
 未来新增内部接口时使用 `/internal/v1`，必须通过内网和服务身份保护。
 
@@ -756,11 +810,13 @@ capability.started
 capability.completed
 guardrail.blocked
 run.interrupted
+run.paused
 run.resumed
 response.completed
 run.failed
 ```
 
+`run.interrupted` 对应系统主动截断；`run.paused` 对应用户 Pause。等待/暂停态必须以可结束本轮流的 `done`（或等价终态事件）收尾，避免前端空转。
 事件至少包含：
 
 - `event_id`；
@@ -1196,6 +1252,8 @@ M0–M6 是主线，编号、范围与退出门槛不再变动；M7 为后续追
 | [ADR-011](./ADR-011-Memory分层与晋升边界.md) | Memory 五层分层与记忆晋升边界 | `APPROVED` |
 | [ADR-012](./ADR-012-多Skill与多Agent演进门槛.md) | 多 Skill 与多 Agent 演进门槛 | `APPROVED` |
 | [ADR-013](./ADR-013-RAG作为可插拔KnowledgeSkill的边界.md) | RAG 作为可插拔 Knowledge Skill 的边界 | `APPROVED`（边界生效，实施未排期） |
+| [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md) | 系统/用户截断 Pause·Resume 与 Turn Router | `APPROVED`（契约生效；Pause API / 入口路由按切片落地） |
+| [ADR-015](./ADR-015-Context组装服务与压缩策略.md) | Context 组装服务与压缩策略（挂靠 ADR-011） | `APPROVED`（禁止第二套 L 编号；ContextBuilder 为合法起点） |
 
 ### 23.2 已起草未批准 ADR
 

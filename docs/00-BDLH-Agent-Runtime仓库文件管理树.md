@@ -47,7 +47,9 @@ docs/
 │   ├── ADR-010-SkillManifest与DomainDispatcher契约.md     APPROVED（§6.1 已落地）
 │   ├── ADR-011-Memory分层与晋升边界.md                    APPROVED
 │   ├── ADR-012-多Skill与多Agent演进门槛.md                APPROVED
-│   └── ADR-013-RAG作为可插拔KnowledgeSkill的边界.md        APPROVED（实施未排期）
+│   ├── ADR-013-RAG作为可插拔KnowledgeSkill的边界.md        APPROVED（实施未排期）
+│   ├── ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md  APPROVED（Pause/Turn Router 按切片落地）
+│   └── ADR-015-Context组装服务与压缩策略.md               APPROVED（挂靠 ADR-011；禁止第二套 L 编号）
 ├── prompts/
 │   └── 00-BDLH-Agent-Runtime生产开发实施Prompt.md    AUTHORITATIVE  唯一生产开发执行 Prompt
 ├── reviews/                        审查与阶段报告

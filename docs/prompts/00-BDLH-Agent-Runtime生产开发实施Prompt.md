@@ -1,9 +1,9 @@
 # BDLH Agent Runtime 生产开发实施 Prompt
 
 > **文档状态：唯一有效的生产开发执行 Prompt**  
-> **Prompt 版本：v1.13**
+> **Prompt 版本：v1.14**
 > **生效日期：2026-08-11**  
-> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3**
+> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3；v1.14 吸收 ADR-014/015**
 > **阶段说明：M7 为可选的插件契约验证阶段，排在 M6 之后，不得抢占 M0–M6**
 > **上位架构：[00-BDLH-Agent-Runtime统一生产架构.md](../architecture/00-BDLH-Agent-Runtime统一生产架构.md)**  
 > **适用项目：`bdlh-runtime-orchestrator`、必要的 Java 用户数据接口、Nginx 与生产部署配置**  
@@ -69,18 +69,20 @@ Observation、Guardrail、预算和审计链，不得套用 Finance 的业务字
 1. `docs/architecture/00-BDLH-Agent-Runtime统一生产架构.md`；
 2. 本 Prompt；
 3. 本次任务涉及的实际源代码和测试；
-4. 本次任务涉及的部署、数据库迁移或 Java 接口文件。
+4. 本次任务涉及的部署、数据库迁移或 Java 接口文件；
+5. 若任务触及暂停恢复或上下文组装：`ADR-014`、`ADR-015`（以及 Memory 边界时的 `ADR-011`）。
 
 发生冲突时按以下优先级处理：
 
 1. 用户在当前任务中的明确要求；
 2. 身份、安全、隐私、数据真实性和只读金融边界；
 3. `00-BDLH-Agent-Runtime统一生产架构.md`；
-4. 本 Prompt；
-5. 当前代码和测试证明的实现事实；
-6. Review、历史版本档案和 Git 历史。
+4. 已批准 ADR（含 ADR-011 / 014 / 015）；
+5. 本 Prompt；
+6. 当前代码和测试证明的实现事实；
+7. Review、历史版本档案和 Git 历史。
 
-历史 Prompt、Review 和历史架构只能帮助理解演进原因，不能覆盖当前生产决策。
+历史 Prompt、Review、桌面草案和历史架构只能帮助理解演进原因，不能覆盖当前生产决策。桌面《Resume / 记忆》草案的有效结论已吸收进 ADR-014/015，不得再以桌面文件作为第二权威源。
 
 ## 3. 强制阶段规则
 
@@ -1923,15 +1925,45 @@ DRAFT
 
 ### 16.1 生产持久化
 
-以下组件生产必须使用持久化实现：
+生产必须持久化：
 
 - Checkpointer；
-- Chat Session Store；
-- Run Registry；
-- Analysis/Decision History；
-- Capability Execution Audit；
-- Task Store（M6）；
-- Notification Outbox（M6）。
+- Run Registry（含 `checkpoint_id` 与 Run 状态）；
+- Chat Session / Messages（含 `pending_*`）；
+- Analysis / Decision History；
+- Capability Execution 幂等与审计；
+- Task Store（进入 M6 时）。
+
+开发环境可使用 InMemory，但不得把内存实现带入多副本生产发布门禁。
+
+### 16.1.1 Memory 层与 Context 组装（ADR-011 / ADR-015）
+
+实施时只使用 ADR-011 的 L0–L4 编号：
+
+| 工程职责 | ADR-011 |
+|---|---|
+| Dialog / 完整对话 | L1 |
+| Run / checkpoint / pending | L0 + Registry |
+| 用户档案与持仓权威 | L4（非记忆） |
+| Mem0 偏好软知识 | L3 |
+| RAG | L2 Skill |
+| Context Service | 组装器，不是一层存储 |
+
+强制规则：
+
+1. 禁止引入与 ADR-011 冲突的第二套 L 编号；
+2. Context 主路径 = 窗口 + 确定性裁剪；禁止每轮全量会话再 LLM 压缩；
+3. Mem0 只在 Context 读、Run 出口写；失败降级为空召回；
+4. 不得用 Mem0 记住 Pause 进度或替代 L4 账本。
+
+### 16.1.2 Pause / Resume 与 Turn Router（ADR-014）
+
+1. 系统 `interrupt` 与用户 Esc Pause 共用 `pending_*` + checkpoint；
+2. Esc：前端 abort SSE **并且** 调用 `/agent-runs/{run_id}/pause`；仅砍流不得宣称可 resume；
+3. Run 状态区分 `WAITING_USER` 与 `PAUSED_BY_USER`；Cancel/Abandon 清理 pending 且不可 resume；
+4. `/chat/stream` 在有 pending 时必须 Turn Router：`resume` / `new_turn` / `ask_which`；
+5. **禁止**有 pending 就默认 `Command(resume)`；含糊句只回确认，不跑主分析图；
+6. 同 session 换方向：复用 `session_id` 与聊天历史，abandon 旧 run，开新 `run_id`。
 
 ### 16.2 幂等键
 
@@ -1962,11 +1994,11 @@ authenticated_user_id + resource_id
 
 - `/api/v1/chat/stream`；
 - `/api/v1/conversations*`；
-- `/api/v1/agent-runs*`；
-- `thread_id / run_id` 语义；
-- Resume API；
+- `/api/v1/agent-runs*`（含 `/pause`、`/resume`、可选 `/cancel`）；
+- `thread_id / run_id / pending_*` 语义；
+- Resume API 与 Pause API（ADR-014）；
 - 公共错误结构；
-- 已发布 SSE 事件兼容。
+- 已发布 SSE 事件兼容（可新增 `run.paused`，不得破坏既有消费者）。
 
 新增事件必须包含 `schema_version`，并遵守：
 
@@ -2130,6 +2162,12 @@ uv run pytest -q
 - 不让 Finance Runtime 直接拼供应商协议；
 - 不在生产用 mock 保证成功率；
 - 不把 Mem0 当用户档案或账本；
+- 不引入与 ADR-011 冲突的第二套 Memory L 编号；
+- 不把每轮全量会话送进 LLM 压缩当作 Context 主路径；
+- 不把仅前端 abort SSE 当成可 Resume 的 Pause；
+- 不在有 `pending` 时默认盲目 `Command(resume)`；
+- 不用新 `sessionId` 表达「同会话换方向」；
+- 不用桌面草案文件覆盖已批准 ADR；
 - 不把 Checkpointer 当 Analysis History；
 - 不把 `run_id` 当 `thread_id`；
 - 不把 Stock Research 当 Suitability；
@@ -2192,3 +2230,4 @@ uv run pytest -q
 | v1.11 | 2026-08-11 | 头部；§0；§3.1；§8 标题；§10.4.2；§10.4.4；§19.1；§23 | 文档面一次性收口（依据 ADR-009 ~ ADR-013）：① `TASK_PHASE` 与阶段列表增加可选 M7 插件契约验证，明确不得抢占 M0–M6，未指定阶段时不得自动选择；② M1 标题补「Skill / Domain 插件边界的第一次落地」；③ §10.4.2 回填 `MEMORY_CONFIRMED` 需 `confirmation_ref`，§10.4.4 明确记忆层不参与真实性推导；④ §19.1 登记架构边界测试；⑤ §23 增加内核纯净度与禁止复制观测链两条捷径禁令。本次不改动任何阶段范围、契约字段与发布门禁 |
 | v1.12 | 2026-08-11 | 头部；§1；§3；§4.2；§5.1；§5.2；§6.2；§11；§24 | 与统一生产架构 v1.5 对齐：① 修正 Finance Domain 与 Skill 术语；② 明确 Finance-first Prompt 范围；③ 拆分业务开发主线与 M0 生产门禁；④ 增加代码状态与架构发布状态映射；⑤ 明确 SkillManifest/DomainDescriptor 已生效；⑥ 增加受控 Plan–Execute–Observe 循环约束；⑦ 更新 M3 当前状态和下一开发起点；⑧ 替换具体证券名称示例；⑨ 规定阶段报告归档规则 |
 | v1.13 | 2026-08-11 | 头部；§3.1 | 与统一生产架构 v1.6 对齐：M7 明确为验证既有 manifest/descriptor 可被新增 Skill/Domain 复用，不再表述为重新验证其是否可用 |
+| v1.14 | 2026-08-11 | 头部；§2；§16.1.1/§16.1.2；§17；§23 | 吸收 ADR-014/015：① 权威阅读清单与冲突优先级纳入已批准 ADR，桌面草案降为非权威；② Memory/Context 映射表与压缩禁令；③ Pause/Turn Router 强制规则；④ API 兼容增加 pause/cancel 与 `run.paused`；⑤ 禁止第二套 L 编号、盲目 resume、仅前端砍流当 Pause |

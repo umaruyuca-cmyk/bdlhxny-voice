@@ -3,8 +3,9 @@
 > 状态：APPROVED
 > 批准人：项目 owner
 > 日期：2026-08-11
-> 影响：[00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) §9.1；[00-BDLH-Agent-Runtime生产开发实施Prompt.md](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) §10.4.2 来源优先级、§10.4.4 真实性推导
+> 影响：[00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) §9.1；[00-BDLH-Agent-Runtime生产开发实施Prompt.md](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) §10.4.2 来源优先级、§10.4.4 真实性推导、§16.1.1
 > 依据：[04-Runtime定位升级修改意见.md](../reviews/04-Runtime定位升级修改意见.md) §4.2
+> 配套细化：[ADR-015](./ADR-015-Context组装服务与压缩策略.md)（Context 组装与压缩；不改本 ADR 层号）
 
 ## 1. 决策目标
 
