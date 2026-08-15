@@ -150,9 +150,14 @@ class HttpJavaDataAdapter:
 
     def _mock_observation(self, capability: str, arguments: dict) -> Observation:
         user_id = arguments.get("user_id") or "unknown"
-        data = _MOCK_DATA.get(capability, {})
+        data = {
+            **_MOCK_DATA.get(capability, {}),
+            "user_id": user_id,
+            "data_mode": "MOCK",
+            "is_mock": True,
+        }
         if capability == "portfolio.get_current_positions":
-            data = {"user_id": user_id, "positions": _MOCK_POSITIONS, "is_mock": True}
+            data["positions"] = _MOCK_POSITIONS
         return Observation(
             observation_id=str(uuid4()),
             capability=capability,
@@ -170,7 +175,11 @@ class HttpJavaDataAdapter:
             status="FAILED",
             data=None,
             data_quality=DataQuality(quality_status="INVALID"),
-            provenance=[],
+            provenance=[ProvenanceRecord(
+                source="java-api",
+                tool=capability,
+                retrieved_at=_now_iso(),
+            )],
             error_code="JAVA_UNAVAILABLE",
             error_message=message,
         )
@@ -184,7 +193,11 @@ class HttpJavaDataAdapter:
             status="UNAVAILABLE",
             data=None,
             data_quality=DataQuality(quality_status="INVALID", known_unavailable=[capability]),
-            provenance=[],
+            provenance=[ProvenanceRecord(
+                source="java-api",
+                tool=capability,
+                retrieved_at=_now_iso(),
+            )],
             error_code="JAVA_UNAVAILABLE",
             error_message=message,
         )

@@ -83,6 +83,97 @@ def test_comprehensive_includes_risk():
     assert "max_drawdown" in ind
 
 
+def test_fundamental_does_not_require_unplanned_history():
+    """M1/M2 基本面计划只依赖行情与财务数据，不应被技术数据误降级。"""
+    result = analyze(
+        AnalysisInput(
+            analysis_id="t-fundamental",
+            analysis_type="fundamental",
+            instrument={"symbol": "600519"},
+            realtime_quote={"price": 1500.0},
+            financial_data={"revenue": 1000.0, "net_profit": 300.0},
+            data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+            methodology_version="finance-research.m2",
+        )
+    )
+
+    assert result.status == "SUCCESS"
+    assert all("历史K线" not in item for item in result.limitations)
+
+
+def test_valuation_does_not_require_unplanned_history():
+    """M1/M2 估值计划只依赖行情与估值数据。"""
+    result = analyze(
+        AnalysisInput(
+            analysis_id="t-valuation",
+            analysis_type="valuation",
+            instrument={"symbol": "600519"},
+            realtime_quote={"price": 1500.0},
+            valuation_data={"pe": 20.0, "pb": 6.0},
+            data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+            methodology_version="finance-research.m2",
+        )
+    )
+
+    assert result.status == "SUCCESS"
+    assert all("历史K线" not in item for item in result.limitations)
+
+
+def test_comprehensive_objective_research_does_not_read_portfolio_context():
+    """客观综合研究不能隐式产生 portfolio 计算或缺失限制。"""
+    result = analyze(
+        AnalysisInput(
+            analysis_id="t-comprehensive-objective",
+            analysis_type="comprehensive",
+            instrument={"symbol": "600519"},
+            realtime_quote={"price": 1500.0},
+            historical_prices=_SYNTHETIC_BARS,
+            financial_data={"revenue": 1000.0},
+            valuation_data={"pe": 20.0},
+            portfolio_context={
+                "positions": [
+                    {"symbol": "600519", "quantity": 100, "cost_price": 1000.0}
+                ]
+            },
+            data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+            methodology_version="finance-research.m2",
+        )
+    )
+
+    assert result.status == "SUCCESS"
+    assert all(not key.startswith("holding_") for key in result.calculated_indicators)
+    assert "portfolio_concentration" not in result.calculated_indicators
+    assert all("持仓" not in item for item in result.limitations)
+
+
+def test_legacy_comprehensive_keeps_portfolio_compatibility() -> None:
+    """未选择 M2 方法配置时，旧 Root Graph 的计算行为保持不变。"""
+    result = analyze(
+        AnalysisInput(
+            analysis_id="t-comprehensive-legacy",
+            analysis_type="comprehensive",
+            instrument={"symbol": "600519"},
+            realtime_quote={"price": 1500.0},
+            historical_prices=_SYNTHETIC_BARS,
+            financial_data={"revenue": 1000.0},
+            valuation_data={"pe": 20.0},
+            portfolio_context={
+                "positions": [
+                    {
+                        "symbol": "600519",
+                        "quantity": 100,
+                        "cost_price": 1000.0,
+                        "current_price": 1500.0,
+                    }
+                ]
+            },
+            data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+        )
+    )
+
+    assert "holding_600519" in result.calculated_indicators
+
+
 # ── 数据缺失降级 ──
 
 

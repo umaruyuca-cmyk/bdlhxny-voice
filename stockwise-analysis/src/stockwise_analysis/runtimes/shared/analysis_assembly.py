@@ -31,6 +31,7 @@ def assemble_analysis_input(
     symbol: str,
     observations: list[Observation],
     requirements: list[dict[str, Any]],
+    methodology_version: str = "python-analysis.v1",
 ) -> AnalysisInput:
     """将标准 Observation 确定性地装配为 AnalysisInput，无 I/O 或框架依赖。"""
 
@@ -107,4 +108,5 @@ def assemble_analysis_input(
             known_unavailable=list(dict.fromkeys(known_unavailable)),
         ),
         provenance=provenance,
+        methodology_version=methodology_version,
     )

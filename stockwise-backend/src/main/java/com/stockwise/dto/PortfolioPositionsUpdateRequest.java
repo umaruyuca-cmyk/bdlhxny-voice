@@ -5,13 +5,12 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.List;
 
-/** 当前用户持仓的脱敏只读响应。 */
+/** 用户本人完整替换当前持仓事实的请求；派生市值和实际权重不属于该契约。 */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public record PortfolioPositionsResponse(
-        DataAccessMetadata metadata,
+public record PortfolioPositionsUpdateRequest(
+        long expectedProfileVersion,
         List<Position> positions) {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -26,9 +25,6 @@ public record PortfolioPositionsResponse(
             String sector,
             String riskRole,
             String exchange,
-            String currency,
-            String dataSource,
-            OffsetDateTime confirmedAt,
-            String sourceRef) {
+            String currency) {
     }
 }

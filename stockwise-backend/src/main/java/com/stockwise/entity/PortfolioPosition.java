@@ -39,6 +39,20 @@ public class PortfolioPosition {
 
     private String riskRole;
 
+    /** 交易所/市场标识；旧数据未知时保持 null，不根据证券代码猜测。 */
+    private String exchange;
+
+    /** 持仓计价币种；旧数据未知时保持 null。 */
+    private String currency;
+
+    /** USER_INPUT / BROKER_SYNC / ACCOUNT_PROVIDER / TEST_FIXTURE。 */
+    private String dataSource;
+
+    private OffsetDateTime confirmedAt;
+
+    /** 受控确认或同步引用，不是客户端提供的任意字符串。 */
+    private String sourceRef;
+
     private Boolean active;
 
     private OffsetDateTime createdAt;

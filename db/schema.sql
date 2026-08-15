@@ -22,7 +22,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA public;
 CREATE TABLE IF NOT EXISTS public.portfolio_positions (
     id              BIGSERIAL PRIMARY KEY,
     user_id         BIGINT NOT NULL,
-    code            VARCHAR(6) NOT NULL,
+    code            VARCHAR(32) NOT NULL,
     name            VARCHAR(100) NOT NULL,
     asset_type      VARCHAR(20) NOT NULL CHECK (asset_type IN ('stock','etf','open_fund','qdii')),
     avg_cost        DECIMAL(12,4) NOT NULL,
@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS public.portfolio_positions (
     target_weight   DECIMAL(5,4) NOT NULL DEFAULT 0,
     sector          VARCHAR(50),
     risk_role       VARCHAR(30),
+    exchange        VARCHAR(16),
+    currency        VARCHAR(8),
+    data_source     VARCHAR(24)
+                    CHECK (data_source IS NULL OR data_source IN ('USER_INPUT','BROKER_SYNC','ACCOUNT_PROVIDER','TEST_FIXTURE')),
+    confirmed_at    TIMESTAMPTZ,
+    source_ref      VARCHAR(100),
     active          BOOLEAN DEFAULT TRUE,
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW(),
@@ -47,7 +53,22 @@ CREATE TABLE IF NOT EXISTS public.user_configs (
     user_id               BIGINT PRIMARY KEY,
     monthly_budget        INT DEFAULT 5000,
     cash                  DECIMAL(14,2) DEFAULT 0,
+    currency              VARCHAR(8),
     cash_reserve_ratio    DECIMAL(4,3) DEFAULT 0.20,
+    risk_tolerance        VARCHAR(20),
+    max_loss_tolerance_pct DECIMAL(5,2)
+                    CHECK (max_loss_tolerance_pct IS NULL OR (max_loss_tolerance_pct >= 0 AND max_loss_tolerance_pct <= 100)),
+    liquid_assets         DECIMAL(16,2) CHECK (liquid_assets IS NULL OR liquid_assets >= 0),
+    near_term_cash_needs  DECIMAL(16,2) CHECK (near_term_cash_needs IS NULL OR near_term_cash_needs >= 0),
+    near_term_cash_needs_horizon_days INT
+                    CHECK (near_term_cash_needs_horizon_days IS NULL OR near_term_cash_needs_horizon_days > 0),
+    financial_data_source VARCHAR(24)
+                    CHECK (financial_data_source IS NULL OR financial_data_source IN ('USER_INPUT','BROKER_SYNC','ACCOUNT_PROVIDER','TEST_FIXTURE')),
+    profile_version       BIGINT NOT NULL DEFAULT 0,
+    confirmed_at          TIMESTAMPTZ,
+    confirmation_ref      VARCHAR(100),
+    preferred_sectors     VARCHAR(500),
+    forbidden_symbols     VARCHAR(500),
     notification_enabled  BOOLEAN DEFAULT TRUE,
     morning_brief_enabled BOOLEAN DEFAULT TRUE,
     closing_summary_enabled BOOLEAN DEFAULT TRUE,
@@ -65,9 +86,59 @@ ALTER TABLE public.user_configs
     ADD COLUMN IF NOT EXISTS preferred_sectors VARCHAR(500);
 ALTER TABLE public.user_configs
     ADD COLUMN IF NOT EXISTS forbidden_symbols VARCHAR(500);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(8);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS max_loss_tolerance_pct DECIMAL(5,2);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS liquid_assets DECIMAL(16,2);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS near_term_cash_needs DECIMAL(16,2);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS near_term_cash_needs_horizon_days INT;
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS financial_data_source VARCHAR(24);
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS profile_version BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+ALTER TABLE public.user_configs
+    ADD COLUMN IF NOT EXISTS confirmation_ref VARCHAR(100);
+
+ALTER TABLE public.portfolio_positions
+    ADD COLUMN IF NOT EXISTS exchange VARCHAR(16);
+ALTER TABLE public.portfolio_positions
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(8);
+ALTER TABLE public.portfolio_positions
+    ADD COLUMN IF NOT EXISTS data_source VARCHAR(24);
+ALTER TABLE public.portfolio_positions
+    ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+ALTER TABLE public.portfolio_positions
+    ADD COLUMN IF NOT EXISTS source_ref VARCHAR(100);
 
 COMMENT ON TABLE public.user_configs IS '用户偏好配置表';
 COMMENT ON COLUMN public.user_configs.cash_reserve_ratio IS '现金保留比例，最低0.15';
+COMMENT ON COLUMN public.user_configs.max_loss_tolerance_pct IS '用户明确确认的最大亏损容忍百分数点，0到100；不是现金保留比例';
+COMMENT ON COLUMN public.user_configs.near_term_cash_needs IS '用户明确确认的近期现金需求金额；不是月度投资预算';
+COMMENT ON COLUMN public.portfolio_positions.target_weight IS '目标权重，不是当前实际权重';
+COMMENT ON COLUMN public.portfolio_positions.avg_cost IS '持仓成本价，不是当前市场价格';
+
+CREATE TABLE IF NOT EXISTS public.financial_profile_confirmations (
+    confirmation_ref   VARCHAR(100) PRIMARY KEY,
+    user_id            BIGINT NOT NULL,
+    profile_version    BIGINT NOT NULL CHECK (profile_version > 0),
+    action_type        VARCHAR(40) NOT NULL
+                       CHECK (action_type IN ('FINANCIAL_PROFILE_REPLACE','PORTFOLIO_POSITIONS_REPLACE')),
+    idempotency_key    VARCHAR(100) NOT NULL,
+    request_fingerprint VARCHAR(64) NOT NULL,
+    changed_fields     VARCHAR(1000) NOT NULL,
+    confirmed_at       TIMESTAMPTZ NOT NULL,
+    UNIQUE(user_id, profile_version),
+    UNIQUE(user_id, idempotency_key)
+);
+
+COMMENT ON TABLE public.financial_profile_confirmations IS
+    '用户金融资料确认审计；只保存版本、字段路径与请求指纹，不复制完整敏感金融载荷';
 
 -- ============================================================
 -- 3.1 已发生交易历史（只读分析输入，不是订单表）

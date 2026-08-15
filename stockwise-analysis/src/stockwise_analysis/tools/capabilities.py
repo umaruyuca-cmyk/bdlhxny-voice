@@ -171,14 +171,14 @@ def build_default_capability_registry() -> CapabilityRegistry:
         CapabilitySpec(
             "portfolio.get_current_positions",
             "读取当前用户持仓",
-            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive"}),
+            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive", "suitability"}),
             output_schema="PortfolioObservation", timeout_seconds=10,
             toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
         ),
         CapabilitySpec(
             "portfolio.get_account_snapshot",
             "读取当前用户账户快照",
-            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive"}),
+            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive", "suitability"}),
             output_schema="AccountObservation", timeout_seconds=10,
             toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
         ),
@@ -192,7 +192,7 @@ def build_default_capability_registry() -> CapabilityRegistry:
         CapabilitySpec(
             "user.get_risk_profile",
             "读取当前用户风险画像",
-            "user", "java", frozenset({"portfolio_impact", "comprehensive"}),
+            "user", "java", frozenset({"portfolio_impact", "comprehensive", "suitability"}),
             output_schema="RiskProfileObservation", timeout_seconds=10,
             toolsets=frozenset({ToolsetName.FINANCIAL_PROFILE_READ}),
         ),

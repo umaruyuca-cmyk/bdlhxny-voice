@@ -107,6 +107,8 @@ async def test_java_adapter_returns_risk_profile():
     obs = await adapter.execute("user.get_risk_profile", {"user_id": "u1"})
     assert obs.status == "SUCCESS"
     assert obs.data["risk_tolerance"] == "moderate"
+    assert obs.data["user_id"] == "u1"
+    assert obs.data["data_mode"] == "MOCK"
 
 
 @pytest.mark.asyncio
@@ -117,6 +119,7 @@ async def test_java_adapter_production_no_mock_degration():
     assert obs.status == "UNAVAILABLE"
     assert obs.data is None
     assert "portfolio.get_current_positions" in obs.data_quality.known_unavailable
+    assert obs.provenance and obs.provenance[0].source == "java-api"
 
 
 @pytest.mark.asyncio
@@ -142,12 +145,23 @@ async def test_java_adapter_consumes_snake_case_contract(monkeypatch):
         def json(self):
             return {
                 "metadata": {
+                    "schema_version": "financial-user-data.v2",
                     "user_id": 7,
                     "authorization_scope": "SELF",
+                    "data_mode": "USER_CONFIRMED",
+                    "source_type": "USER_INPUT",
                     "query_status": "SUCCESS",
                     "data_time": "2026-08-09T00:00:00Z",
+                    "confirmation_ref": "confirm-positions-1",
+                    "missing_fields": [],
                 },
-                "positions": [{"symbol": "600519", "quantity": 100, "cost_price": 1500}],
+                "positions": [{
+                    "symbol": "600519",
+                    "exchange": "SSE",
+                    "currency": "CNY",
+                    "quantity": 100,
+                    "cost_price": 1500,
+                }],
             }
 
     class FakeClient:
@@ -168,6 +182,8 @@ async def test_java_adapter_consumes_snake_case_contract(monkeypatch):
 
     assert obs.status == "SUCCESS"
     assert obs.data["positions"][0]["cost_price"] == 1500
+    assert obs.data["metadata"]["data_mode"] == "USER_CONFIRMED"
+    assert obs.data["metadata"]["confirmation_ref"] == "confirm-positions-1"
     assert obs.provenance[0].as_of == "2026-08-09T00:00:00Z"
     assert captured_headers == {"X-Internal-Token": "internal-secret"}
 

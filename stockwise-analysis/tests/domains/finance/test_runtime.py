@@ -6,7 +6,11 @@ from typing import Any
 import pytest
 
 from stockwise_analysis.contracts.analysis import AnalysisInput, AnalysisResult
-from stockwise_analysis.contracts.observation import DataQuality, Observation
+from stockwise_analysis.contracts.observation import (
+    DataQuality,
+    Observation,
+    ProvenanceRecord,
+)
 from stockwise_analysis.domain.analysis_engine import analyze
 from stockwise_analysis.domains.contracts import DomainBudget, DomainOperation
 from stockwise_analysis.domains.finance.authorization import (
@@ -86,6 +90,15 @@ class FakeFinanceExecutor:
             status="SUCCESS",
             data=data,
             data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+            provenance=[
+                ProvenanceRecord(
+                    source="provider-a",
+                    tool=capability,
+                    request_id=request_id,
+                    as_of="2026-08-10T10:00:00+08:00",
+                    retrieved_at="2026-08-10T10:00:01+08:00",
+                )
+            ],
         )
 
 
@@ -171,8 +184,35 @@ async def test_five_analysis_types_use_the_shared_analysis_capability(analysis_t
     executor = FakeFinanceExecutor()
     outcome = await build_runtime(executor).run(request_for(analysis_type))
 
-    assert outcome.status in {"COMPLETE", "PARTIAL", "LIMITED"}
+    assert outcome.status == "COMPLETE"
     assert outcome.analysis_result is not None
+    assert outcome.stock_research_result is not None
+    assert outcome.stock_research_result.coverage == "COMPLETE"
+    assert outcome.stock_research_result.confidence.level == "HIGH"
+    research = outcome.stock_research_result
+    assert research.market_snapshot is not None
+    assert (research.technicals is not None) == (
+        analysis_type in {"technical", "comprehensive"}
+    )
+    assert (research.fundamentals is not None) == (
+        analysis_type in {"fundamental", "comprehensive"}
+    )
+    assert (research.valuation is not None) == (
+        analysis_type in {"valuation", "comprehensive"}
+    )
+    assert (research.money_flow is not None) == (analysis_type == "comprehensive")
+    assert (research.industry_context is not None) == (
+        analysis_type == "comprehensive"
+    )
+    assert bool(research.events) == (analysis_type == "comprehensive")
+    assert research.scenarios == []
+    assert set(outcome.analysis_result.limitations) <= set(research.limitations)
+    assert all(item.evidence_ids or item.calculation_ids for item in research.findings)
+    if research.technicals is not None:
+        assert (
+            research.technicals.indicators
+            == outcome.analysis_result.calculated_indicators
+        )
     assert outcome.analysis_result.analysis_id == f"request-{analysis_type}"
     assert executor.calls == [
         *EXPECTED_DEFAULT_DATA_CAPABILITIES[analysis_type],
@@ -192,6 +232,9 @@ async def test_each_analysis_type_reports_required_data_unavailability(
     outcome = await build_runtime(executor).run(request_for(analysis_type))
 
     assert outcome.status == "LIMITED"
+    assert outcome.stock_research_result is not None
+    assert outcome.stock_research_result.coverage == "LIMITED"
+    assert outcome.stock_research_result.findings == []
     assert any(item.code == "FIXTURE_UNAVAILABLE" for item in outcome.errors)
     assert unavailable in outcome.analysis_result.data_quality.known_unavailable
 
@@ -337,8 +380,34 @@ async def test_failed_analysis_result_is_returned_as_a_stable_domain_error() -> 
     outcome = await build_runtime(executor).run(request_for("market_snapshot"))
 
     assert outcome.status == "FAILED"
+    assert outcome.stock_research_result is not None
+    assert outcome.stock_research_result.coverage == "LIMITED"
     assert outcome.errors[0].code == "ANALYSIS_FAILED"
     assert outcome.errors[0].message == "analysis fixture failed"
+
+
+@pytest.mark.asyncio
+async def test_builder_failure_returns_stable_error_and_preserves_analysis_result() -> None:
+    class BrokenBuilder:
+        def build(self, **_kwargs: Any) -> None:
+            raise ValueError("private builder detail")
+
+    executor = FakeFinanceExecutor()
+    registry = build_default_capability_registry()
+    runtime = FinanceRuntime(
+        planner=FinancePlanner(registry),
+        authorization=FinanceCapabilityAuthorizationPolicy(registry),
+        executor=executor,
+        research_builder=BrokenBuilder(),  # type: ignore[arg-type]
+    )
+
+    outcome = await runtime.run(request_for("market_snapshot"))
+
+    assert outcome.status == "FAILED"
+    assert outcome.analysis_result is not None
+    assert outcome.stock_research_result is None
+    assert outcome.errors[0].code == "STOCK_RESEARCH_BUILD_FAILED"
+    assert "private builder detail" not in outcome.model_dump_json()
 
 
 @pytest.mark.parametrize(
@@ -352,8 +421,13 @@ async def test_failed_analysis_result_is_returned_as_a_stable_domain_error() -> 
 @pytest.mark.asyncio
 async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> None:
     disabled_executor = FakeFinanceExecutor()
+    analysis_type = (
+        "comprehensive"
+        if intent == FinancialIntent.SUITABILITY
+        else "market_snapshot"
+    )
     disabled = await build_runtime(disabled_executor).run(
-        request_for("market_snapshot", intent=intent)
+        request_for(analysis_type, intent=intent)
     )
     assert disabled.status == "FAILED"
     assert disabled.errors[0].code == "ACTION_NOT_ENABLED"

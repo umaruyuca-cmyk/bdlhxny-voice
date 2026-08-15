@@ -20,7 +20,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue, model_validator
 
 from stockwise_analysis.contracts.analysis import AnalysisResult
 from stockwise_analysis.domains.contracts import (
@@ -81,12 +81,18 @@ class FinancialDomainRequest(DomainRequest):
     def validate_finance_request(self) -> "FinancialDomainRequest":
         if self.financial_intent == FinancialIntent.STOCK_RESEARCH and len(self.instruments) != 1:
             raise ValueError("STOCK_RESEARCH requires exactly one instrument")
-        if self.financial_intent == FinancialIntent.SUITABILITY and not self.instruments:
-            raise ValueError("SUITABILITY requires at least one instrument")
+        if self.financial_intent == FinancialIntent.SUITABILITY:
+            if len(self.instruments) != 1:
+                raise ValueError("SUITABILITY requires exactly one instrument")
+            if self.analysis_type != "comprehensive":
+                raise ValueError(
+                    "SUITABILITY_RESEARCH_PROFILE_REQUIRED: "
+                    "SUITABILITY requires analysis_type=comprehensive"
+                )
         return self
 
 
-# ── 最小金融快照（阶段 4 SuitabilityEngine 输入，数据缺失如实标记） ────────
+# ── 最小金融快照（M3 SuitabilityEngine 输入，数据缺失如实标记） ──────────
 
 
 class PortfolioPosition(DomainContractModel):
@@ -94,9 +100,11 @@ class PortfolioPosition(DomainContractModel):
 
     symbol: str
     name: str | None = None
+    exchange: str | None = None
+    currency: str | None = None
     quantity: float | None = None
     market_value: float | None = None
-    weight_pct: float | None = None
+    weight_pct: float | None = Field(default=None, ge=0, le=100)
     industry: str | None = None
     source: str
 
@@ -114,7 +122,7 @@ class RiskProfile(DomainContractModel):
     """用户风险画像；缺失字段为 None 时视为信息不足。"""
 
     risk_level: Literal["CONSERVATIVE", "BALANCED", "AGGRESSIVE"] | None = None
-    max_loss_tolerance_pct: float | None = None
+    max_loss_tolerance_pct: float | None = Field(default=None, ge=0, le=100)
     source: str
 
 
@@ -238,7 +246,8 @@ class Valuation(DomainContractModel):
 
 class Technicals(DomainContractModel):
     trend: Literal["UP", "DOWN", "SIDEWAYS", "UNKNOWN"] = "UNKNOWN"
-    indicators: dict[str, float] = Field(default_factory=dict)
+    # 保留 AnalysisResult 的确定性计算结构（如 MACD 子字段），不在 Builder 重算。
+    indicators: dict[str, JsonValue] = Field(default_factory=dict)
     quality: Literal["HIGH", "MEDIUM", "LOW", "INVALID"] = "MEDIUM"
     limitations: list[str] = Field(default_factory=list)
 
@@ -311,6 +320,17 @@ class PortfolioImpact(DomainContractModel):
     projected_exposure: dict[str, float] = Field(default_factory=dict)
     rule_ids: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def validate_exposure_percentages(self) -> "PortfolioImpact":
+        for field_name in ("current_exposure", "projected_exposure"):
+            values = getattr(self, field_name)
+            invalid = [name for name, value in values.items() if not 0 <= value <= 100]
+            if invalid:
+                raise ValueError(
+                    f"{field_name} values must use percentage points in 0..100"
+                )
+        return self
+
 
 class GoalImpact(DomainContractModel):
     affected_goal_ids: list[str] = Field(default_factory=list)
@@ -346,6 +366,9 @@ class SuitabilityCondition(DomainContractModel):
 class SuitabilityAssessment(DomainContractModel):
     """用户适配性结果（结合 StockResearchResult + FinancialSnapshot）。"""
 
+    rule_set_version: str = Field(min_length=1)
+    rule_ids: list[str] = Field(min_length=1)
+    evidence_refs: list[str] = Field(min_length=1)
     result: Literal[
         "SUITABLE",
         "CONDITIONALLY_SUITABLE",
@@ -360,6 +383,14 @@ class SuitabilityAssessment(DomainContractModel):
     required_conditions: list[SuitabilityCondition] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_rule_references(self) -> "SuitabilityAssessment":
+        for field_name in ("rule_ids", "evidence_refs"):
+            values = getattr(self, field_name)
+            if len(values) != len(dict.fromkeys(values)):
+                raise ValueError(f"{field_name} must contain stable unique references")
+        return self
 
 
 # ── 金融领域输出边界（扩展通用 DomainOutcome） ─────────────────────────────

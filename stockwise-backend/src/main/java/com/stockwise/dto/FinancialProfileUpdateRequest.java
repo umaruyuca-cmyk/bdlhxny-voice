@@ -5,16 +5,15 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 import java.math.BigDecimal;
 
-/** 当前用户账户配置快照；不包含券商账户和交易执行能力。 */
+/** 用户本人完整替换账户、风险与流动性事实的请求；身份和确认元数据由服务端注入。 */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public record AccountSnapshotResponse(
-        DataAccessMetadata metadata,
+public record FinancialProfileUpdateRequest(
+        long expectedProfileVersion,
         String currency,
         BigDecimal cash,
-        BigDecimal monthlyBudget,
-        BigDecimal cashReserveRatio,
+        String riskTolerance,
+        BigDecimal maxLossTolerancePct,
         BigDecimal liquidAssets,
         BigDecimal nearTermCashNeeds,
-        Integer nearTermCashNeedsHorizonDays,
-        Long profileVersion) {
+        Integer nearTermCashNeedsHorizonDays) {
 }

@@ -21,9 +21,30 @@ public class UserConfig {
 
     private BigDecimal cash;
 
+    /** 账户事实的计价币种；不再由 Data API 硬编码 CNY。 */
+    private String currency;
+
     private BigDecimal cashReserveRatio;
 
     private String riskTolerance;
+
+    /** 用户明确确认的最大亏损容忍百分数点，范围 0..100。 */
+    private BigDecimal maxLossTolerancePct;
+
+    private BigDecimal liquidAssets;
+
+    private BigDecimal nearTermCashNeeds;
+
+    private Integer nearTermCashNeedsHorizonDays;
+
+    /** USER_INPUT / BROKER_SYNC / ACCOUNT_PROVIDER / TEST_FIXTURE。 */
+    private String financialDataSource;
+
+    private Long profileVersion;
+
+    private OffsetDateTime confirmedAt;
+
+    private String confirmationRef;
 
     /** 逗号分隔的行业偏好；Data API 转换为列表后再返回。 */
     private String preferredSectors;

@@ -1,4 +1,4 @@
-"""M1 Finance Runtime：无 Checkpointer、无默认流量的领域薄层。"""
+"""M1 Finance Runtime 与 M2 研究结果双写：无 Checkpointer、无默认流量。"""
 
 from __future__ import annotations
 
@@ -17,15 +17,17 @@ from stockwise_analysis.domains.contracts import (
 )
 from stockwise_analysis.observations.normalizer import ObservationNormalizer
 from stockwise_analysis.runtimes.shared import assemble_analysis_input
-from stockwise_analysis.tools.coverage import evaluate_coverage
 
 from .authorization import ANALYSIS_CAPABILITY, FinanceCapabilityAuthorizationPolicy
 from .contracts import (
     FinancialDomainOutcome,
     FinancialDomainRequest,
     FinancialIntent,
+    StockResearchResult,
 )
 from .planner import FinancePlanner
+from .research_builder import StockResearchResultBuilder
+from .snapshot_builder import USER_SNAPSHOT_CAPABILITIES
 
 
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
@@ -44,7 +46,7 @@ class FinanceCapabilityExecutor(Protocol):
 
 
 class ApplicationFinanceCapabilityExecutor:
-    """把稳定 Capability 分派给现有 MCP/Web/本地分析 Adapter。"""
+    """把稳定 Capability 分派给 MCP/Web/Java/本地分析 Adapter。"""
 
     def __init__(
         self,
@@ -52,10 +54,12 @@ class ApplicationFinanceCapabilityExecutor:
         gateway_adapter: Any,
         web_search_adapter: Any,
         analysis_capability: Any,
+        java_adapter: Any | None = None,
     ) -> None:
         self._gateway = gateway_adapter
         self._web_search = web_search_adapter
         self._analysis = analysis_capability
+        self._java = java_adapter
         self._normalizer = ObservationNormalizer()
 
     async def execute(
@@ -70,6 +74,10 @@ class ApplicationFinanceCapabilityExecutor:
         if capability == "research.web_search":
             observation = await self._web_search.execute(capability, arguments)
             return self._normalizer.normalize(observation)
+        if capability in USER_SNAPSHOT_CAPABILITIES:
+            if self._java is None:
+                raise ValueError("Finance executor has no Java user-data adapter")
+            return await self._java.execute(capability, arguments)
         if capability.startswith("market."):
             observation = await self._gateway.execute(
                 capability,
@@ -91,6 +99,7 @@ class FinanceRunState(BaseModel):
     tool_calls_used: int = 0
     analysis_input: AnalysisInput | None = None
     analysis_result: AnalysisResult | None = None
+    stock_research_result: StockResearchResult | None = None
     limitations: list[str] = Field(default_factory=list)
     errors: list[DomainError] = Field(default_factory=list)
 
@@ -104,10 +113,12 @@ class FinanceRuntime:
         planner: FinancePlanner,
         authorization: FinanceCapabilityAuthorizationPolicy,
         executor: FinanceCapabilityExecutor,
+        research_builder: StockResearchResultBuilder | None = None,
     ) -> None:
         self._planner = planner
         self._authorization = authorization
         self._executor = executor
+        self._research_builder = research_builder or StockResearchResultBuilder()
 
     async def run(self, request: FinancialDomainRequest) -> FinancialDomainOutcome:
         if request.financial_intent != FinancialIntent.STOCK_RESEARCH:
@@ -207,6 +218,7 @@ class FinanceRuntime:
                     requirements=[
                         item.model_dump() for item in plan.data_requirements
                     ],
+                    methodology_version="finance-research.m2",
                 )
                 analyzed = await self._executor.execute(
                     plan.analysis_capability,
@@ -240,12 +252,7 @@ class FinanceRuntime:
 
     def _outcome(self, state: FinanceRunState) -> FinancialDomainOutcome:
         assert state.analysis_result is not None
-        coverage = evaluate_coverage(
-            [item.model_dump() for item in state.requirements],
-            [item.model_dump() for item in state.observations],
-        )
         result = state.analysis_result
-        limitations = list(dict.fromkeys(state.limitations + result.limitations))
         errors = [
             DomainError(
                 code=item.error_code or "CAPABILITY_UNAVAILABLE",
@@ -268,26 +275,36 @@ class FinanceRuntime:
                 )
             )
 
-        if result.status == "FAILED":
-            status = "FAILED"
-        elif result.status == "LIMITED" or coverage.status == "LIMITED":
-            status = "LIMITED"
-        elif result.status == "PARTIAL" or coverage.status == "PARTIAL" or limitations:
-            status = "PARTIAL"
-        else:
-            status = "COMPLETE"
+        try:
+            research = self._research_builder.build(
+                request=state.request,
+                requirements=state.requirements,
+                observations=state.observations,
+                analysis_result=result,
+                runtime_limitations=state.limitations,
+            )
+        except Exception:
+            return self._failed(
+                state.request,
+                "STOCK_RESEARCH_BUILD_FAILED",
+                "Stock research result could not be built from validated observations",
+                analysis_result=result,
+            )
 
-        level = "HIGH" if status == "COMPLETE" else "MEDIUM" if status == "PARTIAL" else "LOW"
+        state.stock_research_result = research
+        limitations = list(
+            dict.fromkeys(
+                state.limitations + result.limitations + research.limitations
+            )
+        )
+        status = "FAILED" if result.status == "FAILED" else research.coverage
         return FinancialDomainOutcome(
             request_id=state.request.request_id,
             status=status,
             financial_intent=state.request.financial_intent,
             analysis_result=result,
-            confidence=ConfidenceAssessment(
-                level=level,
-                reasons=[f"coverage={coverage.status}", f"analysis={result.status}"],
-                coverage_status=coverage.status,
-            ),
+            stock_research_result=research,
+            confidence=research.confidence,
             limitations=limitations,
             errors=errors,
         )
@@ -299,18 +316,25 @@ class FinanceRuntime:
         message: str,
         *,
         retryable: bool = False,
+        analysis_result: AnalysisResult | None = None,
     ) -> FinancialDomainOutcome:
         return FinancialDomainOutcome(
             request_id=request.request_id,
             status="FAILED",
             financial_intent=request.financial_intent,
+            analysis_result=analysis_result,
             confidence=ConfidenceAssessment(
                 level="LOW",
                 reasons=[message],
                 coverage_status="LIMITED",
             ),
             errors=[DomainError(code=code, message=message, retryable=retryable)],
-            limitations=[message],
+            limitations=list(
+                dict.fromkeys(
+                    [message]
+                    + (analysis_result.limitations if analysis_result else [])
+                )
+            ),
         )
 
     @staticmethod
@@ -341,8 +365,9 @@ def create_finance_runtime(
     gateway_adapter: Any,
     web_search_adapter: Any,
     analysis_capability: Any,
+    java_adapter: Any | None = None,
 ) -> FinanceRuntime:
-    """使用现有 Application 组件装配隔离的 M1 Finance Runtime。"""
+    """使用现有 Application 组件装配 M1 Runtime 与 M2 研究 Builder。"""
 
     planner = FinancePlanner(capability_registry)
     authorization = FinanceCapabilityAuthorizationPolicy(capability_registry)
@@ -350,9 +375,11 @@ def create_finance_runtime(
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,
         analysis_capability=analysis_capability,
+        java_adapter=java_adapter,
     )
     return FinanceRuntime(
         planner=planner,
         authorization=authorization,
         executor=executor,
+        research_builder=StockResearchResultBuilder(),
     )

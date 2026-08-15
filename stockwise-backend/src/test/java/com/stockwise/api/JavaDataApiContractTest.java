@@ -49,17 +49,24 @@ class JavaDataApiContractTest {
                 7L, "SUCCESS", null, OffsetDateTime.parse("2026-08-09T00:00:00Z"));
         PortfolioPositionsResponse.Position position = new PortfolioPositionsResponse.Position(
                 "600519", "贵州茅台", "stock", new BigDecimal("100"),
-                new BigDecimal("1500"), null, null, null, null);
+                new BigDecimal("1500"), null, null, null, null,
+                "SSE", "CNY", "USER_INPUT",
+                OffsetDateTime.parse("2026-08-09T00:00:00Z"), "confirm-1");
         when(service.positions(7L)).thenReturn(new PortfolioPositionsResponse(metadata, List.of(position)));
-        when(service.account(7L)).thenReturn(new AccountSnapshotResponse(metadata, "CNY", null, null, null));
+        when(service.account(7L)).thenReturn(new AccountSnapshotResponse(
+                metadata, "CNY", null, null, null, null, null, null, 1L));
         when(service.transactions(7L, null)).thenReturn(new TransactionHistoryResponse(metadata, List.of()));
-        when(service.riskProfile(7L)).thenReturn(new RiskProfileResponse(metadata, null, null, List.of(), List.of()));
+        when(service.riskProfile(7L)).thenReturn(new RiskProfileResponse(
+                metadata, null, null, null, List.of(), List.of(), 1L));
 
         mvc.perform(get("/api/portfolio/positions").param("user_id", "7"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.metadata.authorization_scope").value("SELF"))
+                .andExpect(jsonPath("$.metadata.schema_version").value("financial-user-data.v2"))
                 .andExpect(jsonPath("$.positions[0].cost_price").value(1500))
-                .andExpect(jsonPath("$.positions[0].quantity").value(100));
+                .andExpect(jsonPath("$.positions[0].quantity").value(100))
+                .andExpect(jsonPath("$.positions[0].exchange").value("SSE"))
+                .andExpect(jsonPath("$.positions[0].currency").value("CNY"));
         mvc.perform(get("/api/portfolio/account").param("user_id", "7"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currency").value("CNY"));

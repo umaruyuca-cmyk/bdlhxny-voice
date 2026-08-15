@@ -125,7 +125,9 @@ Nginx / API Gateway
 | Cognitive Graph | `TARGET` | 尚未进入运行路径 | 成为唯一顶层业务编排入口 |
 | DomainRequest / Outcome | `FOUNDATION` | 严格契约已存在 | 作为 Cognitive 与 Finance 的唯一跨层接口 |
 | Finance Runtime | `TRANSITION` | M1 薄运行时已独立装配，未接默认流量且无 Checkpointer | 领域子图/应用服务，隔离金融业务逻辑 |
-| StockResearchResult | `FOUNDATION` | Schema 已存在，构建器未实现 | 客观股票研究唯一输出契约 |
+| StockResearchResult | `FOUNDATION` | M2 Builder 已在非默认 Finance Runtime 双写接线；`DEVELOPMENT_COMPLETE / RELEASE_BLOCKED` | 客观股票研究唯一输出契约 |
+| Financial User Facts v2 | `FOUNDATION` | Java 已提供鉴权确认入口、版本与幂等控制、审计记录及只读查询元数据；Python 已按事实来源归一化 | 作为账户、持仓与风险事实的唯一权威来源，禁止旧记录被推断为实时数据 |
+| PortfolioValuationBuilder | `TARGET` | 尚未实现；不得由持仓数量直接推断总资产或当前权重 | 使用权威持仓和受预算约束的市场报价生成可追溯估值快照 |
 | SuitabilityEngine | `TARGET` | Schema 已存在，规则未实现 | 确定性个性化适配评估 |
 | Capability Registry | `CURRENT` | 14 个统一只读能力 | 继续作为唯一能力真源 |
 | Toolset Registry | `TRANSITION` | 六个派生分组已存在并接入 M1 Finance Planner | 继续分层暴露能力并服务后续 Research/Suitability |
@@ -946,7 +948,10 @@ WEB_SEARCH_TOKEN=...
 
 ### M3：Suitability v0
 
-- 建立最小 Financial Snapshot；
+- 已完成 Java Financial User Facts v2：鉴权确认、版本/幂等、审计和读取元数据；
+- 已完成 Python 用户事实归一化：旧记录不自动升级为 LIVE，确认事实必须具备服务端确认引用；
+- 下一步实现 `PortfolioValuationBuilder`，基于持仓与市场事实生成可追溯估值快照；
+- 在估值快照之上建立最小 Financial Snapshot；
 - 实现确定性 Suitability 规则；
 - 输出 Rule ID 和证据；
 - 区分 LIVE、USER_CONFIRMED、TEST_FIXTURE、MOCK 和 UNAVAILABLE；
@@ -1022,10 +1027,11 @@ WEB_SEARCH_TOKEN=...
 | 本地 Compose 仍以 Java + stock-wrapper 为主 | 与目标不一致 | M0 |
 | Cognitive Graph 未实现 | 未完成 | M4 |
 | Finance Runtime 尚未进入默认流量 | M1 独立开发完成；受 M0 发布门禁阻塞 | M5 |
-| StockResearchResult 构建器未实现 | 未完成 | M2 |
-| SuitabilityEngine 未实现 | 未完成 | M3 |
+| StockResearchResult 尚未进入默认流量 | M2 Builder 开发与回归完成；受 M0/M5 发布门禁阻塞 | M5 |
+| PortfolioValuationBuilder 未实现 | 用户事实 v2 与 Python 归一化已完成；组合估值仍缺失 | M3 |
+| SuitabilityEngine 未实现 | 依赖估值快照与最小 Financial Snapshot，规则尚未实现 | M3 |
 | 四时点 Guardrail 只有接口骨架 | 未完成 | M4 |
-| Toolset 尚未覆盖正式 Research/Suitability Planner | M1 Finance Planner 已接入 | M2/M3 |
+| Toolset 尚未覆盖 Suitability Planner | M1/M2 Research Planner 已接入；M3 用户事实读取与元数据已落地，估值及 Planner/Runtime 尚未接入 | M3 |
 | Task/Scheduler 未实现 | 未完成 | M6 |
 | 生产多副本幂等与 SSE 恢复未验证 | 未完成 | M0/M5 |
 

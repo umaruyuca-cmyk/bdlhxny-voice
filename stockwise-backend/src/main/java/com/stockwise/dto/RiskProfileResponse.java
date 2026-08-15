@@ -11,7 +11,9 @@ import java.util.List;
 public record RiskProfileResponse(
         DataAccessMetadata metadata,
         String riskTolerance,
+        BigDecimal maxLossTolerancePct,
         BigDecimal cashReserveRatio,
         List<String> preferredSectors,
-        List<String> forbiddenSymbols) {
+        List<String> forbiddenSymbols,
+        Long profileVersion) {
 }

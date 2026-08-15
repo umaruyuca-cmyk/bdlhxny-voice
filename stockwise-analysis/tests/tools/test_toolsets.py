@@ -67,6 +67,25 @@ def test_selected_toolset_expands_only_safe_unified_capability_manifests() -> No
     assert all("server" not in item and "provider" not in item for item in manifest)
 
 
+def test_suitability_toolsets_expose_only_the_three_minimum_user_reads() -> None:
+    toolsets = build_default_toolset_registry()
+
+    portfolio = toolsets.capability_manifest(
+        ToolsetName.PORTFOLIO_READ,
+        analysis_type="suitability",
+    )
+    profile = toolsets.capability_manifest(
+        ToolsetName.FINANCIAL_PROFILE_READ,
+        analysis_type="suitability",
+    )
+
+    assert {item["name"] for item in portfolio} == {
+        "portfolio.get_current_positions",
+        "portfolio.get_account_snapshot",
+    }
+    assert {item["name"] for item in profile} == {"user.get_risk_profile"}
+
+
 def test_toolset_view_is_dynamic_over_the_single_capability_registry() -> None:
     capabilities = CapabilityRegistry()
     toolsets = ToolsetRegistry(capabilities)

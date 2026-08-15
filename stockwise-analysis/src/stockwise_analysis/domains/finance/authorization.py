@@ -1,4 +1,4 @@
-"""M1 Finance Runtime 的精确 Capability 授权策略。"""
+"""M1/M3 Finance Runtime 的精确 Capability 授权策略。"""
 
 from __future__ import annotations
 
@@ -27,6 +27,19 @@ M1_OPERATION_CAPABILITIES: dict[DomainOperation, frozenset[str]] = {
     DomainOperation.RUN_ANALYSIS: frozenset({ANALYSIS_CAPABILITY}),
 }
 
+M3_OPERATION_CAPABILITIES: dict[DomainOperation, frozenset[str]] = {
+    DomainOperation.READ_PORTFOLIO: frozenset({
+        "portfolio.get_current_positions",
+        "portfolio.get_account_snapshot",
+    }),
+    DomainOperation.READ_PROFILE: frozenset({"user.get_risk_profile"}),
+}
+
+FINANCE_OPERATION_CAPABILITIES = {
+    **M1_OPERATION_CAPABILITIES,
+    **M3_OPERATION_CAPABILITIES,
+}
+
 
 @dataclass(frozen=True)
 class AuthorizationDecision:
@@ -42,7 +55,7 @@ class FinanceCapabilityAuthorizationPolicy:
 
     def __init__(self, registry: CapabilityRegistry) -> None:
         self._registry = registry
-        configured = set().union(*M1_OPERATION_CAPABILITIES.values())
+        configured = set().union(*FINANCE_OPERATION_CAPABILITIES.values())
         missing = sorted(name for name in configured if not registry.contains(name))
         if missing:
             raise ValueError(
@@ -56,7 +69,9 @@ class FinanceCapabilityAuthorizationPolicy:
     ) -> frozenset[str]:
         allowed: set[str] = set()
         for operation in operations:
-            allowed.update(M1_OPERATION_CAPABILITIES.get(operation, frozenset()))
+            allowed.update(
+                FINANCE_OPERATION_CAPABILITIES.get(operation, frozenset())
+            )
         return frozenset(allowed)
 
     def is_allowed(

@@ -29,6 +29,7 @@ logger = logging.getLogger("stockwise_analysis.domain.analysis_engine")
 
 # 分析引擎版本号，随计算逻辑变更递增（写入 methodology_version 供溯源）
 ENGINE_VERSION = "python-analysis.v2"
+FINANCE_RESEARCH_M2_METHODOLOGY = "finance-research.m2"
 
 # 各指标的标准参数（集中定义，保证复现性和跨调用一致性）
 INDICATOR_PARAMS = {
@@ -52,6 +53,9 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
 
     prices = _extract_closes(analysis_input.historical_prices)
     analysis_type = analysis_input.analysis_type or "market_snapshot"
+    objective_research = (
+        analysis_input.methodology_version == FINANCE_RESEARCH_M2_METHODOLOGY
+    )
 
     calculated: dict[str, Any] = {"engine": ENGINE_VERSION}
     signals: list[dict[str, Any]] = []
@@ -67,7 +71,12 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
     has_quote = analysis_input.realtime_quote is not None
     if analysis_type == "market_snapshot" and not has_quote:
         limitations.append("实时行情数据缺失，无法生成市场快照")
-    if not has_history and analysis_type != "market_snapshot":
+    needs_history = (
+        analysis_type in {"technical", "comprehensive"}
+        if objective_research
+        else analysis_type != "market_snapshot"
+    )
+    if not has_history and needs_history:
         limitations.append("历史K线不足，无法计算技术指标与风险指标")
 
     # ── 按分析类型计算 ──
@@ -90,7 +99,10 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
         risk_flags.extend(risk["risk_flags"])
 
     # ── 组合影响分析：持仓标的 vs 分析标的的重合与盈亏 ──
-    if analysis_type in {"portfolio_impact", "comprehensive"}:
+    # M2 客观综合研究不读取持仓；旧默认链路保留原 comprehensive 兼容行为。
+    if analysis_type == "portfolio_impact" or (
+        analysis_type == "comprehensive" and not objective_research
+    ):
         portfolio = _portfolio_analysis(analysis_input, limitations)
         calculated.update(portfolio["indicators"])
         signals.extend(portfolio["signals"])
@@ -106,7 +118,13 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
         }
 
     # ── 状态判定 ──
-    status = _decide_status(analysis_input, has_history, analysis_type, limitations)
+    status = _decide_status(
+        analysis_input,
+        has_history,
+        analysis_type,
+        limitations,
+        objective_research=objective_research,
+    )
 
     # ── 结论：由确定性信号生成，不依赖 LLM ──
     conclusions = (
@@ -361,6 +379,8 @@ def _decide_status(
     has_history: bool,
     analysis_type: str,
     limitations: list[str],
+    *,
+    objective_research: bool = False,
 ) -> str:
     """根据数据质量判定结果状态：SUCCESS / PARTIAL / LIMITED。"""
 
@@ -368,15 +388,30 @@ def _decide_status(
     if base_quality in ("INVALID", "FAILED"):
         return "LIMITED"
 
-    # 市场快照的关键输入就是实时行情；即使上游质量标记错误地写成 OK，
-    # 缺少 quote 时也不能把空快照降成普通 PARTIAL。
-    if analysis_type == "market_snapshot" and analysis_input.realtime_quote is None:
-        return "LIMITED"
-
-    # 需要历史K线的类型但数据不足 → LIMITED。
-    # market_snapshot 和 portfolio_impact 不依赖历史K线（组合分析基于持仓+行情）。
-    if analysis_type not in {"market_snapshot", "portfolio_impact"} and not has_history:
-        return "LIMITED"
+    if objective_research:
+        # M2 五类研究只检查 Planner 为该类型声明的关键输入。
+        missing_critical_input = (
+            (analysis_type == "market_snapshot" and analysis_input.realtime_quote is None)
+            or (analysis_type == "technical" and not has_history)
+            or (analysis_type == "fundamental" and analysis_input.financial_data is None)
+            or (analysis_type == "valuation" and analysis_input.valuation_data is None)
+            or (
+                analysis_type == "comprehensive"
+                and (
+                    not has_history
+                    or analysis_input.financial_data is None
+                    or analysis_input.valuation_data is None
+                )
+            )
+        )
+        if missing_critical_input:
+            return "LIMITED"
+    else:
+        # 旧 Root Graph 的默认兼容规则保持不变。
+        if analysis_type == "market_snapshot" and analysis_input.realtime_quote is None:
+            return "LIMITED"
+        if analysis_type not in {"market_snapshot", "portfolio_impact"} and not has_history:
+            return "LIMITED"
 
     # 数据质量 PARTIAL/STALE → PARTIAL
     if base_quality in ("PARTIAL", "STALE") or limitations:

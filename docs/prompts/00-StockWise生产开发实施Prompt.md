@@ -1,12 +1,14 @@
 # StockWise 生产开发实施 Prompt
 
 > **文档状态：唯一有效的生产开发执行 Prompt**  
-> **Prompt 版本：v1.2**
+> **Prompt 版本：v1.8**
 > **生效日期：2026-08-10**  
-> **修订记录：总账见 §25；M1 审查闭环见 §8.6**
+> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8**
 > **上位架构：[00-StockWise统一生产架构.md](../architecture/00-StockWise统一生产架构.md)**  
 > **适用项目：`stockwise-analysis`、必要的 Java 用户数据接口、Nginx 与生产部署配置**  
-> **当前系统边界：只读金融助手；不下单、不调仓、不转账、不修改账户或持仓**
+> **当前系统边界：Agent / Finance Runtime 对金融数据只读；不下单、不调仓、不转账；用户本人仅可通过独立认证设置 API 维护和确认自己的金融资料，该 API 不是 Agent Capability**
+
+> **Agent 智能原则：不得把“用户未提供内部标准字段”直接等同于“信息缺失”。系统必须先利用本轮自然语言、受控会话实体、结构化解析能力和可验证的外部数据完成可恢复的信息补全；只有在没有可解析线索、结果存在实质歧义、受控解析不可用或继续执行会明显改变用户目标时，才选择 `ASK_USER`。不得以裸 LLM 猜测代替工具验证，也不得把本可由系统完成的代码、交易所或规范名称转换转嫁给用户。**
 
 ## 0. 使用方式
 
@@ -25,7 +27,8 @@ ACCEPTANCE_CRITERIA: 用户额外要求的验收条件
 如果没有提供 `TASK_PHASE`：
 
 1. 先审计当前代码和迁移状态；
-2. 选择最早尚未完成的阶段；
+2. 选择最早尚未完成的业务能力阶段；M0 作为独立发布门禁跟踪，除非任务目标明确为
+   生产基线或准备进入 M5，否则不抢占 M1–M4 的开发顺序；
 3. 默认只实施该阶段中最小可独立验收的垂直切片；
 4. 不得跨阶段继续开发；
 5. 在最终报告中说明选择依据。
@@ -70,19 +73,21 @@ ACCEPTANCE_CRITERIA: 用户额外要求的验收条件
 
 ### 3.1 一次只做一个阶段
 
-生产迁移严格按以下阶段执行：
+生产迁移按以下能力阶段与发布门禁执行：
 
 ```text
-M0 生产基线修复
 M1 领域边界接线
 M2 股票研究下沉
 M3 Suitability v0
 M4 Cognitive Graph + Communication
+M0 生产基线修复（独立发布门禁，最迟在 M5 前关闭）
 M5 灰度切换
 M6 持续任务
 ```
 
 每个开发任务只能处理一个阶段。完成当前阶段后必须停止并交付结果，除非用户明确授权继续下一阶段。
+M0 未关闭不阻止 M1–M4 在独立、非默认入口开发和测试，但这些阶段只能标记
+`DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`；进入 M5、默认切流或宣称生产可用前必须关闭 M0。
 
 禁止：
 
@@ -554,8 +559,10 @@ coverage 固定为 `LIMITED`，并至少包含一个稳定错误码。公开错�
 - 未来确需领域持久化时必须作为独立任务定义服务端生成的 `thread_id`、稳定
   `checkpoint_ns`、用户所有权、幂等与清理策略，不能在 M1 中临时拼接
   `finance:{request_id}`；
-- 兼容 AnalysisResult Adapter 是临时边界，M2 正式 StockResearchResult Builder 落地并完成
-  对照迁移后删除；
+- 兼容把 `analysis_result` 当作领域研究边界是临时做法；M2 起客观研究权威改为
+  `stock_research_result`，双写与停写条件以 §9 为准。不得删除
+  `contracts.analysis.AnalysisResult` 分析引擎契约，也不得在 M2 删除旧 Root Graph
+  对 AnalysisResult 的消费；
 - 旧 Root Graph Wrapper 与 Finance Runtime Wrapper 必须 import 同一模块中的同一份核心实现，
   Wrapper 只负责输入输出转换，不得出现两套计算和规则。
 
@@ -619,104 +626,515 @@ topic；`market_snapshot` 必须验证不允许的 topic 被拒绝。共享实�
 
 ### 9.1 目标
 
-将现有股票分析结果转换为唯一结构化 `StockResearchResult`，实现客观研究与聊天表达解耦。
+在 **Finance Runtime 路径**上将客观股票研究输出下沉为结构化
+`StockResearchResult`，使研究结论与聊天表达解耦。
+
+**研究权威字段**：对本阶段及之后的金融研究消费者而言，
+`FinancialDomainOutcome.stock_research_result` 是客观研究的唯一权威载荷。
+`analysis_result` 仅表示 Domain Engine / `analysis.run_analysis` 的中间计算产物，
+可在过渡期双写，不得再被描述为“唯一研究契约”。
+
+**兼容股票分析范围**：完全继承 M1（§8.1）：
+
+- `financial_intent = STOCK_RESEARCH`；
+- 恰好一个 `instrument`；
+- `market_snapshot / technical / fundamental / valuation / comprehensive` 五类
+  `analysis_type`；
+- `requested_topics` 仅选择当前 Policy 已声明的 optional Capability。
+
+M2 不扩展多标的、`portfolio_impact`、Suitability 或用户账户读取。
+
+**与 M0 / 默认流量的门禁**：允许在 M0 未关闭、默认流量仍走旧 Root Graph 时独立
+开发 M2，但只能存在于 Finance Runtime 非默认入口。M0 未全部通过时，M2 最多标记为
+`DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`，不得接默认流量、真实灰度或宣称生产可用。
+单个任务仍必须遵守 §3.1，不能同时修改 M0 与 M2，也不能把 M3/M4 工作塞进本阶段。
 
 ### 9.2 必须处理
 
-- 字段来源映射；
-- `StockResearchResultBuilder`；
-- Market Snapshot、Fundamentals、Valuation、Technicals、Money Flow、Industry 和 Events；
-- Evidence、Finding、Risk、Conflict 和 Scenario；
-- Coverage 与 Confidence；
-- AnalysisResult 到 StockResearchResult 的兼容 Adapter；
-- fixture 和旧路径对照测试。
+- 覆盖 `StockResearchResult` 现有契约字段的来源矩阵（不得另起平行 schema）；
+- `StockResearchResultBuilder`（确定性，禁止 LLM 填结构）；
+- 分节组装：`MarketSnapshot`、`Fundamentals`、`Valuation`、`Technicals`、
+  `MoneyFlow`、`IndustryContext`、`NewsEvent`；
+- `EvidenceFact`、`Finding`、`ResearchRisk`、`EvidenceConflict`；
+- `coverage` 与 `ConfidenceAssessment` 的确定性计算与传播；
+- Finance Runtime 接线：成功研究路径填充 `stock_research_result`，并按 §9.4.5 双写
+  `analysis_result`；
+- 固定 fixture、五类分析、降级与冲突对照测试；
+- 更新过时“阶段 3/阶段 4”注释为 M2/M3，避免排期漂移。
 
-### 9.3 实现要求
+### 9.3 不得处理
 
-开发前先提交字段来源矩阵：
+- 不实现 SuitabilityEngine、FinancialSnapshot 个性化结论或 `portfolio_impact`；
+- 不读取 `portfolio.*` / `user.*` Capability，不把完整用户账户写入研究输出；
+- 不修改默认 API / 旧 Root Graph 流量，不删除旧 Graph；
+- 不把旧路径的 `summary_model` / 聊天文案生成改接到 `StockResearchResult`
+  （聊天解耦属于 M4 Communication）；
+- 不删除 `contracts.analysis.AnalysisResult` / `AnalysisInput` 分析引擎契约；
+- 不用 LLM 生成 Finding、Confidence、Scenario、Conflict 或 coverage；
+- 不在本阶段把数值字段从 `float` 批量改为 Decimal（若需要，单开 ADR）；
+- 不实现 Task/Scheduler，不接 M5 灰度；
+- 不把 M0 持久化、Nginx 或 readiness 工作并入本任务。
 
-| 输出字段 | Observation/Calculation 来源 | 缺失行为 | 质量规则 | 测试 |
-|---|---|---|---|---|
+### 9.4 实现要求
+
+#### 9.4.1 实施顺序
+
+1. 提交字段来源矩阵（基于现有 `domains/finance/contracts.py`，禁止平行模型）；
+2. 为五类 `analysis_type` 准备固定 Observation + AnalysisResult fixture；
+3. 实现纯函数 / 纯模块 `StockResearchResultBuilder`（不依赖 LangGraph、MCP、FastAPI）；
+4. 单测：正常、缺失、冲突、LIMITED 传播；
+5. 接入 Finance Runtime：在已有 `analysis.run_analysis` 之后调用 Builder；
+6. Outcome 双写 `stock_research_result` + `analysis_result`；对外默认路径行为不变；
+7. 对照测试：同一 fixture 下计算指标一致、limitations 不减少、coverage 不虚高；
+8. 停止并交付；不自动进入 M3。
+
+#### 9.4.2 Builder 输入管道（修订重点）
+
+唯一允许的构建管道：
+
+```text
+Observations（含 provenance / status / data_mode）
+  + AnalysisResult（含 calculated_indicators / signals / risk_flags / limitations）
+  + 本轮 Requirement / analysis_type / requested_topics
+  → StockResearchResultBuilder
+  → StockResearchResult
+```
 
 规则：
 
-- 原始数据存在不等于研究结论已经存在；
-- Finding 必须引用 Evidence 或 Calculation；
-- Confidence 由覆盖率、时效、来源质量和冲突确定性计算；
-- LLM 不自由输出可信度百分比；
-- 缺失字段保持空并进入 limitations；
-- 股票研究不读取与客观研究无关的完整用户账户；
-- 股票研究不输出 `SUITABLE` 或买卖执行建议；
-- 股票子图不直接生成最终聊天文案。
+- 禁止“仅把 AnalysisResult 包一层”却丢弃 Observation 溯源；
+- 禁止绕过 Domain Engine 在 Builder 内重算指标、估值或回测公式；
+- 禁止从原始 MCP/HTTP 响应直接填 Finding；
+- 原始数据存在 ≠ 研究结论已存在：无对应 Evidence/Calculation 时不得编造 Finding；
+- 可选分节（如 money_flow / industry / events）仅在对应 Capability 已被计划且有
+  Observation 时填充；否则为 `None` 或空列表，并写入 `limitations`；
+- `requested_topics` 未请求的 optional 分节保持空，不因“数据碰巧存在”而输出。
 
-### 9.4 验收
+#### 9.4.3 字段来源矩阵
 
-- 固定输入产生稳定结构化结果；
-- 所有结论可追溯；
-- `PARTIAL/LIMITED` 正确传播；
-- 供应商冲突不被静默覆盖；
-- 旧 AnalysisResult 兼容；
-- 相同 fixture 的确定性计算不回归；
-- 全量测试通过。
+开发编码前必须提交并纳入审查：
+
+| 输出字段 | Observation / Calculation 来源 | 适用 analysis_type | 缺失行为 | 质量规则 | 测试 |
+|---|---|---|---|---|---|
+
+矩阵至少覆盖：
+
+- `instrument`、`market_snapshot`、`fundamentals`、`valuation`、`technicals`；
+- `money_flow`、`industry_context`、`events`；
+- `evidence`、`findings`、`risks`、`conflicts`；
+- `coverage`、`confidence`、`limitations`。
+
+`scenarios`：**M2 默认输出空列表**。若某条规则化 Scenario 已有稳定 Rule ID、
+输入字段与证据引用，可写入；禁止 LLM 或自由文本生成 `probability` / `impact`。
+
+#### 9.4.4 Finding、Conflict 与确定性
+
+- 每个 `Finding` 必须包含非空的 `evidence_ids` 和/或 `calculation_ids`；
+- Finding 文本只能由确定性规则从 signals / indicators / risk_flags / 已校验
+  Evidence 派生；不得调用 LLM；
+- 同一语义字段若存在多个成功 Observation 且值冲突：必须生成 `EvidenceConflict`，
+  保留双方 refs，禁止静默选用其中一方并当作无冲突 COMPLETE；
+- 冲突存在时，`coverage` 不得为 `COMPLETE`，`confidence.level` 不得为 `HIGH`；
+- `ResearchRisk` 只描述资产/研究层面风险，不输出用户适配或交易指令语义；
+- Confidence 由覆盖率、时效、来源质量、冲突确定性计算；禁止 LLM 输出百分比或
+  随意改写 `ConfidenceAssessment.level`。
+
+#### 9.4.5 状态传播矩阵（修订重点）
+
+Builder 与 Runtime 必须遵守同一传播规则，禁止 `stock_research_result` 与
+`FinancialDomainOutcome` 互相矛盾。
+
+| AnalysisResult.status | Observation coverage | 显式 Conflict | StockResearchResult.coverage | Outcome.status | confidence.level |
+|---|---|---|---|---|---|
+| FAILED | 任意 | 任意 | LIMITED | FAILED | LOW |
+| LIMITED | 任意 | 任意 | LIMITED | LIMITED | LOW |
+| SUCCESS/PARTIAL | LIMITED | 任意 | LIMITED | LIMITED | LOW |
+| SUCCESS/PARTIAL | PARTIAL | 无 | PARTIAL | PARTIAL | MEDIUM |
+| SUCCESS/PARTIAL | COMPLETE | 有 | PARTIAL 或 LIMITED | PARTIAL 或 LIMITED | LOW 或 MEDIUM |
+| SUCCESS | COMPLETE | 无 | COMPLETE | COMPLETE | HIGH |
+| PARTIAL | COMPLETE | 无 | PARTIAL | PARTIAL | MEDIUM |
+
+补充：
+
+- Outcome.`limitations` 必须是 Runtime 限制与 Research `limitations` 的并集，且
+  **不得少于** 构建前 AnalysisResult.limitations；
+- `MOCK` / `TEST_FIXTURE` / `UNAVAILABLE` Observation 不得把对应分节质量提升为
+  可支撑 COMPLETE 的 LIVE 研究；
+- Builder 失败（无法构造合法 StockResearchResult）返回结构化
+  `FAILED + DomainError`，稳定错误码至少包括
+  `STOCK_RESEARCH_BUILD_FAILED`；不得假装 COMPLETE。
+
+#### 9.4.6 Finance Runtime 接线与双写
+
+- 在 M1 已执行的 `analysis.run_analysis` 成功之后调用 Builder；
+- `FinancialDomainOutcome.stock_research_result` 必填（成功研究路径）；
+- 过渡期继续填充 `analysis_result`，供旧对照测试与引擎回归使用；
+- 研究消费者（未来 Cognitive / Communication / 对照断言）优先读取
+  `stock_research_result`；
+- 停写 `analysis_result` 不在 M2 完成，须单独任务并证明无消费者依赖；
+- M2 不配置 Finance Checkpointer，不写入旧 Root Graph State；
+- 默认 API、旧 Root Graph 与对外聊天结果保持不变。
+
+#### 9.4.7 客观研究边界
+
+- 不输出 `SUITABLE` / `CONDITIONALLY_SUITABLE` / 任何 Suitability 枚举；
+- 不输出买卖、调仓、下单、仓位建议或可执行交易指令；
+- 不把“适合当前用户/组合”类表述写入 Finding 或 limitations 以外的结论字段；
+- 不在本阶段改写旧股票子图的聊天文案节点；Finance 路径本身就不生成最终聊天文案。
+
+### 9.5 验收
+
+#### 9.5.1 结构与追溯
+
+- 固定 fixture 下 `StockResearchResult` 可稳定复现；
+- 每个 Finding 可追溯到 Evidence 或 Calculation ID；
+- 字段矩阵中的必填/可选/缺失行为均有对应测试；
+- 不存在平行的第二套研究 schema。
+
+#### 9.5.2 五类分析与降级
+
+以下五类必须分别用固定 fixture 验证，不得只抽测一类：
+
+1. `market_snapshot`
+2. `technical`
+3. `fundamental`
+4. `valuation`
+5. `comprehensive`
+
+每类至少覆盖：
+
+- 正常完整结果；
+- 必需 Observation 不可用 → coverage/Outcome 为 LIMITED/FAILED，且不编造 Finding；
+- optional topic 未请求时对应分节为空；
+- 显式双源冲突 → 产生 EvidenceConflict，且不得 COMPLETE/HIGH；
+- 与构建前 AnalysisResult 对照：确定性指标一致，limitations 不减少，coverage 不虚高。
+
+#### 9.5.3 接线与阶段门禁
+
+- Finance Runtime 成功路径写入 `stock_research_result`；
+- 过渡期仍保留 `analysis_result`；
+- 默认 API / Root Graph / 对外聊天行为不变；
+- 全量 Python 回归通过；
+- M0 未通过时交付必须标记 `RELEASE_BLOCKED` 并列出未关闭门禁；
+- 回滚只需移除 Builder 调用与 `stock_research_result` 填充，不影响 M1 薄运行时与旧默认路径。
+
+### 9.6 M2 v1.3 审查修订对照
+
+| # | 修订前问题 | v1.3 修正 |
+|---|---|---|
+| 1 | Builder 输入源不清，易做成“只包 AnalysisResult”或重复计算 | §9.4.2 固定 Observations + AnalysisResult + Requirement 管道 |
+| 2 | “兼容 Adapter / 删除 AnalysisResult”与引擎契约、旧路径冲突 | §9.3/§9.4.6 区分研究权威字段、引擎契约与旧 Graph 消费；同步澄清 §8.4.5 |
+| 3 | 未说明是否改默认流量、是否受 M0 门禁约束 | §9.1/§9.3/§9.5.3 对齐 M1 的独立装配与 RELEASE_BLOCKED |
+| 4 | 未继承 M1 五类单标的范围 | §9.1 明确继承；§9.3 禁止扩到 Suitability/持仓 |
+| 5 | coverage/status/confidence 无传播表 | §9.4.5 增加传播矩阵与 limitations 不减少 |
+| 6 | Finding/Scenario/Conflict 生成责任不清 | §9.4.3–§9.4.4：Scenario 默认空；Finding/Conflict 必须确定性且可追溯 |
+| 7 | “唯一结构化”与 Outcome 双字段矛盾 | §9.1 改为研究权威唯一；允许 analysis_result 过渡双写 |
+| 8 | 验收弱于架构退出门槛与 M1 | §9.5 要求五类 × 正常/降级/冲突/对照 |
+| 9 | 缺少不得处理与实施顺序 | §9.3、§9.4.1 |
+| 10 | 聊天文案解耦易越权到旧 Graph | §9.3/§9.4.7：M2 不改 summary_model；聊天解耦归 M4 |
 
 ## 10. M3：SuitabilityEngine v0
 
 ### 10.1 目标
 
-结合客观研究与真实/明确缺失的用户状态，产生确定性用户适配性判断。
+在 **Finance Runtime 路径**上，结合权威客观研究与最小用户金融快照，产生确定性
+`SuitabilityAssessment`，回答垂直场景：**单一标的是否适合当前用户**（只评估、不执行）。
 
-### 10.2 输入
+**权威输入 / 输出：**
+
+- 客观研究权威：`StockResearchResult`（依赖 M2；不得改用裸 `AnalysisResult` 充当研究结论）；
+- 用户事实权威：Java 用户金融数据域，只保存用户确认或受控账户同步得到的持仓、账户、
+  风险和流动性事实；
+- 市场事实权威：标准市场 Observation（价格、币种、市场与行情时间）；
+- 估值权威：纯确定性 `PortfolioValuationBuilder`，只用用户事实与市场事实计算当前市值、
+  实际权重和本轮可投资资产；
+- 用户状态权威：`FinancialSnapshot`（本阶段新建 SnapshotBuilder）；
+- 适配性权威：`FinancialDomainOutcome.suitability`。
+
+**v0 范围（修订重点）：**
+
+- 只启用 `FinancialIntent.SUITABILITY`；
+- 恰好一个 `instrument`（与 M1/M2 单标的一致；契约“至少一个”在 v0 收紧为恰好一个）；
+- `SUITABILITY` v0 的客观研究配置固定为 `analysis_type=comprehensive`；该字段必须由
+  服务端构造或校验，客户端不得降为 `market_snapshot` 后仍获得适配性判断。其他
+  analysis_type 返回稳定 `SUITABILITY_RESEARCH_PROFILE_REQUIRED`；
+- v0 只允许**同轮调用 M2 研究链**获得 `StockResearchResult`。缓存/外部传入研究结果
+  暂不开放；未来若开放，须另行定义服务端所有权、标的匹配、版本、TTL 与完整性校验；
+- 组合 / 目标 / 流动性 / 风险预算影响只作为 `SuitabilityAssessment` **内嵌字段**；
+- `FinancialIntent.PORTFOLIO_IMPACT` / `GOAL_PLANNING` 继续返回
+  `FAILED + ACTION_NOT_ENABLED`；
+- 不启用旧 Root Graph / Domain Engine 的 `analysis_type=portfolio_impact` 作为
+  个性化结论权威；若复用其中纯计算，必须抽到共享确定性模块并由 Suitability 规则调用。
+
+**门禁：**
+
+- 允许在默认流量仍走旧 Root Graph、M0 未关闭时独立开发，但不得接默认流量或灰度；
+- M2 必须先达到 `DEVELOPMENT_COMPLETE`。在仅有固定 `StockResearchResult` fixture
+  时可以开发 Engine，但不得接 Finance Runtime 或宣称端到端完成；
+- M0 未通过，或四时点 Guardrail 尚未达到“可阻挡伪个性化 / 交易语义”的最低接线时，
+  M3 最多标记 `DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`，不得对终端用户暴露个性化结论；
+- 单个任务遵守 §3.1，不得与 M0/M4/M5 合并实施。
+
+### 10.2 必须处理
+
+- `FinancialSnapshotBuilder`（Observation → Snapshot，含 `data_mode` /
+  `completeness` / `limitations`）；
+- Java 用户数据 Capability 的标准化业务字段契约、必要的数据库迁移与只读 DTO 增补；
+- 受认证的用户金融资料录入/确认入口；Python/LLM 可调用的 Java Data API 仍保持只读；
+- 标准行情 Observation 补齐估值所需的精确 instrument identity、price、currency、as_of；
+- 确定性 `PortfolioValuationBuilder`（用户事实 + 标准行情 → 市值/权重/可投资资产）；
+- M3 精确 Capability 授权扩展（在 M1 Policy 之上增量，禁止前缀授权）；
+- Capability Registry / Toolset 的 `suitability` 元数据、Java Adapter 路由与整轮预算；
+- 确定性 `SuitabilityEngine` + 版本化规则集（Rule ID、阈值，对齐 ADR-004）；
+- Finance Runtime 对 `SUITABILITY` 意图的执行链接线；
+- 研究覆盖 / 快照真实性 / 关键字段缺失 → `result` 决策表；
+- `SuitabilityAssessment` 填充；Outcome 只以 `suitability` 为适配性权威字段；
+- 规则表、阈值边界、MOCK/缺数/LIMITED research 的 fixture 测试。
+
+### 10.3 不得处理
+
+- 不启用 `PORTFOLIO_IMPACT` / `GOAL_PLANNING` Intent，不实现完整 `portfolio-health` Skill 平台；
+- 不修改默认 API / 旧 Root Graph 流量，不删除旧 Graph；
+- 不把 Suitability 结果改写成最终聊天文案（属 M4 Communication）；
+- 不实现 Cognitive `ASK_USER` 自动追问闭环（可在 Assessment 中给出
+  `required_conditions`，由后续 Cognitive 消费）；
+- 不用 LLM 生成适配结论、Rule 命中、阈值或 reasons；
+- 不生成买卖、调仓、下单、仓位指令或“建议立即买入/卖出”语义；
+- 不把 Mem0 / INFERRED 目标当作高影响规则的唯一依据；
+- 不接受客户端直接提交 `FinancialSnapshot`、`data_mode`、`is_mock`、`user_id` 或
+  缓存研究载荷来覆盖服务端构建结果；
+- 不把成本价、目标权重或本轮派生的市场市值/实际权重保存为“当前用户事实”；估值必须
+  带本轮行情来源和时间，不能因一次计算变成无时效的 Java 配置；
+- Finance Runtime、Planner、LLM 和 Capability 不得修改用户金融资料。允许新增的资料
+  写入/确认接口只能面向已认证用户，由 Java 生成 confirmation ref，并与内部只读 Data API 隔离；
+- 不在本阶段做多标的组合优化或目标规划引擎；
+- 不把 M0 持久化、Nginx、readiness 或 M5 灰度并入本任务；
+- 不写入 Outcome 顶层重复的 `portfolio_impact` / `goal_impact` /
+  `liquidity_impact`（见 §10.4.6）。
+
+### 10.4 实现要求
+
+#### 10.4.1 实施顺序
+
+1. 提交 M3 前置数据契约差距表：逐项对照 Java DTO、标准 Observation 与
+   `FinancialSnapshot`，不得假设现有字段已经足够；
+2. 按 §10.4.3 完成 Java 用户事实数据库迁移、受认证录入/确认入口、内部只读 DTO、
+   `DataAccessMetadata` v2 和标准化契约；旧数据没有来源/确认依据时不得回填成 LIVE；
+3. 实现纯确定性 `PortfolioValuationBuilder`：复用同轮合法行情、补取其余持仓行情，
+   计算当前市值、实际权重和本轮可投资资产；完成币种、时效、缺行情和预算测试；
+4. 为 `SuitabilityAssessment` 最小补充 `rule_set_version`、聚合 `rule_ids` 与
+   `evidence_refs`（`extra=forbid` 兼容），再写引擎；
+5. 实现/升级 `FinancialSnapshotBuilder`，只消费标准用户事实与确定性估值结果；完成
+   身份/data_mode/completeness/时间推导测试；
+6. 扩展 Finance 授权 Policy 与 Executor（精确 Capability 名，启动时校验 Registry）；
+7. 完成 ADR-004：冻结 Rule ID、输入字段、单位、阈值、等于阈值的归属、缺数行为、
+   聚合优先级与结果映射。ADR 必须标记 `APPROVED`；随后实现纯确定性
+   `SuitabilityEngine`（不依赖 LangGraph / MCP / FastAPI / LLM）；
+8. Finance Runtime：`SUITABILITY` 路径按 §10.4.2 接线；其他 Intent 保持
+   `ACTION_NOT_ENABLED`；
+9. 决策表与阈值边界、MOCK、缺关键字段、LIMITED research、预算耗尽全覆盖测试；
+10. 停止并交付；不自动进入 M4。
+
+**硬停止条件：**步骤 1 发现正常路径必需用户事实缺少权威来源时，必须先完成步骤 2 的
+持久化与受控确认来源，不能只增加空 DTO 字段；无法建立受控来源时只能保持缺失。
+ADR-004 未 `APPROVED` 时允许继续完成数据契约、估值、Snapshot 与 fail-closed 测试，但不得
+实现或装配会输出 `SUITABLE` 等真实三类个性化结果的生产规则，不得用默认值、成本价、
+目标权重、过期行情或示例阈值伪造当前用户状态。
+
+#### 10.4.2 执行管道（修订重点）
 
 ```text
-StockResearchResult
-FinancialSnapshot
-Confirmed Goals / Constraints
-Suitability Rule Set Version
-```
-
-Financial Snapshot 只读取本轮所需最小字段：
-
-- 持仓；
-- 账户快照；
-- 风险画像；
-- 用户明确目标；
-- 流动性信息。
-
-### 10.3 数据真实性
-
-必须区分：
-
-```text
-LIVE
-USER_CONFIRMED
-TEST_FIXTURE
-MOCK
-UNAVAILABLE
+FinancialDomainRequest(financial_intent=SUITABILITY, instruments=[one])
+  → 校验单标的、analysis_type=comprehensive、身份、授权与第一阶段固定预算
+  → 同轮执行 M2 comprehensive 研究链 → StockResearchResult
+        （禁止用裸 AnalysisResult、客户端载荷或未验证缓存替代）
+  → 按最小字段集调用 Java 用户只读 Capability → raw user Observations
+  → 用户数据 Normalizer → 标准用户事实 Observations
+  → 收集全部有效持仓标的并形成稳定去重行情集合
+  → 复用同轮合法目标行情；按第二阶段动态预算补取其余持仓标准行情
+  → PortfolioValuationBuilder(user facts, quotes) → PortfolioValuationObservation
+  → FinancialSnapshotBuilder(request, user facts, valuation, environment) → FinancialSnapshot
+  → SuitabilityEngine(research, snapshot, rule_set_version) → SuitabilityAssessment
+  → FinancialDomainOutcome
+        stock_research_result = ...
+        suitability = ...
 ```
 
 规则：
 
-- `MOCK` 只能用于开发测试；
-- `TEST_FIXTURE` 只能驱动测试断言；
-- `UNAVAILABLE` 不得产生真实个性化结论；
-- `USER_CONFIRMED` 必须有确认来源；
-- INFERRED 目标只能用于追问，不能驱动高影响结论。
+- `authenticated_user_id` 必须来自服务端认证上下文；Snapshot.`user_id` 必须与其一致；
+- 每条 Java Observation 的 `data.metadata.user_id` 必须在标准化前按字符串规范化后与
+  `authenticated_user_id` 相等；缺失或不一致返回
+  `FAILED + SNAPSHOT_IDENTITY_MISMATCH`，不得进入 Engine；
+- `requires_financial_snapshot` 在 SUITABILITY 路径视为 true，不得靠客户端伪造快照
+  覆盖服务端构建结果；
+- Java 只读响应的身份、来源和确认元数据必须由服务端产生；客户端只能提交金融资料
+  业务字段并触发确认，不能自报 `LIVE`、`data_mode`、`confirmation_ref` 或所有权；
+- DomainRequest 上的约束与 Snapshot.goals 合并时：仅
+  `USER_EXPLICIT` / `PROFILE_CONFIRMED` / `MEMORY_CONFIRMED`（及测试夹具）可驱动
+  高影响规则；`INFERRED` 只进入 `required_conditions` / limitations，不单独把结果
+  推到 `SUITABLE`；
+- Engine、PortfolioValuationBuilder 与 SnapshotBuilder 禁止 import 供应商 Schema 或原始
+  HTTP/MCP 响应；
+- `FinancialSnapshotBuilder` 的唯一允许输入为：服务端认证用户、当前请求中已确认的
+  goals/constraints、标准用户事实 Observations、确定性估值 Observation、服务端注入的
+  execution environment；不得
+  接收客户端 Snapshot 或客户端时间；
+- `captured_at` 取本轮可用用户事实与估值 Observation 中最大的 provenance.`retrieved_at`；没有
+  可验证时间时 Snapshot 为 UNAVAILABLE/构建失败，禁止在纯 Builder 中调用当前时间。
 
-### 10.4 v0 规则
+#### 10.4.3 最小快照与授权
 
-至少覆盖：
+Snapshot 本轮只组装目标所需最小字段（缺失如实标记，禁止默认值伪装成用户状态）。
+Java 只权威提供用户事实；市场值必须来自标准行情并经确定性估值计算：
 
-- 当前和预测集中度；
-- 行业或单一标的暴露；
-- 风险承受能力；
-- 最大损失容忍度；
-- 流动性约束；
-- 财务目标期限；
-- 研究覆盖率和可信度。
+| Snapshot 字段 | 权威来源 | 标准输入/计算 | 当前字段不可用时 |
+|---|---|---|---|
+| `positions[].symbol/quantity/industry` | `portfolio.get_current_positions` | 每项 `symbol/exchange/currency/quantity/industry/source_ref` | 无持仓事实，不计算组合影响 |
+| `positions[].market_value/weight_pct` | `PortfolioValuationBuilder` | `quantity × current_price`；再除以本轮 `total_assets`；带 quote/calculation refs | 任一有效持仓缺合法行情、币种或时间 → 当前集中度 UNKNOWN → INSUFFICIENT |
+| `account.cash/currency` | `portfolio.get_account_snapshot` | Java 用户确认或受控账户同步事实 | 缺现金或币种 → 资产分母不可用 |
+| `account.total_assets` | `PortfolioValuationBuilder` | v0 严格定义为“本次范围内可投资资产”=`cash + Σ active position market_value`，不是个人完整净资产 | 持仓估值不完整、跨币种无受控 FX、值不大于 0 → INSUFFICIENT |
+| `risk_profile` | `user.get_risk_profile` | `risk_level/max_loss_tolerance_pct`；source/confirmation ref | 两个关键字段任一缺失 → INSUFFICIENT |
+| `liquidity` | 账户 Capability 的显式用户事实 | `liquid_assets/near_term_cash_needs/near_term_cash_needs_horizon_days`；source/confirmation ref | 不从 cash、monthly_budget 或 cash_reserve_ratio 猜测；关键字段缺失 → INSUFFICIENT |
+| `goals` | 当前请求中已确认的 goals / 未来精确 Capability | `goal_id/source/horizon/target_date/target_amount` | 允许空；目标规则 UNKNOWN，不得据此 SUITABLE |
 
-每条规则必须有稳定 Rule ID、版本、输入字段、阈值、结果和解释。
+**Java 用户事实契约（v2）：**
 
-### 10.5 输出
+- 内部只读 Data API 继续只暴露三个精确 GET Capability，不新增给 Planner/LLM 的写工具；
+- 用户资料写入/确认必须走独立、受认证的 Java 用户设置 API。服务端从认证上下文绑定
+  user_id，生成不可由客户端指定的 `confirmation_ref` 和 `confirmed_at`；
+- 设置 API 必须使用 `profile_version` 做乐观并发/幂等校验，并保存服务端确认记录：至少含
+  user_id、profile_version、confirmed_at、confirmation_ref 与稳定 changed field paths；
+  审计记录不得复制完整敏感金融载荷；
+- 持仓事实至少补充可空但不可伪造的 `exchange/currency/data_source/confirmed_at/source_ref`；
+  现有 `quantity/cost_price/target_weight` 保留原语义；
+- 账户/画像持久化至少补充 `max_loss_tolerance_pct`（百分数点 `0..100`）、
+  `liquid_assets`、`near_term_cash_needs`、`near_term_cash_needs_horizon_days`、
+  `profile_version/confirmed_at/confirmation_ref`；金额不得为负，期限必须为正；
+- `DataAccessMetadata` 升级并至少返回 `schema_version=financial-user-data.v2`、`user_id`、
+  `authorization_scope=SELF`、`data_mode`、`source_type`、`query_status`、`data_time`、
+  `queried_at`、`confirmation_ref`、`missing_fields`；`query_status=SUCCESS` 不等于
+  `data_mode=LIVE`；
+- v2 枚举固定为：`data_mode = LIVE | USER_CONFIRMED | TEST_FIXTURE | MOCK | UNAVAILABLE`；
+  `source_type = USER_INPUT | BROKER_SYNC | ACCOUNT_PROVIDER | TEST_FIXTURE | MIXED`（MIXED 仅用于聚合只读响应）；
+  `query_status = SUCCESS | PARTIAL | NOT_CONFIGURED | UNAVAILABLE`。`source_type` 在
+  NOT_CONFIGURED/旧数据状态允许为 null；未知枚举不得默认为 LIVE；
+- `missing_fields` 使用稳定、排序、去重的业务字段路径；`data_time` 表示业务事实时间，
+  `queried_at` 只表示本次服务端查询时间，两者不得互换；
+- `LIVE` 只允许来自受控券商/账户同步或其他已登记实时 Provider；数据库被查询得很新不代表
+  内容是 LIVE。用户录入并由服务端确认的数据必须标为 `USER_CONFIRMED`；
+- 旧记录若没有来源、币种或确认依据，迁移后保持 NULL/PARTIAL，不得批量回填为 LIVE 或
+  USER_CONFIRMED；
+- 本轮派生的 `current_price/market_value/weight_pct/total_assets` 不作为无时效配置写回 Java；
+  若未来引入券商估值快照，必须用独立带 `as_of/source/currency` 的版本化事实契约。
+
+**已知字段禁止改名复用：**`target_weight` 不是当前 `weight_pct`，`cost_price` 不是
+`market_value`，`cash` 不是 `total_assets`，`cash_reserve_ratio` 不是
+`max_loss_tolerance_pct`，`monthly_budget` 不是 `near_term_cash_needs`。
+
+标准化与单位：
+
+- Java 原始 snake_case DTO 先由用户数据 Normalizer 转为稳定 Capability 业务字段，
+  SnapshotBuilder 不读取 Java class/供应商字段名；
+- Normalizer 必须把已校验的 raw `metadata.user_id` 投影为标准 `data.user_id`；
+  SnapshotBuilder 再校验全部标准 Observation 的 user_id 一致；
+- Normalizer 必须消费 Java 明示的 `metadata.data_mode/source_type/confirmation_ref`；普通
+  `java-api` provenance 不能再被默认提升为 LIVE；USER_CONFIRMED 缺确认 ref/时间必须降级；
+- `risk_tolerance` 仅允许显式映射：`conservative → CONSERVATIVE`、
+  `moderate|balanced → BALANCED`、`aggressive → AGGRESSIVE`；未知值为 None；
+- 所有 `*_pct` 与 `current_exposure/projected_exposure` 统一使用百分数点 `0..100`；
+  原始 ratio `0..1` 必须在 Normalizer 中显式换算并记录 calculation ref；
+- 金额保留原 currency；跨币种不得在 M3 暗自换算；无法统一时相关规则 UNKNOWN；
+- `PortfolioValuationBuilder` 按标准化 `(symbol, exchange, currency)` 稳定排序、去重并匹配
+  行情；不得仅凭名称或模糊代码配对；
+- 行情必须有价格、币种/明确的 v0 单币种约束与可验证 `as_of`；缺任一项不得估值；
+- `source` 与 Snapshot.`provenance` 只保存受控 Observation/ref、quote 和 calculation ID，
+  不复制原始用户数据。
+
+授权增量（在 M1 Policy 之上；仍禁止前缀授权）：
+
+| DomainOperation | M3 可授权 Capability |
+|---|---|
+| `READ_PORTFOLIO` | `portfolio.get_current_positions`、`portfolio.get_account_snapshot` |
+| `READ_PROFILE` | `user.get_risk_profile` |
+| `READ_MARKET_DATA` / `READ_PUBLIC_RESEARCH` / `RUN_ANALYSIS` | 同 M1，供同轮研究链复用 |
+
+说明：
+
+- M3 **默认不授权** `portfolio.get_transaction_history`（非 v0 最小集）；
+- 上述三个用户 Capability 的 Registry `analysis_types` 必须显式包含 `suitability`，
+  并继续归属 `PORTFOLIO_READ` / `FINANCIAL_PROFILE_READ` Toolset；不得建立第二份 Registry；
+- `ApplicationFinanceCapabilityExecutor` 必须显式注入 Java Adapter；仅将精确
+  `portfolio.get_current_positions`、`portfolio.get_account_snapshot`、
+  `user.get_risk_profile` 路由到该 Adapter，禁止 `startswith` 前缀放行；
+- Java 调用参数中的 `user_id` 只能由 Runtime 从 `authenticated_user_id` 注入，
+  Planner、LLM 或客户端不得提供/覆盖；
+- `READ_FINANCIAL_GOALS` 若 Registry 尚无对应 Capability，不得伪造；goals 仅来自
+  已确认上下文或空；
+- 用户金融资料录入/确认 API 不是 Capability，不进入 Registry、Toolset 或 Finance 授权
+  Policy；它只接受已认证用户直接操作并执行字段校验、审计与幂等；
+- 必需用户 Capability 未授权：不调用外部用户数据，返回
+  `FAILED + REQUIRED_CAPABILITY_NOT_AUTHORIZED`，`suitability=None`；授权失败不是数据缺失；
+- Planner 候选集仍为 Requirement ∩ Toolset ∩ Authorization。
+
+**整轮预算（动态持仓行情必须分两阶段统一计算）：**
+
+- `DomainBudget.tool_call_limit` / `runtime_seconds` 覆盖同轮 M2 comprehensive 研究、
+  `analysis.run_analysis`、三个用户 Capability、全部必要持仓行情，以及本地
+  Valuation/Snapshot/Engine 的完整过程；
+- 第一阶段在任何外部调用前，为全部 required research、analysis 与三个 required user
+  Capability 预留固定调用数；不足时不发起任何外部调用，返回
+  `LIMITED + BUDGET_EXHAUSTED`、`suitability=None`；
+- 获取持仓事实后形成稳定去重行情集合；同轮目标行情只有在 symbol/exchange/currency、
+  freshness 和数据质量全部匹配时才复用。第二阶段必须在补取任何持仓行情前一次性预留
+  剩余 required quote 调用；不足时不做部分抽样估值，直接返回 LIMITED；
+- optional research Capability 只能使用固定 required 与动态 required quote 预留后的剩余
+  预算，不能挤占用户关键数据或组合估值；本地 Builder/Engine 不计 tool call，但计入
+  runtime_seconds；
+- 必须测试固定预算恰好/少 1、动态行情恰好/少 1、行情复用、重复持仓去重、optional
+  跳过、持仓过多和运行时超时。
+
+#### 10.4.4 数据真实性
+
+`FinancialSnapshot.data_mode` 必须区分：
+
+```text
+LIVE | USER_CONFIRMED | TEST_FIXTURE | MOCK | UNAVAILABLE
+```
+
+| data_mode | 允许的个性化结果 | 说明 |
+|---|---|---|
+| LIVE | 四类 result 均可（仍受研究覆盖与关键字段约束） | 所有必需事实来自受控实时账户/市场 Provider；“刚查询数据库”不构成 LIVE |
+| USER_CONFIRMED | 同上 | 必须有 confirmation provenance（契约已校验） |
+| TEST_FIXTURE | 仅测试进程 | 生产路径出现 → `INSUFFICIENT_INFORMATION`，Outcome LIMITED/LOW |
+| MOCK | 只能 `INSUFFICIENT_INFORMATION` | 生产路径 Outcome LIMITED/LOW；不得另外三类 |
+| UNAVAILABLE | 只能 `INSUFFICIENT_INFORMATION` | 不得编造持仓/风险 |
+
+补充：
+
+- 生产装配禁止静默 MOCK 降级（与 Java Adapter 生产行为一致）；
+- `is_mock=true` 必须与 `data_mode=MOCK` 一致；
+- Observation 级 `data_mode` / `is_mock` 不得在 Snapshot 层被提升为 LIVE。
+- 用户数据 Normalizer 必须在标准 Observation.`data` 中写入规范化
+  `data_mode/is_mock`；来源优先级为 Java v2 显式可信元数据、受控 provenance source、
+  Adapter 运行模式。普通 Java HTTP 成功不代表 LIVE，客户端字段不参与推导；
+- 用户事实与估值 Observation 合并按以下保守顺序推导 Snapshot.data_mode：任一可用数据为
+  MOCK → MOCK；否则任一为 TEST_FIXTURE → TEST_FIXTURE；否则没有完整 required 输入或
+  存在 UNAVAILABLE → 按可用事实保留真实性模式但 completeness 至少 LIMITED；否则任一
+  required 事实为已验证 USER_CONFIRMED → USER_CONFIRMED；仅当全部 required 用户事实与
+  市场事实均为受控 LIVE 时才为 LIVE；
+- `data_mode` 表达真实性，`completeness` 表达缺失程度：部分 LIVE 数据加一个 required
+  UNAVAILABLE 时仍可为 LIVE，但 completeness 必须 LIMITED，Engine 依据关键字段返回
+  INSUFFICIENT；不得用 data_mode 掩盖缺数；
+- `execution_environment` 由服务端配置注入。生产环境出现 TEST_FIXTURE 必须 fail-closed；
+  本地测试不得通过请求字段把环境伪装为 production/development；
+- USER_CONFIRMED 仅接受带所有权、确认时间和受控 ref 的服务端确认事件。录入值更新后必须
+  生成新 profile_version/confirmation_ref；旧确认不能覆盖新值。若确认 Provider 尚未实现，
+  Runtime 不开放 USER_CONFIRMED 正常路径；契约与 Engine 只可用可信 fixture 测试。
+
+#### 10.4.5 结果决策与关键字段矩阵（修订重点）
+
+`SuitabilityAssessment.result`：
 
 ```text
 SUITABLE
@@ -725,118 +1143,535 @@ CURRENTLY_NOT_SUITABLE
 INSUFFICIENT_INFORMATION
 ```
 
-强制规则：
+硬性门禁先于普通规则聚合；M3 v0 采用以下唯一决策，不留实现二选一：
 
-- StockResearchResult 为 LIMITED 时不能输出 SUITABLE；
-- 缺关键用户数据时输出 INSUFFICIENT_INFORMATION；
-- 资产质量与用户适配性分别表达；
-- 输出 reasons、limitations、required_conditions 和 Rule IDs；
-- 不生成交易指令。
+| 条件 | SuitabilityAssessment | FinancialDomainOutcome |
+|---|---|---|
+| 同轮 M2 research Outcome=FAILED 或未产生合法 StockResearchResult | `None`，不调用 Engine | `FAILED`，保留研究错误；无错误时补 `STOCK_RESEARCH_REQUIRED` |
+| `StockResearchResult.coverage == LIMITED` | `INSUFFICIENT_INFORMATION` | `LIMITED / LOW` |
+| `StockResearchResult.coverage == PARTIAL` | `INSUFFICIENT_INFORMATION` | `PARTIAL / MEDIUM`（若有更严重条件则降级） |
+| Snapshot `MOCK` / `UNAVAILABLE` / 生产态 `TEST_FIXTURE` | `INSUFFICIENT_INFORMATION` | `LIMITED / LOW` |
+| 已授权用户 Capability 返回 UNAVAILABLE/PARTIAL 且关键字段不足 | `INSUFFICIENT_INFORMATION` | `LIMITED / LOW`，保留 Adapter 错误 |
+| Snapshot 身份不一致/缺失 | `None`，不调用 Engine | `FAILED + SNAPSHOT_IDENTITY_MISMATCH` |
+| 缺 `risk_level` 或 `max_loss_tolerance_pct` | `INSUFFICIENT_INFORMATION` | `LIMITED / LOW` |
+| 缺持仓 symbol/exchange/currency/quantity，或任一有效持仓缺合法行情，无法完整计算 `market_value/weight_pct/total_assets` | `INSUFFICIENT_INFORMATION` | `LIMITED / LOW`；保留用户事实与行情 limitation |
+| 缺流动性关键字段且规则需要流动性 | `INSUFFICIENT_INFORMATION` | `LIMITED / LOW` |
+| 仅缺 goals | 继续非目标规则；目标规则为 UNKNOWN | Outcome 不因 goals 单独 FAILED；不得声称目标匹配 |
+| research COMPLETE + Snapshot 关键字段完整且 Engine 正常完成 | Engine 可输出 `SUITABLE / CONDITIONALLY_SUITABLE / CURRENTLY_NOT_SUITABLE` | `COMPLETE`；业务结果“不适合”不等于执行失败 |
+| SnapshotBuilder / SuitabilityEngine 契约异常 | `None` | `FAILED + FINANCIAL_SNAPSHOT_BUILD_FAILED / SUITABILITY_EVALUATION_FAILED` |
 
-### 10.6 验收
+Outcome.`confidence` 衡量本轮评估证据质量，不表达“适合程度”：取 Research confidence、
+Snapshot 真实性/完整性和规则确定性的最低等级。Outcome.`limitations` 必须是 Runtime、
+Research、Snapshot 与 Assessment limitations 的稳定去重并集，且不得少于同轮
+StockResearchResult.limitations。
 
-- 无持仓数据不伪造组合影响；
-- 无风险画像不伪造风险适配；
-- mock 数据不能驱动真实个性化结论；
-- 集中度冲突可复现；
-- 阈值边界测试通过；
-- 同一输入和规则版本得到同一结果。
+资产质量与用户适配性必须分字段表达：research 的 findings/risks 不改写；适配结论只在
+`suitability.*`。
+
+#### 10.4.6 规则集、暴露假设与 Outcome 接线
+
+**规则集：**
+
+- 编码前提交 v0 规则表，并在 ADR-004 记录阈值与校准口径；ADR 状态不是
+  `APPROVED` 时不得编码会产生真实三类个性化结果的阈值；
+- 每条规则：`rule_id`、`rule_set_version`、输入字段、阈值、命中结果、
+  public reason、缺数行为、单位、等号边界、evidence refs；
+- v0 至少覆盖：当前集中度、行业/单标的暴露、风险承受、最大损失容忍、流动性约束、
+  财务目标期限（仅已确认目标）、研究覆盖率与可信度；
+- 每条规则内部只返回 `PASS / CONDITIONAL / BLOCK / UNKNOWN` 与受控 public reason，
+  不直接自由生成最终 result；聚合优先级固定为：关键 UNKNOWN →
+  `INSUFFICIENT_INFORMATION`；否则任一 BLOCK → `CURRENTLY_NOT_SUITABLE`；否则任一
+  CONDITIONAL → `CONDITIONALLY_SUITABLE`；所有必需规则 PASS → `SUITABLE`；
+- 目标规则若 goals 为空只记 UNKNOWN/限制，但不是 v0 的关键 UNKNOWN；它不得单独促成
+  SUITABLE，也不得覆盖其他关键规则结果；
+- `SuitabilityAssessment` 契约必须精确新增：非空 `rule_set_version: str`、稳定去重
+  `rule_ids: list[str]`、稳定去重 `evidence_refs: list[str]`。`evidence_refs` 只引用
+  StockResearchResult Evidence/Calculation ID 或 Snapshot Observation/ref ID；
+- `reasons` 只能由命中规则的 approved public reason 模板产生；不得把阈值、Rule ID
+  仅埋在不可测试自由文本里；
+- ADR-004 至少为以下稳定规则族分配 ID：研究门禁、真实性门禁、风险等级、最大损失、
+  单标的/行业集中度、流动性、确认目标期限；Rule ID 发布后不得复用为不同语义。
+
+**暴露 / “预测集中度”（修订重点）：**
+
+- v0 **默认只计算 `current_exposure`**；
+- `projected_exposure` 若实现，必须使用规则表中写明的假设
+  （例如“假设新增该标的后权重上限为 W% 的假想暴露”），且只能服务集中度冲突检测；
+- 禁止把 projected 结果表述为交易建议；禁止输出下单/调仓指令；
+- 若假设未写入规则表，则 `projected_exposure` 必须为空，不得暗用旧
+  `portfolio_impact` 分析链的隐含仓位变化。
+
+**Outcome：**
+
+- 成功评估路径：填充 `suitability`，并保留同轮 `stock_research_result`；
+- 同轮 M2 若生成过渡期 `analysis_result`，按 M2 双写规则继续保留，但研究权威仍是
+  `stock_research_result`，适配性权威仍是 `suitability`；
+- **不要**填充 Outcome 顶层 `portfolio_impact` / `goal_impact` / `liquidity_impact`
+  （与 Assessment 内嵌字段重复；避免双源不一致）。若历史调用方读取顶层字段，
+  M3 可返回 None 并在报告中注明；
+- Outcome.status / confidence 不得与“伪成功个性化”矛盾：例如 MOCK 快照不得
+  `COMPLETE` + `SUITABLE`；
+- 不生成最终聊天文案；
+- 不配置 Finance Checkpointer（与 M1/M2 相同，除非另开持久化任务）。
+- 稳定错误码至少包括：`SUITABILITY_RESEARCH_PROFILE_REQUIRED`、
+  `SNAPSHOT_IDENTITY_MISMATCH`、`FINANCIAL_SNAPSHOT_BUILD_FAILED`、
+  `SUITABILITY_EVALUATION_FAILED`、`REQUIRED_CAPABILITY_NOT_AUTHORIZED`、
+  `BUDGET_EXHAUSTED`；公开错误不得包含原始用户数据或内部异常文本。
+
+#### 10.4.7 模块边界
+
+- `PortfolioValuationBuilder` / `SuitabilityEngine` / SnapshotBuilder / 规则纯函数：可放在 `domain/` 或
+  `domains/finance/` 的确定性模块；**不得**依赖 LangGraph、LLM、MCP Client、FastAPI；
+- Finance Runtime 负责授权、Capability 调用、调用 Engine、组装 Outcome；
+- Java 用户设置 API 负责金融事实录入/确认；Java 内部 Data API 只读；二者不得共享一个
+  可被 Finance Runtime 调用的写入口；
+- Cognitive 层不得直接读 Java/持仓或自行计算 Suitability。
+
+### 10.5 验收
+
+#### 10.5.1 范围与安全
+
+- `SUITABILITY` + 单标的可跑通垂直场景；
+- 非 `comprehensive` 的 SUITABILITY 请求稳定返回
+  `SUITABILITY_RESEARCH_PROFILE_REQUIRED`，不得静默以快照研究给出适配结论；
+- `PORTFOLIO_IMPACT` / `GOAL_PLANNING` 仍为 `ACTION_NOT_ENABLED`；
+- 零标的 / 多标的返回稳定 validation error；
+- 跨用户 Snapshot 或 client 覆盖 `user_id` 被拒绝；
+- 客户端伪造 LIVE/data_mode/confirmation_ref 被拒绝；内部 Java Data API 保持全 GET；
+- 已认证用户可经独立设置 API 录入并确认 M3 必需金融事实，更新后 profile_version 和
+  confirmation_ref 变化，其他用户无法读取或覆盖；
+- 无交易指令语义；reasons/limitations/required_conditions/Rule ID 可测试。
+
+#### 10.5.2 数据真实性与缺数
+
+- LIVE 正常路径可复现；USER_CONFIRMED 仅在受控确认 Provider 存在时做 Runtime 正常路径，
+  否则只做契约/Engine fixture 并保持 Runtime 不开放；普通 Java 查询成功不能提升为 LIVE；
+- MOCK / UNAVAILABLE / 生产态 TEST_FIXTURE 不得给出真实个性化三类结论；
+- 无持仓不伪造组合影响；无风险画像不伪造风险适配；
+- 成本价/目标权重不参与当前市值/实际权重计算；`total_assets` 只表示本轮同币种可投资
+  资产，不冒充用户完整净资产；
+- 全部持仓行情完整时市值、权重和资产合计公式可复现；缺一个行情、行情过期、标的不匹配、
+  币种不一致或无受控 FX 时均 fail-closed；
+- LIMITED / PARTIAL research 在 v0 固定为 `INSUFFICIENT_INFORMATION`；
+- 关键字段矩阵每条有对应测试。
+
+#### 10.5.3 规则与幂等
+
+- 规则表与 ADR-004 阈值一致；
+- ADR-004 未 APPROVED 时测试证明生产规则装配失败关闭，不能退回示例阈值；
+- 阈值边界（含等于阈值）测试通过；
+- 集中度冲突可复现并带 `rule_id`；
+- 同一 research + snapshot + `rule_set_version` → 同一 Assessment.result 与命中集合。
+- 相同用户事实 + 行情 Observation provenance 产生相同估值与
+  `captured_at/data_mode/completeness`，Builder
+  不读取当前时间。
+
+#### 10.5.4 接线与阶段门禁
+
+- Finance Runtime 写入 `suitability`；顶层重复 impact 字段不双写；
+- Registry/Toolset 只从唯一 Capability 真源派生 suitability 候选；Executor 精确路由
+  三个 Java Capability，客户端无法覆盖 user_id；
+- 整轮预算的固定 required 预留、动态持仓行情预留、各自少 1、行情复用、optional 跳过、
+  超时均按 §10.4.3 传播；
+- 研究 FAILED、授权失败、数据不可用、身份不一致、Engine 异常逐项匹配 §10.4.5，
+  不存在实现自行二选一；
+- 默认 API / Root Graph / 对外聊天不变；
+- 全量回归通过；
+- M0 未通过或 Guardrail 未达最低接线时，交付标记 `RELEASE_BLOCKED`；
+- 回滚：移除 SUITABILITY 执行链与授权增量，恢复为 `ACTION_NOT_ENABLED`，不影响
+  M1/M2 研究路径。
+
+### 10.6 与架构退出门槛对齐
+
+本阶段完成须同时满足架构 M3 退出门槛：
+
+- 缺关键用户数据时稳定返回 `INSUFFICIENT_INFORMATION`；
+- 不存在伪个性化结论（含 MOCK/UNAVAILABLE 冒充 LIVE）；
+- Suitability 只评估、不交易。
+
+### 10.7 M3 v1.4 审查修订对照
+
+| # | 修订前问题 | v1.4 修正 |
+|---|---|---|
+| 1 | Intent / 旧 portfolio_impact / Skill 边界不清 | §10.1 只启用 SUITABILITY + 单标的；PORTFOLIO_IMPACT 仍禁用 |
+| 2 | 无研究→快照→引擎→Outcome 管道 | §10.4.2 固定执行管道与身份约束 |
+| 3 | 未定义 Snapshot 组装与授权扩展 | §10.4.3 最小字段表 + 精确 Capability 授权 |
+| 4 | data_mode 未映射到允许的 result | §10.4.4 模式决策表；生产 MOCK/TEST_FIXTURE fail-closed |
+| 5 | 关键缺失与 research LIMITED/PARTIAL 规则不全 | §10.4.5 硬性门禁与关键字段矩阵 |
+| 6 | “预测集中度”易滑向交易建议 | §10.4.6 默认仅 current_exposure；projected 必须有书面假设 |
+| 7 | Rule ID 与契约顶层字段不对齐 | §10.4.1/§10.4.6 允许最小增补 rule_set_version/rule_ids，挂钩 ADR-004 |
+| 8 | Outcome 顶层 impact 与 Assessment 重复 | §10.3/§10.4.6 禁止双写顶层 impact |
+| 9 | 缺默认流量、M0/M2/Guardrail 门禁 | §10.1/§10.5.4 RELEASE_BLOCKED 条件 |
+| 10 | 缺不得处理、实施顺序与强验收 | §10.3、§10.4.1、§10.5；§10.6 对齐架构退出门槛 |
+
+### 10.8 M3 v1.6 阻塞闭环对照
+
+| # | v1.4 遗留阻塞 | v1.6 固定决策 |
+|---|---|---|
+| 1 | Java DTO 缺少当前市值/权重、总资产、最大损失与流动性关键字段 | §10.4.1/§10.4.3 增加前置差距表、必要只读 DTO 范围与硬停止条件；禁止字段改名伪造 |
+| 2 | market_snapshot 也可能 coverage COMPLETE，研究深度不足 | §10.1/§10.4.2：SUITABILITY v0 强制 comprehensive，同轮 M2 研究 |
+| 3 | ADR-004 阈值可能由开发者自行猜测 | §10.4.1/§10.4.6：必须 APPROVED；TBD/示例阈值禁止进生产规则 |
+| 4 | 授权失败、research FAILED 等仍留“实现选一种” | §10.4.3/§10.4.5 固定 Outcome/suitability/error 决策矩阵 |
+| 5 | Registry、Java Executor 与整轮预算前置接线缺失 | §10.4.3 明确唯一 Registry 元数据、精确 Java 路由、服务端 user_id 与预算预留 |
+| 6 | SnapshotBuilder 输入、时间、身份和 data_mode 合并不确定 | §10.4.2/§10.4.4 固定输入签名、captured_at 来源、身份失败与真实性/完整性分离 |
+| 7 | Suitability 缺聚合 Rule/证据契约与结果聚合优先级 | §10.4.6 固定 rule_set_version/rule_ids/evidence_refs 与四态规则聚合 |
+| 8 | Outcome status/confidence/limitations 可能把业务“不适合”当失败 | §10.4.5 固定执行状态矩阵、最低可信度与四方 limitations 并集 |
+
+### 10.9 M3 v1.7 Java 权威金融数据契约修订
+
+| # | v1.6 遗留问题 | v1.7 固定决策 |
+|---|---|---|
+| 1 | 把 Java DTO 与 Snapshot 派生字段混为同一权威来源 | §10.1/§10.4.3 拆分 Java 用户事实、市场事实、确定性估值、Snapshot 与规则结论五层权威 |
+| 2 | 仅补只读 DTO 仍没有真实数据进入方式 | §10.2/§10.4.3 允许独立的受认证用户资料录入/确认 API；内部 Data API 与 Finance Capability 继续只读 |
+| 3 | Java HTTP 查询成功可能被误判为 LIVE | §10.4.3/§10.4.4 要求 DataAccessMetadata v2；普通 java-api provenance 不再自动提升 LIVE |
+| 4 | 市值、实际权重和 total_assets 的计算责任不清 | §10.4.2/§10.4.3 增加 PortfolioValuationBuilder、公式、行情匹配、币种及时效门禁 |
+| 5 | total_assets 容易被误读为个人完整净资产 | §10.4.3 固定为本轮同币种“可投资资产”，仅含现金与完整估值的 active positions |
+| 6 | 持仓数量动态变化，整轮预算无法一次预知 | §10.4.3 使用固定调用与动态持仓行情两阶段预留；禁止部分抽样估值 |
+| 7 | 手工数据没有所有权、确认时间和版本 | §10.4.3 要求服务端 user_id、profile_version、confirmed_at、confirmation_ref 与旧数据 fail-closed |
+| 8 | 可能把派生估值写回成无时效用户配置 | §10.3/§10.4.3 禁止写回；未来券商估值必须使用独立、版本化、带 as_of/source/currency 的事实契约 |
 
 ## 11. M4：Cognitive Graph 与 Communication
 
 ### 11.1 目标
 
-实现最小 Cognitive 顶层编排、四时点 Guardrails、Communication Plan 和 Response Verification。
+实现 **独立装配、非默认流量** 的最小 Cognitive 顶层编排：将用户输入转为
+`CognitiveAction`，经四时点 Guardrails 与 Communication / Response Verification
+后产出可对外的结构化回复计划，金融执行只通过 `DomainRequest` 进入已有
+Finance Runtime（M1–M3）。
 
-### 11.2 第一阶段行动
+M4 的“理解”不是把用户原文直接交给模型回答，也不是要求用户先掌握系统内部代码。对于
+“茅台今天怎么样”“宁德时代估值高吗”“它今天跌了多少”等表达，Cognitive 必须先形成
+可审计的实体提及和解析状态，结合当前会话中已确认的标的，通过 Finance 受控解析边界获得
+规范化 `FinancialInstrument`，再进入研究。只有完成这些步骤后仍无法唯一确定标的，才允许
+`ASK_USER`。
 
-只启用：
+**权威边界：**
 
-```text
-RESPOND
-ASK_USER
-INVOKE_DOMAIN
+- 认知决策权威：`CognitiveAction`（已有契约；Policy 只启用三行动）；
+- 领域执行权威：`FinancialDomainRequest` / `FinancialDomainOutcome`（禁止 Cognitive
+  直连 MCP / Java / Web / Domain Engine）；
+- 表达权威：`CommunicationPlan` → 经 Response Guardrail / Verification 后的
+  `PublicResponse`（本阶段需补齐契约，禁止平行第二套回复模型）；
+- 旧 Root Graph + `summary_model` 在 M5 前仍为默认对外路径。
+
+**门禁：**
+
+- 不接默认 API 流量、不做 M5 灰度切换；
+- M0 未通过，或本阶段 Guardrail 未达到 §11.4.3 最低规则集时，最多
+  `DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`；
+- 允许用同输入对照 / 影子执行验证；不得因此删除或替换旧默认路径；
+- 单个任务遵守 §3.1，不得与 M5/M6 合并。
+
+### 11.2 必须处理
+
+- 最小 `InputEvent` / `CognitiveState` / `CommunicationPlan` / `PublicResponse`
+  契约（严格 Pydantic，`extra=forbid`；已有则复用，禁止语义重复模型）；
+- Cognitive Graph 或等价确定性编排（独立 Application 装配）；
+- Action Policy：仅 `RESPOND` / `ASK_USER` / `INVOKE_DOMAIN`；
+- 自然语言金融实体理解：代码、全称、简称、别名、交易所提示和受控跨轮指代；
+- Finance-owned `InstrumentResolutionRequest / InstrumentResolutionOutcome` 契约与
+  `FinanceInstrumentResolver`；Cognitive 只能调用该领域边界，禁止直连解析 Capability；
+- 解析唯一性、歧义候选、不可用和无标的的确定性决策策略；
+- 四时点 Guardrail **真实策略实现**（不只 Protocol）并接入编排；
+- Communication Plan 构建与 Response Verification；
+- 与 Finance Runtime 的 `INVOKE_DOMAIN` 接线（`STOCK_RESEARCH` /
+  `SUITABILITY` 按已启用领域能力）；
+- 同输入对照测试与安全覆盖矩阵更新；
+- 将代码中过时“阶段 5”注释统一为 M4。
+
+### 11.3 不得处理
+
+- 不切换默认流量（属 M5）；不删除旧 Root Graph；
+- 不启用 `CREATE_TASK` / `UPDATE_TASK` / `WAIT` / `NOTIFY` / `DO_NOTHING` /
+  `RETRIEVE_MEMORY`（必须 `ACTION_NOT_ENABLED`，禁止静默变 RESPOND）；
+- 不实现 Scheduler / Task Store / Notification Outbox（属 M6）；
+- Cognitive 不直接调用 Capability、Adapter、MCP、Java HTTP、Web Search；
+- 不允许仅因缺少六位代码或 canonical symbol 就直接 `ASK_USER`；
+- 不允许 LLM 凭常识把证券名称直接写成代码并跳过受控解析与来源校验；
+- 普通 Web Search 不能成为证券身份的最终权威来源；网络发现结果必须由受控市场来源验证；
+- Communication / Verification **不得修改** DomainOutcome 中的事实、coverage、
+  status、confidence 或 Suitability.result；
+- 不把 Mem0 当作用户账本或适配性依据；
+- 不引入 Letta 或 Node Stock Skill；
+- 不把 M0 持久化专项或 Nginx 改造并入本任务（若 Cognitive 需要 Checkpointer，
+  见 §11.4.5，且不得假装 M0 已关闭）。
+
+### 11.4 实现要求
+
+#### 11.4.1 实施顺序
+
+1. 补齐/对齐 `InputEvent`、`CognitiveState`、`CommunicationPlan`、`PublicResponse`
+   契约与现有 `CognitiveAction` / GuardrailResult；
+2. 补齐 `InstrumentMention / InstrumentResolutionRequest / InstrumentResolutionOutcome`
+   契约和 Finance-owned Resolver，先完成名称、代码、歧义和来源校验单测；
+3. 实现 Action Policy 与未启用行动的稳定拒绝；
+4. 实现四时点 Guardrail 最低规则集（§11.4.3）与单测；
+5. 实现最小 Cognitive 编排：理解/实体提取 → 标的解析或受控继承 →
+   （Plan Guardrail）→ 选行动 →
+   （Action Guardrail）→ 执行/领域调用 →（Data-quality Guardrail）→
+   Communication →（Response Guardrail / Verification）→ PublicResponse；
+6. 独立 Application 装配；默认路由仍指向旧 Root Graph；
+7. 同输入对照（知识问答 / 自动标的解析 / 歧义追问 / 研究 / 适配性不足）与安全矩阵；
+8. 停止并交付；不自动进入 M5。
+
+#### 11.4.2 启用行动与路由语义（修订重点）
+
+| 行动 | 何时选择 | 禁止 |
+|---|---|---|
+| `RESPOND` | 稳定金融知识、流程说明、不依赖实时行情/账户事实的回答 | 使用实时价格、持仓、未披露的外部证据做“确定结论” |
+| `ASK_USER` | 无实体提及且无可继承上下文、标的解析存在实质歧义/未找到/不可用、缺关键约束、Suitability `required_conditions`、目标不清 | 仅因用户没提供代码就追问；跳过可用解析能力；假装已创建任务或已具备数据 |
+| `INVOKE_DOMAIN` | 需要受控标的解析、股票客观研究或（若 M3 已接线）适配性评估 | Cognitive 内直接解析代码、计算指标/适配或直连工具 |
+
+规则：
+
+- `INVOKE_DOMAIN` 必须携带合法 `domain_request`；领域失败以 DomainOutcome /
+  结构化错误返回，不得改写成无依据的 RESPOND 成功话术；
+- 未启用行动：返回稳定 `ACTION_NOT_ENABLED` 审计码，进入 Communication 向用户
+  说明“能力未启用”，**不得**静默当 RESPOND；
+- `CognitiveAction` 与数据获取层 `AgentAction` 不得混用。
+
+#### 11.4.2.1 自然语言标的理解与解析（v1.8 强制新增）
+
+**职责边界：**
+
+- Cognitive 负责从当前输入提取 `InstrumentMention`，识别用户是在说代码、正式名称、简称、
+  别名还是指代；不得直接生成未经验证的 canonical symbol；
+- Finance 提供 `FinanceInstrumentResolver` 领域边界，内部只可从 Capability Registry 选择
+  `market.resolve_instrument`，必要时在授权和预算允许下使用 `research.web_search` 做发现；
+- Adapter / MCP 负责访问结构化证券主数据、交易所或行情供应商；原始响应必须先进入
+  Normalizer，不能进入 Cognitive State；
+- Cognitive 根据 `InstrumentResolutionOutcome` 选择继续研究或 `ASK_USER`，不得读取供应商
+  私有字段做临时判断。
+
+新增或对齐以下严格契约，禁止把它们塞进自由文本 `objective`：
+
+```python
+class InstrumentMention:
+    raw_text: str
+    normalized_text: str
+    mention_type: Literal["CODE", "NAME", "ALIAS", "REFERENCE"]
+    market_hint: str | None
+    exchange_hint: str | None
+    context_entity_ref: str | None
+
+class InstrumentResolutionRequest(DomainRequest):
+    domain: Literal["finance"] = "finance"
+    mention: InstrumentMention
+    allowed_instrument_types: set[str]
+    max_candidates: int = 5
+
+class InstrumentCandidate:
+    instrument: FinancialInstrument
+    canonical_symbol: str
+    exchange: str
+    currency: str | None
+    match_type: Literal["EXACT_CODE", "EXACT_NAME", "EXACT_ALIAS", "FUZZY"]
+    source_refs: list[str]
+
+class InstrumentResolutionOutcome(DomainOutcome):
+    resolution_status: Literal[
+        "RESOLVED", "AMBIGUOUS", "NOT_FOUND", "UNAVAILABLE"
+    ]
+    selected: InstrumentCandidate | None
+    candidates: list[InstrumentCandidate]
 ```
 
-其他行动返回：
+`InstrumentResolutionRequest` 是 Finance 的预研究解析请求，不新增用户业务意图，也不把
+`FinancialIntent` 扩展成工具动作。`FinancialDomainRequest(STOCK_RESEARCH)` 仍只接受恰好一个
+已经规范化的 `FinancialInstrument`。Cognitive 通过 `INVOKE_DOMAIN` 执行解析请求；解析为
+`RESOLVED` 后，才可构造下一步 STOCK_RESEARCH 请求。所有解析调用同样经过 Plan/Action
+Guardrail、预算、授权、Observation 和审计，不得成为绕过领域边界的隐藏工具调用。
 
-```text
-ACTION_NOT_ENABLED
-```
+**确定性决策顺序：**
 
-不得静默降级成 RESPOND，不得假装创建了任务或提醒。
+1. 当前输入包含合法 canonical code，且受控来源验证证券存在、市场和类型匹配：
+   `RESOLVED`；
+2. 当前输入有名称/简称/别名：调用 Finance Resolver；唯一的 `EXACT_NAME` 或
+   `EXACT_ALIAS` 且不存在跨市场冲突时自动 `RESOLVED`；例如“茅台”应解析并验证为
+   “贵州茅台 / 600519 / SSE”，同一轮继续获取今日行情，不向用户索要六位代码；
+3. 当前输入使用“它/这只/刚才那只”等明确指代，且当前线程存在一个最近、已验证、仍在
+   本轮可见上下文中的证券实体：受控继承；必须记录 `context_entity_ref`，不能静默复制；
+4. 不得因为线程中曾出现过某股票，就对所有缺标的的新问题无条件继承；只有明确指代或
+   可判定为同主题的省略式追问才可继承；
+5. 存在两个及以上可行候选、跨市场同名、只有 FUZZY 候选或用户市场约束会改变结果：
+   `AMBIGUOUS`，返回不超过 5 个包含名称、代码和交易所的候选，由 `ASK_USER` 让用户选择；
+6. 结构化解析无结果时，可在 `READ_PUBLIC_RESEARCH` 已授权且预算允许的情况下使用网络搜索
+   发现候选；发现结果必须再由结构化市场来源验证。无法验证不得自动升级为 `RESOLVED`；
+7. 解析服务不可用：`UNAVAILABLE` 并披露限制；完全没有实体提及且没有可安全继承的上下文：
+   直接 `ASK_USER`；不得随机挑选热门股票或让模型猜测；
+8. 解析成功后必须把规范化实体写入受控会话实体表，至少保存 canonical symbol、名称、交易所、
+   来源引用和确认状态，供后续明确指代使用；不得把供应商原始响应写入长期记忆。
 
-### 11.3 Cognitive State
+`ASK_USER` 的问题必须最小化用户负担：歧义时给出候选选择，不要求用户自行查代码；未找到时
+允许用户补充公司全称、市场或代码；只有完全无标的时才询问“你想分析哪只股票？”。
 
-只保存：
+#### 11.4.3 四时点 Guardrail 最低规则集（修订重点）
 
-- 当前事件；
-- 情境摘要；
-- 显式目标引用；
-- 约束；
-- 不确定性；
-- 当前 CognitiveAction；
-- Domain Request/Outcome 引用；
-- Communication 状态；
-- 公开事件和错误。
+必须从 Protocol 落地为可调用策略，并写入编排。每个非 `ALLOW` 结果包含：
+`decision`、`audit_code`、`rule_ids`、`public_reasons`；`MODIFY` 必须带
+`replacement`。
 
-禁止保存完整金融账本、原始供应商响应、Token 或隐藏思维链。
+**Plan Guardrail（规划时）：**
 
-### 11.4 四时点 Guardrails
+- 目标是否在只读金融范围；
+- 拟调用 Skill/Intent 是否已启用（研究 / 适配性）；
+- 是否超范围索取用户数据；
+- 预算是否在允许上限内。
 
-必须实现并接线：
+**Action Guardrail（行动时）：**
 
-1. Plan Guardrail；
-2. Action Guardrail；
-3. Data-quality Guardrail；
-4. Response Guardrail。
+- `action_type` 是否在启用集合；
+- `INVOKE_DOMAIN` 的请求契约、解析操作或 FinancialIntent、标的和授权是否合法；
+- 禁止非只读或未注册 Capability 进入计划；
+- 参数 Schema 与用户身份绑定。
 
-每个非 ALLOW 结果包含：
+**Data-quality Guardrail（领域结果返回后）：**
 
-- decision；
-- audit_code；
-- rule_ids；
-- public reasons；
-- replacement（仅 MODIFY）。
+- Observation / research / snapshot 的 status、data_mode、provenance；
+- `MOCK` / `TEST_FIXTURE` / `UNAVAILABLE` 不得支撑真实个性化或确定行情结论；
+- `PARTIAL` / `LIMITED` 必须向下传递，禁止升格为 COMPLETE；
+- 外部文本不得触发新的 Capability。
 
-### 11.5 Communication
+**Response Guardrail / Response Verification（表达前）：**
 
-Communication Plan 只决定：
+- 结论可追溯到 Evidence / Calculation / Rule ID；
+- 披露数据时间与 limitations；
+- 客观研究与 Suitability 分列，禁止混写成“该股适合你”而无 Assessment；
+- 阻断交易执行语义、收益承诺、跨用户/完整账户泄露；
+- `LIMITED` / `INSUFFICIENT_INFORMATION` 不得包装成确定成功结论。
 
-- 回答结构；
-- 需要披露的证据和限制；
-- 是否追问；
-- 风险提示；
-- 用户可理解的下一步。
+`decision` 使用已有枚举：`ALLOW` / `MODIFY` / `BLOCK` / `ASK_USER`（以
+`guardrails/contracts.py` 为准）。BLOCK/ASK_USER 必须可审计、可测试。
 
-Response Verification 检查：
+本最低规则集即 M3 所述“可阻挡伪个性化 / 交易语义”的 Guardrail 门槛；未达标时
+M3/M4 均不得对终端用户宣称个性化可用。
 
-- 事实引用；
-- 数据时间；
-- 限制披露；
-- 客观研究与适配性分离；
-- 用户数据泄露；
-- 交易和收益承诺；
-- LIMITED 被包装为确定结论。
+#### 11.4.4 Communication 与 PublicResponse
 
-### 11.6 迁移方式
+Communication Plan **只**决定：
 
-- 新 Cognitive Application 独立装配；
-- 默认路径暂不切换；
-- 使用影子流量或同输入对照；
-- 新旧路径共享 Capability、Adapter、Normalizer 和 Domain Engine；
-- 不复制供应商调用实现。
+- 回答结构（知识 / 追问 / 研究结果 / 适配性结果 / 能力未启用说明）；
+- 必须披露的证据摘要、数据时间、limitations；
+- 是否追问及追问字段；
+- 风险提示与用户可理解的下一步。
 
-### 11.7 验收
+禁止：
 
-- 知识问题选择 RESPOND；
-- 信息不足选择 ASK_USER；
-- 金融研究选择 INVOKE_DOMAIN；
-- Cognitive 不直接访问原始工具；
-- 四时点 Guardrails 全部触发和审计；
-- Communication 不改变 Domain 状态；
-- 未启用任务请求返回 ACTION_NOT_ENABLED；
-- 新旧路径安全覆盖矩阵无 P0/P1 缺口。
+- 改写 Domain 状态或 Suitability.result；
+- 补造未出现在 Outcome 中的价格、持仓或适配结论；
+- 输出隐藏思维链或内部 Prompt。
+
+`PublicResponse` 为对外稳定结构（可被 SSE/JSON 序列化）；尚未实现真实 token
+streaming 时不得宣称 `response.delta` 已完成。
+
+#### 11.4.5 State、装配与对照
+
+**CognitiveState** 只保存最小字段：当前事件、情境摘要、显式目标引用、约束、
+不确定性、当前行动、Domain Request/Outcome **引用**、Communication 状态、
+公开事件与错误。为支持智能标的理解，可保存当前 `InstrumentMention`、解析状态、规范化
+实体引用、候选公开摘要和 `context_entity_ref`；不得保存供应商原始响应或模型隐藏推理。
+禁止：完整账本、原始供应商响应、Token、隐藏思维链。
+
+**Checkpoint（若启用）：**
+
+- Cognitive 与 Finance 不得共享无区分 namespace（对齐 ADR-002）；
+- M4 若暂不持久化 Cognitive Checkpoint，必须在报告中标明，且不得声称多轮恢复已生产就绪；
+- 不得用 Checkpointer 冒充 Analysis History（仍属 M0）。
+
+**装配与对照：**
+
+- 新 Cognitive Application 独立注册；默认请求路径不变；
+- 同输入对照至少覆盖：稳定知识 RESPOND、自然语言标的自动解析、歧义候选 ASK_USER、
+  真正缺标的 ASK_USER、股票研究 INVOKE_DOMAIN、适配性缺数、未启用任务行动、
+  Guardrail BLOCK/MODIFY；
+- 影子流量可选；无流量基础设施时以离线对照 + 安全矩阵代替，不得虚构“已影子验证”；
+- 新旧路径共享 Capability、Adapter、Normalizer、Domain Engine、Finance Runtime；
+  禁止复制供应商调用实现。
+
+#### 11.4.6 与 M1–M3 的衔接
+
+- `INVOKE_DOMAIN` + `STOCK_RESEARCH` → 现有 Finance 研究链（含 M2
+  `stock_research_result`）；
+- `INVOKE_DOMAIN` + `InstrumentResolutionRequest` → Finance-owned Resolver →
+  `market.resolve_instrument`；只有 `RESOLVED` 才可构造 STOCK_RESEARCH，`AMBIGUOUS /
+  NOT_FOUND / UNAVAILABLE` 必须转为带候选或限制的 Communication；
+- `INVOKE_DOMAIN` + `SUITABILITY` → 仅当 M3 执行链已接线；否则领域层
+  `ACTION_NOT_ENABLED` 或稳定失败，Cognitive 不得伪造适配结论；
+- Suitability 的 `required_conditions` 应优先驱动后续 `ASK_USER` Communication，
+  而不是编造用户状态。
+
+### 11.5 验收
+
+#### 11.5.1 行动与边界
+
+- 知识问题 → `RESPOND`；信息不足 → `ASK_USER`；金融研究 → `INVOKE_DOMAIN`；
+- “茅台今天怎么样”→ 自动解析并验证 `600519 / SSE`，同一 run 继续行情和研究，过程中
+  不出现要求用户输入代码的 clarification；
+- “贵州茅台怎么样”与“600519 今天怎么样”→ 解析为同一 canonical instrument；
+- “中信今天怎么样”或跨市场同名标的 → 返回不超过 5 个规范化候选后 `ASK_USER`，不得
+  任取搜索排序第一项；
+- “它今天怎么样”仅在同线程存在一个最近已验证标的且语义为明确指代时继承；新主题不得
+  因历史出现过股票而误继承；
+- “分析股票怎么样”在没有实体提及和可安全继承上下文时才 `ASK_USER`；
+- Resolver 无结果、不可用、Web 发现未通过结构化验证时均不得伪造 canonical symbol；
+- 未启用行动 → `ACTION_NOT_ENABLED`，不静默降级；
+- Cognitive 测试中断言无 MCP/Java/Web 直连 import 或调用；
+- Communication 前后 DomainOutcome 关键字段不变。
+
+#### 11.5.2 Guardrail
+
+- 四时点均有可触发的 ALLOW / 非 ALLOW 用例与稳定 `audit_code`；
+- MOCK 个性化、LIMITED 包装成确定结论、交易语义、越权 Capability 均被阻断或改写；
+- 安全覆盖矩阵无 P0/P1 缺口（相对本阶段范围）。
+
+#### 11.5.3 接线与门禁
+
+- 独立装配可运行；默认 API / Root Graph 行为不变；
+- 同输入对照报告保留；
+- 全量回归通过；
+- M0 未通过或 §11.4.3 未达标时标记 `RELEASE_BLOCKED`；
+- 回滚：移除 Cognitive 独立入口注册即可回到仅旧路径，不影响 Finance M1–M3 模块。
+
+### 11.6 与架构退出门槛对齐
+
+- 安全覆盖矩阵无 P0/P1 缺口；
+- 故障注入（领域失败、数据 LIMITED、未启用行动）与回退边界通过；
+- 默认流量切换仍留待 M5。
+
+### 11.7 安全覆盖矩阵（本阶段必须更新）
+
+| 安全能力 | 旧路径 | 新 Cognitive 路径 | 测试 | 切换门槛（M5） |
+|---|---|---|---|---|
+| JWT 身份绑定 |  |  |  |  |
+| 跨用户隔离 |  |  |  |  |
+| Plan 约束 |  |  |  |  |
+| Action 白名单 |  |  |  |  |
+| 外部金融只读 |  |  |  |  |
+| 自然语言标的解析与歧义消解 |  |  |  |  |
+| 数据真实性 |  |  |  |  |
+| Coverage/Provenance |  |  |  |  |
+| Response Verification |  |  |  |  |
+
+### 11.8 M4 v1.5 / v1.8 审查修订对照
+
+| # | 修订前问题 | v1.5 修正 |
+|---|---|---|
+| 1 | 未区分独立装配与默认切流 | §11.1/§11.3：默认切流属 M5；M4 只独立装配 |
+| 2 | Guardrail 易停留在 Protocol | §11.4.3 规定最低可测规则集并强制接线 |
+| 3 | 行动路由语义过粗 | §11.4.2 给出 RESPOND/ASK_USER/INVOKE_DOMAIN 选用与禁止项 |
+| 4 | Communication 与 Domain 可变性不清 | §11.3/§11.4.4 禁止改写 Domain 事实与 Suitability |
+| 5 | 缺少 InputEvent/State/PublicResponse 契约要求 | §11.2/§11.4.1 要求补齐且禁止平行模型 |
+| 6 | 影子流量写死但无基础设施时不可执行 | §11.4.5 允许离线对照替代并禁止虚构验证 |
+| 7 | 与 M2/M3 接线、ASK_USER 条件未说明 | §11.4.6 |
+| 8 | Checkpoint/M0 关系含糊 | §11.4.5：namespace 隔离；不宣称 M0 已完成 |
+| 9 | 缺不得处理、实施顺序、RELEASE_BLOCKED | §11.3、§11.4.1、§11.5.3 |
+| 10 | 验收未对齐架构退出门槛与安全矩阵 | §11.5–§11.7 |
+| 11 | “缺代码”被错误等同于“缺标的” | §11.1、§11.4.2、§11.4.2.1：先提取、解析和验证，仍不能唯一确定时才 ASK_USER |
+| 12 | Cognitive 禁止直连工具但 Finance 只接受规范化标的，解析边界缺失 | §11.2、§11.4.2.1、§11.4.6：新增 Finance-owned Instrument Resolution 请求、结果与 Resolver |
+| 13 | 普通网络搜索可能被误当证券身份权威 | §11.3、§11.4.2.1：Web 仅发现候选，必须由结构化市场来源复核 |
+| 14 | 跨轮标的可能无条件继承导致串题 | §11.4.2.1：仅明确指代或同主题省略追问可继承，并记录 context_entity_ref |
+| 15 | 歧义追问仍把查代码负担转给用户 | §11.4.2.1：系统给出名称、代码、交易所候选供选择 |
+| 16 | “智能化”可能退化为裸 LLM 猜测 | 文档头部 Agent 智能原则、§11.3、§11.4.2.1：语言理解与工具验证分离，禁止未经验证生成代码 |
 
 ## 12. M5：灰度切换
 
@@ -1214,26 +2049,39 @@ uv run pytest -q
 
 ## 24. 当前建议起点
 
-截至 2026-08-10 的已验证基线：
+截至 2026-08-10 的当前工作树验证基线：
 
-- 现有 Python 测试为 `217 passed`（M1 代码基线 `ea87317`）；
+- 现有 Python 测试为 `245 passed`，Java 为 `165 tests / 0 failure / 0 error / 2 skipped`
+  （M3 user-facts-v2 工作树全量回归）；
 - Domain、Financial 和 Cognitive 契约骨架已存在；
 - Toolset 派生视图已存在；
 - 四时点 Guardrail 只有契约和 Protocol；
 - 默认运行路径仍是旧 Root Graph；
-- M1 Finance Runtime 已独立装配且未接默认流量；StockResearchResult Builder、Suitability、Cognitive Graph 和 Scheduler 尚未完整接线；
+- M1 Finance Runtime 已独立装配且未接默认流量；M2 StockResearchResult Builder 已在该
+  非默认 Runtime 双写接线并达到 `DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`；
+- M3 严格契约、用户数据 Normalizer、fail-closed SnapshotBuilder、Java 用户事实 v2 与
+  受控确认入口已完成，但 PortfolioValuationBuilder、SuitabilityEngine/Runtime 尚未完成；
+  M3 实施要求见 §10（v1.4 + v1.6 + v1.7 闭环），M4 见 §11（v1.5）；实施前仍须重核仓库事实；
 - Run Registry 与 Analysis History 仍需要生产持久化实现。
 
-因此，如果用户没有指定其他阶段，下一次代码实施应从 **M0 生产基线修复** 中选择一个最小可独立验收切片开始，并在完成后停止。
+当前明确决策是把 M0 作为 M5 前的独立发布门禁暂缓处理。因此，如果用户没有指定其他
+阶段，下一次代码实施应从 **M3 PortfolioValuationBuilder 与标准行情估值契约** 中选择一个
+最小可独立验收切片开始，并在完成后停止；不得自动进入规则引擎或 M4。
 
 开始开发前必须重新验证以上事实，不能把本节当作永久仓库状态。
 
 ## 25. 修正记录
 
 本节是本文档所有修正的总账。每次修订必须在此登记一行，并在被修正章节内标注
-修正位置；涉及跨章节的逐条对照明细，放在对应章节末尾（如 §8.6）。
+修正位置；涉及跨章节的逐条对照明细，放在对应章节末尾（如 §8.6、§9.6、§10.7/§10.8、§11.8）。
 
 | 版本 | 日期 | 章节 | 修正内容 |
 |---|---|---|---|
 | v1.1 | 2026-08-10 | §8（M1） | M1 代码审计后修正 9 处（逐条对照见 §8.6）：① 界定兼容股票分析范围（不含 portfolio_impact）；② FinancialDomainRequest 增加 analysis_type 字段；③ Checkpoint 隔离改为 M1 可落地语义，Cognitive 完整隔离推迟至 M4；④ 标注 AnalysisResult 兼容层生命周期；⑤ 澄清"不修改默认流量"= 对外行为不变；⑥ 补充实施顺序；⑦ 新增 authorized_operations → capability 映射与拒绝语义；⑧ 校验失败返回结构化 FAILED；⑨ 共享核心逻辑限定同一份实现 |
 | v1.2 | 2026-08-10 | §8（M1） | M1 二次审查闭环（见 §8.6）：精确授权 Policy、validation/DomainOutcome 失败分层、STOCK_RESEARCH 单标的边界、显式 requested_topics、五类完整验收、M1 无 Checkpointer，以及 M0/M1 并行开发与发布门禁 |
+| v1.3 | 2026-08-10 | §9（M2）；§8.4.5 | M2 文档审计后重写（逐条对照见 §9.6）：① Builder 输入管道；② 研究权威字段与 AnalysisResult 生命周期；③ 默认流量/M0 门禁；④ 继承 M1 五类范围；⑤ status/coverage/confidence 传播矩阵；⑥ Finding/Conflict/Scenario 确定性规则；⑦ Outcome 双写；⑧ 五类验收加强；⑨ 不得处理与实施顺序；⑩ 聊天解耦不越权旧 Graph。同步澄清 §8.4.5，避免“删除 AnalysisResult”误读 |
+| v1.4 | 2026-08-10 | §10（M3） | M3 文档审计后重写（逐条对照见 §10.7）：① 仅启用 SUITABILITY+单标的；② 研究→快照→引擎→Outcome 管道；③ Snapshot 最小字段与精确授权；④ data_mode→result 表；⑤ 关键缺失/research 覆盖门禁；⑥ projected_exposure 约束；⑦ Rule ID/ADR-004 与契约增补；⑧ 禁止 Outcome 顶层 impact 双写；⑨ M0/M2/Guardrail RELEASE_BLOCKED；⑩ 不得处理、实施顺序与强验收 |
+| v1.5 | 2026-08-10 | §11（M4） | M4 文档审计后重写（逐条对照见 §11.8）：① 独立装配与默认切流分离；② Guardrail 最低可测规则集；③ 三行动路由语义；④ Communication 不得改 Domain；⑤ 补齐 InputEvent/State/PublicResponse；⑥ 对照可替代虚构影子流量；⑦ 与 M2/M3 接线；⑧ Checkpoint/M0 关系；⑨ 不得处理与 RELEASE_BLOCKED；⑩ 验收与安全矩阵 |
+| v1.6 | 2026-08-10 | §10（M3）；§24 | M3 阻塞闭环（见 §10.8）：① comprehensive 同轮研究；② Java/Observation/Snapshot 数据差距硬门禁；③ ADR-004 APPROVED 闸门；④ 授权/研究/缺数/异常唯一状态矩阵；⑤ Registry/Java Executor/整轮预算；⑥ Snapshot 身份、时间与 data_mode；⑦ Rule/证据契约和聚合优先级；⑧ Outcome confidence/limitations。同步 §24 为 M2 当前工作树基线 |
+| v1.7 | 2026-08-10 | §0；§3；§10（M3）；§24 | Java 权威金融数据契约修订（见 §10.9）：① M0 调整为 M5 前独立发布门禁，不再抢占 M3/M4 开发；② Java 只权威保存用户事实；③ 增加受认证录入/确认入口且内部 Data API 保持只读；④ DataAccessMetadata v2 与 USER_CONFIRMED/LIVE 边界；⑤ 新增确定性 PortfolioValuationBuilder；⑥ 固定市值、权重和可投资资产公式；⑦ 动态持仓行情两阶段预算；⑧ 旧数据、跨币种、缺行情与伪来源 fail-closed；⑨ 禁止派生估值写回无时效配置 |
+| v1.8 | 2026-08-10 | 文档头部；§11（M4） | Agent 自然语言标的理解修订（见 §11.8）：① 禁止把缺内部代码直接等同信息缺失；② 新增 InstrumentMention/Resolution 契约与 Finance-owned Resolver；③ Cognitive 不直连工具、Finance 统一执行解析；④ 名称/简称/代码/明确指代自动解析；⑤ 歧义时系统提供候选；⑥ Web 仅发现候选且必须结构化复核；⑦ 禁止无条件跨轮继承；⑧ 补齐“茅台/中信/它/无标的/解析不可用”验收矩阵；⑨ 保持规范化 STOCK_RESEARCH 请求和三行动 Policy 不变 |

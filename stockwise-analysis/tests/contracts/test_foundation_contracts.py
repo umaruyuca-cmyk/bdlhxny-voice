@@ -28,6 +28,10 @@ from stockwise_analysis.domains.finance.contracts import (
     FinancialInstrument,
     FinancialIntent,
     FinancialSnapshot,
+    PortfolioImpact,
+    PortfolioPosition,
+    RiskProfile,
+    SuitabilityAssessment,
 )
 from stockwise_analysis.domains.registry import DomainRegistry
 
@@ -174,6 +178,59 @@ def test_financial_snapshot_distinguishes_live_mock_and_user_confirmed_data() ->
             captured_at=captured_at,
             data_mode=FinancialDataMode.USER_CONFIRMED,
         )
+
+
+def test_suitability_request_requires_one_instrument_and_comprehensive_research() -> None:
+    values = _domain_request(objective="评估单一标的适配性").model_dump()
+
+    with pytest.raises(ValidationError, match="requires exactly one instrument"):
+        FinancialDomainRequest(
+            **values,
+            financial_intent=FinancialIntent.SUITABILITY,
+            analysis_type="comprehensive",
+        )
+    with pytest.raises(ValidationError, match="SUITABILITY_RESEARCH_PROFILE_REQUIRED"):
+        FinancialDomainRequest(
+            **values,
+            financial_intent=FinancialIntent.SUITABILITY,
+            analysis_type="market_snapshot",
+            instruments=[FinancialInstrument(symbol="600519")],
+        )
+
+    request = FinancialDomainRequest(
+        **values,
+        financial_intent=FinancialIntent.SUITABILITY,
+        analysis_type="comprehensive",
+        instruments=[FinancialInstrument(symbol="600519")],
+    )
+    assert request.analysis_type == "comprehensive"
+
+
+def test_suitability_assessment_requires_versioned_unique_rule_evidence() -> None:
+    assessment = SuitabilityAssessment(
+        rule_set_version="suitability-v0.fixture",
+        rule_ids=["SUIT-DATA-AUTHENTICITY-001"],
+        evidence_refs=["obs-risk-profile"],
+        result="INSUFFICIENT_INFORMATION",
+    )
+    assert assessment.rule_set_version == "suitability-v0.fixture"
+
+    with pytest.raises(ValidationError, match="stable unique references"):
+        SuitabilityAssessment(
+            rule_set_version="suitability-v0.fixture",
+            rule_ids=["rule-1", "rule-1"],
+            evidence_refs=["obs-1"],
+            result="INSUFFICIENT_INFORMATION",
+        )
+
+
+def test_m3_percentage_contracts_use_percentage_points_in_zero_to_one_hundred() -> None:
+    with pytest.raises(ValidationError):
+        PortfolioPosition(symbol="600519", weight_pct=101, source="obs-position")
+    with pytest.raises(ValidationError):
+        RiskProfile(max_loss_tolerance_pct=-1, source="obs-risk")
+    with pytest.raises(ValidationError, match="percentage points"):
+        PortfolioImpact(current_exposure={"600519": 120})
 
 
 def test_cognitive_action_is_the_single_nine_action_contract() -> None:

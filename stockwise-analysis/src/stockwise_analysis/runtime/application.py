@@ -135,6 +135,7 @@ def create_application(
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,
         analysis_capability=analysis_capability,
+        java_adapter=java_adapter,
     )
     domain_registry = DomainRegistry()
     domain_registry.register("finance", finance_runtime)
