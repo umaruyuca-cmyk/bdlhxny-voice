@@ -6,7 +6,7 @@ use_default_settings:
 
 general:
   debug: false
-  instance_name: "StockWise Search"
+  instance_name: "BDLH Agent Runtime Search"
 
 search:
   safe_search: 0

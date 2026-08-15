@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>对话 · グリッドユニバース研究所</title>
+  <link rel="stylesheet" href="assets/chat-theme.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== 侧边栏 ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <a class="brand" href="/" title="返回首页">
+        <span class="brand-mark">GRID</span>
+        <span class="brand-sub">研究所</span>
+      </a>
+      <button class="icon-btn" id="sidebarCollapse" type="button" aria-label="收起历史记录" aria-controls="sidebar" aria-expanded="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+    </div>
+
+    <button class="new-chat" id="newChat" type="button">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      新对话
+    </button>
+
+    <div class="sessions" id="sessionList"></div>
+
+    <div class="sidebar-foot">
+      <a class="foot-link" href="/">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9.5Z"/></svg>
+        返回首页
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===== 主对话区 ===== -->
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn mobile-menu" id="mobileMenu" type="button" aria-label="菜单">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <span class="topbar-title" id="chatTitle">新的对话</span>
+      <span class="topbar-model">Grid Researcher</span>
+      <button class="account-chip" id="accountButton" type="button">登录</button>
+    </header>
+
+    <div class="scroll" id="scroll">
+      <!-- 空状态：衬线问候 + 建议卡片 -->
+      <div class="hero" id="hero">
+        <div class="hero-mark" aria-hidden="true">◆</div>
+        <h1>今天想研究点什么？</h1>
+        <p>问任何投资问题，或者从一只股票、一只基金开始。</p>
+        <div class="suggests">
+          <button class="suggest" type="button" data-q="帮我分析一下科创芯片ETF 588200 现在的估值水平">
+            <strong>分析一只标的</strong><small>科创芯片ETF 估值几何</small>
+          </button>
+          <button class="suggest" type="button" data-q="沪深300现在的估值处于历史什么位置？适合定投吗">
+            <strong>问一个市场问题</strong><small>沪深300 的估值分位</small>
+          </button>
+          <button class="suggest" type="button" data-q="什么是基金的最大回撤？怎么看这个指标">
+            <strong>学一个概念</strong><small>最大回撤怎么看</small>
+          </button>
+          <button class="suggest" type="button" data-q="最近半导体板块有什么值得关注的逻辑">
+            <strong>追一个热点</strong><small>半导体板块的逻辑</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- 消息流 -->
+      <div class="messages" id="messages"></div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="composer-wrap">
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="输入你的问题…" autofocus></textarea>
+        <div class="composer-bar">
+          <span class="composer-tip">Enter 发送 · Shift + Enter 换行</span>
+          <button class="send" id="sendBtn" type="submit" aria-label="发送">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </form>
+      <div class="foot-note">研究结论由 AI 生成，仅供参考，不构成投资建议</div>
+    </div>
+
+    <!-- 长对话回到底部 -->
+    <button class="to-bottom" id="toBottom" type="button" aria-label="回到底部">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+    </button>
+
+    <!-- 桌面宠物（个人标志，迷你机甲） -->
+    <div class="deskpet" id="deskpet" title="宝多六花">
+      <div class="deskpet-bubble" id="deskpetBubble">一起研究吧</div>
+      <svg viewBox="0 0 84 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <ellipse cx="42" cy="94" rx="26" ry="4" fill="rgba(0,0,0,0.12)"/>
+        <g class="mech-antenna" stroke="#a78bfa" stroke-width="2" stroke-linecap="round">
+          <path d="M42 14 L42 22"/><path d="M42 16 L36 20 M42 16 L48 20"/>
+          <circle cx="42" cy="13" r="1.8" fill="#a78bfa" stroke="none"/>
+        </g>
+        <path d="M42 22 C30 22 26 32 28 42 C29 46 34 48 38 46 L46 46 C50 48 55 46 56 42 C58 32 54 22 42 22 Z" fill="#23283a"/>
+        <path class="mech-visor" d="M32 36 L52 36 L50 42 L34 42 Z" fill="#7dd3fc" opacity="0.7"/>
+        <path d="M38 46 L46 46 L46 50 L38 50 Z" fill="#3b1f8f"/>
+        <path d="M26 50 L34 54 L34 60 L28 58 Z" fill="#3b1f8f"/>
+        <path d="M58 50 L50 54 L50 60 L56 58 Z" fill="#3b1f8f"/>
+        <path d="M30 50 L54 50 L52 72 L32 72 Z" fill="#23283a"/>
+        <g class="mech-core"><path d="M42 56 L48 62 L42 68 L36 62 Z" fill="#a78bfa"/><path d="M42 60 L45 62 L42 64 L39 62 Z" fill="#fff"/></g>
+        <g class="mech-arm-l" stroke="#23283a" stroke-width="6" stroke-linecap="round"><path d="M32 54 L26 70 L26 78"/></g>
+        <circle cx="26" cy="78" r="3.4" fill="#a78bfa"/>
+        <g class="mech-arm-r" stroke="#23283a" stroke-width="6" stroke-linecap="round"><path d="M52 54 L58 70 L58 78"/></g>
+        <circle cx="58" cy="78" r="3.4" fill="#a78bfa"/>
+        <g stroke="#23283a" stroke-width="7" stroke-linecap="round"><path d="M36 72 L34 86"/><path d="M48 72 L50 86"/></g>
+        <path d="M29 86 L39 86 L38 90 L30 90 Z" fill="#3b1f8f"/>
+        <path d="M45 86 L55 86 L54 90 L46 90 Z" fill="#3b1f8f"/>
+        <g class="mech-boost" stroke="#f5c542" stroke-width="2.6" stroke-linecap="round" opacity="0.8"><path d="M34 74 L33 82 M42 76 L42 84 M50 74 L51 82"/></g>
+      </svg>
+    </div>
+  </main>
+</div>
+
+<div class="auth-overlay" id="authModal" hidden>
+  <section class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <h2 id="authTitle">登录 BDLH Agent Runtime</h2>
+    <div id="authLoginPanel">
+      <label for="authUsername">账号</label>
+      <input id="authUsername" autocomplete="username" placeholder="输入账号">
+      <label for="authPassword">密码</label>
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="输入密码">
+      <p class="auth-error" id="authError"></p>
+      <div class="auth-actions">
+        <button class="auth-primary" id="authLogin" type="button">登录</button>
+        <button id="authApply" type="button">一键申请账号</button>
+      </div>
+    </div>
+    <div id="authAppliedPanel" hidden>
+      <p>账号已经生成，请立即保存。初始密码只显示这一次。</p>
+      <div class="credential"><span>账号</span><strong id="appliedUsername"></strong></div>
+      <div class="credential"><span>初始密码</span><strong id="appliedPassword"></strong></div>
+      <button class="auth-primary auth-continue" id="authContinue" type="button">我已保存，进入对话</button>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="assets/chat.js"></script>
+</body>
+</html>

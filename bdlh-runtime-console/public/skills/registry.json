@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "static",
+  "items": [
+    {
+      "id": "stock",
+      "name": "Finance Analysis Skill",
+      "service": "bdlh-runtime-orchestrator",
+      "category": "金融领域能力",
+      "description": "由 Runtime 通过 MCP 获取外部数据，再由领域 Skill 执行确定性分析与结构化总结。",
+      "version": "1.x",
+      "status": "available",
+      "capabilities": ["stock.analyze", "portfolio.analyze", "quant.analyze", "sector.analyze"],
+      "supportedAgents": ["stock"],
+      "docsPath": "/docs/skill#stock-skill",
+      "auth": "Runtime 内部调用",
+      "endpoints": [
+        {"method": "INTERNAL", "path": "finance.stock-research", "label": "研究能力"},
+        {"method": "INTERNAL", "path": "finance.portfolio-health", "label": "组合健康"},
+        {"method": "INTERNAL", "path": "finance.suitability-evaluation", "label": "适配性评估"}
+      ]
+    },
+    {
+      "id": "web-search",
+      "name": "Web Search Skill",
+      "service": "bdlh-web-search-adapter",
+      "category": "外部证据",
+      "description": "将新闻、网页和舆情搜索整理成固定的 SearchResult JSON，供 Agent 进一步校验。",
+      "version": "1.x",
+      "status": "available",
+      "capabilities": ["web.search", "news.search", "sentiment.evidence"],
+      "supportedAgents": ["general", "stock"],
+      "docsPath": "/docs/skill#web-search-skill",
+      "auth": "X-Agent-ID + X-Search-Token",
+      "endpoints": [
+        {"method": "POST", "path": "/api/search", "label": "结构化搜索"},
+        {"method": "GET", "path": "/health", "label": "存活检查"},
+        {"method": "GET", "path": "/ready", "label": "就绪检查"}
+      ]
+    }
+  ]
+}

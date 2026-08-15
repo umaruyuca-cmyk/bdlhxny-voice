@@ -1,131 +1,100 @@
 # ============================================================
-# StockWise 应用部署
-# PG/Redis/Ollama/DeepSeek 都是外部服务，不在此 compose
-# 启动 Java Agent、独立 stock-wrapper 与共享 web-search-wrapper
+# BDLH Agent Runtime 本地/测试部署
+# Python Runtime 负责 Agent 编排；Java 只负责认证与用户数据；
+# Web Search Adapter 与 SearXNG 提供受控外部检索。旧 stock-wrapper 不进入默认链路。
 # 使用: docker compose -f deploy/docker-compose.yml up -d --build
 # ============================================================
 
 services:
-  stockwise-backend:
+  bdlh-runtime-orchestrator:
     build:
-      context: ../stockwise-backend
-    container_name: stockwise-backend
+      context: ../bdlh-runtime-orchestrator
+      dockerfile: Dockerfile
+    container_name: bdlh-runtime-orchestrator
     restart: unless-stopped
     ports:
-      # 仅供同机 Nginx/联调访问，不把 Backend 直接暴露到公网。
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8090:8090"
+    environment:
+      BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-development}
+      BDLH_RUNTIME_CHECKPOINTER_BACKEND: ${BDLH_RUNTIME_CHECKPOINTER_BACKEND:-postgres}
+      BDLH_RUNTIME_AUTH_REQUIRED: ${BDLH_RUNTIME_AUTH_REQUIRED:-true}
+      POSTGRES_DSN: ${POSTGRES_DSN}
+      JWT_SECRET: ${JWT_SECRET}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      JAVA_API_BASE_URL: ${JAVA_API_BASE_URL:-http://bdlh-runtime-data:8080}
+      JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
+      AKSHARE_ONE_MCP_ENDPOINT: ${AKSHARE_ONE_MCP_ENDPOINT:-https://akshare-mcp.bdlhxny.com/mcp}
+      CN_FINANCIAL_MCP_ENDPOINT: ${CN_FINANCIAL_MCP_ENDPOINT:-https://cn-financial-mcp.bdlhxny.com/sse}
+      WEB_SEARCH_BASE_URL: ${WEB_SEARCH_BASE_URL:-http://bdlh-web-search-adapter:3002}
+      WEB_SEARCH_AGENT_ID: ${WEB_SEARCH_AGENT_ID:-bdlh_runtime}
+      WEB_SEARCH_TOKEN: ${WEB_SEARCH_AGENT_TOKEN}
+    depends_on:
+      bdlh-runtime-data:
+        condition: service_healthy
+      bdlh-web-search-adapter:
+        condition: service_healthy
+
+  bdlh-runtime-data:
+    build:
+      context: ../bdlh-runtime-data
+      dockerfile: Dockerfile
+    container_name: bdlh-runtime-data
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - PG_URL=${PG_URL}
-      - PG_USER=${PG_USER}
-      - PG_PASSWORD=${PG_PASSWORD}
-      - MYSQL_URL=${MYSQL_URL}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - SPRING_DATA_REDIS_HOST=${REDIS_HOST}
-      - SPRING_DATA_REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DATABASE=${REDIS_DATABASE:-0}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      - REACT_MAX_STEPS=${REACT_MAX_STEPS:-5}
-      - REACT_DEADLINE_MS=${REACT_DEADLINE_MS:-180000}
-      - REACT_TOOL_TIMEOUT_MS=${REACT_TOOL_TIMEOUT_MS:-60000}
-      - REACT_MAX_SAME_ACTION=${REACT_MAX_SAME_ACTION:-1}
-      - REACT_MAX_OBSERVATION_CHARS=${REACT_MAX_OBSERVATION_CHARS:-8000}
-      - CONTEXT_MAX_MESSAGES=${CONTEXT_MAX_MESSAGES:-10}
-      - CONTEXT_LOCAL_MAX_MEMORY_TOKENS=${CONTEXT_LOCAL_MAX_MEMORY_TOKENS:-2000}
-      - CONTEXT_PAID_MAX_MEMORY_TOKENS=${CONTEXT_PAID_MAX_MEMORY_TOKENS:-4000}
-      - CONTEXT_MAX_MESSAGE_TOKENS=${CONTEXT_MAX_MESSAGE_TOKENS:-800}
-      - CONTEXT_MAX_SUMMARIES=${CONTEXT_MAX_SUMMARIES:-3}
-      - CONTEXT_MAX_SUMMARY_TOKENS=${CONTEXT_MAX_SUMMARY_TOKENS:-900}
-      - EPISODIC_MEMORY_ENABLED=${EPISODIC_MEMORY_ENABLED:-true}
-      - EPISODIC_MEMORY_TOP_K=${EPISODIC_MEMORY_TOP_K:-3}
-      - EPISODIC_MEMORY_MIN_SIMILARITY=${EPISODIC_MEMORY_MIN_SIMILARITY:-0.55}
-      - EPISODIC_MEMORY_CANDIDATE_MULTIPLIER=${EPISODIC_MEMORY_CANDIDATE_MULTIPLIER:-4}
-      - EPISODIC_MEMORY_SEMANTIC_WEIGHT=${EPISODIC_MEMORY_SEMANTIC_WEIGHT:-0.85}
-      - EPISODIC_MEMORY_RECENCY_WEIGHT=${EPISODIC_MEMORY_RECENCY_WEIGHT:-0.15}
-      - EPISODIC_MEMORY_RECENCY_HALF_LIFE_DAYS=${EPISODIC_MEMORY_RECENCY_HALF_LIFE_DAYS:-30}
-      - EPISODIC_MEMORY_RECENT_FALLBACK_LIMIT=${EPISODIC_MEMORY_RECENT_FALLBACK_LIMIT:-3}
-      - STOCKWISE_SINGLE_USER_ID=${STOCKWISE_SINGLE_USER_ID:-1}
-      - LEGACY_STOCK_AGENT_ENABLED=${LEGACY_STOCK_AGENT_ENABLED:-false}
-      - LEGACY_JAVA_AGENT_RUNTIME_ENABLED=${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
-      - JWT_SECRET=${JWT_SECRET}
-      - JAVA_DATA_INTERNAL_TOKEN=${JAVA_DATA_INTERNAL_TOKEN}
-      - JAVA_DATA_REQUIRE_AUTHENTICATED=${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
-      - AGENT_CORE_THREADS=${AGENT_CORE_THREADS:-4}
-      - AGENT_MAX_THREADS=${AGENT_MAX_THREADS:-16}
-      - AGENT_QUEUE_CAPACITY=${AGENT_QUEUE_CAPACITY:-100}
-      - REACT_TOOL_CORE_THREADS=${REACT_TOOL_CORE_THREADS:-4}
-      - REACT_TOOL_MAX_THREADS=${REACT_TOOL_MAX_THREADS:-8}
-      - REACT_TOOL_QUEUE_CAPACITY=${REACT_TOOL_QUEUE_CAPACITY:-64}
-      - STOCK_WRAPPER_URL=${STOCK_WRAPPER_URL:-http://stock-wrapper:3001}
-      - STOCK_WRAPPER_TOKEN=${STOCK_WRAPPER_TOKEN}
-      - WEB_SEARCH_ENDPOINT_URL=${WEB_SEARCH_ENDPOINT_URL:-http://web-search-wrapper:3002/api/search}
-      - WEB_SEARCH_AGENT_ID=${WEB_SEARCH_AGENT_ID:-stockwise}
-      - WEB_SEARCH_AGENT_TOKEN=${WEB_SEARCH_AGENT_TOKEN}
-    depends_on:
-      stock-wrapper:
-        condition: service_healthy
-      web-search-wrapper:
-        condition: service_healthy
-
-  stock-wrapper:
-    build:
-      context: ../..
-      dockerfile: StockWise/stock-wrapper/Dockerfile
-    container_name: stock-wrapper
-    restart: unless-stopped
-    environment:
-      - PORT=3001
-      - STOCK_SKILL_PATH=/app/stock-skill-runtime/node_modules/@stockwise/stock-analysis-skill
-      - STOCK_SKILL_CLI=/app/stock-skill-runtime/node_modules/@stockwise/stock-analysis-skill/bin/stock-analysis.js
-      - INTERNAL_TOKEN=${STOCK_WRAPPER_TOKEN}
-      - STOCK_SKILL_TIMEOUT_MS=${STOCK_SKILL_TIMEOUT_MS:-120000}
-      - STOCK_WRAPPER_MAX_CONCURRENCY=${STOCK_WRAPPER_MAX_CONCURRENCY:-4}
-    expose:
-      - "3001"
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      PG_URL: ${PG_URL}
+      PG_USER: ${PG_USER}
+      PG_PASSWORD: ${PG_PASSWORD}
+      MYSQL_URL: ${MYSQL_URL}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+      SPRING_DATA_REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DATABASE: ${REDIS_DATABASE:-0}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      BDLH_RUNTIME_SINGLE_USER_ID: ${BDLH_RUNTIME_SINGLE_USER_ID:-1}
+      LEGACY_STOCK_AGENT_ENABLED: ${LEGACY_STOCK_AGENT_ENABLED:-false}
+      LEGACY_JAVA_AGENT_RUNTIME_ENABLED: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
+      JWT_SECRET: ${JWT_SECRET}
+      JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
+      JAVA_DATA_REQUIRE_AUTHENTICATED: ${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
     healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/actuator/health"]
       interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  web-search-wrapper:
+  bdlh-web-search-adapter:
     build:
-      context: ../web-search-wrapper
+      context: ../bdlh-web-search-adapter
       dockerfile: Dockerfile
-    container_name: web-search-wrapper
+    container_name: bdlh-web-search-adapter
     restart: unless-stopped
     environment:
-      - PORT=3002
-      - SEARXNG_URL=http://searxng:8080
-      - SEARXNG_ENGINES=${SEARXNG_ENGINES:-baidu,360search}
-      - WEB_SEARCH_AGENTS_JSON=${WEB_SEARCH_AGENTS_JSON}
-      - WEB_SEARCH_TIMEOUT_MS=${WEB_SEARCH_TIMEOUT_MS:-10000}
-      - WEB_SEARCH_CACHE_TTL_MS=${WEB_SEARCH_CACHE_TTL_MS:-60000}
-      - WEB_SEARCH_RATE_LIMIT_PER_MINUTE=${WEB_SEARCH_RATE_LIMIT_PER_MINUTE:-60}
-      - WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD=${WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD:-5}
-      - WEB_SEARCH_CIRCUIT_RESET_MS=${WEB_SEARCH_CIRCUIT_RESET_MS:-30000}
+      PORT: 3002
+      SEARXNG_URL: http://searxng:8080
+      SEARXNG_ENGINES: ${SEARXNG_ENGINES:-baidu,360search}
+      WEB_SEARCH_AGENTS_JSON: ${WEB_SEARCH_AGENTS_JSON}
+      WEB_SEARCH_TIMEOUT_MS: ${WEB_SEARCH_TIMEOUT_MS:-10000}
+      WEB_SEARCH_CACHE_TTL_MS: ${WEB_SEARCH_CACHE_TTL_MS:-60000}
+      WEB_SEARCH_RATE_LIMIT_PER_MINUTE: ${WEB_SEARCH_RATE_LIMIT_PER_MINUTE:-60}
+      WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD: ${WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD:-5}
+      WEB_SEARCH_CIRCUIT_RESET_MS: ${WEB_SEARCH_CIRCUIT_RESET_MS:-30000}
     expose:
       - "3002"
     depends_on:
       searxng:
         condition: service_healthy
     healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:3002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -133,11 +102,11 @@ services:
 
   searxng:
     image: docker.io/searxng/searxng:latest
-    container_name: stockwise-searxng
+    container_name: bdlh-runtime-searxng
     restart: unless-stopped
     environment:
-      - SEARXNG_SECRET=${SEARXNG_SECRET}
-      - SEARXNG_BASE_URL=http://searxng:8080/
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
+      SEARXNG_BASE_URL: http://searxng:8080/
     volumes:
       - ./searxng:/etc/searxng:rw
     expose:
@@ -145,14 +114,8 @@ services:
     mem_limit: 512m
     mem_reservation: 256m
     healthcheck:
-      test:
-        - CMD
-        - wget
-        - --quiet
-        - --tries=1
-        - --spider
-        - http://127.0.0.1:8080/healthz
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/healthz"]
       interval: 10s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 10
       start_period: 20s

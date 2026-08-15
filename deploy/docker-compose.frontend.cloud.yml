@@ -1,13 +1,13 @@
 # ============================================================
-# StockWise Frontend 云端独立部署
+# BDLH Agent Runtime Frontend 云端独立部署
 # Nginx 使用 host 网络，仅在127.0.0.1:8082监听，并代理到127.0.0.1:8081的Backend。
 # ============================================================
 
 services:
-  stockwise-frontend:
+  bdlh-runtime-console:
     build:
-      context: ../stockwise-frontend
+      context: ../bdlh-runtime-console
       dockerfile: Dockerfile
-    container_name: stockwise-frontend
+    container_name: bdlh-runtime-console
     restart: unless-stopped
     network_mode: host

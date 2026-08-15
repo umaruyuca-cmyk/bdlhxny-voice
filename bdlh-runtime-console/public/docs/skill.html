@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Skill 接入规范 · グリッドユニバース研究所</title>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
+  <span class="crumb">DOCS / SKILL</span>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>开始</h4>
+    <ul>
+      <li><a href="/docs/">文档中心</a></li>
+    </ul>
+    <h4>系统</h4>
+    <ul>
+      <li><a href="/docs/agents">Agent 与路由</a></li>
+      <li><a href="/docs/skill" class="active">Skill 接入规范</a></li>
+    </ul>
+    <h4>研究入口</h4>
+    <ul>
+      <li><a href="/agent">Agent 工作站</a></li>
+      <li><a href="/skill-dashboard.html">Skill 生态</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/docs/">← 文档中心</a>
+    <h1>Skill 接入规范</h1>
+    <p class="lead">当前平台由 BDLH Agent Runtime 统一编排领域 Skill 与外部能力：Finance Analysis Skill 负责确定性分析，Web Search Skill 负责外部搜索证据。</p>
+
+    <div class="note"><strong>使用边界：</strong>Skill 由平台后端统一调用，前端和普通用户不直接访问 Skill 服务，也不需要管理 Skill 注册或服务 Token。</div>
+
+    <h2 id="stock-skill">Finance Analysis Skill · 金融领域分析</h2>
+    <p>金融领域分析由 Python Runtime 内部的 Finance Analysis Skill 执行。外部数据通过 <strong>akshare-one MCP</strong>、<strong>cn-financial MCP</strong> 或其他已注册能力获取；Skill 只负责确定性计算、数据校验和结构化总结。历史 <strong>stock-wrapper</strong> 与 Node Skill 已标记为 RETIRED，不再进入默认运行链路。</p>
+
+    <h2>1 · 30 秒快速理解</h2>
+    <p>用户请求先进入 Runtime，由 LangGraph 根据当前状态选择领域能力；模型负责理解、规划和表达，确定性计算由 Skill 完成。</p>
+    <div class="flow">调用方（Agent / 程序）
+  → Runtime 选择 Capability
+  → MCP Adapter 获取并标准化 Observation
+  → Finance Analysis Skill 执行确定性计算
+  → { status, observations, analysis, provenance }</div>
+    <p>Skill 不提供面向浏览器的直连接口；统一入口是 Runtime 的对话和流式 API。</p>
+
+    <h2>2 · 实际能力和入口</h2>
+    <p>外部能力地址由部署环境变量配置，Runtime 负责认证、超时、降级和 Observation 标准化；前端不持有 MCP Token。</p>
+    <table>
+      <tr><th>能力</th><th>方法</th><th>路径</th></tr>
+      <tr><td>统一对话入口</td><td>POST</td><td><code>/api/v1/chat/stream</code></td></tr>
+      <tr><td>金融研究能力</td><td>INTERNAL</td><td><code>finance.stock-research</code></td></tr>
+      <tr><td>组合健康能力</td><td>INTERNAL</td><td><code>finance.portfolio-health</code></td></tr>
+      <tr><td>适配性评估能力</td><td>INTERNAL</td><td><code>finance.suitability-evaluation</code></td></tr>
+    </table>
+
+    <h2>3 · 请求约定</h2>
+    <ul>
+      <li>所有请求 <code>Content-Type: application/json</code>；</li>
+      <li>MCP 认证只能由 Runtime 服务端持有；</li>
+      <li>调用链统一传递 <code>X-Request-ID</code>（UUID），贯穿日志用于追踪；</li>
+      <li>Token 只能放在服务端环境变量或密钥管理系统，<strong>浏览器不能直接持有内部 Token</strong>；</li>
+      <li>前端只访问 Runtime 的统一对话与流式 API，不直连 Skill 或 MCP 服务。</li>
+    </ul>
+    <div class="warn"><strong>安全：</strong>浏览器端直接调用带内部认证的 Skill 服务是被禁止的。前端只访问平台后端，由后端在服务端发起 Skill 调用。</div>
+
+    <h2>4 · 请求与返回格式</h2>
+
+    <h3>4.1 能力选择 <span class="tag ok">Runtime 内部</span></h3>
+    <p>Runtime 不要求用户先把问题收敛成固定接口。它根据对话上下文和当前状态生成数据需求，再由 Capability Registry 选择可用 MCP 或 Java 数据能力。</p>
+    <pre>{
+  "domain": "finance",
+  "capabilities": ["market-data", "financial-facts"],
+  "requirements": ["latest", "historical-series"],
+  "constraints": { "freshness": "session", "userScope": "current-user" }
+}</pre>
+
+    <h3>4.2 Observation 标准 <span class="tag ok">Runtime 内部</span></h3>
+    <p>所有 MCP、Java 和其他外部能力返回值先转换为 Observation，再进入 Skill 或模型。Observation 必须带来源、时间、质量和降级信息，原始响应不能直接作为结论。</p>
+    <pre>{
+  "kind": "market.fact",
+  "value": { "...": "normalized data" },
+  "provenance": { "provider": "mcp", "tool": "...", "retrievedAt": "..." },
+  "quality": "LIVE",
+  "status": "COMPLETE"
+}</pre>
+
+    <h3>4.3 Skill 结果 <span class="tag ok">finance.*</span></h3>
+    <p>Finance Analysis Skill 只消费结构化 Observation，完成指标、风险、组合或适配性计算，并返回可追溯的结构化结果。模型只负责解释和表达，不替代确定性计算。</p>
+    <pre>{
+  "status": "COMPLETE",
+  "analysis": { "...": "deterministic result" },
+  "evidence": ["observation-id-1"],
+  "limitations": []
+}</pre>
+
+    <h3>4.4 统一流式输出 <span class="tag ok">POST /api/v1/chat/stream</span></h3>
+    <p>前端只订阅 Runtime 的 SSE（Server-Sent Events，服务端推送事件）流，接收状态、工具调用、Observation、Skill 结果、模型文本和最终完成事件。用户无需了解内部能力的接口分类。</p>
+
+    <h3>4.5 统一成功响应 envelope</h3>
+    <pre>{ "success": true, "requestId": "UUID", "status": "COMPLETE", "data": { ... } }</pre>
+    <p>错误响应统一为：</p>
+    <pre>{ "success": false, "requestId": "UUID", "error": { "code": "INVALID_SYMBOL", "message": "..." } }</pre>
+
+    <h2 id="web-search-skill">Web Search Skill · 结构化外部搜索</h2>
+    <p>Web Search Skill 通过独立的 <code>bdlh-web-search-adapter</code> 处理新闻、网页和舆情查询，向 Runtime 返回固定的搜索结果结构。它与 Finance Analysis Skill 分工不同：前者提供外部证据，后者负责领域内确定性计算。</p>
+    <table>
+      <tr><th>方法</th><th>路径</th><th>用途</th></tr>
+      <tr><td>POST</td><td><code>/api/search</code></td><td>批量执行结构化搜索任务</td></tr>
+      <tr><td>GET</td><td><code>/health</code></td><td>存活检查</td></tr>
+      <tr><td>GET</td><td><code>/ready</code></td><td>Provider 就绪检查</td></tr>
+    </table>
+    <p>服务端认证使用 <code>X-Agent-ID</code> 与 <code>X-Search-Token</code>。浏览器不得直接调用该服务，搜索结果需要经过 Agent 编排、来源整理和不确定性说明。</p>
+
+    <h2>5 · 错误、超时和重试</h2>
+    <table>
+      <tr><th>状态</th><th>含义</th><th>处理</th></tr>
+      <tr><td>400</td><td>参数校验失败（INVALID_SYMBOL / INVALID_JSON / INVALID_POSITIONS 等）</td><td>修正请求，无需重试</td></tr>
+      <tr><td>401/403</td><td>内部凭证缺失或无效（UNAUTHORIZED）</td><td>检查 Token，禁止重试</td></tr>
+      <tr><td>404</td><td>接口不存在（NOT_FOUND）</td><td>检查路径</td></tr>
+      <tr><td>408/超时</td><td>上游行情或计算超时</td><td>可重试，带幂等 <code>X-Request-ID</code></td></tr>
+      <tr><td>429</td><td>触发限流（如实现）</td><td>退避重试，最多 3 次</td></tr>
+      <tr><td>5xx</td><td>服务内部错误（INTERNAL_ERROR）</td><td>记录 requestId，指数退避重试，最多 3 次</td></tr>
+    </table>
+    <div class="warn"><strong>重试纪律：</strong>重试必须有次数上限、退避时间，并复用幂等 <code>X-Request-ID</code>；禁止无限重试。Skill 执行是有副作用的行情任务，客户端不应自动无限重试。</div>
+
+    <h2>6 · 调用示例</h2>
+    <h3>统一入口示例</h3>
+    <pre>curl -N -X POST "${BDLH_RUNTIME_ANALYSIS_URL}/api/v1/chat/stream" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer &lt;user-jwt&gt;" \
+  -H "X-Request-ID: &lt;uuid&gt;" \
+  -d '{"message":"请分析当前问题","sessionId":"&lt;session-id&gt;"}'</pre>
+    <p>Java、Node.js 或其他客户端都只调用统一 Runtime 入口；MCP Token、内部服务 Token 和 Skill 注册信息只能保留在服务端。</p>
+
+    <h2>7 · 安全和部署</h2>
+    <ul>
+      <li>Skill 作为 Runtime 内部能力注册，外部 MCP 适配器可以独立部署；</li>
+      <li>Agent（Python Runtime）在服务端发起调用，前端只访问统一 Runtime，不直接访问 Skill 或 MCP；</li>
+      <li>Token 通过环境变量注入，日志必须脱敏，禁止打印 Token；</li>
+      <li>Runtime、Java 数据服务和 MCP Adapter 分别提供健康检查，供部署系统探活；</li>
+      <li>内部能力不监听公网管理端口，仅暴露必要的服务间接口。</li>
+    </ul>
+
+    <h2>8 · 接入检查清单</h2>
+    <ul class="checklist">
+      <li>健康检查 <code>GET /health</code> 返回 UP</li>
+      <li>就绪检查 <code>GET /ready</code> 返回 READY</li>
+      <li>四个分析接口分别可调用</li>
+      <li>缺 Token 返回 401，不泄露内部信息</li>
+      <li>错误 JSON / 非法参数返回稳定错误结构</li>
+      <li>超时与上游无数据时返回可读错误</li>
+      <li>重试有上限且复用幂等 <code>X-Request-ID</code></li>
+      <li>日志不打印 Token，且 <code>X-Request-ID</code> 贯穿链路</li>
+      <li>版本兼容：锁定 methodology.version 后升级有回滚预案</li>
+    </ul>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click",()=>{
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+</script>
+</body>
+</html>

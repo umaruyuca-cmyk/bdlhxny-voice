@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bdlh.runtime.mapper.ConversationEpisodeEmbeddingMapper">
+
+    <!-- 会话摘要向量查询结果，vector/jsonb 显式走项目既有 TypeHandler。 -->
+    <resultMap id="episodeResultMap" type="com.bdlh.runtime.entity.ConversationEpisodeEmbedding" autoMapping="true">
+        <id property="id" column="id"/>
+        <result property="embedding" column="embedding"
+                typeHandler="com.bdlh.runtime.handler.VectorTypeHandler"/>
+        <result property="metadata" column="metadata"
+                typeHandler="com.bdlh.runtime.handler.JsonbTypeHandler"/>
+        <result property="score" column="score"/>
+    </resultMap>
+
+    <!-- 索引是可重建数据，按完整归档编号幂等更新，避免重试产生重复记忆。 -->
+    <insert id="upsertEpisode" parameterType="com.bdlh.runtime.entity.ConversationEpisodeEmbedding">
+        INSERT INTO public.conversation_episode_embeddings (
+            embedding_id, conversation_history_id, user_id, session_id,
+            symbol, content, embedding, metadata, created_at
+        )
+        VALUES (
+            #{embeddingId}, #{conversationHistoryId}, #{userId}, #{sessionId},
+            #{symbol}, #{content},
+            #{embedding, typeHandler=com.bdlh.runtime.handler.VectorTypeHandler},
+            #{metadata, typeHandler=com.bdlh.runtime.handler.JsonbTypeHandler},
+            NOW()
+        )
+        ON CONFLICT (conversation_history_id)
+        DO UPDATE SET
+            embedding_id = EXCLUDED.embedding_id,
+            user_id = EXCLUDED.user_id,
+            session_id = EXCLUDED.session_id,
+            symbol = EXCLUDED.symbol,
+            content = EXCLUDED.content,
+            embedding = EXCLUDED.embedding,
+            metadata = EXCLUDED.metadata,
+            created_at = NOW()
+    </insert>
+
+    <!-- 先走向量索引取候选，再应用相似度门槛与时间衰减；用户隔离是不可省略的 SQL 条件。 -->
+    <select id="searchRelevant" resultMap="episodeResultMap">
+        WITH candidates AS (
+            SELECT id, embedding_id, conversation_history_id, user_id, session_id,
+                   symbol, content, embedding, metadata, created_at,
+                   1 - (embedding &lt;=&gt; CAST(#{vec} AS vector)) AS semantic_score
+            FROM public.conversation_episode_embeddings
+            WHERE user_id = #{userId}
+            <if test="symbol != null and symbol != ''">
+                AND symbol = #{symbol}
+            </if>
+            ORDER BY embedding &lt;=&gt; CAST(#{vec} AS vector)
+            LIMIT #{candidateLimit}
+        )
+        SELECT id, embedding_id, conversation_history_id, user_id, session_id,
+               symbol, content, embedding, metadata, created_at,
+               semantic_score * #{semanticWeight}
+               + (
+                   1.0 / (
+                       1.0
+                       + GREATEST(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0, 0)
+                         / #{recencyHalfLifeDays}
+                   )
+               ) * #{recencyWeight} AS score
+        FROM candidates
+        WHERE semantic_score &gt;= #{minSimilarity}
+        ORDER BY score DESC, created_at DESC
+        LIMIT #{topK}
+    </select>
+
+    <delete id="deleteByEmbeddingId">
+        DELETE FROM public.conversation_episode_embeddings
+        WHERE embedding_id = #{embeddingId}
+    </delete>
+
+    <delete id="deleteByEmbeddingIds">
+        DELETE FROM public.conversation_episode_embeddings
+        WHERE embedding_id IN
+        <foreach collection="embeddingIds" item="embeddingId" open="(" separator="," close=")">
+            #{embeddingId}
+        </foreach>
+    </delete>
+
+</mapper>

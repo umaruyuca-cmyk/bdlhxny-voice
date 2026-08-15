@@ -10,8 +10,8 @@ RUN mkdir -p /dist \
 FROM node:lts-bookworm-slim
 
 WORKDIR /app/stock-wrapper
-COPY StockWise/stock-wrapper/package.json ./
-COPY StockWise/stock-wrapper/src ./src
+COPY stock-wrapper/package.json ./
+COPY stock-wrapper/src ./src
 
 COPY --from=skill-package /dist/*.tgz /tmp/stock-analysis-skill.tgz
 RUN npm install --omit=dev --prefix /app/stock-skill-runtime /tmp/stock-analysis-skill.tgz \

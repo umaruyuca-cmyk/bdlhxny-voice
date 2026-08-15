@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Skill 生态 · グリッドユニバース研究所</title>
+  <style>
+    :root{--bg:#0b0d12;--card:rgba(255,255,255,.04);--border:rgba(255,255,255,.1);--text:#f4f6fb;--dim:#a3a8b8;--faint:#6b7180;--accent:#6e8bff;--cyan:#7dd3fc;--green:#34d399;--red:#f87171;--code-bg:#05070b;--code:#9fe8a0}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+    a{color:var(--cyan);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .wrap{max-width:920px;margin:0 auto;padding:36px 24px 100px}
+    .top{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+    .top .brand{font-weight:800}
+    .top .brand em{font-style:normal;color:var(--accent)}
+    .top nav{margin-left:auto;display:flex;gap:14px;font-size:13px}
+    .top nav a{color:var(--dim)}
+    .head{margin-bottom:26px}
+    .head .kicker{color:var(--accent);font-size:11px;font-weight:750;letter-spacing:.14em}
+    .head h1{margin:6px 0 4px;font-size:30px;letter-spacing:-.02em}
+    .head p{margin:0;color:var(--dim)}
+    .actions{display:flex;gap:10px;margin:18px 0 26px;flex-wrap:wrap}
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn.primary{background:linear-gradient(135deg,#6e8bff,#8f7bff);color:#fff}
+    .btn.primary:hover{box-shadow:0 8px 20px rgba(110,139,255,.4);text-decoration:none;transform:translateY(-1px)}
+    .btn.ghost{border:1px solid var(--border);color:var(--dim);background:transparent}
+    .btn.ghost:hover{border-color:rgba(125,211,252,.4);color:var(--cyan);text-decoration:none}
+    .card{border:1px solid var(--border);border-radius:14px;background:var(--card);margin-bottom:16px;overflow:hidden}
+    .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:15px 18px;border-bottom:1px solid var(--border)}
+    .card-head span{display:block;color:var(--accent);font-size:9px;font-weight:750;letter-spacing:.12em;margin-bottom:3px}
+    .card-head h3{margin:0;font-size:16px;font-weight:720;letter-spacing:-.01em}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:650;white-space:nowrap}
+    .badge.available{background:rgba(52,211,153,.12);color:var(--green)}
+    .badge.planning{background:rgba(107,114,128,.15);color:var(--faint);border:1px dashed var(--border)}
+    .metrics{display:grid;grid-template-columns:repeat(4,1fr)}
+    .metric{padding:13px 16px;border-right:1px solid var(--border);min-width:0}
+    .metric:last-child{border-right:0}
+    .metric span{display:block;color:var(--faint);font-size:10px}
+    .metric strong{display:block;margin:4px 0 0;font-size:13px;font-weight:650;word-break:break-all}
+    .metric small{display:block;margin-top:2px;color:var(--faint);font-size:10px}
+    .sec-title{padding:13px 18px;border-bottom:1px solid var(--border);background:rgba(110,139,255,.05);color:var(--cyan);font-size:11px;font-weight:700;letter-spacing:.06em}
+    .api{padding:13px 18px;border-bottom:1px solid rgba(255,255,255,.06)}
+    .api:last-child{border-bottom:0}
+    .api .method{display:inline-block;padding:2px 8px;border-radius:6px;background:rgba(110,139,255,.15);color:#a9bdff;font-size:10px;font-weight:750;margin-right:8px}
+    .api .path{font:11.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--text);font-weight:600}
+    .api p{margin:6px 0 0;color:var(--dim);font-size:12px;line-height:1.6}
+    .api code{display:block;margin-top:6px;padding:7px 11px;border-radius:7px;background:var(--code-bg);color:var(--code);font:11px/1.55 ui-monospace,Consolas,monospace;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+    .note{padding:12px 16px;margin:0;border-top:1px solid var(--border);color:var(--faint);font-size:11px;line-height:1.7}
+    .planning{padding:20px 18px;color:var(--faint);font-size:13px;text-align:center;border:1px dashed var(--border);border-radius:12px;margin:4px 18px 16px}
+    .planning .plus{font-size:20px;font-weight:700;display:block;margin-bottom:6px}
+    .registry-note{margin:0 0 18px;padding:12px 14px;border:1px solid rgba(125,211,252,.25);border-radius:10px;background:rgba(125,211,252,.06);color:var(--dim);font-size:12px}
+    .registry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+    .registry-card{border:1px solid var(--border);border-radius:14px;background:var(--card);overflow:hidden;transition:border-color .2s,transform .2s}
+    .registry-card:hover{border-color:rgba(125,211,252,.4);transform:translateY(-2px)}
+    .registry-card.planned{opacity:.78}
+    .registry-card .card-head{min-height:88px}
+    .registry-card .card-head p{margin:6px 0 0;color:var(--dim);font-size:12px;line-height:1.55}
+    .skill-meta{display:flex;flex-wrap:wrap;gap:6px;padding:12px 18px;border-bottom:1px solid var(--border)}
+    .skill-meta span{padding:3px 8px;border-radius:999px;background:rgba(110,139,255,.1);color:#b7c6ff;font-size:10px}
+    .registry-card .api{padding:10px 18px}
+    .registry-card .api p{margin:4px 0 0;color:var(--faint);font-size:11px}
+    .registry-card .card-actions{display:flex;gap:8px;padding:13px 18px;border-top:1px solid var(--border)}
+    .registry-card .card-actions a{font-size:12px;font-weight:650}
+    .empty-state{padding:26px;text-align:center;color:var(--faint);border:1px dashed var(--border);border-radius:12px}
+    @media(max-width:680px){.metrics{grid-template-columns:repeat(2,1fr)}.metric:nth-child(2){border-right:0}.top nav{display:none}.registry-grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <span class="brand">グリッドユニバース研究所 <em>Skill 生态</em></span>
+      <nav>
+        <a href="/">首页</a>
+        <a href="/agent">工作站</a>
+        <a href="/docs">文档</a>
+      </nav>
+    </div>
+
+    <header class="head">
+      <span class="kicker">SKILL REGISTRY · 能力即插即用</span>
+      <h1>Skill 服务目录</h1>
+      <p>结构化、可独立调用的分析能力。Agent 负责编排与解释，Skill 负责执行数据和计算。</p>
+    </header>
+
+    <div class="actions">
+      <a class="btn primary" href="/docs/skill">查看接入规范 →</a>
+      <a class="btn ghost" href="/agent?name=stock">进入标的研究</a>
+    </div>
+
+    <div class="registry-note">当前展示研究基地已配置的内部能力服务。内部 Token 和服务地址只由后端持有。</div>
+    <section id="skillRegistry" class="registry-grid" aria-live="polite">
+      <div class="empty-state">正在读取 Skill 目录…</div>
+    </section>
+  </div>
+  <script>
+    const statusText = {available: '已接入', configured: '已配置', degraded: '部分异常', retired: '已退役'};
+    const statusClass = status => status === 'degraded' ? 'planning' : 'available';
+    const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+    const fallbackItems = [
+      {id:'stock',name:'Finance Analysis Skill',service:'bdlh-runtime-orchestrator',category:'金融领域能力',description:'由 Runtime 通过 MCP 获取外部数据，再由领域 Skill 执行确定性分析与结构化总结。',version:'1.x',status:'available',auth:'Runtime 内部调用',docsPath:'/docs/skill#stock-skill',endpoints:[
+        {method:'INTERNAL',path:'finance.stock-research',label:'研究能力'},
+        {method:'INTERNAL',path:'finance.portfolio-health',label:'组合健康'},
+        {method:'INTERNAL',path:'finance.suitability-evaluation',label:'适配性评估'}]},
+      {id:'web-search',name:'Web Search Skill',service:'bdlh-web-search-adapter',category:'外部证据',description:'新闻、网页和舆情搜索的结构化证据。',version:'1.x',status:'available',auth:'X-Agent-ID + X-Search-Token',docsPath:'/docs/skill#web-search-skill',endpoints:[{method:'POST',path:'/api/search',label:'结构化搜索'}]}
+    ];
+
+    function renderSkill(skill) {
+      const endpoints = (skill.endpoints || []).map(endpoint => `
+        <div class="api">
+          <span class="method">${escapeHtml(endpoint.method)}</span><span class="path">${escapeHtml(endpoint.path)}</span>
+          <p>${escapeHtml(endpoint.label)}</p>
+        </div>`).join('');
+      return `<article class="registry-card" id="${escapeHtml(skill.id)}">
+        <div class="card-head">
+          <div><span>SKILL · ${escapeHtml(String(skill.id).toUpperCase())}</span><h3>${escapeHtml(skill.name)}</h3><p>${escapeHtml(skill.description)}</p></div>
+          <span class="badge ${statusClass(skill.status)}">● ${escapeHtml(statusText[skill.status] || skill.status)}</span>
+        </div>
+        <div class="skill-meta"><span>${escapeHtml(skill.category)}</span><span>版本 ${escapeHtml(skill.version)}</span><span>${escapeHtml(skill.service)}</span><span>${escapeHtml(skill.auth)}</span></div>
+        ${endpoints ? `<div class="sec-title">能力接口（示例信息 · 实际地址以部署为准）</div>${endpoints}` : '<div class="planning">当前未配置接口</div>'}
+        <div class="card-actions"><a href="${escapeHtml(skill.docsPath || '/docs/skill')}">查看 Skill 详情 →</a></div>
+      </article>`;
+    }
+
+    async function loadRegistry() {
+      const container = document.getElementById('skillRegistry');
+      try {
+        const registryResponse = await fetch('/skills/registry.json', {headers: {Accept: 'application/json'}});
+        if (!registryResponse.ok) throw new Error('registry HTTP ' + registryResponse.status);
+        const registry = await registryResponse.json();
+        let items = Array.isArray(registry.items) ? registry.items : [];
+        try {
+          const capabilitiesResponse = await fetch('/api/v1/public/capabilities', {headers: {Accept: 'application/json'}});
+          if (capabilitiesResponse.ok) {
+            const capabilities = await capabilitiesResponse.json();
+            const statusById = new Map((capabilities.skills || []).map(item => [item.id, item.status]));
+            items = items.map(item => statusById.has(item.id) ? {...item, status: statusById.get(item.id)} : item);
+          }
+        } catch (_) {
+          // 后端能力目录暂不可用时，继续使用脱敏静态注册清单。
+        }
+        container.innerHTML = items.length ? items.map(renderSkill).join('') : '<div class="empty-state">暂无已注册 Skill</div>';
+      } catch (_) {
+        // 直接打开 file:// 页面时无法读取 JSON，使用脱敏内置清单保持页面可读。
+        container.innerHTML = fallbackItems.map(renderSkill).join('');
+      }
+    }
+    loadRegistry();
+  </script>
+</body>
+</html>

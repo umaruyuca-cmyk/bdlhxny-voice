@@ -1,4 +1,4 @@
-# StockWise 域名接入与公网端口收口
+# BDLH Agent Runtime 域名接入与公网端口收口
 
 正式网站统一使用 `https://bdlhxny.com`。浏览器只访问同源页面和 `/api/v1/*`；内部 Backend、Wrapper、数据库和 MCP 原始端口不得继续直接暴露在公网。
 
@@ -25,7 +25,7 @@ sudo certbot --nginx \
   -d cn-financial-mcp.bdlhxny.com
 ```
 
-将 `deploy/nginx/stockwise-domain.conf` 安装到服务器 Nginx 配置目录，按实际证书名称调整路径，然后执行：
+将 `deploy/nginx/bdlh-runtime.conf` 安装到服务器 Nginx 配置目录，按实际证书名称调整路径，然后执行：
 
 ```bash
 sudo nginx -t

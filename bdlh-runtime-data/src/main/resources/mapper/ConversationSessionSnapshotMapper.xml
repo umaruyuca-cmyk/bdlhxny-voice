@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bdlh.runtime.mapper.ConversationSessionSnapshotMapper">
+
+    <insert id="upsert" parameterType="com.bdlh.runtime.entity.ConversationSessionSnapshot">
+        INSERT INTO public.conversation_session_snapshots (
+            session_id, user_id, messages, token_count, updated_at
+        ) VALUES (
+            #{sessionId}, #{userId},
+            #{messages, typeHandler=com.bdlh.runtime.handler.JsonbTypeHandler},
+            #{tokenCount}, NOW()
+        )
+        ON CONFLICT (session_id) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            messages = EXCLUDED.messages,
+            token_count = EXCLUDED.token_count,
+            updated_at = NOW()
+    </insert>
+
+    <select id="selectOwned" resultMap="snapshotResultMap">
+        SELECT session_id, user_id, messages, token_count, updated_at
+        FROM public.conversation_session_snapshots
+        WHERE user_id = #{userId} AND session_id = #{sessionId}
+    </select>
+
+    <resultMap id="snapshotResultMap" type="com.bdlh.runtime.entity.ConversationSessionSnapshot">
+        <id property="sessionId" column="session_id" />
+        <result property="userId" column="user_id" />
+        <result property="messages" column="messages"
+                typeHandler="com.bdlh.runtime.handler.JsonbTypeHandler" />
+        <result property="tokenCount" column="token_count" />
+        <result property="updatedAt" column="updated_at" />
+    </resultMap>
+
+</mapper>

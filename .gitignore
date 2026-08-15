@@ -1,10 +1,10 @@
 # 历史本地配置（当前不再自动加载）
-stockwise-backend/src/main/resources/application-local.yml
-stockwise-backend/src/main/resources/application-local.properties
+bdlh-runtime-data/src/main/resources/application-local.yml
+bdlh-runtime-data/src/main/resources/application-local.properties
 
 # 生产密钥配置（本地保留，git 只跟踪 resources 下的 application.example.yml 模板）
-stockwise-backend/src/main/resources/application-dev.yml
-stockwise-backend/src/main/resources/application-prod.yml
+bdlh-runtime-data/src/main/resources/application-dev.yml
+bdlh-runtime-data/src/main/resources/application-prod.yml
 
 # 环境变量文件
 .env
