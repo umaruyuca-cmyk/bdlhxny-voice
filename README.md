@@ -28,7 +28,7 @@
 - **可选记忆**: Mem0（L3 语义记忆，失败降级为无记忆）
 - **部署**: Docker Compose + Nginx
 
-历史 Java Agent 链路与 Node `stock-wrapper` 属于退出中的遗留路径（架构文档标记 `RETIRED`），新功能不得依赖。
+历史 Java Agent 链路属于退出中的遗留路径（架构文档标记 `RETIRED`），新功能不得依赖。
 
 ## 文档索引
 
@@ -118,10 +118,9 @@ BDLH Agent Runtime/
 ├── db/                          # schema 与迁移脚本
 ├── deploy/                      # Docker Compose、Nginx 与部署手册
 ├── skills/                      # 历史 CLI Skill（RETIRED）
-└── stock-wrapper/               # 历史 Node HTTP 包装层（RETIRED）
 ```
 
-`skills/stock-analysis-skill/` 与 `stock-wrapper/` 是遗留路径，Python 新链路禁止依赖，按架构文档计划退出。
+`skills/stock-analysis-skill/` 是遗留路径，Python 新链路禁止依赖，按架构文档计划退出。
 
 ## 分支管理
 

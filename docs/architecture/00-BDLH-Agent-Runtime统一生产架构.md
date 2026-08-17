@@ -1192,7 +1192,7 @@ M0–M6 是主线，编号、范围与退出门槛不再变动；M7 为后续追
 | Run Registry 仍为内存 | 未完成 | M0 |
 | Analysis History 仍为内存 | 未完成 | M0 |
 | Nginx 未统一代理全部 Python Agent Run 路径 | 需核对/修复 | M0 |
-| 本地 Compose 仍以 Java + stock-wrapper 为主 | 与目标不一致 | M0 |
+| 本地 Compose 的生产 Nginx/路由门禁仍需对齐 | 与目标不一致 | M0 |
 | Cognitive Graph 未实现 | 未完成 | M4 |
 | Finance Runtime 尚未进入默认流量 | M1 独立开发完成；受 M0 发布门禁阻塞 | M5 |
 | StockResearchResult 尚未进入默认流量 | M2 Builder 开发与回归完成；受 M0/M5 发布门禁阻塞 | M5 |
