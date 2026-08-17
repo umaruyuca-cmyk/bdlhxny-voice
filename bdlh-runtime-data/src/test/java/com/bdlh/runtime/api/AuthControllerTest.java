@@ -26,19 +26,6 @@ class AuthControllerTest {
     }
 
     @Test
-    void shouldApplyAccountWithOneClickAndNoRequestBody() throws Exception {
-        when(authService.applyAccount()).thenReturn(new AuthService.AccountApplicationResponse(
-                "jwt-token", 9L, "sw_account22", "Initial#Pass22", true));
-
-        mvc.perform(post("/api/v1/auth/apply"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.userId").value(9))
-                .andExpect(jsonPath("$.username").value("sw_account22"))
-                .andExpect(jsonPath("$.initialPassword").value("Initial#Pass22"))
-                .andExpect(jsonPath("$.passwordShownOnce").value(true));
-    }
-
-    @Test
     void shouldReturnCurrentAuthenticatedProfile() throws Exception {
         when(userContext.requireAuthenticatedUserId()).thenReturn(9L);
         when(authService.profile(9L)).thenReturn(new AuthService.UserProfile(9L, "sw_account22", null));
@@ -47,5 +34,30 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(9))
                 .andExpect(jsonPath("$.username").value("sw_account22"));
+    }
+
+    @Test
+    void shouldCreateAccountOnValidRegistration() throws Exception {
+        when(authService.register("alice_01", "secure-pass")).thenReturn(
+                new AuthService.AuthResponse("jwt-token", 9L, "alice_01"));
+
+        mvc.perform(post("/api/v1/auth/register")
+                        .contentType("application/json")
+                        .content("{\"username\":\"alice_01\",\"password\":\"secure-pass\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.token").value("jwt-token"))
+                .andExpect(jsonPath("$.userId").value(9));
+    }
+
+    @Test
+    void shouldReturnConflictForDuplicateUsername() throws Exception {
+        when(authService.register("alice_01", "secure-pass"))
+                .thenThrow(new AuthService.UsernameAlreadyExistsException());
+
+        mvc.perform(post("/api/v1/auth/register")
+                        .contentType("application/json")
+                        .content("{\"username\":\"alice_01\",\"password\":\"secure-pass\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("用户名已存在"));
     }
 }

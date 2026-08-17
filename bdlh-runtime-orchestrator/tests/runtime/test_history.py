@@ -47,9 +47,16 @@ def test_list_by_thread_permission_isolation():
     assert store.list_by_thread("t1", None) == []
 
 
-def test_create_history_store_returns_in_memory():
-    store = create_history_store()
+def test_create_history_store_returns_in_memory_without_dsn():
+    store = create_history_store(environment="development")
     assert isinstance(store, InMemoryAnalysisHistoryStore)
+
+
+def test_create_history_store_requires_dsn_in_production():
+    from bdlh_runtime.runtime.errors import ConfigurationError
+
+    with pytest.raises(ConfigurationError, match="POSTGRES_DSN"):
+        create_history_store(environment="production", postgres_dsn=None)
 
 
 @pytest.mark.asyncio

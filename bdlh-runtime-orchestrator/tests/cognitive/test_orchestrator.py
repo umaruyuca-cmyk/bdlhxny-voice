@@ -53,7 +53,12 @@ def domain_request() -> DomainRequest:
 def app(action: CognitiveAction) -> CognitiveOrchestrator:
     registry = DomainRegistry()
     registry.register("example", Domain())
-    return CognitiveOrchestrator(selector=Selector(action), dispatcher=DomainDispatcher(registry))
+    return CognitiveOrchestrator(
+        selector=Selector(action),
+        dispatcher=DomainDispatcher(registry),
+        enabled_domains=frozenset({"example"}),
+        authorized_operations=frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+    )
 
 
 @pytest.mark.asyncio
@@ -78,7 +83,42 @@ async def test_disabled_action_is_not_silently_downgraded_to_response() -> None:
 @pytest.mark.asyncio
 async def test_unregistered_domain_returns_limited_not_success() -> None:
     request = domain_request().model_copy(update={"domain": "missing"})
-    result = await app(CognitiveAction(action_type=CognitiveActionType.INVOKE_DOMAIN, reason_code="DOMAIN_READ", reason="Read result", domain_request=request)).run(event())
+    registry = DomainRegistry()
+    registry.register("example", Domain())
+    orchestrator = CognitiveOrchestrator(
+        selector=Selector(
+            CognitiveAction(
+                action_type=CognitiveActionType.INVOKE_DOMAIN,
+                reason_code="DOMAIN_READ",
+                reason="Read result",
+                domain_request=request,
+            )
+        ),
+        dispatcher=DomainDispatcher(registry),
+        enabled_domains=frozenset({"example", "missing"}),
+        authorized_operations=frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+    )
+    result = await orchestrator.run(event())
 
     assert result.response.response_kind == "LIMITED"
     assert result.response.audit_codes == ["DOMAIN_NOT_REGISTERED"]
+
+
+@pytest.mark.asyncio
+async def test_empty_enabled_domains_fail_closed_for_domain_invoke() -> None:
+    result = await CognitiveOrchestrator(
+        selector=Selector(
+            CognitiveAction(
+                action_type=CognitiveActionType.INVOKE_DOMAIN,
+                reason_code="DOMAIN_READ",
+                reason="Read result",
+                domain_request=domain_request(),
+            )
+        ),
+        dispatcher=DomainDispatcher(DomainRegistry()),
+        enabled_domains=frozenset(),
+        authorized_operations=frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+    ).run(event())
+
+    assert result.response.response_kind == "BLOCKED"
+    assert result.response.audit_codes == ["DOMAIN_NOT_ENABLED"]

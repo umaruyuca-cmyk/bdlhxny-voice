@@ -25,10 +25,18 @@ logger = logging.getLogger("bdlh_runtime.runtime.checkpointers")
 def create_checkpointer(settings: Settings) -> Any:
     """按配置创建 Checkpointer 实例。
 
-    生产环境（environment == "production"）拒绝 memory 后端——
-    内存 Checkpointer 重启即丢状态，不允许静默退化。
+    规则：
+    - 显式 ``postgres`` / ``redis`` 按配置创建；
+    - 配置了 ``POSTGRES_DSN`` 且后端仍为默认 ``memory`` 时，自动改用 PostgreSQL
+      （云上联调/部署与业务 Store 保持同一持久化后端）；
+    - 生产环境禁止最终落在 memory。
     """
     backend = settings.checkpointer_backend
+    if backend == "memory" and settings.postgres_dsn:
+        logger.info(
+            "已配置 POSTGRES_DSN，Checkpointer 自动使用 postgres 后端"
+        )
+        backend = "postgres"
 
     if backend == "memory":
         if settings.environment == "production":

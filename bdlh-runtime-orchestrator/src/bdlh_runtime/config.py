@@ -114,9 +114,14 @@ class Settings:
         if not jwt_secret and environment != "production":
             # 仅用于本地联调，与 Java 开发默认值一致；生产环境禁止使用。
             jwt_secret = "BDLH Agent Runtime-Default-JWT-Key-2026-Must-Override-In-Production!!!"
+        postgres_dsn = os.getenv("POSTGRES_DSN")
+        # 云上联调/部署只要配了 DSN，Checkpointer 默认跟业务 Store 一起走 PG。
+        checkpointer_backend = os.getenv("BDLH_RUNTIME_CHECKPOINTER_BACKEND")
+        if not checkpointer_backend:
+            checkpointer_backend = "postgres" if postgres_dsn else "memory"
         return cls(
             environment=environment,
-            checkpointer_backend=os.getenv("BDLH_RUNTIME_CHECKPOINTER_BACKEND", "memory"),
+            checkpointer_backend=checkpointer_backend,
             api_prefix=os.getenv("BDLH_RUNTIME_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS", "30")),
             auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", auth_required_default).lower()
@@ -144,7 +149,7 @@ class Settings:
             financial_task_poll_seconds=float(
                 os.getenv("BDLH_FINANCIAL_TASK_POLL_SECONDS", "10")
             ),
-            postgres_dsn=os.getenv("POSTGRES_DSN"),
+            postgres_dsn=postgres_dsn,
             redis_url=os.getenv("REDIS_URL"),
             mcp_akshare_one=McpSourceConfig(
                 transport=os.getenv("AKSHARE_ONE_MCP_TRANSPORT", "streamable_http"),

@@ -298,23 +298,79 @@ def _parse_generic_list(raw: str) -> dict[str, Any]:
     raise ValueError("响应格式不支持")
 
 
-def _parse_instrument(raw: str) -> dict[str, Any]:
-    """解析标的搜索结果 → InstrumentRef 结构。
+def _infer_cn_exchange(symbol: Any) -> str | None:
+    """Infer SSE/SZSE from a 6-digit A-share code when the source omits exchange."""
+    if not isinstance(symbol, str):
+        return None
+    code = symbol.strip()
+    if len(code) != 6 or not code.isdigit():
+        return None
+    if code.startswith(("5", "6", "9")):
+        return "SSE"
+    if code.startswith(("0", "1", "3")):
+        return "SZSE"
+    return None
 
-    cn-financial search_stock 返回 [{"code": "600519", "name": "贵州茅台"}]，
-    统一映射为 symbol/name，供 assemble_analysis 直接使用。
+
+def _normalize_instrument_item(item: dict[str, Any]) -> dict[str, Any]:
+    symbol = item.get("symbol", item.get("code"))
+    if isinstance(symbol, str):
+        symbol = symbol.strip()
+    exchange = item.get("exchange")
+    if not (isinstance(exchange, str) and exchange.strip()):
+        exchange = _infer_cn_exchange(symbol)
+    elif isinstance(exchange, str):
+        exchange = exchange.strip()
+    normalized: dict[str, Any] = {
+        "symbol": symbol,
+        "name": item.get("name"),
+        "market": item.get("market", "CN"),
+        "exchange": exchange,
+        "instrument_type": item.get("instrument_type", "stock"),
+    }
+    if item.get("canonical_symbol"):
+        normalized["canonical_symbol"] = item["canonical_symbol"]
+    if item.get("match_type"):
+        normalized["match_type"] = item["match_type"]
+    if item.get("currency"):
+        normalized["currency"] = item["currency"]
+    return normalized
+
+
+def _parse_instrument(raw: str) -> dict[str, Any]:
+    """解析标的搜索结果 → 候选列表 + 首条 InstrumentRef 兼容字段。
+
+    cn-financial search_stock 返回 [{"code": "600519", "name": "贵州茅台"}]（常无
+    exchange）。必须保留全部候选供 Resolver 判定 AMBIGUOUS，并为 A 股代码推断
+    SSE/SZSE；同时保留顶层 symbol/name 供旧 Root Graph assemble_analysis 使用。
     """
     parsed = _JSON_LOADER(raw)
-    items = parsed if isinstance(parsed, list) else [parsed]
-    if not items or not isinstance(items[0], dict):
+    items: list[Any]
+    if isinstance(parsed, list):
+        items = parsed
+    elif isinstance(parsed, dict):
+        nested = None
+        for key in ("candidates", "items", "results"):
+            value = parsed.get(key)
+            if isinstance(value, list) and value:
+                nested = value
+                break
+        items = nested if nested is not None else [parsed]
+    else:
         raise ValueError("instrument 响应为空或格式不支持")
-    first = items[0]
+    candidates = [
+        _normalize_instrument_item(item) for item in items if isinstance(item, dict)
+    ]
+    if not candidates:
+        raise ValueError("instrument 响应为空或格式不支持")
+    first = candidates[0]
     return {
-        "symbol": first.get("symbol", first.get("code")),
+        "symbol": first.get("symbol"),
         "name": first.get("name"),
         "market": first.get("market", "CN"),
         "exchange": first.get("exchange"),
         "instrument_type": first.get("instrument_type", "stock"),
+        "candidates": candidates,
     }
 
 

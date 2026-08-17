@@ -30,6 +30,7 @@ var MODE="general"; // 后端协议字段，单助手固定值
 var STOCK_SKILL="finance.stock-research";
 var NATIVE_FETCH=window.fetch.bind(window);
 var AUTH={ready:MOCK,user:MOCK?{userId:"mock",username:"演示模式"}:null};
+var AUTH_MODE="login";
 
 var ST={
   sessions:[],
@@ -915,10 +916,19 @@ async function loadSessionDetail(s){
 function showAuth(message){
   var modal=document.getElementById("authModal");
   modal.hidden=false;
-  document.getElementById("authLoginPanel").hidden=false;
-  document.getElementById("authAppliedPanel").hidden=true;
   document.getElementById("authError").textContent=message||"";
+  setAuthMode(AUTH_MODE);
   setTimeout(function(){document.getElementById("authUsername").focus();},0);
+}
+function setAuthMode(mode){
+  AUTH_MODE=mode;
+  var registering=mode==="register";
+  document.getElementById("authTitle").textContent=registering?"注册 BDLH Agent Runtime":"登录 BDLH Agent Runtime";
+  document.getElementById("authHint").textContent=registering?"填写用户名和至少 8 位密码。注册成功后将直接进入对话。":"登录后，对话、记忆和个人资料将按账号独立保存。";
+  document.getElementById("authLogin").textContent=registering?"提交注册":"登录";
+  document.getElementById("authRegister").textContent=registering?"返回登录":"注册账号";
+  document.getElementById("authPassword").autocomplete=registering?"new-password":"current-password";
+  document.getElementById("authError").textContent="";
 }
 function updateAccount(){
   document.getElementById("accountButton").textContent=AUTH.user?AUTH.user.username:"登录";
@@ -936,7 +946,6 @@ function completeAuth(data){
   AUTH.user={userId:String(data.userId),username:data.username};
   if(data.token)localStorage.setItem(AUTH_TOKEN_KEY,data.token);
   document.getElementById("authPassword").value="";
-  document.getElementById("appliedPassword").textContent="";
   document.getElementById("authModal").hidden=true;
   resetForUser();
   input.focus();
@@ -970,39 +979,22 @@ async function login(){
   var username=document.getElementById("authUsername").value.trim();
   var password=document.getElementById("authPassword").value;
   var error=document.getElementById("authError");
-  if(!username||password.length<6){error.textContent="请输入账号和至少 6 位密码";return;}
-  error.textContent="正在登录…";
+  if(!username||password.length<8){error.textContent="请输入用户名和至少 8 位密码";return;}
+  var registering=AUTH_MODE==="register";
+  error.textContent=registering?"正在注册…":"正在登录…";
   try{
-    var response=await NATIVE_FETCH("/api/v1/auth/login",{
+    var response=await NATIVE_FETCH("/api/v1/auth/"+(registering?"register":"login"),{
       method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({username:username,password:password})
     });
     var data=await response.json();
-    if(!response.ok)throw new Error(data.error||"登录失败");
+    if(!response.ok)throw new Error(data.error||(registering?"注册失败":"登录失败"));
     completeAuth(data);
-  }catch(e){error.textContent=e.message||"登录服务暂时不可用";}
-}
-async function applyAccount(){
-  var button=document.getElementById("authApply");
-  var error=document.getElementById("authError");
-  button.disabled=true;error.textContent="正在生成账号…";
-  try{
-    var response=await NATIVE_FETCH("/api/v1/auth/apply",{method:"POST"});
-    var data=await response.json();
-    if(!response.ok)throw new Error(data.error||"账号生成失败");
-    localStorage.setItem(AUTH_TOKEN_KEY,data.token);
-    AUTH.user={userId:String(data.userId),username:data.username};
-    document.getElementById("authLoginPanel").hidden=true;
-    document.getElementById("authAppliedPanel").hidden=false;
-    document.getElementById("appliedUsername").textContent=data.username;
-    document.getElementById("appliedPassword").textContent=data.initialPassword;
-    document.getElementById("authContinue").onclick=function(){completeAuth(data);};
-  }catch(e){error.textContent=e.message||"账号申请服务暂时不可用";}
-  finally{button.disabled=false;}
+  }catch(e){error.textContent=e.message||"认证服务暂时不可用";}
 }
 
 document.getElementById("authLogin").addEventListener("click",login);
-document.getElementById("authApply").addEventListener("click",applyAccount);
+document.getElementById("authRegister").addEventListener("click",function(){setAuthMode(AUTH_MODE==="register"?"login":"register");});
 document.getElementById("authPassword").addEventListener("keydown",function(e){if(e.key==="Enter")login();});
 document.getElementById("accountButton").addEventListener("click",function(){
   if(!AUTH.ready){showAuth();return;}

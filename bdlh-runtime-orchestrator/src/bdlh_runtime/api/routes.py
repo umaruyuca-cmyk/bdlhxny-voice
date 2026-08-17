@@ -459,7 +459,46 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
             reason_code="USER_CANCELLED_TASK",
             now=utc_now(),
         )
-        cancelled = application.task_store.update(task, expected_version=expected_version)
+        try:
+            cancelled = application.task_store.update(task, expected_version=expected_version)
+        except RuntimeError as exc:
+            if str(exc) != "TASK_VERSION_CONFLICT":
+                raise
+            current = application.task_store.get(task_id, user_id)
+            if current is None:
+                raise HTTPException(status_code=404, detail="任务不存在") from exc
+            if current.status == FinancialTaskStatus.CANCELLED:
+                return current.model_dump(mode="json")
+            if current.status in {
+                FinancialTaskStatus.RUNNING,
+                FinancialTaskStatus.TRIGGERED,
+            }:
+                raise HTTPException(
+                    status_code=409,
+                    detail="任务正在执行当前唤醒，请在本轮结束后重试取消",
+                ) from exc
+            if current.status in TERMINAL_TASK_STATUSES:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"任务已处于终态 {current.status.value}",
+                ) from exc
+            retry_version = current.version
+            current.transition(
+                FinancialTaskStatus.CANCELLED,
+                reason_code="USER_CANCELLED_TASK",
+                now=utc_now(),
+            )
+            try:
+                cancelled = application.task_store.update(
+                    current, expected_version=retry_version
+                )
+            except RuntimeError as retry_exc:
+                if str(retry_exc) != "TASK_VERSION_CONFLICT":
+                    raise
+                raise HTTPException(
+                    status_code=409,
+                    detail="任务状态已变更，请重试取消",
+                ) from retry_exc
         return cancelled.model_dump(mode="json")
 
     @router.get("/notifications")
@@ -703,10 +742,14 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                     checkpoint_id=None,
                     runtime_path=None,
                 )
+                blocked = response.response_kind in {
+                    "BLOCKED",
+                    "CAPABILITY_NOT_ENABLED",
+                }
                 yield encode_event("message", {
                     "schema_version": "1.0",
                     "type": "done",
-                    "status": "COMPLETED",
+                    "status": "FAILED" if blocked else "COMPLETED",
                     "resultStatus": response.response_kind,
                     "sessionId": session.session_id,
                     "runId": run_id,

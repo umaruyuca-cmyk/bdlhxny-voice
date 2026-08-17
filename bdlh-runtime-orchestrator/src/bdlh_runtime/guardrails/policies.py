@@ -29,7 +29,7 @@ class DefaultPlanGuardrail:
             )
         request = plan.domain_request
         if request is not None:
-            if context.enabled_domains and request.domain not in context.enabled_domains:
+            if request.domain not in context.enabled_domains:
                 return _block(
                     GuardrailStage.PLAN,
                     "DOMAIN_NOT_ENABLED",
@@ -86,7 +86,7 @@ class DefaultActionGuardrail:
                 "ACTION-AUTH-001",
                 "领域调用缺少授权范围",
             )
-        if request is not None and context.authorized_operations:
+        if request is not None:
             requested_operations = {item.value for item in request.authorized_operations}
             if not requested_operations.issubset(context.authorized_operations):
                 return _block(
@@ -150,14 +150,24 @@ class DefaultResponseGuardrail:
     def evaluate_response(
         self, response: PublicResponse, *, context: GuardrailContext
     ) -> GuardrailResult[PublicResponse]:
-        if any(term in response.message for term in self._TRADING_TERMS):
+        scanned_text = "\n".join(
+            [
+                response.message,
+                *[item.title for item in response.sections],
+                *[entry for item in response.sections for entry in item.items],
+                *response.risk_disclosures,
+                *response.next_steps,
+                *response.limitations,
+            ]
+        )
+        if any(term in scanned_text for term in self._TRADING_TERMS):
             return _block(
                 GuardrailStage.RESPONSE,
                 "TRADING_SEMANTICS_BLOCKED",
                 "RESPONSE-READ-ONLY-001",
                 "回复包含被禁止的交易或收益承诺语义",
             )
-        if any(term in response.message for term in self._ACCOUNT_LEAK_TERMS):
+        if any(term in scanned_text for term in self._ACCOUNT_LEAK_TERMS):
             return _block(
                 GuardrailStage.RESPONSE,
                 "ACCOUNT_DISCLOSURE_BLOCKED",

@@ -72,6 +72,12 @@ class FinanceInstrumentResolver:
             return self._unavailable(request, "CAPABILITY_CONTRACT_VIOLATION", "Instrument resolver response identity mismatch")
         if observation.status in {"FAILED", "UNAVAILABLE"}:
             return self._unavailable(request, observation.error_code or "RESOLVER_UNAVAILABLE", observation.error_message or "Instrument resolver is unavailable", retryable=True)
+        if _is_non_production_observation(observation):
+            return self._unavailable(
+                request,
+                "NON_PRODUCTION_DATA",
+                "Mock or fixture instrument data cannot establish source-validated identity",
+            )
 
         candidates = self._candidates(request.mention, observation, request)
         if not candidates:
@@ -152,6 +158,25 @@ class FinanceInstrumentResolver:
         )
 
 
+def _is_non_production_observation(observation: Observation) -> bool:
+    markers = {
+        str(observation.data.get("data_mode") or "").upper()
+        if isinstance(observation.data, dict)
+        else "",
+        str(observation.data.get("source_type") or "").upper()
+        if isinstance(observation.data, dict)
+        else "",
+        str(getattr(observation, "data_mode", "") or "").upper(),
+    }
+    if markers & {"MOCK", "TEST_FIXTURE"}:
+        return True
+    for record in observation.provenance:
+        source = f"{record.source}:{record.tool}".lower()
+        if "mock" in source or "fixture" in source or "test_fixture" in source:
+            return True
+    return False
+
+
 def _candidate_items(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, list):
         return [item for item in data if isinstance(item, dict)]
@@ -164,10 +189,25 @@ def _candidate_items(data: Any) -> list[dict[str, Any]]:
     return [data]
 
 
+def _infer_cn_exchange(symbol: str) -> str | None:
+    code = symbol.strip()
+    if len(code) != 6 or not code.isdigit():
+        return None
+    if code.startswith(("5", "6", "9")):
+        return "SSE"
+    if code.startswith(("0", "1", "3")):
+        return "SZSE"
+    return None
+
+
 def _candidate_from_raw(raw: dict[str, Any], mention: InstrumentMention, default_source_refs: list[str]) -> InstrumentCandidate | None:
     symbol = raw.get("canonical_symbol") or raw.get("symbol") or raw.get("code")
+    if not isinstance(symbol, str) or not symbol.strip():
+        return None
     exchange = raw.get("exchange")
-    if not isinstance(symbol, str) or not symbol.strip() or not isinstance(exchange, str) or not exchange.strip():
+    if not isinstance(exchange, str) or not exchange.strip():
+        exchange = _infer_cn_exchange(symbol.strip())
+    if not isinstance(exchange, str) or not exchange.strip():
         return None
     instrument_type = raw.get("instrument_type", "stock")
     if instrument_type not in {"stock", "etf", "index", "fund", "bond"}:

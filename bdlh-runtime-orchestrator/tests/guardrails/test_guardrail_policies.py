@@ -13,7 +13,13 @@ from bdlh_runtime.guardrails import (
 
 
 def _context(*actions: str) -> GuardrailContext:
-    return GuardrailContext(run_id="run-1", authenticated_user_id="user-1", enabled_actions=frozenset(actions))
+    return GuardrailContext(
+        run_id="run-1",
+        authenticated_user_id="user-1",
+        enabled_actions=frozenset(actions),
+        enabled_domains=frozenset({"example"}),
+        authorized_operations=frozenset({"READ_PUBLIC_RESEARCH"}),
+    )
 
 
 def _respond() -> CognitiveAction:
@@ -35,6 +41,15 @@ def test_data_quality_rejects_fixture_and_unavailable_data() -> None:
 def test_response_blocks_trading_semantics_and_requires_evidence() -> None:
     guardrail = DefaultResponseGuardrail()
     assert guardrail.evaluate_response(PublicResponse(response_kind="ANSWER", message="建议立即买入"), context=_context()).audit_code == "TRADING_SEMANTICS_BLOCKED"
+    assert guardrail.evaluate_response(
+        PublicResponse(
+            response_kind="DOMAIN_RESULT",
+            message="研究完成",
+            evidence_refs=["e1"],
+            sections=[{"section_type": "FINDINGS", "title": "结论", "items": ["建议立即买入"]}],
+        ),
+        context=_context(),
+    ).audit_code == "TRADING_SEMANTICS_BLOCKED"
     assert guardrail.evaluate_response(PublicResponse(response_kind="DOMAIN_RESULT", message="研究完成"), context=_context()).audit_code == "EVIDENCE_REQUIRED"
 
 

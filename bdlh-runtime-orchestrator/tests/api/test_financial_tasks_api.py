@@ -76,3 +76,38 @@ def test_financial_task_crud_is_authenticated_and_user_scoped() -> None:
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "CANCELLED"
     assert cancelled.json()["audit_events"][-1]["reason_code"] == "USER_CANCELLED_TASK"
+
+
+def test_cancel_version_conflict_while_running_returns_409() -> None:
+    application = create_application(Settings(
+        environment="development",
+        auth_required=True,
+        jwt_secret=SECRET,
+    ))
+    client = TestClient(create_api_app(application))
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    created = client.post(
+        "/api/v1/financial-tasks",
+        json={
+            "symbol": "600519",
+            "direction": "AT_OR_ABOVE",
+            "threshold": 1500,
+            "expires_at": expires_at.isoformat(),
+            "confirmed": True,
+        },
+        headers={**headers(1), "Idempotency-Key": "cancel-race-1"},
+    )
+    assert created.status_code == 201
+    task_id = created.json()["task_id"]
+    claimed = application.task_store.claim_due(
+        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+        limit=1,
+    )
+    assert len(claimed) == 1
+    assert claimed[0][0].task_id == task_id
+
+    conflict = client.post(
+        f"/api/v1/financial-tasks/{task_id}/cancel", headers=headers(1)
+    )
+    assert conflict.status_code == 409
+    assert "正在执行" in conflict.json()["detail"]

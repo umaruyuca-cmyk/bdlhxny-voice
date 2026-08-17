@@ -1,13 +1,15 @@
 import { SearchWrapperError } from '../errors.js';
+import { defaultLogger } from '../log.js';
 import { normalizeResults } from '../normalize/search-result-normalizer.js';
 
 /**
  * 通过 SearXNG 聚合国内搜索源并输出固定结果。
  */
 export class SearxngSearchProvider {
-  constructor(config, fetchImpl = fetch) {
+  constructor(config, fetchImpl = fetch, logger = defaultLogger) {
     this.config = config;
     this.fetchImpl = fetchImpl;
+    this.logger = logger;
     this.name = 'searxng';
     this.failureCount = 0;
     this.openUntil = 0;
@@ -18,6 +20,7 @@ export class SearxngSearchProvider {
    */
   async search(task) {
     if (Date.now() < this.openUntil) {
+      this.logger.warn('circuit_open', { taskId: task.taskId, query: task.query });
       throw new SearchWrapperError(503, 'SEARCH_CIRCUIT_OPEN', 'SearXNG 暂时不可用，请稍后重试');
     }
     const url = new URL('/search', `${this.config.searxngUrl}/`);
@@ -48,8 +51,11 @@ export class SearxngSearchProvider {
       return results;
     } catch (error) {
       this.recordFailure();
+      const code = error instanceof SearchWrapperError
+        ? error.code
+        : (error?.name === 'AbortError' ? 'SEARCH_PROVIDER_TIMEOUT' : 'SEARCH_PROVIDER_FAILED');
+      this.logger.warn('provider_failed', { taskId: task.taskId, query: task.query, code });
       if (error instanceof SearchWrapperError) throw error;
-      const code = error?.name === 'AbortError' ? 'SEARCH_PROVIDER_TIMEOUT' : 'SEARCH_PROVIDER_FAILED';
       throw new SearchWrapperError(502, code, code === 'SEARCH_PROVIDER_TIMEOUT'
         ? 'SearXNG 请求超时'
         : 'SearXNG 请求失败');
@@ -64,6 +70,7 @@ export class SearxngSearchProvider {
     if (this.failureCount >= threshold) {
       this.openUntil = Date.now() + (this.config.circuitResetMs ?? 30_000);
       this.failureCount = 0;
+      this.logger.warn('circuit_opened', { threshold, resetMs: this.config.circuitResetMs ?? 30_000 });
     }
   }
 }

@@ -502,21 +502,15 @@
     <div class="modal-body">
       <div id="authLoginPanel">
         <p class="modal-intro">登录后，对话、运行状态、记忆和个人偏好将按账号独立保存。</p>
-        <label class="form-label" for="authUsername">账号</label>
-        <input class="form-input" id="authUsername" autocomplete="username" placeholder="输入账号">
+        <label class="form-label" for="authUsername">用户名</label>
+        <input class="form-input" id="authUsername" autocomplete="username" placeholder="输入用户名">
         <label class="form-label" for="authPassword">密码</label>
-        <input class="form-input" id="authPassword" type="password" autocomplete="current-password" placeholder="输入密码">
+        <input class="form-input" id="authPassword" type="password" autocomplete="current-password" placeholder="至少 8 位密码">
         <div class="form-error" id="authError"></div>
         <div class="auth-actions">
           <button class="ac-btn primary" id="authLoginButton" type="button">登录</button>
-          <button class="ac-btn secondary" id="authApplyButton" type="button">一键申请账号</button>
+          <button class="ac-btn secondary" id="authRegisterButton" type="button">注册账号</button>
         </div>
-      </div>
-      <div id="authAppliedPanel" style="display:none">
-        <p class="auth-success">账号已生成并自动登录。请立即保存账号和初始密码，密码关闭后不再展示。</p>
-        <div class="credential-box"><span>账号</span><strong id="appliedUsername"></strong></div>
-        <div class="credential-box"><span>初始密码</span><strong id="appliedPassword"></strong></div>
-        <button class="ac-btn primary auth-continue" id="authContinueButton" type="button">我已保存，进入工作站</button>
       </div>
     </div>
   </div>

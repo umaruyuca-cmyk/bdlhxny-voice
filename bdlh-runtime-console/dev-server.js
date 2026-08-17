@@ -90,6 +90,10 @@ function proxyApi(request, response, upstream) {
  * 新版聊天由 Python Root Graph 提供；认证和用户领域仍由 Java 提供。
  */
 function apiTarget(pathname) {
+  // 认证由 Java 签发和校验 JWT，不能跟随聊天路由改动而意外切到 Python。
+  if (pathname.startsWith("/api/v1/auth/")) {
+    return backendUrl;
+  }
   if (pathname.startsWith("/api/v1/chat/") || pathname.startsWith("/api/v1/conversations")) {
     return analysisUrl;
   }

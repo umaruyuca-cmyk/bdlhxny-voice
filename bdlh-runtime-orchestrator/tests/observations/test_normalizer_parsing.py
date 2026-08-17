@@ -67,6 +67,24 @@ def test_financial_parsed_cn_form():
     assert result.data["unit"] == "亿"
 
 
+def test_resolve_instrument_keeps_all_candidates_and_infers_exchange():
+    """标的解析保留多候选，并为缺失 exchange 的 A 股代码推断 SSE/SZSE。"""
+    raw = json.dumps(
+        [
+            {"code": "000001", "name": "平安银行"},
+            {"code": "601318", "name": "中国平安"},
+        ]
+    )
+    result = ObservationNormalizer().normalize(_obs("market.resolve_instrument", raw))
+    assert result.status == "SUCCESS"
+    assert result.data["symbol"] == "000001"
+    assert result.data["exchange"] == "SZSE"
+    assert len(result.data["candidates"]) == 2
+    assert result.data["candidates"][0]["exchange"] == "SZSE"
+    assert result.data["candidates"][1]["symbol"] == "601318"
+    assert result.data["candidates"][1]["exchange"] == "SSE"
+
+
 def test_financial_parsed_akshare_form():
     """财报（akshare-one 英文 key）解析。"""
     raw = json.dumps([{"report_date": 1774915200000, "currency": "CNY", "revenue": 54702912385.2}])

@@ -20,6 +20,7 @@
   const AUTH_TOKEN_KEY="bdlh_runtime.auth.token.v1";
   const NATIVE_FETCH=window.fetch.bind(window);
   const AUTH={ready:false,user:null,pendingQuestion:""};
+  let authMode="login";
 
   async function apiFetch(resource,options={}){
     const next={...options,headers:new Headers(options.headers||{})};
@@ -1602,10 +1603,22 @@
   function showAuthModal(){
     const modal=document.getElementById("modalAuth");
     if(modal)modal.style.display="grid";
-    document.getElementById("authLoginPanel").style.display="block";
-    document.getElementById("authAppliedPanel").style.display="none";
     document.getElementById("authError").textContent="";
+    setAuthMode(authMode);
     setTimeout(()=>document.getElementById("authUsername")?.focus(),0);
+  }
+
+  function setAuthMode(mode){
+    authMode=mode;
+    const registering=mode==="register";
+    document.getElementById("authTitle").textContent=registering?"注册 BDLH Agent Runtime":"登录 BDLH Agent Runtime";
+    document.querySelector("#authLoginPanel .modal-intro").textContent=registering
+      ?"填写用户名和至少 8 位密码。注册成功后将直接进入工作站。"
+      :"登录后，对话、运行状态、记忆和个人偏好将按账号独立保存。";
+    document.getElementById("authLoginButton").textContent=registering?"提交注册":"登录";
+    document.getElementById("authRegisterButton").textContent=registering?"返回登录":"注册账号";
+    document.getElementById("authPassword").autocomplete=registering?"new-password":"current-password";
+    document.getElementById("authError").textContent="";
   }
 
   function updateAccountButton(){
@@ -1626,7 +1639,6 @@
     AUTH.user={userId:String(data.userId),username:data.username};
     if(data.token)localStorage.setItem(AUTH_TOKEN_KEY,data.token);
     document.getElementById("modalAuth").style.display="none";
-    document.getElementById("appliedPassword").textContent="";
     resetWorkspaceForAuthenticatedUser();
     if(AUTH.pendingQuestion){
       const question=AUTH.pendingQuestion;AUTH.pendingQuestion="";input.value=question;send(question);
@@ -1654,41 +1666,23 @@
     const username=document.getElementById("authUsername").value.trim();
     const password=document.getElementById("authPassword").value;
     const error=document.getElementById("authError");
-    if(!username||password.length<6){error.textContent="请输入账号和至少 6 位密码";return;}
-    error.textContent="正在登录…";
+    if(!username||password.length<8){error.textContent="请输入用户名和至少 8 位密码";return;}
+    const registering=authMode==="register";
+    error.textContent=registering?"正在注册…":"正在登录…";
     try{
-      const response=await NATIVE_FETCH("/api/v1/auth/login",{
+      const response=await NATIVE_FETCH(`/api/v1/auth/${registering?"register":"login"}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({username,password})
       });
       const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"登录失败");
+      if(!response.ok)throw new Error(data.error||(registering?"注册失败":"登录失败"));
       completeAuthentication(data);
-    }catch(reason){error.textContent=reason.message||"登录服务暂不可用";}
-  }
-
-  async function applyAccount(){
-    const error=document.getElementById("authError");
-    const button=document.getElementById("authApplyButton");
-    button.disabled=true;error.textContent="正在生成账号…";
-    try{
-      const response=await NATIVE_FETCH("/api/v1/auth/apply",{method:"POST"});
-      const data=await response.json();
-      if(!response.ok)throw new Error(data.error||"账号生成失败");
-      localStorage.setItem(AUTH_TOKEN_KEY,data.token);
-      AUTH.user={userId:String(data.userId),username:data.username};
-      document.getElementById("authLoginPanel").style.display="none";
-      document.getElementById("authAppliedPanel").style.display="block";
-      document.getElementById("appliedUsername").textContent=data.username;
-      document.getElementById("appliedPassword").textContent=data.initialPassword;
-      document.getElementById("authContinueButton").onclick=()=>completeAuthentication(data);
-    }catch(reason){error.textContent=reason.message||"账号申请服务暂不可用";}
-    finally{button.disabled=false;}
+    }catch(reason){error.textContent=reason.message||"认证服务暂时不可用";}
   }
 
   document.getElementById("sendBtn").addEventListener("click",()=>send());
   document.getElementById("authLoginButton").addEventListener("click",loginAccount);
-  document.getElementById("authApplyButton").addEventListener("click",applyAccount);
+  document.getElementById("authRegisterButton").addEventListener("click",()=>setAuthMode(authMode==="register"?"login":"register"));
   document.getElementById("authPassword").addEventListener("keydown",event=>{
     if(event.key==="Enter")loginAccount();
   });

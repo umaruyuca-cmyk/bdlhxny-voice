@@ -176,3 +176,57 @@ async def test_httpx_failure_returns_unavailable_in_production(monkeypatch):
     obs = await adapter.execute("research.web_search", {"query": "test"})
     assert obs.status == "UNAVAILABLE"
     assert obs.error_code == "WEB_SEARCH_UNAVAILABLE"
+
+
+# ── 空结果降级（P0-1：SearXNG 被反爬时常见 200 + 空数组，禁止伪装成成功）──
+
+
+async def test_empty_results_downgraded_to_partial(monkeypatch):
+    """wrapper 返回 EMPTY_RESULTS → 降级 PARTIAL + known_unavailable。"""
+    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
+
+    class MockResponse:
+        def raise_for_status(self): pass
+        def json(self):
+            return {
+                "results": [],
+                "errors": [{"taskId": "default", "code": "EMPTY_RESULTS"}],
+            }
+
+    class MockClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, json=None, headers=None): return MockResponse()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+
+    obs = await adapter.execute("research.web_search", {"query": "冷门概念"})
+    assert obs.status == "PARTIAL"  # 不再是 SUCCESS
+    assert obs.data_quality.completeness == 0.0
+    assert "research.web_search" in obs.data_quality.known_unavailable
+    assert obs.data_quality.quality_status == "PARTIAL"
+
+
+async def test_blank_success_envelope_also_downgraded(monkeypatch):
+    """防御：即便 wrapper 返回完全空信封（results=[] errors=[]），也降级 PARTIAL。"""
+    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
+
+    class MockResponse:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"results": [], "errors": []}
+
+    class MockClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, json=None, headers=None): return MockResponse()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", MockClient)
+
+    obs = await adapter.execute("research.web_search", {"query": "test"})
+    assert obs.status == "PARTIAL"
+    assert "research.web_search" in obs.data_quality.known_unavailable

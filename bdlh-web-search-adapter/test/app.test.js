@@ -194,6 +194,51 @@ test('部分任务失败仍返回固定结果和错误信封', async () => {
   }
 });
 
+test('上游返回空结果时标记 EMPTY_RESULTS、降级为 PARTIAL 信号并记日志', async () => {
+  const provider = { name: 'fake', search: async () => [] };
+  const events = [];
+  const logger = {
+    debug: () => {},
+    info: (event, fields) => events.push({ event, fields }),
+    warn: (event, fields) => events.push({ event, fields }),
+    error: () => {},
+  };
+  const server = createServer(createApp(config, provider, new SearchCache(1_000), undefined, logger));
+  await listen(server);
+  try {
+    const address = server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/search`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-agent-id': 'bdlh_runtime',
+        'x-search-token': token,
+      },
+      body: JSON.stringify({
+        schemaVersion: '1.0',
+        tasks: [{
+          taskId: 'task-empty',
+          purposeCode: 'KNOWLEDGE_VERIFY',
+          mode: 'GENERAL',
+          query: '某个冷门概念',
+        }],
+      }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    // 空结果不再伪装成"成功且零结果"，而是在 errors 显式标记 EMPTY_RESULTS。
+    assert.equal(body.results.length, 0);
+    assert.equal(body.errors.length, 1);
+    assert.equal(body.errors[0].code, 'EMPTY_RESULTS');
+    assert.equal(body.errors[0].taskId, 'task-empty');
+    // 可观测性：empty_results 与 request_completed 事件被结构化记录。
+    assert.ok(events.some(e => e.event === 'empty_results' && e.fields.taskId === 'task-empty'));
+    assert.ok(events.some(e => e.event === 'request_completed'));
+  } finally {
+    server.close();
+  }
+});
+
 function listen(server) {
   return new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 }

@@ -376,8 +376,14 @@ def create_chat_session_store(
     environment: str = "development",
     postgres_dsn: str | None = None,
 ) -> ChatSessionStore:
-    if environment == "production":
-        if not postgres_dsn:
-            raise ConfigurationError("生产聊天会话目录需要 POSTGRES_DSN")
+    """创建聊天会话目录。
+
+    有 ``POSTGRES_DSN`` 时（任意环境，含云上联调）一律使用 PostgreSQL；
+    仅本地单测未配置 DSN 时退回内存。生产缺少 DSN 时 fail-closed。
+    """
+
+    if postgres_dsn:
         return PostgresChatSessionStore(postgres_dsn)
+    if environment == "production":
+        raise ConfigurationError("生产聊天会话目录需要 POSTGRES_DSN")
     return InMemoryChatSessionStore()

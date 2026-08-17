@@ -7,6 +7,7 @@ from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainFact,
+    DomainOperation,
     DomainOutcome,
     RequiredUserDecision,
 )
@@ -102,6 +103,17 @@ def _app(dispatcher: FinanceDispatcher, store: InMemoryVerifiedEntityStore | Non
         selector=FinanceCognitiveSelector(entities),
         dispatcher=dispatcher,
         continuation=FinanceCognitiveContinuation(entities),
+        enabled_domains=frozenset({"finance"}),
+        authorized_operations=frozenset(
+            {
+                DomainOperation.READ_MARKET_DATA.value,
+                DomainOperation.READ_PUBLIC_RESEARCH.value,
+                DomainOperation.READ_PORTFOLIO.value,
+                DomainOperation.READ_PROFILE.value,
+                DomainOperation.READ_FINANCIAL_GOALS.value,
+                DomainOperation.RUN_ANALYSIS.value,
+            }
+        ),
     )
 
 
@@ -231,3 +243,32 @@ async def test_verified_reference_expires_after_the_configured_turn_gap() -> Non
     assert dispatcher.requests == []
     assert result.response.response_kind == "ASK_USER"
     assert result.response.audit_codes == ["REFERENCE_NOT_RESOLVED"]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_prefix_with_issuer_name_still_resolves() -> None:
+    dispatcher = FinanceDispatcher()
+
+    result = await _app(dispatcher).run(_event("什么是贵州茅台"))
+
+    assert [type(item) for item in dispatcher.requests] == [
+        InstrumentResolutionRequest,
+        FinancialDomainRequest,
+    ]
+    assert result.response.response_kind == "DOMAIN_RESULT"
+
+
+@pytest.mark.asyncio
+async def test_suitability_only_request_does_not_invoke_dead_intent() -> None:
+    store = InMemoryVerifiedEntityStore()
+    dispatcher = FinanceDispatcher()
+    app = _app(dispatcher, store)
+    await app.run(_event("贵州茅台今天怎么样", event_id="event-1"))
+    dispatcher.requests.clear()
+
+    result = await app.run(_event("它适合我吗", event_id="event-2"))
+
+    assert dispatcher.requests == []
+    assert result.response.response_kind == "ANSWER"
+    assert result.response.audit_codes == ["SUITABILITY_NOT_ENABLED"]
+    assert "尚未启用" in result.response.message

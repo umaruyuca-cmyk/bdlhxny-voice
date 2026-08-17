@@ -1,6 +1,6 @@
 # ============================================================
-# BDLH Agent Runtime Java Backend 云端部署
-# 既有 PG/MySQL/Redis/Ollama/Wrapper 均运行在同一 Linux 服务器。
+# BDLH Agent Runtime 云端部署
+# Python 编排、Java 用户事实服务与受控外部检索均运行在同一 Linux 服务器。
 # 使用 host 网络访问回环地址，避免开放基础设施端口或绕公网 IP。
 # ============================================================
 
@@ -42,7 +42,6 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
       JAVA_DATA_REQUIRE_AUTHENTICATED: ${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
-      LEGACY_JAVA_AGENT_RUNTIME_ENABLED: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
       # Backend 只允许同机边缘 Nginx 访问，不直接监听公网网卡。
       SERVER_ADDRESS: 127.0.0.1
       SERVER_PORT: 8081

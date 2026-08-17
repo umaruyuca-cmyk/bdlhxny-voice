@@ -8,7 +8,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * 用户认证服务：注册、登录。密码使用 BCrypt 加盐哈希，不存储明文。
@@ -17,15 +18,14 @@ import java.security.SecureRandom;
 public class AuthService {
 
     private static final int BCRYPT_COST = 12;
-    private static final int ACCOUNT_GENERATION_ATTEMPTS = 8;
-    private static final String USERNAME_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
-    private static final String PASSWORD_ALPHABET =
-            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
+    private static final int USERNAME_MAX_LENGTH = 32;
+    private static final int PASSWORD_MIN_LENGTH = 8;
+    private static final int PASSWORD_MAX_LENGTH = 128;
+    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-z][a-z0-9_]{2,31}$");
 
     private final UserMapper userMapper;
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthorizationService authorizationService;
-    private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthService(UserMapper userMapper,
                        JwtTokenProvider jwtTokenProvider,
@@ -40,12 +40,13 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(String username, String password) {
-        username = normalizeUsername(username);
+        username = normalizeUsernameForRegistration(username);
+        validateNewPassword(password);
         // 1. 检查用户名是否已存在
         User existing = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (existing != null) {
-            throw new AuthException("用户名已存在");
+            throw new UsernameAlreadyExistsException();
         }
 
         // 2. BCrypt 哈希密码后写入 MySQL
@@ -55,7 +56,7 @@ public class AuthService {
         try {
             userMapper.insert(user);
         } catch (DuplicateKeyException exception) {
-            throw new AuthException("用户名已存在");
+            throw new UsernameAlreadyExistsException();
         }
 
         // 3. 新用户默认分配USER角色，权限从MySQL RBAC关系读取。
@@ -66,54 +67,22 @@ public class AuthService {
     }
 
     /**
-     * 一键申请账号：服务端生成唯一用户名和初始密码，并立即签发个人 JWT。
-     * 初始密码只在本次响应中返回，数据库仍只保存 BCrypt 摘要。
-     */
-    @Transactional
-    public AccountApplicationResponse applyAccount() {
-        for (int attempt = 0; attempt < ACCOUNT_GENERATION_ATTEMPTS; attempt++) {
-            String username = "sw_" + randomText(USERNAME_ALPHABET, 10);
-            User existing = userMapper.selectOne(
-                    new LambdaQueryWrapper<User>().eq(User::getUsername, username));
-            if (existing != null) {
-                continue;
-            }
-            String initialPassword = randomText(PASSWORD_ALPHABET, 16);
-            User user = new User();
-            user.setUsername(username);
-            user.setPasswordHash(BCrypt.withDefaults().hashToString(
-                    BCRYPT_COST, initialPassword.toCharArray()));
-            try {
-                userMapper.insert(user);
-            } catch (DuplicateKeyException exception) {
-                // 数据库唯一索引负责处理并发下极小概率的用户名碰撞。
-                continue;
-            }
-            if (user.getId() == null || user.getId() <= 0) {
-                throw new AuthException("账号创建失败，请重试");
-            }
-            authorizationService.assignDefaultRole(user.getId());
-            String token = jwtTokenProvider.createToken(user.getId());
-            return new AccountApplicationResponse(
-                    token, user.getId(), username, initialPassword, true);
-        }
-        throw new AuthException("暂时无法生成唯一账号，请重试");
-    }
-
-    /**
      * 密码验证通过后签发 JWT。
      */
     public AuthResponse login(String username, String password) {
-        username = normalizeUsername(username);
+        username = normalizeUsernameForLogin(username);
+        if (username == null || password == null || password.isBlank() || password.length() > PASSWORD_MAX_LENGTH) {
+            throw new InvalidCredentialsException();
+        }
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, username));
         if (user == null) {
-            throw new AuthException("用户名或密码错误");
+            throw new InvalidCredentialsException();
         }
 
         BCrypt.Result result = BCrypt.verifyer().verify(password.toCharArray(), user.getPasswordHash());
         if (!result.verified) {
-            throw new AuthException("用户名或密码错误");
+            throw new InvalidCredentialsException();
         }
 
         String token = jwtTokenProvider.createToken(user.getId());
@@ -129,16 +98,34 @@ public class AuthService {
         return new UserProfile(user.getId(), user.getUsername(), user.getCreatedAt());
     }
 
-    private String normalizeUsername(String username) {
-        return username == null ? "" : username.trim().toLowerCase();
+    private String normalizeUsernameForRegistration(String username) {
+        String normalized = normalizeUsername(username);
+        if (normalized == null || normalized.length() > USERNAME_MAX_LENGTH
+                || !USERNAME_PATTERN.matcher(normalized).matches()) {
+            throw new InvalidRegistrationException(
+                    "用户名须为 3–32 位小写字母、数字或下划线，且以字母开头");
+        }
+        return normalized;
     }
 
-    private String randomText(String alphabet, int length) {
-        StringBuilder result = new StringBuilder(length);
-        for (int index = 0; index < length; index++) {
-            result.append(alphabet.charAt(secureRandom.nextInt(alphabet.length())));
+    private String normalizeUsernameForLogin(String username) {
+        String normalized = normalizeUsername(username);
+        return normalized == null || normalized.length() > USERNAME_MAX_LENGTH ? null : normalized;
+    }
+
+    private String normalizeUsername(String username) {
+        if (username == null) {
+            return null;
         }
-        return result.toString();
+        String normalized = username.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private void validateNewPassword(String password) {
+        if (password == null || password.isBlank() || password.length() < PASSWORD_MIN_LENGTH
+                || password.length() > PASSWORD_MAX_LENGTH) {
+            throw new InvalidRegistrationException("密码长度须为 8–128 位，且不能全为空白字符");
+        }
     }
 
     /**
@@ -147,23 +134,33 @@ public class AuthService {
     public record AuthResponse(String token, Long userId, String username) {
     }
 
-    public record AccountApplicationResponse(
-            String token,
-            Long userId,
-            String username,
-            String initialPassword,
-            boolean passwordShownOnce) {
-    }
-
     public record UserProfile(Long userId, String username, java.time.LocalDateTime createdAt) {
     }
 
     /**
-     * 认证相关业务异常，Controller 全局捕获后返回 401。
+     * 认证领域异常的基类。
      */
     public static class AuthException extends RuntimeException {
         public AuthException(String message) {
             super(message);
+        }
+    }
+
+    public static final class InvalidRegistrationException extends AuthException {
+        public InvalidRegistrationException(String message) {
+            super(message);
+        }
+    }
+
+    public static final class UsernameAlreadyExistsException extends AuthException {
+        public UsernameAlreadyExistsException() {
+            super("用户名已存在");
+        }
+    }
+
+    public static final class InvalidCredentialsException extends AuthException {
+        public InvalidCredentialsException() {
+            super("用户名或密码错误");
         }
     }
 }

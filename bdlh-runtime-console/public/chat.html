@@ -167,21 +167,16 @@
   <section class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <h2 id="authTitle">登录 BDLH Agent Runtime</h2>
     <div id="authLoginPanel">
-      <label for="authUsername">账号</label>
-      <input id="authUsername" autocomplete="username" placeholder="输入账号">
+      <p id="authHint">登录后，对话、记忆和个人资料将按账号独立保存。</p>
+      <label for="authUsername">用户名</label>
+      <input id="authUsername" autocomplete="username" placeholder="输入用户名">
       <label for="authPassword">密码</label>
-      <input id="authPassword" type="password" autocomplete="current-password" placeholder="输入密码">
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="至少 8 位密码">
       <p class="auth-error" id="authError"></p>
       <div class="auth-actions">
         <button class="auth-primary" id="authLogin" type="button">登录</button>
-        <button id="authApply" type="button">一键申请账号</button>
+        <button id="authRegister" type="button">注册账号</button>
       </div>
-    </div>
-    <div id="authAppliedPanel" hidden>
-      <p>账号已经生成，请立即保存。初始密码只显示这一次。</p>
-      <div class="credential"><span>账号</span><strong id="appliedUsername"></strong></div>
-      <div class="credential"><span>初始密码</span><strong id="appliedPassword"></strong></div>
-      <button class="auth-primary auth-continue" id="authContinue" type="button">我已保存，进入对话</button>
     </div>
   </section>
 </div>

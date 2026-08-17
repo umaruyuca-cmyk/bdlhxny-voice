@@ -24,41 +24,8 @@ spring:
           password: "你的MySQL密码"
           driver-class-name: com.mysql.cj.jdbc.Driver
 
-  data:
-    redis:
-      host: "你的Redis地址"
-      port: 6379
-      password: "你的Redis密码"
-      database: 0
-
-  ai:
-    openai:
-      api-key: "你的DeepSeek API Key"
-      base-url: https://api.deepseek.com
-      chat:
-        options:
-          model: deepseek-v4-pro
-    ollama:
-      base-url: "你的Ollama地址"
-      api-key: "你的Ollama API Key"
-      chat:
-        model: qwen3:1.5b
-      embedding:
-        model: qwen3-embedding:0.6b
-
 bdlh_runtime:
-  legacy-agent-runtime:
-    # 正式架构关闭 Java Agent 编排，所有分析请求进入 Python LangGraph。
-    enabled: false
   java-data:
     # 生产环境必须开启，防止内部数据接口在无身份凭证时回退单用户模式。
     require-authenticated: true
     internal-token: "使用高强度随机内部令牌"
-  embedding:
-    api-key: "你的DashScope API Key"
-  # stock-analysis / STOCK_WRAPPER_* 已退役，勿再配置。
-  # 正式分析走 Python LangGraph；仅代码内遗留 Gateway 绑定仍读取空默认值。
-  web-search:
-    endpoint-url: "http://你的WebSearch地址:3002/api/search"
-    agent-id: bdlh_runtime
-    agent-token: "你的Web Search Token"

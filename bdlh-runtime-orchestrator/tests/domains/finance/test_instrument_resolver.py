@@ -85,12 +85,105 @@ async def test_returns_ambiguous_for_multiple_or_fuzzy_candidates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rejects_unverified_candidate_without_exchange_or_provenance() -> None:
-    service, _ = resolver({"symbol": "600519", "name": "贵州茅台"})
+async def test_normalized_cn_financial_search_keeps_ambiguity() -> None:
+    import json
+
+    from bdlh_runtime.observations.normalizer import ObservationNormalizer
+
+    raw = json.dumps(
+        [
+            {"code": "000001", "name": "平安银行"},
+            {"code": "601318", "name": "中国平安"},
+        ]
+    )
+    normalized = ObservationNormalizer().normalize(
+        Observation(
+            observation_id="resolver-norm",
+            capability="market.resolve_instrument",
+            status="SUCCESS",
+            data={"raw_text": raw},
+            data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+            provenance=[
+                ProvenanceRecord(
+                    source="cn-financial-mcp",
+                    tool="search_stock",
+                    retrieved_at="2026-08-11T10:00:00+08:00",
+                )
+            ],
+        )
+    )
+    registry = build_default_capability_registry()
+
+    class NormalizedExecutor:
+        async def execute(self, capability: str, arguments: dict[str, Any], *, request_id: str) -> Observation:
+            del capability, arguments, request_id
+            return normalized
+
+    service = FinanceInstrumentResolver(
+        registry=registry,
+        authorization=FinanceCapabilityAuthorizationPolicy(registry),
+        executor=NormalizedExecutor(),
+    )
+
+    outcome = await service.resolve(request(mention_type="NAME"))
+
+    assert outcome.resolution_status == "AMBIGUOUS"
+    assert len(outcome.candidates) == 2
+    assert {item.exchange for item in outcome.candidates} == {"SSE", "SZSE"}
+
+
+@pytest.mark.asyncio
+async def test_rejects_candidate_when_exchange_cannot_be_established() -> None:
+    service, _ = resolver({"symbol": "ABC", "name": "Unknown Issuer"})
 
     outcome = await service.resolve(request())
 
     assert outcome.resolution_status == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_infers_cn_exchange_when_source_omits_it() -> None:
+    service, _ = resolver({"symbol": "600519", "name": "贵州茅台"})
+
+    outcome = await service.resolve(request())
+
+    assert outcome.resolution_status == "RESOLVED"
+    assert outcome.selected is not None
+    assert outcome.selected.exchange == "SSE"
+
+
+@pytest.mark.asyncio
+async def test_rejects_mock_provenance_before_identity_is_established() -> None:
+    registry = build_default_capability_registry()
+
+    class MockExecutor:
+        async def execute(self, capability: str, arguments: dict[str, Any], *, request_id: str) -> Observation:
+            del arguments, request_id
+            return Observation(
+                observation_id="resolver-mock",
+                capability=capability,
+                status="SUCCESS",
+                data={"symbol": "600519", "name": "贵州茅台", "exchange": "SSE"},
+                data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+                provenance=[
+                    ProvenanceRecord(
+                        source="mock-market",
+                        tool=capability,
+                        retrieved_at="2026-08-11T10:00:00+08:00",
+                    )
+                ],
+            )
+
+    service = FinanceInstrumentResolver(
+        registry=registry,
+        authorization=FinanceCapabilityAuthorizationPolicy(registry),
+        executor=MockExecutor(),
+    )
+
+    outcome = await service.resolve(request())
+
+    assert outcome.resolution_status == "UNAVAILABLE"
+    assert outcome.errors[0].code == "NON_PRODUCTION_DATA"
 
 
 @pytest.mark.asyncio

@@ -220,7 +220,7 @@ def build_rollout_router(
     if settings.environment == "production" and mode != RolloutMode.OFF:
         if not production_storage_ready:
             raise ConfigurationError(
-                "M5 灰度被阻断：Run Registry、Chat Store 或 Cognitive Checkpoint 尚未全部持久化"
+                "M5 灰度被阻断：Run Registry、Analysis History、Chat Store 或 Cognitive Checkpoint 尚未全部持久化"
             )
         missing = gate.missing_requirements()
         if missing:

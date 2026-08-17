@@ -132,7 +132,7 @@ class StockResearchResultBuilder:
             quote = by_capability[_QUOTE][0]
             data = self._first_mapping(quote.data)
             market_snapshot = MarketSnapshot(
-                symbol=str(data.get("symbol") or request.instruments[0].symbol),
+                symbol=str(request.instruments[0].symbol),
                 name=request.instruments[0].name,
                 price=self._number(data, "price", "close", "最新价"),
                 currency=str(data.get("currency") or "CNY"),
@@ -147,10 +147,19 @@ class StockResearchResultBuilder:
         if _FINANCIALS in planned and by_capability[_FINANCIALS]:
             item = by_capability[_FINANCIALS][0]
             fundamentals = Fundamentals(
-                revenue=self._number_deep(item.data, "revenue", "营业收入", "营收"),
-                net_profit=self._number_deep(item.data, "net_profit", "净利润"),
+                revenue=self._number_deep(
+                    item.data,
+                    "revenue",
+                    "营业收入",
+                    "营收",
+                    "营业总收入",
+                    "营业总收入(亿)",
+                ),
+                net_profit=self._number_deep(
+                    item.data, "net_profit", "净利润", "净利润(亿)"
+                ),
                 revenue_yoy=self._number_deep(
-                    item.data, "revenue_yoy", "revenue_growth", "营收同比"
+                    item.data, "revenue_yoy", "revenue_growth", "营收同比", "营业总收入同比"
                 ),
                 net_profit_yoy=self._number_deep(
                     item.data, "net_profit_yoy", "profit_growth", "净利润同比"
@@ -176,12 +185,20 @@ class StockResearchResultBuilder:
         technicals = None
         if _HISTORY in planned and by_capability[_HISTORY]:
             item = by_capability[_HISTORY][0]
-            technicals = Technicals(
-                trend=self._trend(analysis_result.signals),
-                indicators=self._json_value(analysis_result.calculated_indicators),
-                quality=self._section_quality(item, conflicting_observations),
-                limitations=list(analysis_result.limitations),
-            )
+            if analysis_result.status not in {"FAILED", "LIMITED"}:
+                technicals = Technicals(
+                    trend=self._trend(analysis_result.signals),
+                    indicators=self._json_value(analysis_result.calculated_indicators),
+                    quality=self._section_quality(item, conflicting_observations),
+                    limitations=list(analysis_result.limitations),
+                )
+            else:
+                technicals = Technicals(
+                    trend="UNKNOWN",
+                    indicators={},
+                    quality=self._section_quality(item, conflicting_observations),
+                    limitations=list(analysis_result.limitations),
+                )
 
         money_flow = None
         if _MONEY_FLOW in planned and by_capability[_MONEY_FLOW]:
@@ -312,9 +329,9 @@ class StockResearchResultBuilder:
         aliases: dict[str, tuple[tuple[str, ...], ...]] = {
             _QUOTE: (("price", "close", "最新价"),),
             _FINANCIALS: (
-                ("revenue", "营业收入", "营收"),
-                ("net_profit", "净利润"),
-                ("revenue_yoy", "revenue_growth", "营收同比"),
+                ("revenue", "营业收入", "营收", "营业总收入", "营业总收入(亿)"),
+                ("net_profit", "净利润", "净利润(亿)"),
+                ("revenue_yoy", "revenue_growth", "营收同比", "营业总收入同比"),
                 ("net_profit_yoy", "profit_growth", "净利润同比"),
                 ("roe", "ROE", "净资产收益率"),
                 ("debt_ratio", "asset_liability_ratio", "资产负债率"),
@@ -440,6 +457,8 @@ class StockResearchResultBuilder:
         analysis_result: AnalysisResult,
         evidence_ids: list[str],
     ) -> list[ResearchRisk]:
+        if analysis_result.status in {"FAILED", "LIMITED"}:
+            return []
         severity_map = {
             "low": "LOW",
             "medium": "MEDIUM",
@@ -650,20 +669,25 @@ class StockResearchResultBuilder:
     def _number(mapping: dict[str, Any], *names: str) -> float | None:
         for name in names:
             value = mapping.get(name)
-            if value is not None:
-                try:
-                    return float(value)
-                except (TypeError, ValueError):
-                    return None
+            if value is None:
+                continue
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
         return None
 
     @classmethod
     def _number_deep(cls, value: Any, *names: str) -> float | None:
-        found = cls._deep_value(value, *names)
-        try:
-            return float(found) if found is not None else None
-        except (TypeError, ValueError):
-            return None
+        for name in names:
+            found = cls._deep_value(value, name)
+            if found is None:
+                continue
+            try:
+                return float(found)
+            except (TypeError, ValueError):
+                continue
+        return None
 
     @classmethod
     def _text_deep(cls, value: Any, *names: str) -> str | None:

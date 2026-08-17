@@ -120,9 +120,18 @@ class ModifyPlanGuardrail:
         )
 
 
+def _orchestrator(**kwargs: object) -> CognitiveOrchestrator:
+    defaults = {
+        "enabled_domains": frozenset({"example"}),
+        "authorized_operations": frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+    }
+    defaults.update(kwargs)
+    return CognitiveOrchestrator(**defaults)  # type: ignore[arg-type]
+
+
 @pytest.mark.asyncio
 async def test_forged_evidence_is_blocked_before_public_response() -> None:
-    app = CognitiveOrchestrator(
+    app = _orchestrator(
         selector=Selector(_action(_request())),
         dispatcher=Dispatcher(),
         continuation=ForgedContinuation(),
@@ -136,7 +145,7 @@ async def test_forged_evidence_is_blocked_before_public_response() -> None:
 
 @pytest.mark.asyncio
 async def test_cumulative_domain_budget_is_enforced_across_steps() -> None:
-    app = CognitiveOrchestrator(
+    app = _orchestrator(
         selector=Selector(_action(_request(tool_calls=10))),
         dispatcher=Dispatcher(),
         continuation=LoopContinuation(),
@@ -150,7 +159,7 @@ async def test_cumulative_domain_budget_is_enforced_across_steps() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_ask_user_decision_is_executed() -> None:
-    app = CognitiveOrchestrator(
+    app = _orchestrator(
         selector=Selector(_action()),
         dispatcher=Dispatcher(),
         plan_guardrail=AskPlanGuardrail(),  # type: ignore[arg-type]
@@ -164,7 +173,7 @@ async def test_plan_ask_user_decision_is_executed() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_modify_replacement_is_executed() -> None:
-    app = CognitiveOrchestrator(
+    app = _orchestrator(
         selector=Selector(_action(_request())),
         dispatcher=Dispatcher(),
         plan_guardrail=ModifyPlanGuardrail(),  # type: ignore[arg-type]

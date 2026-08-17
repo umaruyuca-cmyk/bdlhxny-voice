@@ -25,7 +25,7 @@
 | `README.md` | 入口 | `ACTIVE` | 定位、技术栈与文档导航；只做索引，不承载决策 |
 | `docs/` | 文档 | — | 全部架构、Prompt、评审与本索引 |
 | `bdlh-runtime-orchestrator/` | 代码 | `ACTIVE` | Python + LangGraph，Agent 编排唯一实现 |
-| `bdlh-runtime-data/` | 代码 | 混合 | Java：认证与用户金融数据服务有效；旧 Agent 链路 `RETIRED` |
+| `bdlh-runtime-data/` | 代码 | `ACTIVE` | Java：认证与用户金融数据服务；不承载 Agent、LLM、记忆或外部工具调用 |
 | `bdlh-runtime-console/` | 代码 | `ACTIVE` | 独立 Nginx 静态前端与契约测试 |
 | `bdlh-web-search-adapter/` | 代码 | `ACTIVE` | 公开资料检索封装，经 Capability Gateway 调用 |
 | `stock-wrapper/` | — | `RETIRED`（已移出仓库） | 旧 Node HTTP 包装层；勿恢复目录，勿配置 `STOCK_WRAPPER_*` |
@@ -128,10 +128,9 @@ bdlh-runtime-orchestrator/
 
 | 包 | 状态 | 说明 |
 |---|---|---|
-| `api/`、`security/`、`config/`、`handler/`、`entity/`、`mapper/`、`dto/`、`service/` | `ACTIVE` | 认证、用户金融数据、只读查询与确认入口 |
-| `agent/`、`llm/`、`memory/`、`tool/`、`skill/`、`websearch/` | `RETIRED` | 旧 Java Agent 链路，编排已迁至 Python，不得新增依赖 |
+| `api/`、`security/`、`config/`、`handler/`、`entity/`、`mapper/`、`dto/`、`service/` | `ACTIVE` | 认证、用户金融数据、只读查询与确认入口；Java 不承载 Agent、LLM、记忆或外部工具调用 |
 
-Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用户资料的写入走独立认证 API，不是 Agent Capability。
+Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用户资料的写入走独立认证 API，不是 Agent Capability。旧 Java Agent 链路已从仓库删除。
 
 ### 3.3 `bdlh-runtime-console/`
 

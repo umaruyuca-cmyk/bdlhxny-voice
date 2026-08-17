@@ -655,6 +655,16 @@ class PostgresTaskStore:
             ).fetchall()
             for task_id, payload in rows:
                 task = self._decode(payload)
+                wakeup_key = (
+                    f"{task.task_id}:"
+                    f"{task.next_wakeup_at.astimezone(timezone.utc).isoformat()}"
+                )
+                # Mirror InMemoryTaskStore: free the idempotency slot so claim_due
+                # can re-insert the same wakeup_key after stale recovery.
+                connection.execute(
+                    "DELETE FROM bdlh_runtime_task_wakeup WHERE wakeup_key = %s",
+                    (wakeup_key,),
+                )
                 task.transition(
                     FinancialTaskStatus.WAITING,
                     reason_code="STALE_WAKEUP_RECOVERED",
@@ -828,20 +838,32 @@ class PostgresNotificationOutbox:
 
 
 def create_task_store(*, environment: str, postgres_dsn: str | None) -> TaskStore:
-    if environment == "production":
-        if not postgres_dsn:
-            raise ConfigurationError("生产 Financial Task Store 需要 POSTGRES_DSN")
+    """创建金融任务存储。
+
+    有 ``POSTGRES_DSN`` 时（任意环境）一律使用 PostgreSQL；
+    仅本地单测未配置 DSN 时退回内存。生产缺少 DSN 时 fail-closed。
+    """
+
+    if postgres_dsn:
         return PostgresTaskStore(postgres_dsn)
+    if environment == "production":
+        raise ConfigurationError("生产 Financial Task Store 需要 POSTGRES_DSN")
     return InMemoryTaskStore()
 
 
 def create_notification_outbox(
     *, environment: str, postgres_dsn: str | None
 ) -> NotificationOutbox:
-    if environment == "production":
-        if not postgres_dsn:
-            raise ConfigurationError("生产 Notification Outbox 需要 POSTGRES_DSN")
+    """创建通知 outbox。
+
+    有 ``POSTGRES_DSN`` 时（任意环境）一律使用 PostgreSQL；
+    仅本地单测未配置 DSN 时退回内存。生产缺少 DSN 时 fail-closed。
+    """
+
+    if postgres_dsn:
         return PostgresNotificationOutbox(postgres_dsn)
+    if environment == "production":
+        raise ConfigurationError("生产 Notification Outbox 需要 POSTGRES_DSN")
     return InMemoryNotificationOutbox()
 
 

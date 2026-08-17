@@ -82,16 +82,21 @@ def _analysis(
     status: str = "SUCCESS",
     *,
     limitations: list[str] | None = None,
+    signals: list[dict[str, Any]] | None = None,
+    risk_flags: list[dict[str, Any]] | None = None,
+    calculated_indicators: dict[str, Any] | None = None,
 ) -> AnalysisResult:
     return AnalysisResult(
         analysis_id="builder-technical",
         status=status,
-        calculated_indicators={
+        calculated_indicators=calculated_indicators
+        or {
             "engine": "python-analysis.v2",
             "ma5": 100.5,
             "macd": {"dif": 1.2, "dea": 1.0, "histogram": 0.2},
         },
-        signals=[
+        signals=signals
+        or [
             {
                 "name": "ma_bullish_alignment",
                 "direction": "bullish",
@@ -99,6 +104,7 @@ def _analysis(
             }
         ],
         conclusions=[{"text": "技术面偏多", "confidence": "MEDIUM"}],
+        risk_flags=risk_flags or [],
         limitations=limitations or [],
         data_quality=DataQuality(completeness=1.0, quality_status="OK"),
         methodology_version="python-analysis.v2",
@@ -296,3 +302,73 @@ def test_event_text_is_sanitized_and_raw_snippet_is_not_copied() -> None:
 
     assert [item.headline for item in result.events] == ["公司公告"]
     assert "秘密" not in result.model_dump_json()
+
+
+def test_cn_financial_fundamentals_aliases_are_projected() -> None:
+    result = StockResearchResultBuilder().build(
+        request=_request("fundamental"),
+        requirements=[
+            _requirement("market.get_realtime_quote"),
+            _requirement("market.get_financial_statements"),
+        ],
+        observations=[
+            _observation(
+                "quote-1",
+                "market.get_realtime_quote",
+                {"symbol": "600519", "price": "N/A", "close": 1500.5},
+            ),
+            _observation(
+                "fin-1",
+                "market.get_financial_statements",
+                {
+                    "report_period": "2026一季报",
+                    "items": {"营业总收入(亿)": 547.03, "净利润(亿)": 200.1},
+                    "unit": "亿",
+                },
+            ),
+        ],
+        analysis_result=_analysis(),
+    )
+
+    assert result.market_snapshot is not None
+    assert result.market_snapshot.symbol == "600519"
+    assert result.market_snapshot.price == 1500.5
+    assert result.fundamentals is not None
+    assert result.fundamentals.revenue == 547.03
+    assert result.fundamentals.net_profit == 200.1
+
+
+def test_failed_analysis_does_not_project_risks_or_technical_signals() -> None:
+    result = StockResearchResultBuilder().build(
+        request=_request("technical"),
+        requirements=[
+            _requirement("market.get_realtime_quote"),
+            _requirement("market.get_historical_prices"),
+        ],
+        observations=[
+            _observation(
+                "quote-1",
+                "market.get_realtime_quote",
+                {"symbol": "999999", "price": 10.0},
+            ),
+            _observation(
+                "hist-1",
+                "market.get_historical_prices",
+                [{"date": "2026-08-01", "close": 10.0}],
+            ),
+        ],
+        analysis_result=_analysis(
+            status="FAILED",
+            signals=[{"direction": "bullish"}],
+            risk_flags=[{"name": "bad", "detail": "should not leak", "severity": "high"}],
+            calculated_indicators={"macd": {"hist": 1.0}},
+        ),
+    )
+
+    assert result.market_snapshot is not None
+    assert result.market_snapshot.symbol == "600519"
+    assert result.findings == []
+    assert result.risks == []
+    assert result.technicals is not None
+    assert result.technicals.trend == "UNKNOWN"
+    assert result.technicals.indicators == {}

@@ -1,11 +1,11 @@
 package com.bdlh.runtime.security;
 
-import at.favre.lib.crypto.bcrypt.BCrypt;
 import com.bdlh.runtime.entity.User;
 import com.bdlh.runtime.mapper.UserMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -20,30 +20,30 @@ class AuthServiceTest {
     private final AuthService service = new AuthService(userMapper, tokenProvider, authorizationService);
 
     @Test
-    void shouldApplyAccountWithoutUserInputAndReturnPasswordOnlyOnce() {
+    void shouldNormalizeUsernameHashPasswordAndAssignDefaultRoleOnRegistration() {
         when(userMapper.selectOne(any())).thenReturn(null);
         doAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(101L);
+            ((User) invocation.getArgument(0)).setId(8L);
             return 1;
         }).when(userMapper).insert(any(User.class));
-        when(tokenProvider.createToken(101L)).thenReturn("jwt-token");
+        when(tokenProvider.createToken(8L)).thenReturn("jwt-token");
 
-        AuthService.AccountApplicationResponse response = service.applyAccount();
+        AuthService.AuthResponse response = service.register("  Alice_01  ", "secure-pass");
 
-        assertThat(response.userId()).isEqualTo(101L);
-        assertThat(response.username()).matches("sw_[a-z2-9]{10}");
-        assertThat(response.initialPassword()).hasSize(16);
-        assertThat(response.passwordShownOnce()).isTrue();
-        assertThat(response.token()).isEqualTo("jwt-token");
-        verify(authorizationService).assignDefaultRole(101L);
-
+        assertThat(response).isEqualTo(new AuthService.AuthResponse("jwt-token", 8L, "alice_01"));
         var inserted = org.mockito.ArgumentCaptor.forClass(User.class);
         verify(userMapper).insert(inserted.capture());
-        assertThat(inserted.getValue().getPasswordHash()).doesNotContain(response.initialPassword());
-        assertThat(BCrypt.verifyer().verify(
-                response.initialPassword().toCharArray(), inserted.getValue().getPasswordHash()).verified)
-                .isTrue();
+        assertThat(inserted.getValue().getUsername()).isEqualTo("alice_01");
+        assertThat(inserted.getValue().getPasswordHash()).doesNotContain("secure-pass");
+        verify(authorizationService).assignDefaultRole(8L);
+    }
+
+    @Test
+    void shouldRejectInvalidNewUsernameAndPassword() {
+        assertThatThrownBy(() -> service.register("12bad", "secure-pass"))
+                .isInstanceOf(AuthService.InvalidRegistrationException.class);
+        assertThatThrownBy(() -> service.register("alice", "short"))
+                .isInstanceOf(AuthService.InvalidRegistrationException.class);
     }
 
     @Test

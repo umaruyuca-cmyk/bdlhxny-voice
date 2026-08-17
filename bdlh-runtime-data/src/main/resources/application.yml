@@ -42,24 +42,6 @@ scalar:
   dark-mode: false
 
 bdlh_runtime:
-  ai:
-    # 普通问答与旧意图分类默认统一使用DeepSeek，可切换为ollama。
-    chat-provider: ${BDLH_RUNTIME_CHAT_PROVIDER:deepseek}
-  embedding:
-    # text-embedding-v4默认输出1024维，与现有pgvector字段保持一致。
-    provider: ${BDLH_RUNTIME_EMBEDDING_PROVIDER:dashscope}
-    base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-    api-key: ${DASHSCOPE_API_KEY:}
-    model: ${BDLH_RUNTIME_EMBEDDING_MODEL:text-embedding-v4}
-    dimensions: ${BDLH_RUNTIME_EMBEDDING_DIMENSIONS:1024}
-  routing:
-    semantic:
-      # 默认关闭付费语义路由；规则未命中时使用本地 Intent 兜底，显式开启才调用 DeepSeek 候选分类。
-      enabled: ${DEEPSEEK_ROUTER_ENABLED:false}
-      model: ${DEEPSEEK_ROUTER_MODEL:deepseek-v4-flash}
-      max-output-tokens: ${DEEPSEEK_ROUTER_MAX_TOKENS:256}
-      total-timeout-ms: ${DEEPSEEK_ROUTER_TIMEOUT_MS:2500}
-      max-concurrent-calls: ${DEEPSEEK_ROUTER_MAX_CONCURRENCY:8}
   single-user:
     # 当前产品为单用户部署，客户端不得自行提交userId
     id: ${BDLH_RUNTIME_SINGLE_USER_ID:1}
@@ -67,67 +49,8 @@ bdlh_runtime:
     # 生产环境必须通过环境变量覆盖默认密钥
     secret: ${JWT_SECRET:}
     expiration-days: ${JWT_EXPIRATION_DAYS:7}
-  legacy-stock-agent:
-    # 旧版直连Skill/DeepSeek入口默认关闭，正式页面只走AgentOrchestrator
-    enabled: ${LEGACY_STOCK_AGENT_ENABLED:false}
-  legacy-agent-runtime:
-    # 新的 Agent 主流程由 Python LangGraph 承载；仅迁移回滚时显式开启旧 Java 入口。
-    enabled: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:false}
   java-data:
     # 生产环境必须设为 true，并由 Python 传递有效用户 JWT；开发环境可回退单用户身份。
     require-authenticated: ${JAVA_DATA_REQUIRE_AUTHENTICATED:false}
     # Python -> Java 的服务间凭证；不得与用户 JWT 或外部 API Key 共用。
     internal-token: ${JAVA_DATA_INTERNAL_TOKEN:}
-  execution:
-    agent:
-      core-threads: ${AGENT_CORE_THREADS:4}
-      max-threads: ${AGENT_MAX_THREADS:16}
-      queue-capacity: ${AGENT_QUEUE_CAPACITY:100}
-    react-tool:
-      core-threads: ${REACT_TOOL_CORE_THREADS:4}
-      max-threads: ${REACT_TOOL_MAX_THREADS:8}
-      queue-capacity: ${REACT_TOOL_QUEUE_CAPACITY:64}
-  react:
-    # ReAct 只执行初始 Route 允许的 Action，Skill 可在不超过全局边界时收紧预算
-    max-steps: ${REACT_MAX_STEPS:5}
-    deadline-ms: ${REACT_DEADLINE_MS:180000}
-    tool-timeout-ms: ${REACT_TOOL_TIMEOUT_MS:60000}
-    max-same-action: ${REACT_MAX_SAME_ACTION:1}
-    max-observation-chars: ${REACT_MAX_OBSERVATION_CHARS:8000}
-  context-window:
-    # LangChain4j 只生成本轮上下文视图，工作记忆仍以 Redis CAS 状态为唯一真相源
-    max-messages: ${CONTEXT_MAX_MESSAGES:10}
-    local-max-memory-tokens: ${CONTEXT_LOCAL_MAX_MEMORY_TOKENS:2000}
-    paid-max-memory-tokens: ${CONTEXT_PAID_MAX_MEMORY_TOKENS:4000}
-    max-message-tokens: ${CONTEXT_MAX_MESSAGE_TOKENS:800}
-    max-summaries: ${CONTEXT_MAX_SUMMARIES:3}
-    max-summary-tokens: ${CONTEXT_MAX_SUMMARY_TOKENS:900}
-  memory:
-    episodic-vector:
-      # 完整会话仍归档到conversation_history；本配置只控制可重建的LangChain4j摘要向量索引
-      enabled: ${EPISODIC_MEMORY_ENABLED:true}
-      top-k: ${EPISODIC_MEMORY_TOP_K:3}
-      min-similarity: ${EPISODIC_MEMORY_MIN_SIMILARITY:0.55}
-      candidate-multiplier: ${EPISODIC_MEMORY_CANDIDATE_MULTIPLIER:4}
-      semantic-weight: ${EPISODIC_MEMORY_SEMANTIC_WEIGHT:0.85}
-      recency-weight: ${EPISODIC_MEMORY_RECENCY_WEIGHT:0.15}
-      recency-half-life-days: ${EPISODIC_MEMORY_RECENCY_HALF_LIFE_DAYS:30}
-      recent-fallback-limit: ${EPISODIC_MEMORY_RECENT_FALLBACK_LIMIT:3}
-  vector:
-    dimension: 1024
-  knowledge:
-    min-similarity: 0.55
-  stock-analysis:
-    # RETIRED：stock-wrapper 服务与目录已退出。以下键仅绑定遗留 Gateway，
-    # 生产不得设置 STOCK_WRAPPER_*；且须保持 legacy-agent-runtime.enabled=false。
-    base-url: ${STOCK_WRAPPER_URL:}
-    internal-token: ${STOCK_WRAPPER_TOKEN:}
-    connect-timeout-ms: ${STOCK_WRAPPER_CONNECT_TIMEOUT_MS:3000}
-    request-timeout-ms: ${STOCK_WRAPPER_REQUEST_TIMEOUT_MS:120000}
-  web-search:
-    # 通过环境变量选择云端或本地 Wrapper，不直接解析 SearXNG 原始响应
-    endpoint-url: ${WEB_SEARCH_ENDPOINT_URL:http://localhost:3002/api/search}
-    agent-id: ${WEB_SEARCH_AGENT_ID:bdlh_runtime}
-    agent-token: ${WEB_SEARCH_AGENT_TOKEN:}
-    connect-timeout-ms: ${WEB_SEARCH_CONNECT_TIMEOUT_MS:3000}
-    request-timeout-ms: ${WEB_SEARCH_REQUEST_TIMEOUT_MS:15000}

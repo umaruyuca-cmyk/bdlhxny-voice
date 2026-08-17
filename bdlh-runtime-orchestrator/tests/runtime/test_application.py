@@ -37,3 +37,12 @@ def test_m7_second_domain_is_registered_but_not_user_enabled():
     descriptor = app.domain_registry.descriptor("plugin_probe")
     assert descriptor is not None and descriptor.status == "EXPERIMENTAL"
     assert app.cognitive_application._enabled_domains == frozenset({"finance"})
+
+
+def test_development_keeps_in_memory_m0_stores():
+    from bdlh_runtime.runtime.history import InMemoryAnalysisHistoryStore
+    from bdlh_runtime.runtime.run_registry import InMemoryRunRegistry
+
+    app = create_application(Settings(environment="development"))
+    assert isinstance(app.run_registry, InMemoryRunRegistry)
+    assert isinstance(app.history_store, InMemoryAnalysisHistoryStore)

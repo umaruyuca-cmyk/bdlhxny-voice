@@ -148,14 +148,37 @@ class HttpWebSearchAdapter:
         """把 wrapper 响应包装为 Observation。
 
         wrapper 成功响应信封：{schemaVersion, requestId, provider, results[], errors[]}。
-        如果 errors 非空，标记 PARTIAL（部分任务失败但仍有结果）。
+        状态判定（P0-1 空结果降级）：
+        - 有结果、无错误 → SUCCESS；
+        - 有结果、有错误 → PARTIAL（部分任务失败但仍有结果）；
+        - 无结果（errors 含 EMPTY_RESULTS 或全部任务失败）→ PARTIAL，并在
+          known_unavailable 标注 capability，禁止伪装成"成功且零结果"——
+          否则下游会误判"市场无相关新闻"，把 SearXNG 被反爬当成事实。
         """
         results = data.get("results", [])
         errors = data.get("errors", [])
-        status = "PARTIAL" if errors and len(results) > 0 else "SUCCESS"
+        has_results = len(results) > 0
+        has_errors = len(errors) > 0
+
+        if has_results and not has_errors:
+            status = "SUCCESS"
+            quality_status = "OK"
+            known_unavailable: list[str] = []
+        elif has_results and has_errors:
+            status = "PARTIAL"
+            quality_status = "PARTIAL"
+            known_unavailable = []
+        else:
+            # 无结果：无论 errors 是 EMPTY_RESULTS 还是全任务失败，统一降级，
+            # 并在 known_unavailable 显式标注，让 coverage/assemble 能识别"搜了没拿到"。
+            status = "PARTIAL"
+            quality_status = "PARTIAL"
+            known_unavailable = [capability]
+
         quality = DataQuality(
             completeness=min(1.0, len(results) / max(1, len(results) + len(errors))),
-            quality_status="OK" if not errors else "PARTIAL",
+            quality_status=quality_status,
+            known_unavailable=known_unavailable,
         )
         return Observation(
             observation_id=str(uuid4()),

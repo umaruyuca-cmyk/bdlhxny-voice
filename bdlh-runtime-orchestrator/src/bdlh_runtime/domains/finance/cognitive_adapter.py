@@ -249,37 +249,36 @@ class FinanceCognitiveSelector:
     def _research_action(
         event: InputEvent, candidate: InstrumentCandidate
     ) -> CognitiveAction:
-        suitability = bool(re.search(r"(?:适合我|适不适合|是否适合|匹配我的风险)", event.message))
-        operations = {
-            DomainOperation.READ_MARKET_DATA,
-            DomainOperation.READ_PUBLIC_RESEARCH,
-            DomainOperation.RUN_ANALYSIS,
-        }
-        if suitability:
-            operations.update(
-                {
-                    DomainOperation.READ_PORTFOLIO,
-                    DomainOperation.READ_PROFILE,
-                    DomainOperation.READ_FINANCIAL_GOALS,
-                }
+        # SuitabilityEngine is not enabled in M1–M3; never route to the dead intent.
+        if _is_suitability_only_request(event.message):
+            return CognitiveAction(
+                action_type=CognitiveActionType.RESPOND,
+                reason_code="SUITABILITY_NOT_ENABLED",
+                reason=(
+                    f"个性化适配性评估尚未启用。"
+                    f"我可以先对 {candidate.instrument.name or candidate.canonical_symbol} "
+                    f"做客观只读研究；请直接问走势、估值或基本面。"
+                ),
             )
         request = FinancialDomainRequest(
             request_id=f"{event.event_id}:research",
             authenticated_user_id=event.user_id,
             objective="对已验证证券标的执行只读客观研究",
-            authorized_operations=operations,
+            authorized_operations={
+                DomainOperation.READ_MARKET_DATA,
+                DomainOperation.READ_PUBLIC_RESEARCH,
+                DomainOperation.RUN_ANALYSIS,
+            },
             budget=DomainBudget(tool_call_limit=12, runtime_seconds=60, model_call_limit=0),
-            financial_intent=(
-                FinancialIntent.SUITABILITY if suitability else FinancialIntent.STOCK_RESEARCH
-            ),
-            analysis_type=("comprehensive" if suitability else _analysis_type(event.message)),
+            financial_intent=FinancialIntent.STOCK_RESEARCH,
+            analysis_type=_analysis_type(event.message),
             instruments=[candidate.instrument],
-            requires_financial_snapshot=suitability,
+            requires_financial_snapshot=False,
         )
         return CognitiveAction(
             action_type=CognitiveActionType.INVOKE_DOMAIN,
-            reason_code="SUITABILITY" if suitability else "STOCK_RESEARCH",
-            reason="执行个性化风险匹配筛查" if suitability else "对已验证标的执行客观研究",
+            reason_code="STOCK_RESEARCH",
+            reason="对已验证标的执行客观研究",
             domain_request=request,
         )
 
@@ -392,9 +391,28 @@ def _knowledge_answer(message: str) -> str:
     return "这个问题属于稳定金融知识，可从定义、适用条件、局限和常见误区四个方面理解；如需实时标的数据，请同时给出公司名称、简称或证券代码。"
 
 
+def _is_suitability_only_request(message: str) -> bool:
+    if not re.search(r"(?:适合我|适不适合|是否适合|匹配我的风险)", message):
+        return False
+    # If the user also asks for market research, prefer objective research.
+    return not bool(_RESEARCH_PATTERN.search(message))
+
+
 def _is_stable_knowledge_question(message: str) -> bool:
+    """Only treat pure concept questions as knowledge; instrument mentions must resolve."""
     if _CODE_PATTERN.search(message):
         return False
-    if message.startswith(("什么是", "解释一下")):
-        return True
-    return bool(re.search(r"(?:是什么意思|有何区别|如何理解)$", message))
+    looks_like_knowledge = message.startswith(("什么是", "解释一下")) or bool(
+        re.search(r"(?:是什么意思|有何区别|如何理解)$", message)
+    )
+    if not looks_like_knowledge:
+        return False
+    remainder = re.sub(r"^(?:什么是|解释一下)", "", message)
+    remainder = re.sub(r"(?:是什么意思|有何区别|如何理解)$", "", remainder)
+    remainder = re.sub(
+        r"(?:的)?(?:市盈率|市净率|市销率|估值|换手率|基本面|技术面|PE|PB|PS|ROE|MACD)",
+        " ",
+        remainder,
+        flags=re.IGNORECASE,
+    )
+    return _candidate_name(remainder) is None

@@ -209,19 +209,42 @@ def create_application(
         ),
     )
 
-    # ── 4.6e M5 灰度路由（默认 OFF，生产门禁未满足时 fail-fast）──
+    # ── 4.6e M0 关键持久化：Run Registry / Analysis History / Chat Store ──
+    from .chat_sessions import InMemoryChatSessionStore, create_chat_session_store
+    from .history import InMemoryAnalysisHistoryStore, create_history_store
+    from .run_registry import InMemoryRunRegistry, create_run_registry
+
+    history_store = create_history_store(
+        environment=settings.environment,
+        postgres_dsn=settings.postgres_dsn,
+    )
+    run_registry = create_run_registry(
+        environment=settings.environment,
+        postgres_dsn=settings.postgres_dsn,
+    )
+    chat_session_store = create_chat_session_store(
+        environment=settings.environment,
+        postgres_dsn=settings.postgres_dsn,
+    )
+    # M5 灰度要求 Run Registry、Analysis History、Chat Store 均为非内存实现。
+    # 云上联调只要配置了 POSTGRES_DSN，上述工厂会一律返回 PG 实现。
+    # Cognitive VerifiedEntityStore 仍为进程内短生命周期上下文，不计入该门禁。
+    production_storage_ready = not (
+        isinstance(run_registry, InMemoryRunRegistry)
+        or isinstance(history_store, InMemoryAnalysisHistoryStore)
+        or isinstance(chat_session_store, InMemoryChatSessionStore)
+    )
+
+    # ── 4.6f M5 灰度路由（默认 OFF，生产门禁未满足时 fail-fast）──
     from bdlh_runtime.runtime.rollout import RolloutMetrics, build_rollout_router
 
-    # 当前 RunRegistry 与 Cognitive 实体上下文仍为进程内实现；即使 LangGraph
-    # Checkpointer 已持久化，也不能把 M0/M5 的“全部关键状态持久化”误判为已完成。
-    production_storage_ready = False
     traffic_router = build_rollout_router(
         settings,
         production_storage_ready=production_storage_ready,
     )
     rollout_metrics = RolloutMetrics()
 
-    # ── 4.6f M6 最小持续任务（价格条件观察）──
+    # ── 4.6g M6 最小持续任务（价格条件观察）──
     from .scheduler import (
         FinancialTaskScheduler,
         FinancialTaskWakeupHandler,
@@ -248,25 +271,6 @@ def create_application(
     )
     notification_outbox_worker = NotificationOutboxWorker(
         outbox=notification_outbox,
-    )
-
-    # ── 4.7 分析历史存储（v2.1 §9.3：审计/历史查询，与 Mem0 分离）──
-    from .history import create_history_store
-
-    history_store = create_history_store()
-
-    # ── 4.8 运行定位索引（run_id → thread_id）──
-    # API 实例重建后仍可通过应用级索引定位 Checkpointer 中的真实 thread_id。
-    from .run_registry import create_run_registry
-
-    run_registry = create_run_registry()
-
-    # ── 4.9 前端聊天会话目录（Chat API 外观层，不参与 Graph 业务路由）──
-    from .chat_sessions import create_chat_session_store
-
-    chat_session_store = create_chat_session_store(
-        environment=settings.environment,
-        postgres_dsn=settings.postgres_dsn,
     )
 
     # ── 5. Root Graph（注入全部组件）──
