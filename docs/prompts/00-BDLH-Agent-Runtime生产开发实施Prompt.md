@@ -1,9 +1,9 @@
 # BDLH Agent Runtime 生产开发实施 Prompt
 
 > **文档状态：唯一有效的生产开发执行 Prompt**  
-> **Prompt 版本：v1.14**
+> **Prompt 版本：v1.15**
 > **生效日期：2026-08-11**  
-> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3；v1.14 吸收 ADR-014/015**
+> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3；v1.14 吸收 ADR-014/015；v1.15 增加固定复合 Deep Research Tool 专项实施约束（§6.5）**
 > **阶段说明：M7 为可选的插件契约验证阶段，排在 M6 之后，不得抢占 M0–M6**
 > **上位架构：[00-BDLH-Agent-Runtime统一生产架构.md](../architecture/00-BDLH-Agent-Runtime统一生产架构.md)**  
 > **适用项目：`bdlh-runtime-orchestrator`、必要的 Java 用户数据接口、Nginx 与生产部署配置**  
@@ -71,6 +71,9 @@ Observation、Guardrail、预算和审计链，不得套用 Finance 的业务字
 3. 本次任务涉及的实际源代码和测试；
 4. 本次任务涉及的部署、数据库迁移或 Java 接口文件；
 5. 若任务触及暂停恢复或上下文组装：`ADR-014`、`ADR-015`（以及 Memory 边界时的 `ADR-011`）。
+6. 若任务触及固定复合 Deep Research Tool：§6.5、经批准的 `ADR-016`（若尚未批准，
+   只允许完成审计、契约草案、隔离原型与评测，不得切换生产 Search 语义）以及 §6.5.2
+   固定的上游开源参考版本。
 
 发生冲突时按以下优先级处理：
 
@@ -413,6 +416,392 @@ API → Application → Cognitive → Domain Runtime（当前 Finance）→ Capa
 ```
 
 不得复制两套业务逻辑。先建立兼容 Adapter 和输出边界，回归稳定后再物理移动文件。
+
+### 6.5 固定复合 Deep Research Tool 专项实施约束
+
+#### 6.5.1 定位与生效门禁
+
+本专项的目标是把经过 BDLH 适配的 Deep Research 工作流注册为 Runtime 的一个**固定、
+只读、复合 Capability Tool**，供获得授权的 Agent 按需调用。它不是面向客户的独立入口，
+不要求调用方先进入某个 Skill，也不新建 Domain Runtime。
+
+冻结以下边界：
+
+- 调用方 Agent 负责理解用户目标、决定是否调用 Tool、合并其他业务数据、执行最终
+  Guardrail，并生成面向用户的回答；
+- Deep Research Tool 只接受结构化研究任务，执行拆题、并行研究、多轮检索、压缩与
+  研究资料装配；
+- Supervisor / Researcher 是 Tool 内部同一 Runtime 进程中的 LangGraph 角色子图，
+  不是独立进程、独立信任域或对外 Agent；
+- Tool 不直接向用户追问，不直接拥有会话入口，不直接发布客户文案；
+- Tool 必须经 `CapabilityRegistry` 编译期注册，并继续经过现有 Toolset、精确授权、预算、
+  Observation、审计与 Guardrail 链；
+- Capability 的 `domain="research"` 只表示能力分类，不等于创建 `research` Domain；
+- 不创建 `SkillManifest` / `DomainDescriptor`，除非未来另有已批准 ADR 明确把它升级为
+  一项业务 Skill；
+- 外部 Agent 可以在不调用 Skill 的情况下使用该 Tool，但不得绕过 Capability Gateway
+  或 Policy 直接调用其执行器。
+
+本节是专项实施 Prompt，不自行批准架构变更。生产实现和切流前必须先新增并批准
+`docs/architecture/ADR-016-固定复合DeepResearchTool.md`，至少冻结：
+
+1. 对外 Capability ID 与兼容期；
+2. 输入、输出和 Observation Schema；
+3. 内部原子搜索边界；
+4. 预算、超时、暂停/取消与持久化策略；
+5. 旧 `research.web_search` 的兼容、迁移和退出条件；
+6. DeepSeek Tool Calling / Structured Output 放行门槛。
+
+在 ADR-016 为 `PROPOSED` 或不存在时，只允许：代码审计、契约草案、离线评测、假
+Provider 原型与不接默认流量的实验；不得改变现有生产调用语义。
+
+#### 6.5.2 上游开源参考登记
+
+本专项参考以下 GitHub 开源项目：
+
+| 项 | 固定值 |
+|---|---|
+| 项目 | [langchain-ai/open_deep_research](https://github.com/langchain-ai/open_deep_research) |
+| 上游版本 | `0.0.16` |
+| 参考提交 | `1b7d2e80db9faa586165c60e09096dbbfd483a64` |
+| 许可证 | MIT License，Copyright (c) 2025 LangChain |
+| 主要参考文件 | `src/open_deep_research/deep_researcher.py`、`configuration.py`、`state.py`、`utils.py`、`prompts.py` |
+
+实施者必须按上表提交审计，不得使用带营销参数的 URL 作为来源标识，不得默认跟随
+GitHub `main` 漂移。若需要升级参考提交，必须：
+
+1. 更新本表或 ADR-016 的固定提交；
+2. 重新审计上游工作流、依赖、许可证、安全与行为变化；
+3. 重跑 DeepSeek、预算、证据和全量回归测试；
+4. 在实施报告中列出 BDLH 相对上游的适配差异。
+
+允许借鉴或移植的是工作流结构与经审查的实现片段，不是把上游项目整体作为黑盒服务
+接入。复制或修改 MIT 代码时必须保留适用的许可证和版权声明，并在仓库增加第三方通知；
+不得在运行时从 GitHub 下载代码、Prompt 或配置。
+
+#### 6.5.3 官方工作流与 BDLH 目标映射
+
+上游主线形态为：
+
+```text
+clarify_with_user
+→ write_research_brief
+→ research_supervisor
+   → supervisor / supervisor_tools 循环
+   → 并行 researcher_subgraph
+      → researcher / researcher_tools 循环
+      → compress_research
+→ final_report_generation
+```
+
+BDLH 固定 Tool 必须适配为：
+
+```text
+validate_research_request
+→ write_research_brief
+→ research_supervisor
+   → supervisor / supervisor_tools 循环
+   → 并行 researcher_subgraph
+      → researcher / execute_atomic_search 循环
+      → compress_research
+→ assemble_research_bundle
+→ Observation
+```
+
+逐项处理规则：
+
+| 上游节点或机制 | BDLH 动作 | 原因 |
+|---|---|---|
+| `clarify_with_user` | 从 Tool 内移除 | Tool 不越过调用方 Agent 直接找用户 |
+| `write_research_brief` | 保留，输入改为严格请求契约 | 统一研究目标、范围与成功条件 |
+| Supervisor 拆题 | 保留 | 把研究问题拆为可并行子问题 |
+| `ConductResearch` | 保留为内部控制 Tool | 只派生进程内 Researcher 子图，不进入 Capability Registry |
+| `think_tool` | 仅保留瞬时缺口判断语义 | 不落盘、不回放、不返回隐藏思维链 |
+| Researcher 搜索循环 | 保留 | 搜索、检查缺口、改写查询、继续补搜 |
+| `get_all_tools()` | 删除并替换 | 禁止动态加载 Tavily、原生 Search 或 MCP 绕过 BDLH 网关 |
+| `compress_research` | 保留并改为结构化压缩 | 控制上下文，同时保留来源 ID 和关键摘录 |
+| `raw_notes` | 不跨层、不长期持久化 | 原始网页和推理消息不是 BDLH 权威结果 |
+| `final_report_generation` | 替换为 `assemble_research_bundle` | 输出供其他 Agent 消费的研究资料，而非客户文案 |
+
+不得原样复制上游中“捕获任意异常后直接结束研究”、把 Tool 错误降成普通字符串、完整
+保存 AI/Tool Message、直接加载 MCP/Tavily 凭证等行为。所有失败必须进入 BDLH 稳定状态和
+错误码。
+
+#### 6.5.4 目标调用链与禁止递归
+
+目标调用链固定为：
+
+```text
+Authorized Agent
+→ Capability Gateway
+→ public composite research capability
+→ DeepResearchToolExecutor
+→ adapted open_deep_research graph
+→ private AtomicSearchPort
+→ bdlh-web-search-adapter
+→ SearXNG / 经批准的其他 Search Provider
+→ sanitized atomic results
+→ ResearchBundle
+→ Observation
+→ calling Agent
+```
+
+`open_deep_research` 是研究编排逻辑，不是互联网索引或搜索供应商。接入它不强制引入外部
+Search MCP；首个实现应复用现有 `bdlh-web-search-adapter + SearXNG` 作为原子搜索来源。
+Tavily、Exa、原生 Web Search 或 Search MCP 只能作为后续经批准的 Provider 选项。
+
+对外 Capability ID 由 ADR-016 冻结。默认迁移建议为：
+
+- 新复合语义使用 `research.deep_search`；
+- 旧 `research.web_search` 在兼容期只做代理、影子对照或原子检索旧入口；
+- 如果 owner 决定沿用 `research.web_search`，必须升级 Schema 版本并提供兼容投影，禁止
+  在同一 ID 下静默改变响应结构；
+- 无论选择哪个 ID，复合 Tool 内部都不得再次通过 Capability Gateway 调用同一个公开
+  Capability，否则形成递归；
+- 私有 `AtomicSearchPort` 是执行器内部依赖，默认不对普通 Agent 暴露，也不创建第二份
+  Capability Registry。
+
+迁移完成后只能保留一份复合研究实现。兼容别名可以短期存在，但不得长期维护两套
+Supervisor / Researcher / 压缩逻辑。
+
+#### 6.5.5 输入契约
+
+目标输入应使用严格 Pydantic 模型 `DeepResearchRequest`，至少包含：
+
+```text
+request_id
+question                 # 调用方 Agent 已整理的研究问题
+objective                # 本次研究要支持什么决策或回答
+success_criteria[]       # 可验证的覆盖要求
+required_topics[]        # 可为空；非空时必须覆盖
+time_range?              # 明确时效范围
+language
+include_domains[]
+exclude_domains[]
+budget:
+  runtime_seconds
+  model_call_limit
+  search_call_limit
+  max_concurrent_research_units
+  max_supervisor_iterations
+  max_react_tool_calls
+```
+
+规则：
+
+- 调用方不得传模型名、Provider URL、API Key、MCP 配置或未经批准的工具列表；
+- Tool 不读取完整客户会话，只读取调用方明确传入的研究问题和必要约束；
+- 输入缺少实质性条件时返回结构化 `NEEDS_CLARIFICATION`，包含 `missing_fields[]` 和
+  `clarification_questions[]`，由调用方 Agent 决定如何处理；
+- Tool 自己不得向用户发消息或等待用户输入；
+- `request_id` 必须进入幂等、审计、日志和内部搜索关联键。
+
+#### 6.5.6 输出契约与 Observation
+
+目标输出 `ResearchBundle` 至少包含：
+
+```text
+schema_version
+request_id
+question
+research_brief
+status                    # COMPLETE | PARTIAL | LIMITED | FAILED | NEEDS_CLARIFICATION
+findings[]:
+  finding_id
+  statement
+  source_ids[]
+  confidence
+sources[]:
+  source_id
+  title
+  url
+  domain
+  published_at?
+  retrieved_at
+  summary
+  source_type
+conflicts[]
+limitations[]
+research_summary          # 给调用 Agent 的摘要，不是客户最终文案
+clarification_questions[]
+usage:
+  model_calls
+  search_calls
+  research_units
+  duration_ms
+  budget_exhausted
+```
+
+输出必须包装成统一 `Observation`：
+
+- `Observation.capability` 等于实际公开 Capability ID；
+- `Observation.provenance` 聚合所有被最终 findings 引用的来源；
+- `data_quality.completeness` 由确定性覆盖规则计算，不由 LLM 自报；
+- `PARTIAL / LIMITED / FAILED / UNAVAILABLE` 与既有降级语义对齐；
+- 每个 finding 至少绑定一个有效 `source_id`，无来源的模型陈述不得进入 findings；
+- URL、时间、数字与原文摘录必须保持来源可追溯；
+- `research_summary` 和可选 `report` 不得成为唯一权威输出；
+- 不返回或持久化隐藏思维链、Supervisor reflection、完整模型消息历史和无限长网页正文。
+
+兼容旧 Finance 消费方时可以提供受版本控制的 `results[]` 投影，但权威数据只能是一份；
+投影必须从 `sources[] / findings[]` 确定性生成，不得再跑第二遍 LLM。
+
+#### 6.5.7 内部原子搜索端口
+
+必须从现有 `HttpWebSearchAdapter` 中提取或包裹私有 `AtomicSearchPort`，其语义仅为一次或
+一批受控网页检索：
+
+```text
+search(queries[], mode, freshness, include_domains, exclude_domains, max_results)
+→ AtomicSearchBatch
+```
+
+原子搜索层负责：
+
+- 调用 Node Web Search Adapter；
+- 鉴权、限流、缓存、熔断和 Provider fallback；
+- URL 规范化、基础去重、HTML 清洗和提示注入卫生；
+- 返回标题、URL、摘要/受控正文、发布时间、检索时间和 Provider 元数据；
+- 如实返回空结果、超时和 Provider 不可用。
+
+原子搜索层不负责：
+
+- 拆分整个研究问题；
+- 决定研究是否完成；
+- 生成最终报告；
+- 直接向调用 Agent 返回自由文本；
+- 绕过 BDLH 配置读取外部凭证。
+
+#### 6.5.8 模型、工具和状态适配
+
+模型必须由 BDLH `runtime/llm.py` 或后续统一 Model Gateway 注入。不得沿用上游
+`init_chat_model()` 的运行时自由配置，不得让调用方指定任意模型或 Key。
+
+允许按任务角色配置不同受控模型槽位：
+
+- research brief / structured output；
+- Supervisor / Researcher；
+- 页面与研究单元压缩；
+- ResearchBundle 装配。
+
+首发如全部使用 DeepSeek，必须验证：
+
+1. `with_structured_output()` 的成功率和重试行为；
+2. `bind_tools()` 在多轮并行调用中的稳定性；
+3. 工具调用参数是否满足严格 Schema；
+4. 达到预算或异常时能否稳定终止；
+5. 中文、英文和中英混合研究任务；
+6. 长上下文、空结果、重复来源、冲突来源和恶意网页文本。
+
+内部 Graph State 只保存恢复执行必要的最小状态：阶段、研究任务、结构化来源引用、压缩结果、
+计数器、截止时间与稳定错误。隐藏推理、完整原始网页、凭证和无限增长的 Message 列表不得进入
+Checkpoint。若任务超过同步请求预算，必须复用 ADR-014 的 Pause/Resume、Cancel、Run Registry
+和 Checkpointer，不得另造第二套长任务状态机。
+
+#### 6.5.9 双层完成判断
+
+保留上游模型驱动的研究判断：
+
+- 研究问题应拆成什么子题；
+- 当前材料缺少什么；
+- 是否需要改写查询并继续搜索；
+- 是否建议结束本研究单元。
+
+同时增加确定性完成门槛：
+
+- 总运行时间、模型调用、原子搜索调用和并发数均未超预算；
+- `required_topics` 和 `success_criteria` 具有可计算覆盖结果；
+- findings 均引用真实存在的 sources；
+- 无有效来源时不得返回 `COMPLETE`；
+- 关键冲突不得静默丢弃；
+- Provider 失败、空结果和预算耗尽必须进入 limitations 与稳定状态；
+- LLM 调用 `ResearchComplete` 只表示“建议结束”，最终 `COMPLETE / PARTIAL / LIMITED`
+  由确定性装配器裁定。
+
+#### 6.5.10 统一预算与稳定错误码
+
+外层把复合 Tool 视为一次 Capability 调用，但 `DeepResearchToolExecutor` 必须维护内部统一
+`ResearchBudgetLedger`，逐次记录：
+
+- Supervisor / Researcher / Compression / Assembly 模型调用；
+- 原子 Search 调用和批量查询数量；
+- 并行 Research Unit 数量；
+- 输入/输出 Token（可取得时）；
+- 总运行时间和取消状态。
+
+官方的 `max_concurrent_research_units`、`max_researcher_iterations` 和
+`max_react_tool_calls` 只能作为 DomainBudget 的派生执行参数，不能形成第二套互不一致的预算真源。
+
+至少冻结以下稳定错误码：
+
+```text
+DEEP_RESEARCH_INVALID_REQUEST
+DEEP_RESEARCH_NEEDS_CLARIFICATION
+DEEP_RESEARCH_BUDGET_EXHAUSTED
+DEEP_RESEARCH_TIMEOUT
+DEEP_RESEARCH_CANCELLED
+DEEP_RESEARCH_MODEL_UNAVAILABLE
+DEEP_RESEARCH_STRUCTURED_OUTPUT_FAILED
+ATOMIC_SEARCH_UNAVAILABLE
+ATOMIC_SEARCH_EMPTY_RESULTS
+DEEP_RESEARCH_ASSEMBLY_FAILED
+```
+
+单个 Researcher 或单个 Provider 失败不应抹掉其他有效结果；存在可用证据时优先返回结构化
+`PARTIAL`，无可信证据时返回 `FAILED / UNAVAILABLE`，不得伪装成功。
+
+#### 6.5.11 实施顺序
+
+获得 ADR-016 `APPROVED` 后，按以下最小可回滚切片执行，每个切片独立提交验收：
+
+1. **契约与评测基线**：冻结请求、ResearchBundle、错误码、预算和金标准任务集；不改流量；
+2. **原子搜索拆分**：从当前 Web Adapter 提取 `AtomicSearchPort`，保持旧 Search 回归全绿；
+3. **隔离工作流**：实现适配后的 Supervisor / Researcher / Compression Graph，使用假 LLM
+   和假 Search 完成确定性状态机测试；
+4. **BDLH 工具接线**：替换上游 `get_all_tools()` 与模型创建，接入统一预算、Observation、
+   日志和取消；仍不接默认 Agent；
+5. **真实 Provider / DeepSeek 评测**：接现有 Node + SearXNG，运行中文、英文、失败和恶意
+   内容样本；
+6. **兼容消费层**：为现有 Finance `news_context` 提供版本化投影，验证不会把研究摘要误当
+   确定性金融事实；
+7. **影子对照**：同一任务比较旧 Search 与复合 Tool 的覆盖、来源、延迟、成本和错误率；
+8. **灰度切流与退出**：满足门槛后逐步切换，观察期结束才删除旧直接路径和兼容投影。
+
+不得在第 2～5 步为了“尽快看到效果”提前删除旧路径或更改默认 Agent 工具清单。
+
+#### 6.5.12 验收条件
+
+专项至少满足：
+
+- 架构：无需 Skill/Domain 即可由获授权 Agent 通过 Capability Gateway 调用；
+- 工具边界：Deep Research 内部没有直接 Tavily/MCP/Provider 私线；
+- 搜索：现有 SearXNG 可作为首个 Atomic Provider，外部 Search MCP 未配置时功能仍可运行；
+- 循环：能证明拆题、并行研究、补搜、压缩、确定性装配和预算终止均发生；
+- 证据：findings/source 引用闭合，空结果不能变成 `COMPLETE`；
+- 安全：提示注入样本不能修改 Tool 白名单、预算、系统指令或触发额外 Capability；
+- 隐私：日志、Observation、Checkpoint 无 Secret、隐藏思维链和无限原文；
+- DeepSeek：结构化输出和长 Tool Calling 链达到 ADR-016 规定的成功率；
+- 兼容：旧 Finance 调用在兼容期有稳定投影，旧测试与新增专项测试全绿；
+- 可靠性：超时、取消、模型失败、单 Researcher 失败、Provider 空结果和部分成功均有稳定状态；
+- 可观测：记录 `model_calls/search_calls/research_units/duration_ms/budget_exhausted`；
+- 回滚：关闭 Feature Flag 后恢复旧 Search 路径，不需要数据回滚或 Capability Registry 重建。
+
+#### 6.5.13 明确禁止
+
+- 不把固定复合 Tool 包装成 `deep-research` Skill 来绕一层调用；
+- 不新增 `general` / `research` Domain 来承载本 Tool；
+- 不让 Tool 直接面向客户、管理客户会话或发布最终答复；
+- 不把 `open_deep_research` 误当 Search Provider，删除全部底层 Search 后声称仍可联网研究；
+- 不因上游支持 MCP 就强制引入外部 Search MCP；
+- 不直接使用上游 `get_all_tools()`、动态 MCP 配置或供应商 Key 读取；
+- 不让复合 Tool 递归调用自己的公开 Capability ID；
+- 不把 LLM 的完成判断当成唯一质量门禁；
+- 不把官方自由文本 `final_report` 直接作为唯一 Observation 数据；
+- 不持久化 `think_tool` reflection、隐藏思维链或完整 `raw_notes`；
+- 不让一次外层 Tool Call 掩盖内部数十次模型和搜索调用的预算；
+- 不整包安装上游所有 Provider SDK，按 BDLH 实际依赖最小引入；
+- 不未经评测就在生产默认路径启用 DeepSeek 长链工具调用；
+- 不在旧路径退出门槛满足前物理删除现有 Search Adapter。
 
 ## 7. M0：生产基线修复
 
@@ -2231,3 +2620,4 @@ uv run pytest -q
 | v1.12 | 2026-08-11 | 头部；§1；§3；§4.2；§5.1；§5.2；§6.2；§11；§24 | 与统一生产架构 v1.5 对齐：① 修正 Finance Domain 与 Skill 术语；② 明确 Finance-first Prompt 范围；③ 拆分业务开发主线与 M0 生产门禁；④ 增加代码状态与架构发布状态映射；⑤ 明确 SkillManifest/DomainDescriptor 已生效；⑥ 增加受控 Plan–Execute–Observe 循环约束；⑦ 更新 M3 当前状态和下一开发起点；⑧ 替换具体证券名称示例；⑨ 规定阶段报告归档规则 |
 | v1.13 | 2026-08-11 | 头部；§3.1 | 与统一生产架构 v1.6 对齐：M7 明确为验证既有 manifest/descriptor 可被新增 Skill/Domain 复用，不再表述为重新验证其是否可用 |
 | v1.14 | 2026-08-11 | 头部；§2；§16.1.1/§16.1.2；§17；§23 | 吸收 ADR-014/015：① 权威阅读清单与冲突优先级纳入已批准 ADR，桌面草案降为非权威；② Memory/Context 映射表与压缩禁令；③ Pause/Turn Router 强制规则；④ API 兼容增加 pause/cancel 与 `run.paused`；⑤ 禁止第二套 L 编号、盲目 resume、仅前端砍流当 Pause |
+| v1.15 | 2026-08-13 | 头部；§2；§6.5 | 增加固定复合 Deep Research Tool 专项实施约束：① 明确它是可被获授权 Agent 直接调用的 Runtime Capability，不是 Skill/Domain/客户入口；② 固定参考 `langchain-ai/open_deep_research` v0.0.16、提交 `1b7d2e80...`、MIT 许可证；③ 裁剪官方 Clarify/Final Report/动态工具装配，保留 Supervisor/Researcher/Compression 循环；④ 规定私有 AtomicSearchPort 与现有 Node+SearXNG 首发接法，不强制 Search MCP；⑤ 冻结结构化请求、ResearchBundle、Observation、双层完成判断、内部预算、错误码、实施顺序、验收和回滚；⑥ 要求 ADR-016 APPROVED 后方可生产实施 |

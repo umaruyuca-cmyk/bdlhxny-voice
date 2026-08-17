@@ -8,6 +8,7 @@ bdlh-runtime-data/src/main/resources/application-prod.yml
 
 # 环境变量文件
 .env
+deploy/.env
 deploy/.env.cloud
 
 # 构建产物

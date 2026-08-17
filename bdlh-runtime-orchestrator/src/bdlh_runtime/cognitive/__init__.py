@@ -16,6 +16,14 @@ from .contracts import (
     PublicResponse,
 )
 from .policy import ActionPolicyResult, DefaultActionPolicy
+from .semantic_router import (
+    LexicalEncoder,
+    Route,
+    RouteChoice,
+    SemanticRouteSelector,
+    SemanticRouter,
+    build_kernel_router,
+)
 
 __all__ = [
     "ACTION_NOT_ENABLED",
@@ -29,5 +37,11 @@ __all__ = [
     "CommunicationPlan",
     "InputEvent",
     "InputEventType",
+    "LexicalEncoder",
     "PublicResponse",
+    "Route",
+    "RouteChoice",
+    "SemanticRouteSelector",
+    "SemanticRouter",
+    "build_kernel_router",
 ]

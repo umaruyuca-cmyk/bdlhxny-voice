@@ -184,6 +184,10 @@ def create_application(
 
     # ── 4.6d M4 Cognitive Application（独立装配，不接默认 API/Root Graph）──
     from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
+    from bdlh_runtime.cognitive.semantic_router import (
+        SemanticRouteSelector,
+        build_kernel_router,
+    )
     from bdlh_runtime.domains.dispatcher import DomainDispatcher
     from bdlh_runtime.domains.finance.cognitive_adapter import (
         FinanceCognitiveContinuation,
@@ -192,8 +196,14 @@ def create_application(
     )
 
     verified_entities = InMemoryVerifiedEntityStore()
+    # 语义路由只做内核快路径；未命中再交给领域选择器，不在这里点名 Skill。
+    cognitive_selector = SemanticRouteSelector(
+        build_kernel_router(),
+        fallback=FinanceCognitiveSelector(verified_entities),
+        knowledge_responder=direct_response_model,
+    )
     cognitive_application = CognitiveOrchestrator(
-        selector=FinanceCognitiveSelector(verified_entities),
+        selector=cognitive_selector,
         dispatcher=DomainDispatcher(domain_registry),
         continuation=FinanceCognitiveContinuation(verified_entities),
         enabled_domains=frozenset({"finance"}),

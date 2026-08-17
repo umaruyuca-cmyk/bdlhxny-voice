@@ -49,7 +49,8 @@ docs/
 │   ├── ADR-012-多Skill与多Agent演进门槛.md                APPROVED
 │   ├── ADR-013-RAG作为可插拔KnowledgeSkill的边界.md        APPROVED（实施未排期）
 │   ├── ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md  APPROVED（Pause/Turn Router 按切片落地）
-│   └── ADR-015-Context组装服务与压缩策略.md               APPROVED（挂靠 ADR-011；禁止第二套 L 编号）
+│   ├── ADR-015-Context组装服务与压缩策略.md               APPROVED（挂靠 ADR-011；禁止第二套 L 编号）
+│   └── ADR-016-固定复合DeepResearchTool.md               PROPOSED（固定 Tool，非 Skill/Domain；待 owner 评审）
 ├── prompts/
 │   └── 00-BDLH-Agent-Runtime生产开发实施Prompt.md    AUTHORITATIVE  唯一生产开发执行 Prompt
 ├── reviews/                        审查与阶段报告
@@ -148,6 +149,7 @@ Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用�
 | `db/schema.sql`、`db/migrations/` | `ACTIVE` | PostgreSQL 主 schema 与按日期命名的迁移 |
 | `db/mysql-schema.sql` | `HISTORICAL` | 早期 MySQL 阶段产物 |
 | `deploy/docker-compose*.yml` | `ACTIVE` | 本地、云端与前端三套编排 |
+| `deploy/.env.example` | `ACTIVE` | 唯一环境变量模板；复制为 `deploy/.env`，不要入库 |
 | `deploy/nginx/bdlh-runtime.conf` | `ACTIVE` | 生产路由收口，`/api/v1/agent-runs*` 必须指向 Python |
 | `deploy/DOMAIN_DEPLOYMENT.md` | `ACTIVE` | 域名、HTTPS 与端口收口手册 |
 | `deploy/searxng/settings.yml` | `ACTIVE` | 检索后端配置，供 bdlh-web-search-adapter 使用 |

@@ -31,6 +31,14 @@ services:
       WEB_SEARCH_BASE_URL: ${WEB_SEARCH_BASE_URL:-http://bdlh-web-search-adapter:3002}
       WEB_SEARCH_AGENT_ID: ${WEB_SEARCH_AGENT_ID:-bdlh_runtime}
       WEB_SEARCH_TOKEN: ${WEB_SEARCH_AGENT_TOKEN}
+      REDIS_URL: ${REDIS_URL:-}
+      BDLH_COGNITIVE_ROLLOUT_MODE: ${BDLH_COGNITIVE_ROLLOUT_MODE:-off}
+      MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-v4-flash}
+      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-qwen3-embedding:0.6b}
+      QWEN3_BASE_URL: ${QWEN3_BASE_URL:-http://host.docker.internal:11434/v1}
+      QWEN3_API_KEY: ${QWEN3_API_KEY:-ollama}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       bdlh-runtime-data:
         condition: service_healthy
@@ -57,6 +65,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
       JAVA_DATA_REQUIRE_AUTHENTICATED: ${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
+      LEGACY_JAVA_AGENT_RUNTIME_ENABLED: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/actuator/health"]
       interval: 10s
