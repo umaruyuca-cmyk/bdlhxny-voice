@@ -62,6 +62,8 @@ async def test_guarded_domain_pipeline_returns_a_verified_public_response() -> N
 
     assert result.response.response_kind == "DOMAIN_RESULT"
     assert result.response.evidence_refs == ["source-1"]
+    assert result.response.response_structure == "RESEARCH"
+    assert result.response.sections[0].section_type == "FACTS"
     assert result.state.public_events == ["response.ready"]
 
 
@@ -69,7 +71,7 @@ async def test_guarded_domain_pipeline_returns_a_verified_public_response() -> N
 async def test_disabled_action_is_not_silently_downgraded_to_response() -> None:
     result = await app(CognitiveAction(action_type=CognitiveActionType.NOTIFY, reason_code="NOTIFY", reason="send a notification")).run(event())
 
-    assert result.response.response_kind == "BLOCKED"
+    assert result.response.response_kind == "CAPABILITY_NOT_ENABLED"
     assert result.response.audit_codes == ["ACTION_NOT_ENABLED"]
 
 
@@ -79,4 +81,4 @@ async def test_unregistered_domain_returns_limited_not_success() -> None:
     result = await app(CognitiveAction(action_type=CognitiveActionType.INVOKE_DOMAIN, reason_code="DOMAIN_READ", reason="Read result", domain_request=request)).run(event())
 
     assert result.response.response_kind == "LIMITED"
-    assert result.response.audit_codes == ["DATA_UNAVAILABLE"]
+    assert result.response.audit_codes == ["DOMAIN_NOT_REGISTERED"]

@@ -15,7 +15,7 @@
 
 定位说明见 [01-BDLH-Agent-Runtime定位与Skill扩展说明.md](docs/architecture/01-BDLH-Agent-Runtime定位与Skill扩展说明.md)，权威架构见 [00-BDLH-Agent-Runtime统一生产架构.md](docs/architecture/00-BDLH-Agent-Runtime统一生产架构.md)。
 
-**当前实施状态：迁移进行中。** 默认对外路径仍是旧编排链路；领域运行时与结构化研究输出已完成开发但受发布门禁约束。准确状态见架构文档 §3 与 §20，不要把本文当作已全部落地的证明。
+**当前实施状态：迁移进行中。** 默认对外路径仍是旧编排链路；领域运行时与结构化研究输出已完成开发但受发布门禁约束。M7 已注册实验性 `plugin_probe` 第二 Domain，仅验证插件契约复用，不属于对外业务能力。准确状态见架构文档 §3 与 §20，不要把本文当作已全部落地的证明。
 
 ## 技术栈
 
@@ -117,10 +117,11 @@ BDLH Agent Runtime/
 ├── bdlh-web-search-adapter/          # 公开资料检索封装
 ├── db/                          # schema 与迁移脚本
 ├── deploy/                      # Docker Compose、Nginx 与部署手册
-├── skills/                      # 历史 CLI Skill（RETIRED）
+├── skills/                      # 历史 CLI Skill（RETIRED，非当前插件宿主）
 ```
 
-`skills/stock-analysis-skill/` 是遗留路径，Python 新链路禁止依赖，按架构文档计划退出。
+`stock-wrapper` 服务与目录已退出仓库，勿再部署或配置 `STOCK_WRAPPER_*`。  
+`skills/stock-analysis-skill/` 是遗留 CLI 路径，Python 新链路禁止依赖；当前可插拔 Skill 在 `bdlh-runtime-orchestrator` 的 `domains/finance/`（Manifest 注册）。
 
 ## 分支管理
 

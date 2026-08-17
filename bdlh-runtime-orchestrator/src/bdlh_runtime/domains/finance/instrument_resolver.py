@@ -6,7 +6,11 @@ import asyncio
 from typing import Any
 
 from bdlh_runtime.contracts.observation import Observation
-from bdlh_runtime.domains.contracts import ConfidenceAssessment, DomainError
+from bdlh_runtime.domains.contracts import (
+    ConfidenceAssessment,
+    DomainError,
+    RequiredUserDecision,
+)
 from bdlh_runtime.tools.capabilities import CapabilityRegistry
 
 from .authorization import FinanceCapabilityAuthorizationPolicy
@@ -74,10 +78,15 @@ class FinanceInstrumentResolver:
             return InstrumentResolutionOutcome(
                 request_id=request.request_id,
                 domain="finance",
-                status="PARTIAL",
+                status="WAITING_USER",
                 resolution_status="NOT_FOUND",
                 confidence=ConfidenceAssessment(level="LOW", reasons=["No source-validated instrument matched the mention"], coverage_status="LIMITED"),
                 limitations=["No source-validated instrument candidate was returned"],
+                required_user_decisions=[RequiredUserDecision(
+                    decision_id="instrument_identity",
+                    question="未能验证该证券标的。请补充公司全称、市场或证券代码。",
+                    reason="研究前必须唯一确定证券身份",
+                )],
             )
 
         exact = [item for item in candidates if item.match_type != "FUZZY"]
@@ -94,11 +103,22 @@ class FinanceInstrumentResolver:
         return InstrumentResolutionOutcome(
             request_id=request.request_id,
             domain="finance",
-            status="PARTIAL",
+            status="WAITING_USER",
             resolution_status="AMBIGUOUS",
             candidates=candidates,
             confidence=ConfidenceAssessment(level="LOW", reasons=["More than one candidate or only fuzzy matches were returned"], coverage_status="PARTIAL"),
             limitations=["User confirmation is required before research can continue"],
+            required_user_decisions=[RequiredUserDecision(
+                decision_id="instrument_candidate",
+                question="找到多个可能的证券标的，请选择一个：" + "；".join(
+                    f"{item.instrument.name or item.canonical_symbol}（{item.canonical_symbol}，{item.exchange}）"
+                    for item in candidates
+                ),
+                reason="多个候选均可能匹配当前提及",
+                allowed_choices=[
+                    f"{item.canonical_symbol}@{item.exchange}" for item in candidates
+                ],
+            )],
         )
 
     def _candidates(self, mention: InstrumentMention, observation: Observation, request: InstrumentResolutionRequest) -> list[InstrumentCandidate]:

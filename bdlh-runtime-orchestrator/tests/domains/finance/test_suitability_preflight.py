@@ -12,8 +12,14 @@ from bdlh_runtime.domains.finance.contracts import (
     FinancialInstrument,
     FinancialSnapshot,
     LiquiditySnapshot,
+    ConcentrationThreshold,
+    MarketRiskProxy,
+    MarketRiskProxyThresholds,
     RiskProfile,
     StockResearchResult,
+    SuitabilityAssessment,
+    SuitabilityRuleEvaluation,
+    SuitabilityV0RuleSet,
 )
 from bdlh_runtime.domains.finance.suitability_preflight import (
     PENDING_RULE_IDS,
@@ -98,4 +104,83 @@ def test_preflight_rejects_untraceable_snapshot() -> None:
         SuitabilityPreflight().evaluate(
             research=_research(),
             snapshot=_snapshot(provenance=[]),
+        )
+
+
+def test_market_risk_proxy_cannot_infer_low_without_objective_input() -> None:
+    with pytest.raises(ValueError, match="objective inputs"):
+        MarketRiskProxy(band="LOW")
+
+    assert MarketRiskProxy(band="UNKNOWN").band == "UNKNOWN"
+
+
+def test_known_rule_evaluation_requires_traceable_evidence() -> None:
+    with pytest.raises(ValueError, match="require evidence_refs"):
+        SuitabilityRuleEvaluation(
+            rule_id="SUIT-LIQUIDITY-001",
+            outcome="PASS",
+            critical=True,
+            reason_code="LIQUIDITY_BUFFER_OK",
+            public_reason="可变现资产覆盖近期资金需求。",
+        )
+
+
+def test_suitable_result_requires_confirmed_proposed_allocation() -> None:
+    with pytest.raises(ValueError, match="proposed allocation confirmation"):
+        SuitabilityAssessment(
+            rule_set_version="suitability-v0.1",
+            rule_ids=["SUIT-LIQUIDITY-001"],
+            evidence_refs=["obs-account"],
+            result="SUITABLE",
+        )
+
+
+def test_unapproved_rule_set_cannot_carry_approval_metadata() -> None:
+    common = {
+        "version": "suitability-v0.1-draft",
+        "status": "REVIEW_CHANGES_REQUIRED",
+        "rule_ids": list(PENDING_RULE_IDS),
+        "critical_rule_ids": set(PENDING_RULE_IDS[:-1]),
+        "market_risk_proxy_thresholds": MarketRiskProxyThresholds(
+            medium_max_drawdown_pct=20,
+            high_max_drawdown_pct=40,
+            medium_annualized_volatility_pct=20,
+            high_annualized_volatility_pct=35,
+            minimum_observation_count=244,
+            price_adjustment="FORWARD",
+        ),
+        "single_position_thresholds": {
+            "CONSERVATIVE": ConcentrationThreshold(
+                conditional_above_pct=15, block_above_pct=20
+            ),
+            "BALANCED": ConcentrationThreshold(
+                conditional_above_pct=20, block_above_pct=30
+            ),
+            "AGGRESSIVE": ConcentrationThreshold(
+                conditional_above_pct=30, block_above_pct=40
+            ),
+        },
+        "industry_thresholds": {
+            "CONSERVATIVE": ConcentrationThreshold(
+                conditional_above_pct=30, block_above_pct=40
+            ),
+            "BALANCED": ConcentrationThreshold(
+                conditional_above_pct=40, block_above_pct=50
+            ),
+            "AGGRESSIVE": ConcentrationThreshold(
+                conditional_above_pct=50, block_above_pct=60
+            ),
+        },
+        "liquidity_pass_buffer_ratio": 1.2,
+    }
+
+    draft = SuitabilityV0RuleSet(**common)
+    assert draft.status == "REVIEW_CHANGES_REQUIRED"
+    assert draft.liquidity_equal_to_needs_outcome == "CONDITIONAL"
+
+    with pytest.raises(ValueError, match="cannot carry approval metadata"):
+        SuitabilityV0RuleSet(
+            **common,
+            approval_ref="ADR-004#approval",
+            approved_at=datetime(2026, 8, 12, tzinfo=UTC),
         )

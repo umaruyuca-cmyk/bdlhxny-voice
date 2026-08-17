@@ -22,6 +22,7 @@ CapabilityDomain = Literal[
     "portfolio",
     "user",
     "analysis",
+    "plugin_probe",
 ]
 CapabilityAdapter = Literal["mcp", "java", "web", "local"]
 
@@ -35,6 +36,7 @@ class ToolsetName(StrEnum):
     PORTFOLIO_READ = "portfolio_read"
     FINANCIAL_PROFILE_READ = "financial_profile_read"
     PLANNING_COMPUTE = "planning_compute"
+    PLUGIN_PROBE_COMPUTE = "plugin_probe_compute"
 
 
 @dataclass(frozen=True)
@@ -196,8 +198,13 @@ def build_default_capability_registry() -> CapabilityRegistry:
             # 现补注册以便 ADR-010 manifest 启动校验时可见。
             "portfolio.build_current_valuation",
             "基于行情对当前持仓做确定性估值重算",
-            "portfolio", "local", frozenset({"portfolio_valuation"}),
-            output_schema="PortfolioValuationObservation", timeout_seconds=30,
+            "portfolio", "local", frozenset({"portfolio_valuation", "suitability"}),
+            frozenset({
+                "positions_observation",
+                "account_observation",
+                "quote_observations",
+            }),
+            "PortfolioValuationObservation", timeout_seconds=30,
             toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
         ),
         CapabilitySpec(

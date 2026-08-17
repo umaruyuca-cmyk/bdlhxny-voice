@@ -26,4 +26,14 @@ def test_development_assembles_with_graceful_degradation():
     assert app.gateway_adapter is not None  # Gateway 创建成功（连接探测延迟到调用时）
     assert app.domain_registry.get("finance") is app.finance_runtime
     assert app.finance_runtime is not None
+    assert app.cognitive_application is not None
     assert not hasattr(app.finance_runtime, "checkpointer")
+
+
+def test_m7_second_domain_is_registered_but_not_user_enabled():
+    app = create_application(Settings(environment="development"))
+
+    assert app.domain_registry.list_domains() == ["finance", "plugin_probe"]
+    descriptor = app.domain_registry.descriptor("plugin_probe")
+    assert descriptor is not None and descriptor.status == "EXPERIMENTAL"
+    assert app.cognitive_application._enabled_domains == frozenset({"finance"})

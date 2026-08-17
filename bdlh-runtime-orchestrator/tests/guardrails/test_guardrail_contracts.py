@@ -1,4 +1,4 @@
-"""Guardrail 契约与接口骨架回归：``SW31-GUARDRAIL-SKELETON``。"""
+"""M4 Guardrail 契约与独立接口回归。"""
 
 from __future__ import annotations
 

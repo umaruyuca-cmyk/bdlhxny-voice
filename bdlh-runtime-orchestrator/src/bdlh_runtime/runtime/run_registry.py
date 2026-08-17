@@ -18,6 +18,7 @@ class RunLocation:
     thread_id: str
     user_id: str | None = None
     checkpoint_id: str | None = None
+    runtime_path: str = "legacy_root_graph"
 
 
 class RunRegistry(Protocol):

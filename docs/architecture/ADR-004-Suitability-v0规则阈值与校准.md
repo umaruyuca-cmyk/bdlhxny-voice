@@ -1,9 +1,10 @@
 # ADR-004：Suitability v0 规则阈值与校准
 
-> 状态：PROPOSED / NOT_APPROVED（含 **推荐草案 `suitability-v0.1-draft`，待审核人签署**）
+> 状态：PROPOSED / REVIEW_CHANGES_REQUIRED / NOT_APPROVED（含 **推荐草案 `suitability-v0.1-draft`，待整改与复审**）
 > 阻塞：M3 production SuitabilityEngine 开放三类个性化结论
 > 日期：2026-08-10
 > 草案日期：2026-08-11
+> 初审日期：2026-08-12
 > 审核角色：业务 / 风险 / 合规负责人（当前可由产品负责人兼审；**开发实现者不可自批后直接当生产阈值**）
 
 ## 1. 决策目标
@@ -101,7 +102,9 @@ fail-closed 前置与测试，但阻塞默认流量中的个性化三类结论�
 
 1. 研究侧已标准化的 `asset_risk_band`（若未来字段存在）；
 2. 否则用同轮 technical/risk 计算：`max_drawdown_pct = abs(MDD) * 100`（若引擎给的是比例则换算为百分数点）、`vol_ann_pct`（年化波动百分数点）；
-3. 否则用 `ResearchRisk.severity`：存在 `CRITICAL`→`HIGH`；否则存在 `HIGH`→`HIGH`；否则存在 `MEDIUM`→`MEDIUM`；仅 `LOW` 或无风险条目→`LOW`。
+3. `ResearchRisk.severity` 只用于向更严档提升：存在 `CRITICAL`/`HIGH`→`HIGH`；
+   否则存在 `MEDIUM`→至少 `MEDIUM`。仅有 LOW 或没有风险条目不能证明 LOW；若
+   MDD/vol 也不可用则不输出 band。
 
 分档（等号归入更严档，即 `>=`）：
 
@@ -198,7 +201,7 @@ fail-closed 前置与测试，但阻塞默认流量中的个性化三类结论�
 | PASS | `liquid_assets >= near_term_cash_needs * 1.20` |
 | CONDITIONAL | `near_term_cash_needs <= liquid_assets < near_term_cash_needs * 1.20` |
 | BLOCK | `liquid_assets < near_term_cash_needs` |
-| 等号 | `== needs` → BLOCK（无缓冲）；`== needs*1.20` → PASS |
+| 等号 | `== needs` → CONDITIONAL；`== needs*1.20` → PASS |
 | 缺任一关键字段 | UNKNOWN（关键） |
 | 公开理由（BLOCK） | `可变现资产不足以覆盖近期资金需求。` |
 | 公开理由（CONDITIONAL） | `可变现资产对近期资金需求的缓冲不足 20%，请确认短期开支安排。` |
@@ -245,7 +248,80 @@ fail-closed 前置与测试，但阻塞默认流量中的个性化三类结论�
 
 ---
 
-## 7. 审核清单（请直接勾）
+## 7. 初审记录（2026-08-12）
+
+### 7.1 结论
+
+**CHANGES_REQUIRED，不批准 `suitability-v0.1-draft`。** 当前应继续保持
+`NOT_APPROVED` 和 fail-closed 前置行为，不得装配为生产规则集。本次为工程与规则一致性
+初审，不替代业务、风险或合规负责人的最终批准。
+
+官方适当性规则要求经营机构全面了解投资者情况，对产品或服务进行科学有效的风险分级，
+形成明确匹配意见，并建立依据、方法、流程、更新和留痕机制；并未给出本文的 15%/20%、
+20%/40% 或 1.20 倍等数值。因此这些数值只能作为待验证的内部政策参数，不能表述为法规
+阈值，也不能仅凭“偏保守常识”批准。
+
+### 7.2 问题与整改状态
+
+| 严重性 | 问题 | 审核要求 |
+|---|---|---|
+| DONE | §6.6 的 `liquid_assets == needs` 边界曾自相矛盾。 | 已按推荐文档统一为 CONDITIONAL；`needs == 0` 等校准边界仍须在测试集冻结。 |
+| P0 | Java 已采集 `near_term_cash_needs_horizon_days`，但原 Python 契约曾丢弃该字段，“近期”没有可审计期限。 | 字段已贯通；仍须冻结 horizon 适用范围，超过范围或缺失时 UNKNOWN。 |
+| P0 | §6.0/§6.8 允许“已确认拟投入金额或配置比例”后输出 `SUITABLE`，但当前 `FinancialDomainRequest`、Snapshot 和受控确认链路都没有该输入。§6.9 的对应样本当前不可执行。 | v0 二选一：删除 `SUITABLE` 可达分支并始终封顶，或先增加服务端确认的拟配置契约及买入后集中度计算。 |
+| DONE | §6.2 所需确认元数据原先没有结构化保留。 | 已增加 `FinancialDataReference` 并校验版本一致性；具体 freshness 阈值仍待冻结。 |
+| DONE | §6.0.1 原先把“仅 LOW 或没有 `ResearchRisk`”推成 LOW。 | 已删除该推断；无客观输入时契约强制使用 UNKNOWN。 |
+| P0 | `asset_risk_band` 目前实质是历史 MDD/波动率代理，未冻结回看窗口、最少样本、复权口径、停牌/新股行为和数据质量；也未覆盖流动性、杠杆、复杂性、信用、跨境等产品风险因素。 | 将其明确命名为内部“市场风险代理带”，补齐方法学；若对外称产品/服务风险等级，须增加完整分级因子与适用性审查。 |
+| P0 | 数值阈值没有政策依据、历史样本或误判成本分析，§6.9 只有示例用例，不能证明分档有效。 | 提交校准报告：样本范围/时间、分层、边界样本、假阳性/假阴性、敏感性分析、回测限制、漂移监控和变更审批。 |
+| P0 | 当前输出名包含 `SUITABLE`，但输入远少于正式适当性所要求的投资者信息与产品风险因子，容易被理解为完整适当性结论。 | 产品/合规确认法律定位；v0 对外统一称“风险匹配筛查结果”，禁止宣称完成法定适当性评估。 |
+| P1 | §4.1 建议 ETF/基金缺少独立分级时沿用股票 band，产品结构与风险因素不同。 | v0 先限定普通 A 股现货；ETF、基金、杠杆/反向产品、两融、衍生品、跨境品种另行 ADR。 |
+| P1 | §6.5 当前行业集中度依赖用户维护的 `sector`，但未定义行业分类版本、同义映射、缺字段以及分类变更行为。 | 冻结分类体系和版本；任一有效持仓缺行业时该子规则 UNKNOWN，并明确是否为关键。 |
+| P1 | §6.8 先聚合关键 UNKNOWN，可能遮蔽同轮已确定的 BLOCK。 | 总结果可保持 INSUFFICIENT，但响应必须同时保留已证实的冲突和证据，不能显示为无风险。 |
+| P1 | 风险画像和市场数据未规定有效期，用户信息或标的状态变化后仍可能复用旧结论。 | 为风险画像、持仓、流动性、行情和研究分别冻结 freshness；过期即 UNKNOWN，并定义重新确认流程。 |
+
+### 7.3 非阻塞认可项
+
+- fail-closed、MOCK/UNAVAILABLE 不参与生产个性化、缺关键数据不猜测的方向正确；
+- 回撤和波动率统一转换为百分数点、禁止隐式换汇、理由携带 evidence refs 的方向正确；
+- 历史回撤不表述为未来损失承诺、禁止交易指令和收益承诺的文案边界正确；
+- 无拟投入金额时不得按买入后集中度得出肯定性结果的产品封顶方向正确。
+
+### 7.4 复审最小交付物
+
+1. 修订后的规则表（含全部等号、零值、缺数、过期和币种边界）；
+2. `asset_risk_band` 方法学与明确的 v0 适用/排除资产清单；
+3. Snapshot 确认元数据、流动性 horizon、拟配置输入的契约决定；
+4. 阈值校准报告和机器可执行的边界测试集；
+5. 业务/风险/合规负责人在 §4.1 的实名或可追溯审批记录。
+
+### 7.5 初审依据
+
+- 中国证监会《证券期货投资者适当性管理办法》：重点参照第三、六、十三、十五至十八、
+  二十一至二十五、二十九、三十二条；
+- 中国证券业协会《证券经营机构投资者适当性管理实施指引（试行）》及发布答记者问：
+  重点参照风险揭示、匹配意见、内部控制、回访和资料保存要求；
+- 本仓库 `FinancialDomainRequest`、`FinancialSnapshot`、`LiquiditySnapshot`、
+  `PortfolioPositionsResponse`、`JavaDataQueryService` 及确定性风险指标实现。
+
+### 7.6 Python 契约整改进度（2026-08-12）
+
+已根据《Suitability v0 固定规则 · 推荐文档》完成契约层整改，但不代表阈值获批：
+
+- 已增加 `FinancialDataReference`，保留 capability、observation、data mode、数据时间、
+  查询时间、服务端确认引用和 profile version；
+- 已为 `LiquiditySnapshot` 贯通币种、近期资金需求 horizon 和来源；缺失时保持 UNKNOWN；
+- 已增加 `MarketRiskProxy`，明确它是历史市场风险代理，并禁止无客观输入推导 LOW；
+- 已增加 `SuitabilityRuleEvaluation`，固定七条 Rule ID 和
+  `PASS / CONDITIONAL / BLOCK / UNKNOWN`，保留实际值、阈值、理由和证据；
+- 已增加 `SuitabilityV0RuleSet`，强类型表达风险带、集中度、流动性和等号边界；未批准
+  实例不得携带审批元数据，批准实例不得使用 `-draft` 版本；
+- `SuitabilityAssessment` 对外定位为 `PERSONALIZED_RISK_MATCHING_SCREEN`；当前没有受控
+  拟配置输入时，契约禁止构造 `SUITABLE`；
+- Snapshot Builder 已保留目标期限和金额，不再在复制确认目标时丢弃字段；
+- Python 全量回归通过。生产规则集仍未装配，继续 fail-closed。
+
+---
+
+## 8. 审核清单（整改后复审时勾选）
 
 - [ ] §6.0.1 标的风险带分档（20/40 回撤、20/35 波动）可接受，或给出替代数字  
 - [ ] §6.3 风险匹配矩阵可接受  
@@ -258,7 +334,7 @@ fail-closed 前置与测试，但阻塞默认流量中的个性化三类结论�
 - [ ] 适用市场范围确认（默认 A 股股票）  
 - [ ] 签署 §4.1 并改状态为 `APPROVED`，版本改为 `suitability-v0.1`
 
-## 8. 后果
+## 9. 后果
 
-- **你只审、不改代码：** 回复哪些阈值要改即可，签署后我再把 ADR 标成 APPROVED，并让实现只加载该版本。  
+- **本次初审：** 已形成修改清单，但未替业务/风险/合规负责人选择阈值或签署。
 - **未签前：** 保持现有 `SuitabilityPreflight` 行为，不产出三类个性化结论。

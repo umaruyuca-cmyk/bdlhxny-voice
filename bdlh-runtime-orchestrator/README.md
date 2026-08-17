@@ -7,6 +7,10 @@ Root / Query / Market Data Graph、有界 ReAct 执行矩阵、Mem0 记忆层（
 ContextBuilder 七块上下文、MCP 双传输接入（SSE + Streamable HTTP）、
 确定性分析引擎（技术指标/风险/组合影响/回测）、Checkpointer 工厂、JWT 隔离的聊天 SSE API。
 
+M7 另注册了 `plugin_probe` 实验性第二 Domain，用于验证既有
+`DomainDescriptor / SkillManifest / Dispatcher / DomainBudget / Observation / Guardrail`
+可被新插件直接复用。该探针未加入用户 Cognitive 白名单，不是产品功能入口。
+
 ## 架构分层
 
 ```text
@@ -49,3 +53,13 @@ uv run --extra dev python -m pytest tests -q
 
 覆盖：Workflow 调度、ReAct 回归（Fake Gateway）、MCP 解析/fallback、记忆降级、
 分析引擎可复现性、回测无未来函数、交易日历、API 前缀。
+
+## M6 价格观察任务
+
+M6 只启用一种持续任务：用户确认的价格阈值观察。创建请求必须携带 JWT、
+`Idempotency-Key` 和 `confirmed=true`，Scheduler 每次唤醒都会重新进入 Cognitive +
+Finance 获取当前市场事实；`PARTIAL/LIMITED` 数据不会触发通知。
+
+生产启用前先执行 `db/migrations/20260812_financial_tasks.sql`，然后在目标 Worker
+实例配置 `BDLH_FINANCIAL_TASK_WORKER_ENABLED=true`。任务 API 为
+`/api/v1/financial-tasks*`，已发送站内通知查询为 `/api/v1/notifications`。

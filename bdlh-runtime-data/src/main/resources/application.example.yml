@@ -56,9 +56,8 @@ bdlh_runtime:
     internal-token: "使用高强度随机内部令牌"
   embedding:
     api-key: "你的DashScope API Key"
-  stock-analysis:
-    base-url: "http://你的StockWrapper地址:3001"
-    internal-token: "你的Stock Wrapper Token"
+  # stock-analysis / STOCK_WRAPPER_* 已退役，勿再配置。
+  # 正式分析走 Python LangGraph；仅代码内遗留 Gateway 绑定仍读取空默认值。
   web-search:
     endpoint-url: "http://你的WebSearch地址:3002/api/search"
     agent-id: bdlh_runtime

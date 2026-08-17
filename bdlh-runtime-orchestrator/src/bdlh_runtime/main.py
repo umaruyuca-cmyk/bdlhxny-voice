@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -31,6 +32,7 @@ def _create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(shell: FastAPI):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from bdlh_runtime.runtime.scheduler import run_worker_loop
 
         async with AsyncPostgresSaver.from_conn_string(_settings.postgres_dsn) as checkpointer:
             await checkpointer.setup()
@@ -40,7 +42,24 @@ def _create_app() -> FastAPI:
             )
             inner = create_api_app(application, api_prefix=_settings.api_prefix)
             shell.mount("/", inner)
-            yield
+            stop_event = asyncio.Event()
+            worker_task: asyncio.Task[None] | None = None
+            if _settings.financial_task_worker_enabled:
+                worker_task = asyncio.create_task(
+                    run_worker_loop(
+                        scheduler=application.task_scheduler,
+                        outbox_worker=application.notification_outbox_worker,
+                        poll_seconds=_settings.financial_task_poll_seconds,
+                        stop_event=stop_event,
+                    ),
+                    name="bdlh-financial-task-worker",
+                )
+            try:
+                yield
+            finally:
+                stop_event.set()
+                if worker_task is not None:
+                    await worker_task
 
     return FastAPI(
         title="BDLH Agent Runtime Analysis Workflow",

@@ -6,7 +6,7 @@ COPY src ./src
 RUN mvn -B -q clean package -DskipTests
 
 FROM eclipse-temurin:17-jre
-# Java 镜像不安装 Node.js；行情分析统一通过独立 stock-wrapper 服务。
+# Java 镜像不安装 Node.js；stock-wrapper 已退役。正式分析由 Python Orchestrator 承担。
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080

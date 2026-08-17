@@ -1,9 +1,7 @@
-"""Guardrail 通用结果契约。
+"""M4 Guardrail 通用结果契约。
 
-实施标记：``SW31-GUARDRAIL-SKELETON``。
-
-本模块只定义四时点共享的强类型结果，不包含具体规则，也不表示 Guardrail
-已经接入 Root Graph。``replacement`` 使用泛型，使计划、动作、Observation
+本模块定义四时点共享的强类型结果；默认策略由 ``policies.py`` 实现并接入
+独立 Cognitive 编排。``replacement`` 使用泛型，使计划、动作、Observation
 和回复可以分别被各自接口安全替换，避免绑定旧 ``AgentAction``。
 """
 
@@ -42,7 +40,11 @@ class GuardrailContext(BaseModel):
     authenticated_user_id: str = Field(min_length=1)
     read_only: bool = True
     authorized_capabilities: frozenset[str] = frozenset()
+    enabled_domains: frozenset[str] = frozenset()
+    authorized_operations: frozenset[str] = frozenset()
     enabled_actions: frozenset[str] = frozenset()
+    max_tool_calls: int = Field(default=20, ge=0)
+    max_runtime_seconds: int = Field(default=120, ge=1)
 
 
 ReplacementT = TypeVar("ReplacementT")

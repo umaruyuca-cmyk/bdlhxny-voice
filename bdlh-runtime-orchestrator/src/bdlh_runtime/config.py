@@ -58,6 +58,16 @@ class Settings:
     max_event_wait_seconds: float = 30.0
     auth_required: bool = False
     jwt_secret: str | None = None
+    # ── M5 Cognitive 灰度（默认关闭；生产启用需通过独立发布门禁）──
+    cognitive_rollout_mode: str = "off"
+    cognitive_rollout_percentage: int = 0
+    cognitive_rollout_internal_user_ids: frozenset[str] = frozenset()
+    cognitive_rollout_approval_ref: str | None = None
+    cognitive_rollout_owner: str | None = None
+    cognitive_rollback_owner: str | None = None
+    # ── M6 持续任务 Worker ──
+    financial_task_worker_enabled: bool = False
+    financial_task_poll_seconds: float = 10.0
     # 生产 Checkpointer 连接参数（postgres/redis 后端使用）
     postgres_dsn: str | None = None
     redis_url: str | None = None
@@ -112,6 +122,28 @@ class Settings:
             auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", auth_required_default).lower()
             in {"1", "true", "yes", "on"},
             jwt_secret=jwt_secret,
+            cognitive_rollout_mode=os.getenv("BDLH_COGNITIVE_ROLLOUT_MODE", "off"),
+            cognitive_rollout_percentage=int(
+                os.getenv("BDLH_COGNITIVE_ROLLOUT_PERCENTAGE", "0")
+            ),
+            cognitive_rollout_internal_user_ids=frozenset(
+                item.strip()
+                for item in os.getenv(
+                    "BDLH_COGNITIVE_ROLLOUT_INTERNAL_USER_IDS", ""
+                ).split(",")
+                if item.strip()
+            ),
+            cognitive_rollout_approval_ref=os.getenv(
+                "BDLH_COGNITIVE_ROLLOUT_APPROVAL_REF"
+            ),
+            cognitive_rollout_owner=os.getenv("BDLH_COGNITIVE_ROLLOUT_OWNER"),
+            cognitive_rollback_owner=os.getenv("BDLH_COGNITIVE_ROLLBACK_OWNER"),
+            financial_task_worker_enabled=os.getenv(
+                "BDLH_FINANCIAL_TASK_WORKER_ENABLED", "false"
+            ).lower() in {"1", "true", "yes", "on"},
+            financial_task_poll_seconds=float(
+                os.getenv("BDLH_FINANCIAL_TASK_POLL_SECONDS", "10")
+            ),
             postgres_dsn=os.getenv("POSTGRES_DSN"),
             redis_url=os.getenv("REDIS_URL"),
             mcp_akshare_one=McpSourceConfig(

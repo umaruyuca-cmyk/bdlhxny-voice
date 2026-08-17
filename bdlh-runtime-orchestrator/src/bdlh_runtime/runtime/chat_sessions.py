@@ -32,6 +32,7 @@ class ChatSession:
     pending_run_id: str | None = None
     pending_thread_id: str | None = None
     pending_checkpoint_id: str | None = None
+    pending_runtime_path: str | None = None
 
 
 class ChatSessionStore(Protocol):
@@ -53,6 +54,7 @@ class ChatSessionStore(Protocol):
         run_id: str | None,
         thread_id: str | None,
         checkpoint_id: str | None,
+        runtime_path: str | None = None,
     ) -> None: ...
 
     def delete(self, session_id: str, user_id: str | None) -> bool: ...
@@ -127,6 +129,7 @@ class InMemoryChatSessionStore:
         run_id: str | None,
         thread_id: str | None,
         checkpoint_id: str | None,
+        runtime_path: str | None = None,
     ) -> None:
         with self._lock:
             session = self._sessions.get(self._key(session_id, user_id))
@@ -135,6 +138,7 @@ class InMemoryChatSessionStore:
             session.pending_run_id = run_id
             session.pending_thread_id = thread_id
             session.pending_checkpoint_id = checkpoint_id
+            session.pending_runtime_path = runtime_path
             session.updated_at = datetime.now(timezone.utc)
 
     def delete(self, session_id: str, user_id: str | None) -> bool:
@@ -174,6 +178,7 @@ class PostgresChatSessionStore:
                     pending_run_id VARCHAR(64),
                     pending_thread_id VARCHAR(255),
                     pending_checkpoint_id VARCHAR(255),
+                    pending_runtime_path VARCHAR(64),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (user_id, session_id)
                 )
@@ -195,6 +200,10 @@ class PostgresChatSessionStore:
                 CREATE INDEX IF NOT EXISTS idx_bdlh_runtime_chat_message_session
                 ON bdlh_runtime_chat_message(user_id, session_id, id)
             """)
+            connection.execute("""
+                ALTER TABLE bdlh_runtime_chat_session
+                ADD COLUMN IF NOT EXISTS pending_runtime_path VARCHAR(64)
+            """)
 
     def _session_from_row(self, connection, row) -> ChatSession:
         messages = connection.execute(
@@ -211,7 +220,8 @@ class PostgresChatSessionStore:
             pending_run_id=row[3],
             pending_thread_id=row[4],
             pending_checkpoint_id=row[5],
-            updated_at=row[6],
+            pending_runtime_path=row[6],
+            updated_at=row[7],
             messages=[ChatMessage(role=item[0], content=item[1]) for item in messages],
         )
 
@@ -242,7 +252,8 @@ class PostgresChatSessionStore:
             rows = connection.execute(
                 """
                 SELECT user_id, session_id, title, pending_run_id,
-                       pending_thread_id, pending_checkpoint_id, updated_at
+                       pending_thread_id, pending_checkpoint_id,
+                       pending_runtime_path, updated_at
                 FROM bdlh_runtime_chat_session
                 WHERE user_id = %s
                 ORDER BY updated_at DESC
@@ -258,7 +269,8 @@ class PostgresChatSessionStore:
             row = connection.execute(
                 """
                 SELECT user_id, session_id, title, pending_run_id,
-                       pending_thread_id, pending_checkpoint_id, updated_at
+                       pending_thread_id, pending_checkpoint_id,
+                       pending_runtime_path, updated_at
                 FROM bdlh_runtime_chat_session
                 WHERE user_id = %s AND session_id = %s
                 """,
@@ -332,6 +344,7 @@ class PostgresChatSessionStore:
         run_id: str | None,
         thread_id: str | None,
         checkpoint_id: str | None,
+        runtime_path: str | None = None,
     ) -> None:
         owner = self._user_key(user_id)
         with self._connect() as connection:
@@ -339,10 +352,11 @@ class PostgresChatSessionStore:
                 """
                 UPDATE bdlh_runtime_chat_session
                 SET pending_run_id = %s, pending_thread_id = %s,
-                    pending_checkpoint_id = %s, updated_at = CURRENT_TIMESTAMP
+                    pending_checkpoint_id = %s, pending_runtime_path = %s,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = %s AND session_id = %s
                 """,
-                (run_id, thread_id, checkpoint_id, owner, session_id),
+                (run_id, thread_id, checkpoint_id, runtime_path, owner, session_id),
             )
             if cursor.rowcount == 0:
                 raise KeyError(f"chat session not found: {session_id}")

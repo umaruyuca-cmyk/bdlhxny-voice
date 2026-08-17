@@ -13,6 +13,7 @@ from bdlh_runtime.contracts.observation import Observation
 
 from .contracts import (
     AccountSnapshot,
+    FinancialDataReference,
     FinancialDataMode,
     FinancialDomainRequest,
     FinancialGoal,
@@ -101,6 +102,9 @@ class UserFinancialObservationNormalizer:
             "source_ref": observation.observation_id,
             "source_type": metadata.get("source_type"),
             "query_status": metadata.get("query_status"),
+            "data_time": metadata.get("data_time"),
+            "queried_at": metadata.get("queried_at"),
+            "profile_version": raw.get("profile_version"),
             "missing_fields": sorted(set(metadata.get("missing_fields") or [])),
         }
         if confirmation_ref:
@@ -122,6 +126,11 @@ class UserFinancialObservationNormalizer:
             common["liquidity"] = {
                 "liquid_assets": raw.get("liquid_assets"),
                 "near_term_cash_needs": raw.get("near_term_cash_needs"),
+                "near_term_cash_needs_horizon_days": raw.get(
+                    "near_term_cash_needs_horizon_days"
+                ),
+                "currency": raw.get("currency"),
+                "source": observation.observation_id,
             }
         else:
             common["risk_profile"] = {
@@ -240,6 +249,19 @@ class FinancialSnapshotBuilder:
             for item in usable.values()
         }
         data_mode = self._combined_mode(modes, has_usable=bool(usable))
+        data_references = [
+            FinancialDataReference(
+                capability=capability,
+                observation_id=observation.observation_id,
+                data_mode=FinancialDataMode(str(observation.data["data_mode"])),
+                source_type=observation.data.get("source_type"),
+                data_time=observation.data.get("data_time"),
+                queried_at=observation.data.get("queried_at"),
+                confirmation_ref=observation.data.get("confirmation_ref"),
+                profile_version=observation.data.get("profile_version"),
+            )
+            for capability, observation in sorted(usable.items())
+        ]
         limitations: list[str] = []
         missing_capabilities = sorted(USER_SNAPSHOT_CAPABILITIES - set(usable))
         limitations.extend(
@@ -282,14 +304,23 @@ class FinancialSnapshotBuilder:
                     "OK"
                     if liquidity_data.get("liquid_assets") is not None
                     and liquidity_data.get("near_term_cash_needs") is not None
+                    and liquidity_data.get("near_term_cash_needs_horizon_days") is not None
+                    and liquidity_data.get("currency")
                     else "UNKNOWN"
                 ),
                 liquid_assets=liquidity_data.get("liquid_assets"),
                 near_term_cash_needs=liquidity_data.get("near_term_cash_needs"),
+                near_term_cash_needs_horizon_days=liquidity_data.get(
+                    "near_term_cash_needs_horizon_days"
+                ),
+                currency=liquidity_data.get("currency"),
+                source=liquidity_data.get("source"),
             )
             if (
                 liquidity.liquid_assets is None
                 or liquidity.near_term_cash_needs is None
+                or liquidity.near_term_cash_needs_horizon_days is None
+                or liquidity.currency is None
             ):
                 liquidity.limitations.append("Liquidity critical fields missing")
                 limitations.append("Liquidity critical fields missing")
@@ -327,6 +358,15 @@ class FinancialSnapshotBuilder:
             if risk_profile.max_loss_tolerance_pct is None:
                 limitations.append("Risk profile max_loss_tolerance_pct missing")
 
+        profile_versions = {
+            item.profile_version
+            for item in data_references
+            if item.capability in {ACCOUNT_CAPABILITY, RISK_PROFILE_CAPABILITY}
+            and item.profile_version is not None
+        }
+        if len(profile_versions) > 1:
+            limitations.append("Account and risk profile versions are inconsistent")
+
         goals: list[FinancialGoal] = []
         for item in request.goals:
             if item.source in {
@@ -338,6 +378,9 @@ class FinancialSnapshotBuilder:
                     FinancialGoal(
                         goal_id=item.goal_id,
                         description=item.description,
+                        horizon=item.horizon,
+                        target_date=item.target_date,
+                        target_amount=item.target_amount,
                         source=item.source,
                     )
                 )
@@ -378,6 +421,7 @@ class FinancialSnapshotBuilder:
                 if item.capability in USER_SNAPSHOT_CAPABILITIES
                 or item.capability == PORTFOLIO_VALUATION_CAPABILITY
             ],
+            data_references=data_references,
             positions=positions,
             account=account,
             risk_profile=risk_profile,

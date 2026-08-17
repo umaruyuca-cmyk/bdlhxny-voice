@@ -52,6 +52,13 @@ class AgentRuntimeApplication:
     capability_registry: Any | None = None
     domain_registry: Any | None = None
     finance_runtime: Any | None = None
+    cognitive_application: Any | None = None
+    traffic_router: Any | None = None
+    rollout_metrics: Any | None = None
+    task_store: Any | None = None
+    notification_outbox: Any | None = None
+    task_scheduler: Any | None = None
+    notification_outbox_worker: Any | None = None
 
 
 def create_application(
@@ -67,6 +74,8 @@ def create_application(
     settings = settings or Settings.from_environment()
     if settings.auth_required and not settings.jwt_secret:
         raise ConfigurationError("启用用户隔离时必须配置 JWT_SECRET")
+    if settings.financial_task_worker_enabled and settings.financial_task_poll_seconds <= 0:
+        raise ConfigurationError("M6 Worker 轮询间隔必须大于 0 秒")
 
     # ── 0. Checkpointer（审查文档 §4.3：按配置创建，生产注入持久化后端）──
     # memory 后端在 production 被 create_checkpointer 拒绝（ConfigurationError）。
@@ -151,6 +160,96 @@ def create_application(
     domain_registry.register_descriptor("finance", FINANCE_DESCRIPTOR)
     validate_descriptor_against_registry(FINANCE_DESCRIPTOR, capability_registry)
 
+    # ── 4.6c.1 M7 第二 Domain 插件契约探针（实验性、非用户入口）──
+    # 仅注册 Runtime + Descriptor，并复用同一 Capability Registry 启动校验。
+    # Cognitive 的 enabled_domains 仍只有 finance，因此探针不会成为产品能力。
+    from bdlh_runtime.domains.plugin_probe import (
+        PLUGIN_PROBE_DESCRIPTOR,
+        PluginProbeRuntime,
+        register_plugin_probe_capability,
+    )
+
+    # 注册发生在 ContextBuilder 已从 Registry 生成用户工具清单之后，确保实验探针
+    # 不暴露到旧路径/聊天模型上下文，同时 Runtime 与校验器仍持有同一 Registry。
+    register_plugin_probe_capability(capability_registry)
+    domain_registry.register(
+        "plugin_probe",
+        PluginProbeRuntime(capability_registry),
+    )
+    domain_registry.register_descriptor("plugin_probe", PLUGIN_PROBE_DESCRIPTOR)
+    validate_descriptor_against_registry(
+        PLUGIN_PROBE_DESCRIPTOR,
+        capability_registry,
+    )
+
+    # ── 4.6d M4 Cognitive Application（独立装配，不接默认 API/Root Graph）──
+    from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
+    from bdlh_runtime.domains.dispatcher import DomainDispatcher
+    from bdlh_runtime.domains.finance.cognitive_adapter import (
+        FinanceCognitiveContinuation,
+        FinanceCognitiveSelector,
+        InMemoryVerifiedEntityStore,
+    )
+
+    verified_entities = InMemoryVerifiedEntityStore()
+    cognitive_application = CognitiveOrchestrator(
+        selector=FinanceCognitiveSelector(verified_entities),
+        dispatcher=DomainDispatcher(domain_registry),
+        continuation=FinanceCognitiveContinuation(verified_entities),
+        enabled_domains=frozenset({"finance"}),
+        authorized_operations=frozenset(
+            {
+                "READ_MARKET_DATA",
+                "READ_PUBLIC_RESEARCH",
+                "READ_PORTFOLIO",
+                "READ_PROFILE",
+                "READ_FINANCIAL_GOALS",
+                "RUN_ANALYSIS",
+            }
+        ),
+    )
+
+    # ── 4.6e M5 灰度路由（默认 OFF，生产门禁未满足时 fail-fast）──
+    from bdlh_runtime.runtime.rollout import RolloutMetrics, build_rollout_router
+
+    # 当前 RunRegistry 与 Cognitive 实体上下文仍为进程内实现；即使 LangGraph
+    # Checkpointer 已持久化，也不能把 M0/M5 的“全部关键状态持久化”误判为已完成。
+    production_storage_ready = False
+    traffic_router = build_rollout_router(
+        settings,
+        production_storage_ready=production_storage_ready,
+    )
+    rollout_metrics = RolloutMetrics()
+
+    # ── 4.6f M6 最小持续任务（价格条件观察）──
+    from .scheduler import (
+        FinancialTaskScheduler,
+        FinancialTaskWakeupHandler,
+        NotificationOutboxWorker,
+    )
+    from .tasks import create_notification_outbox, create_task_store
+
+    task_store = create_task_store(
+        environment=settings.environment,
+        postgres_dsn=settings.postgres_dsn,
+    )
+    notification_outbox = create_notification_outbox(
+        environment=settings.environment,
+        postgres_dsn=settings.postgres_dsn,
+    )
+    task_wakeup_handler = FinancialTaskWakeupHandler(
+        task_store=task_store,
+        outbox=notification_outbox,
+        cognitive=cognitive_application,
+    )
+    task_scheduler = FinancialTaskScheduler(
+        task_store=task_store,
+        wakeup_handler=task_wakeup_handler,
+    )
+    notification_outbox_worker = NotificationOutboxWorker(
+        outbox=notification_outbox,
+    )
+
     # ── 4.7 分析历史存储（v2.1 §9.3：审计/历史查询，与 Mem0 分离）──
     from .history import create_history_store
 
@@ -208,6 +307,13 @@ def create_application(
         capability_registry=capability_registry,
         domain_registry=domain_registry,
         finance_runtime=finance_runtime,
+        cognitive_application=cognitive_application,
+        traffic_router=traffic_router,
+        rollout_metrics=rollout_metrics,
+        task_store=task_store,
+        notification_outbox=notification_outbox,
+        task_scheduler=task_scheduler,
+        notification_outbox_worker=notification_outbox_worker,
     )
 
 

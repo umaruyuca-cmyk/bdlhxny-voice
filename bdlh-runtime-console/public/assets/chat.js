@@ -27,6 +27,7 @@ var MOCK_VER_KEY="grid.chat.mock.ver";
 var MOCK_DATA_VERSION=3; /* mock 演示数据有变更时递增，旧缓存自动重建 */
 var MAX_SESSIONS=30;
 var MODE="general"; // 后端协议字段，单助手固定值
+var STOCK_SKILL="finance.stock-research";
 var NATIVE_FETCH=window.fetch.bind(window);
 var AUTH={ready:MOCK,user:MOCK?{userId:"mock",username:"演示模式"}:null};
 
@@ -36,7 +37,8 @@ var ST={
   sending:false,
   streamText:"",
   controller:null,
-  loadingEarlier:false
+  loadingEarlier:false,
+  page:"chat"
 };
 
 var STEP_LABEL={
@@ -95,7 +97,105 @@ function activeSession(){
   return null;
 }
 function makeSession(){
-  return {id:uid(),title:"新的对话",messages:[],updatedAt:now(),remote:false};
+  return {id:uid(),title:"新的对话",messages:[],updatedAt:now(),remote:false,enabledSkills:[]};
+}
+function ensureSessionSkills(s){
+  if(!s)return;
+  if(!Array.isArray(s.enabledSkills))s.enabledSkills=[];
+}
+function isStockQuestion(q){
+  return /分析|估值|研报|股票|个股|市盈率|市净率|标的|ETF|基金|板块|\d{6}|588200|科创|芯片|茅台|600519/.test(String(q||""));
+}
+function skillEnabled(id){
+  var s=activeSession();
+  if(!s)return false;
+  ensureSessionSkills(s);
+  return s.enabledSkills.indexOf(id)>=0;
+}
+function setSkillEnabled(id,on,note){
+  var s=activeSession();
+  if(!s){
+    s=makeSession();
+    ST.sessions.push(s);
+    ST.activeId=s.id;
+  }
+  ensureSessionSkills(s);
+  var i=s.enabledSkills.indexOf(id);
+  if(on&&i<0)s.enabledSkills.push(id);
+  if(!on&&i>=0)s.enabledSkills.splice(i,1);
+  s.updatedAt=now();
+  persist();
+  syncPluginUi();
+  if(note==="on")toast("已启用股票分析（本对话）");
+  if(note==="off")toast("已关闭股票分析");
+}
+function syncPluginUi(){
+  var on=skillEnabled(STOCK_SKILL);
+  var toggle=document.getElementById("pluginToggle");
+  var chip=document.getElementById("chipEnabled");
+  var ro=document.getElementById("roTag");
+  var skillStock=document.getElementById("skillStock");
+  var statusTag=document.getElementById("statusTag");
+  var navPlugins=document.getElementById("navPlugins");
+  if(toggle){
+    toggle.classList.toggle("on",on);
+    toggle.setAttribute("aria-checked",on?"true":"false");
+  }
+  if(chip)chip.hidden=!on;
+  if(ro)ro.hidden=!on;
+  if(skillStock)skillStock.classList.toggle("on",on);
+  if(statusTag){
+    statusTag.textContent=on?"本对话已启用":"未启用";
+    statusTag.className="tag "+(on?"ok":"off");
+  }
+  if(navPlugins)navPlugins.classList.toggle("on",ST.page==="plugins");
+}
+function showPage(name){
+  ST.page=name==="plugins"?"plugins":"chat";
+  var viewChat=document.getElementById("viewChat");
+  var viewPlugins=document.getElementById("viewPlugins");
+  if(viewChat)viewChat.classList.toggle("on",ST.page==="chat");
+  if(viewPlugins)viewPlugins.classList.toggle("on",ST.page==="plugins");
+  syncPluginUi();
+  if(ST.page==="plugins"){
+    if(qnav)qnav.style.display="none";
+    if(qpanel)qpanel.classList.remove("open");
+  }else{
+    rebuildQnav();
+  }
+}
+function showEnableNudge(question){
+  hero.classList.add("hidden");
+  chatTitle.textContent=activeSession()?activeSession().title:"新的对话";
+  var row=document.createElement("div");
+  row.className="msg user";
+  row.innerHTML='<div class="body"><div class="text">'+esc(question)+"</div></div>";
+  messages.appendChild(row);
+  var ai=document.createElement("div");
+  ai.className="msg";
+  ai.innerHTML='<div class="avatar">G</div><div class="body">'+
+    '<div class="text">要做标的深度研究，需要先启用「股票分析」插件。</div>'+
+    '<div class="nudge"><div class="t">前往插件页启用</div>'+
+    '<div class="d">启用后回到对话继续提问。也可以一键启用并继续。</div>'+
+    '<div class="acts">'+
+    '<button class="btn primary" type="button" data-act="enable-continue">启用并继续</button>'+
+    '<button class="btn" type="button" data-act="open-plugins">打开插件页</button>'+
+    "</div></div></div>";
+  messages.appendChild(ai);
+  rebuildQnav();
+  scrollBottom();
+  ai.addEventListener("click",function(e){
+    var btn=e.target.closest("[data-act]");
+    if(!btn)return;
+    var act=btn.getAttribute("data-act");
+    if(act==="open-plugins"){showPage("plugins");return;}
+    if(act==="enable-continue"){
+      setSkillEnabled(STOCK_SKILL,true,"on");
+      ai.remove();
+      row.remove();
+      send(question,false);
+    }
+  });
 }
 function adoptServerSessionId(serverId){
   var s=activeSession();
@@ -154,7 +254,9 @@ function switchSession(id){
   ST.activeId=id;
   persist();
   renderSessionList();
+  showPage("chat");
   renderMessages();
+  syncPluginUi();
   var s=activeSession();
   if(s&&s.remote&&!s.loaded)loadSessionDetail(s);
 }
@@ -177,7 +279,9 @@ function newChat(){
   ST.activeId=null;
   persist();
   renderSessionList();
+  showPage("chat");
   renderMessages();
+  syncPluginUi();
   input.focus();
 }
 
@@ -192,6 +296,7 @@ function renderMessages(){
   scrollBottom();
   rebuildQnav();
   ensureScrollable();
+  syncPluginUi();
 }
 function appendMessage(role,content,animate){
   var row=document.createElement("div");
@@ -388,6 +493,11 @@ function rebuildQnav(){
   ensureQnav();
   qnav.querySelectorAll("i").forEach(function(o){o.remove();});
   qpanelList.innerHTML="";
+  if(ST.page==="plugins"){
+    qnav.style.display="none";
+    toggleQpanel(false);
+    return;
+  }
   var rows=messages.querySelectorAll(".msg.user");
   if(!rows.length){
     qnav.style.display="none";
@@ -553,6 +663,16 @@ async function send(preset,regenerateExisting){
   if(!AUTH.ready){showAuth();return;}
   var value=(preset||input.value).trim();
   if(!value||ST.sending)return;
+
+  /* 股票深度问题：未启用 Skill 时先引导，不静默进入研究链路 */
+  if(!regenerateExisting&&isStockQuestion(value)&&!skillEnabled(STOCK_SKILL)){
+    input.value="";
+    autoGrow();
+    showPage("chat");
+    showEnableNudge(value);
+    return;
+  }
+
   ST.sending=true;
   sendBtn.disabled=true;
   input.value="";
@@ -565,6 +685,7 @@ async function send(preset,regenerateExisting){
     while(ST.sessions.length>MAX_SESSIONS)ST.sessions.shift();
     ST.activeId=s.id;
   }
+  ensureSessionSkills(s);
   if(!s.messages.length)s.title=value.length>24?value.slice(0,24)+"…":value;
   if(!regenerateExisting)s.messages.push({role:"user",content:value});
   s.updatedAt=now();
@@ -572,6 +693,7 @@ async function send(preset,regenerateExisting){
   renderSessionList();
   chatTitle.textContent=s.title;
   hero.classList.add("hidden");
+  showPage("chat");
 
   if(!regenerateExisting)appendMessage("user",value,true);
   rebuildQnav();
@@ -585,6 +707,7 @@ async function send(preset,regenerateExisting){
       sendBtn.disabled=false;
       renderSessionList();
       rebuildQnav();
+      syncPluginUi();
     }
     return;
   }
@@ -596,7 +719,14 @@ async function send(preset,regenerateExisting){
     var response=await apiFetch("/api/v1/chat/stream",{
       method:"POST",
       headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
-      body:JSON.stringify({sessionId:s.id,mode:MODE,message:value,instrument:null,regenerate:!!regenerateExisting}),
+      body:JSON.stringify({
+        sessionId:s.id,
+        mode:MODE,
+        message:value,
+        instrument:null,
+        regenerate:!!regenerateExisting,
+        enabledSkillIds:s.enabledSkills.slice()
+      }),
       signal:controller.signal
     });
     if(!response.ok)throw new Error(await response.text()||("HTTP "+response.status));
@@ -618,6 +748,7 @@ async function send(preset,regenerateExisting){
     sendBtn.disabled=false;
     renderSessionList();
     rebuildQnav();
+    syncPluginUi();
   }
 }
 
@@ -900,12 +1031,54 @@ composer.addEventListener("submit",function(e){
   send();
 });
 
-/* ---------- 建议卡片 ---------- */
+/* ---------- 建议卡片 / Skill chips ---------- */
 document.querySelectorAll(".suggest").forEach(function(btn){
   btn.addEventListener("click",function(){
     send(btn.dataset.q||"");
   });
 });
+
+var skillStockBtn=document.getElementById("skillStock");
+if(skillStockBtn){
+  skillStockBtn.addEventListener("click",function(){
+    if(skillEnabled(STOCK_SKILL))setSkillEnabled(STOCK_SKILL,false,"off");
+    else showPage("plugins");
+  });
+}
+function bindGotoPlugins(id){
+  var el=document.getElementById(id);
+  if(el)el.addEventListener("click",function(){showPage("plugins");});
+}
+bindGotoPlugins("skillGotoPlugins");
+bindGotoPlugins("dockPlugins");
+bindGotoPlugins("navPlugins");
+var btnBackChat=document.getElementById("btnBackChat");
+if(btnBackChat)btnBackChat.addEventListener("click",function(){showPage("chat");});
+var btnBackChat2=document.getElementById("btnBackChat2");
+if(btnBackChat2)btnBackChat2.addEventListener("click",function(){showPage("chat");});
+var pluginToggle=document.getElementById("pluginToggle");
+if(pluginToggle){
+  pluginToggle.addEventListener("click",function(){
+    var next=!skillEnabled(STOCK_SKILL);
+    setSkillEnabled(STOCK_SKILL,next,next?"on":"off");
+  });
+}
+var btnEnableAndChat=document.getElementById("btnEnableAndChat");
+if(btnEnableAndChat){
+  btnEnableAndChat.addEventListener("click",function(){
+    setSkillEnabled(STOCK_SKILL,true,"on");
+    showPage("chat");
+    input.placeholder="股票分析已启用，直接提问即可";
+    input.focus();
+  });
+}
+var chipEnabled=document.getElementById("chipEnabled");
+if(chipEnabled){
+  chipEnabled.addEventListener("click",function(e){
+    if(e.target.closest("#chipClose")){setSkillEnabled(STOCK_SKILL,false,"off");return;}
+    showPage("plugins");
+  });
+}
 
 /* ---------- 侧边栏 ---------- */
 newChatBtn.addEventListener("click",newChat);
@@ -949,5 +1122,6 @@ toBottom.addEventListener("click",function(){
 /* ---------- 启动 ---------- */
 void initializeAuth();
 autoGrow();
+syncPluginUi();
 
 })();

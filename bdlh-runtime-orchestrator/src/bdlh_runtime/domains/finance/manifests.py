@@ -198,7 +198,7 @@ SUITABILITY_MANIFEST = SkillManifest(
         ToolsetName.FINANCIAL_PROFILE_READ,
         ToolsetName.PLANNING_COMPUTE,
     }),
-    required_capabilities=_M1_CAPABILITIES | _M3_CAPABILITIES,
+    required_capabilities=_M1_CAPABILITIES | _M3_CAPABILITIES | _VALUATION_CAPABILITIES,
     optional_capabilities=_PUBLIC_RESEARCH_CAPABILITIES,
     # 数据条件：必须排除 MOCK/UNAVAILABLE（ADR-010 §3 示例）
     required_data_modes=frozenset({"LIVE", "USER_CONFIRMED"}),

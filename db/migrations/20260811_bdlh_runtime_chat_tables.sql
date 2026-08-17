@@ -21,3 +21,6 @@ BEGIN
     END IF;
 END
 $$;
+
+ALTER TABLE IF EXISTS public.bdlh_runtime_chat_session
+    ADD COLUMN IF NOT EXISTS pending_runtime_path VARCHAR(64);

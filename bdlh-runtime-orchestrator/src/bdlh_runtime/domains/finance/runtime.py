@@ -30,7 +30,8 @@ from .contracts import (
 from .instrument_resolver import FinanceInstrumentResolver
 from .planner import FinancePlanner
 from .research_builder import StockResearchResultBuilder
-from .snapshot_builder import USER_SNAPSHOT_CAPABILITIES
+from .snapshot_builder import PORTFOLIO_VALUATION_CAPABILITY, USER_SNAPSHOT_CAPABILITIES
+from .valuation_builder import PortfolioValuationBuilder, PortfolioValuationInput
 
 
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
@@ -58,11 +59,13 @@ class ApplicationFinanceCapabilityExecutor:
         web_search_adapter: Any,
         analysis_capability: Any,
         java_adapter: Any | None = None,
+        valuation_builder: PortfolioValuationBuilder | None = None,
     ) -> None:
         self._gateway = gateway_adapter
         self._web_search = web_search_adapter
         self._analysis = analysis_capability
         self._java = java_adapter
+        self._valuation_builder = valuation_builder or PortfolioValuationBuilder()
         self._normalizer = ObservationNormalizer()
 
     async def execute(
@@ -81,6 +84,14 @@ class ApplicationFinanceCapabilityExecutor:
             if self._java is None:
                 raise ValueError("Finance executor has no Java user-data adapter")
             return await self._java.execute(capability, arguments)
+        if capability == PORTFOLIO_VALUATION_CAPABILITY:
+            valuation_input = PortfolioValuationInput.model_validate(arguments)
+            return self._valuation_builder.build(
+                positions_observation=valuation_input.positions_observation,
+                account_observation=valuation_input.account_observation,
+                quote_observations=valuation_input.quote_observations,
+                authenticated_user_id=valuation_input.authenticated_user_id,
+            )
         if capability.startswith("market."):
             observation = await self._gateway.execute(
                 capability,

@@ -28,8 +28,8 @@
 | `bdlh-runtime-data/` | 代码 | 混合 | Java：认证与用户金融数据服务有效；旧 Agent 链路 `RETIRED` |
 | `bdlh-runtime-console/` | 代码 | `ACTIVE` | 独立 Nginx 静态前端与契约测试 |
 | `bdlh-web-search-adapter/` | 代码 | `ACTIVE` | 公开资料检索封装，经 Capability Gateway 调用 |
-| `stock-wrapper/` | 代码 | `RETIRED` | 旧 Node HTTP 包装层，Python 链路禁止依赖 |
-| `skills/stock-analysis-skill/` | 代码 | `RETIRED` | 历史 CLI Skill，不承担生产编排或在线补数 |
+| `stock-wrapper/` | — | `RETIRED`（已移出仓库） | 旧 Node HTTP 包装层；勿恢复目录，勿配置 `STOCK_WRAPPER_*` |
+| `skills/stock-analysis-skill/` | 代码 | `RETIRED` | 历史 CLI Skill，不承担生产编排或在线补数；非当前可插拔 Skill 宿主 |
 | `db/` | 运维 | `ACTIVE` | schema 与迁移脚本 |
 | `deploy/` | 运维 | `ACTIVE` | Compose、Nginx 与部署手册 |
 

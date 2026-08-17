@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from bdlh_runtime.contracts.observation import DataQuality, Observation, ProvenanceRecord
 
 from .contracts import FinancialDataMode
@@ -33,6 +35,17 @@ class PortfolioValuationError(ValueError):
     """估值输入不完整或无法验证时的 fail-closed 异常。"""
 
     code = "PORTFOLIO_VALUATION_BUILD_FAILED"
+
+
+class PortfolioValuationInput(BaseModel):
+    """确定性估值 Capability 的严格输入，禁止传入原始 Java/MCP 载荷。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    positions_observation: Observation
+    account_observation: Observation
+    quote_observations: list[Observation] = Field(default_factory=list)
+    authenticated_user_id: str = Field(min_length=1)
 
 
 class PortfolioValuationBuilder:

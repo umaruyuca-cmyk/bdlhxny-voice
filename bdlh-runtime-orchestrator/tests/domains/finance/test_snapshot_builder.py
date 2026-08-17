@@ -26,6 +26,7 @@ from bdlh_runtime.domains.finance.runtime import (
 )
 from bdlh_runtime.domains.finance.snapshot_builder import (
     ACCOUNT_CAPABILITY,
+    PORTFOLIO_VALUATION_CAPABILITY,
     POSITIONS_CAPABILITY,
     RISK_PROFILE_CAPABILITY,
     FinancialSnapshotBuilder,
@@ -147,6 +148,8 @@ def _complete_raw_observations() -> list[Observation]:
                 "currency": "CNY",
                 "liquid_assets": 200_000,
                 "near_term_cash_needs": 50_000,
+                "near_term_cash_needs_horizon_days": 90,
+                "profile_version": 3,
             },
             retrieved_at="2026-08-10T10:00:02+08:00",
         ),
@@ -157,6 +160,7 @@ def _complete_raw_observations() -> list[Observation]:
                 "metadata": {"user_id": 7},
                 "risk_tolerance": "moderate",
                 "max_loss_tolerance_pct": 20.0,
+                "profile_version": 3,
             },
             retrieved_at="2026-08-10T10:00:03+08:00",
         ),
@@ -250,7 +254,31 @@ def test_normalizer_accepts_server_confirmed_v2_metadata_and_preserves_identity(
     assert normalized.data["data_mode"] == "USER_CONFIRMED"
     assert normalized.data["source_type"] == "USER_INPUT"
     assert normalized.data["confirmation_ref"] == "confirm-obs-profile"
+    assert normalized.data["data_time"] == "2026-08-10T10:00:00+08:00"
     assert normalized.data["risk_profile"]["max_loss_tolerance_pct"] == 25
+
+
+def test_user_confirmed_snapshot_preserves_controlled_references() -> None:
+    raw = _complete_raw_observations()
+    for observation in raw:
+        assert isinstance(observation.data, dict)
+        observation.data["metadata"]["data_mode"] = "USER_CONFIRMED"
+        observation.data["metadata"]["source_type"] = "USER_INPUT"
+        observation.data["metadata"]["confirmation_ref"] = (
+            f"confirm-{observation.observation_id}"
+        )
+
+    snapshot = FinancialSnapshotBuilder().build(
+        request=_request(),
+        observations=_normalize_all(raw),
+        execution_environment="development",
+    )
+
+    assert snapshot.data_mode == FinancialDataMode.USER_CONFIRMED
+    assert snapshot.completeness == "PARTIAL"  # 当前估值仍须由同轮行情生成。
+    assert len(snapshot.data_references) == 3
+    assert all(item.confirmation_ref for item in snapshot.data_references)
+    assert all(item.data_time is not None for item in snapshot.data_references)
 
 
 def test_complete_normalized_inputs_build_a_deterministic_live_snapshot() -> None:
@@ -285,6 +313,18 @@ def test_complete_normalized_inputs_build_a_deterministic_live_snapshot() -> Non
     assert first.risk_profile.risk_level == "BALANCED"
     assert first.risk_profile.max_loss_tolerance_pct == 20.0
     assert first.liquidity is not None and first.liquidity.status == "OK"
+    assert first.liquidity.near_term_cash_needs_horizon_days == 90
+    assert first.liquidity.currency == "CNY"
+    assert [item.capability for item in first.data_references] == [
+        ACCOUNT_CAPABILITY,
+        POSITIONS_CAPABILITY,
+        RISK_PROFILE_CAPABILITY,
+    ]
+    assert {
+        item.profile_version
+        for item in first.data_references
+        if item.capability in {ACCOUNT_CAPABILITY, RISK_PROFILE_CAPABILITY}
+    } == {3}
     assert first.limitations == []
 
 
@@ -382,7 +422,22 @@ def test_current_repository_fields_build_partial_without_fabricating_values() ->
     assert snapshot.risk_profile.max_loss_tolerance_pct is None
     assert snapshot.liquidity is not None
     assert snapshot.liquidity.near_term_cash_needs is None
+    assert snapshot.liquidity.status == "UNKNOWN"
     assert any("concentration unavailable" in item for item in snapshot.limitations)
+
+
+def test_snapshot_rejects_mixed_profile_versions_as_partial() -> None:
+    raw = _complete_raw_observations()
+    raw[-1].data["profile_version"] = 4
+
+    snapshot = FinancialSnapshotBuilder().build(
+        request=_request(),
+        observations=_normalize_all(raw),
+        execution_environment="development",
+    )
+
+    assert snapshot.completeness == "PARTIAL"
+    assert "Account and risk profile versions are inconsistent" in snapshot.limitations
 
 
 def test_mock_user_data_is_never_promoted_to_live_or_complete() -> None:
@@ -514,4 +569,59 @@ async def test_application_executor_routes_only_exact_user_capabilities_to_java(
             "portfolio.delete_positions",
             {"user_id": "7"},
             request_id="m3-route",
+        )
+
+
+@pytest.mark.asyncio
+async def test_application_executor_runs_local_portfolio_valuation_without_adapters() -> None:
+    class ForbiddenAdapter:
+        async def execute(self, *args: object, **kwargs: object) -> Observation:
+            raise AssertionError("local valuation must not call an external adapter")
+
+    observations = _normalize_all(_complete_raw_observations())
+    positions = next(item for item in observations if item.capability == POSITIONS_CAPABILITY)
+    account = next(item for item in observations if item.capability == ACCOUNT_CAPABILITY)
+    executor = ApplicationFinanceCapabilityExecutor(
+        gateway_adapter=ForbiddenAdapter(),
+        web_search_adapter=ForbiddenAdapter(),
+        analysis_capability=object(),
+        java_adapter=ForbiddenAdapter(),
+    )
+
+    result = await executor.execute(
+        PORTFOLIO_VALUATION_CAPABILITY,
+        {
+            "positions_observation": positions.model_dump(),
+            "account_observation": account.model_dump(),
+            "quote_observations": [_quote_observation(price=1_200).model_dump()],
+            "authenticated_user_id": "7",
+        },
+        request_id="m3-local-valuation",
+    )
+
+    assert result.capability == PORTFOLIO_VALUATION_CAPABILITY
+    assert result.data["account"]["total_assets"] == 320_000
+    assert result.data["positions"][0]["weight_pct"] == pytest.approx(37.5)
+
+
+@pytest.mark.asyncio
+async def test_application_executor_rejects_untrusted_local_valuation_input() -> None:
+    executor = ApplicationFinanceCapabilityExecutor(
+        gateway_adapter=object(),
+        web_search_adapter=object(),
+        analysis_capability=object(),
+        java_adapter=object(),
+    )
+
+    with pytest.raises(ValueError):
+        await executor.execute(
+            PORTFOLIO_VALUATION_CAPABILITY,
+            {
+                "positions_observation": {"raw_java_payload": True},
+                "account_observation": {},
+                "quote_observations": [],
+                "authenticated_user_id": "7",
+                "client_data_mode": "LIVE",
+            },
+            request_id="m3-local-valuation",
         )

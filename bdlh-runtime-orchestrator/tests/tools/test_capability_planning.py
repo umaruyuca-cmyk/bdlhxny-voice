@@ -12,10 +12,11 @@ from bdlh_runtime.tools.requirement_planner import CapabilityRequirementPlanner
 def test_default_registry_contains_unified_capabilities_only():
     registry = build_default_capability_registry()
 
-    # 15 = 14 个外部只读能力 + portfolio.build_current_valuation（M3 确定性重算）
+    # 默认产品 Registry 保持 15 项；M7 探针在应用装配时向同一实例增量注册。
     assert len(registry.list()) == 15
     assert registry.contains("market.get_realtime_quote")
     assert registry.contains("research.web_search")
+    assert not registry.contains("plugin_probe.run_contract_check")
     assert all("mcp" not in spec.name for spec in registry.list())
 
 

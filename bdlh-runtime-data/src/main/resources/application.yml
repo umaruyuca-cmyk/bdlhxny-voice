@@ -118,8 +118,9 @@ bdlh_runtime:
   knowledge:
     min-similarity: 0.55
   stock-analysis:
-    # Java 仅通过独立 Node.js stock-wrapper 调用，不读取本机 Skill 路径
-    base-url: ${STOCK_WRAPPER_URL:http://localhost:3001}
+    # RETIRED：stock-wrapper 服务与目录已退出。以下键仅绑定遗留 Gateway，
+    # 生产不得设置 STOCK_WRAPPER_*；且须保持 legacy-agent-runtime.enabled=false。
+    base-url: ${STOCK_WRAPPER_URL:}
     internal-token: ${STOCK_WRAPPER_TOKEN:}
     connect-timeout-ms: ${STOCK_WRAPPER_CONNECT_TIMEOUT_MS:3000}
     request-timeout-ms: ${STOCK_WRAPPER_REQUEST_TIMEOUT_MS:120000}

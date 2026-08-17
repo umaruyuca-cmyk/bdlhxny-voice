@@ -5,7 +5,8 @@ HTTP 层只负责请求校验和响应序列化；业务状态结构由 graph/st
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -48,3 +49,18 @@ class RunResponse(BaseModel):
     final_response: dict[str, Any] | None = None
     interrupts: list[Any] = Field(default_factory=list)
     events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateFinancialTaskRequest(BaseModel):
+    """创建首个 M6 价格观察任务；身份始终来自 JWT。"""
+
+    symbol: str = Field(pattern=r"^\d{6}$")
+    market: Literal["CN"] = "CN"
+    instrument_name: str | None = Field(default=None, max_length=128)
+    direction: Literal["AT_OR_ABOVE", "AT_OR_BELOW"]
+    threshold: float = Field(gt=0, allow_inf_nan=False)
+    currency: Literal["CNY"] = "CNY"
+    cadence_seconds: int = Field(default=300, ge=60, le=86_400)
+    first_wakeup_at: datetime | None = None
+    expires_at: datetime
+    confirmed: Literal[True]

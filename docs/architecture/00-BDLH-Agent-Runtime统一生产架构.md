@@ -227,7 +227,7 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 | Analysis History | `FOUNDATION` | 当前只有内存实现 | 上线前迁移 PostgreSQL并保证幂等 |
 | Task / Scheduler | `TARGET` | 尚未实现 | 第二阶段只落地一个观察任务垂直切片 |
 | Letta | `EXPERIMENTAL` | 无生产实现 | 仅隔离研究，不进入部署拓扑 |
-| Node Stock Skill / Wrapper | `RETIRED` | 遗留 Java 链路仍可能使用 | Python 新路径禁止依赖，逐步退出 |
+| Node Stock Skill / Wrapper | `RETIRED` | 服务与仓库目录已退出；勿配置 `STOCK_WRAPPER_*`；遗留 Java Gateway 仅在 `LEGACY_JAVA_AGENT_RUNTIME_ENABLED=true` 时才有意义 | 保持关闭旧链路；Python 新路径禁止依赖 |
 
 ## 4. 系统上下文与生产拓扑
 

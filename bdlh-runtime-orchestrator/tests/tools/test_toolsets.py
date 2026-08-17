@@ -23,8 +23,8 @@ def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None
     grouped = [spec for toolset in toolsets.list() for spec in toolset.capabilities]
 
     assert toolsets.capability_registry is capabilities
-    assert len(toolsets.list()) == 6
-    # 15 = 14 个外部只读能力 + portfolio.build_current_valuation（M3 确定性重算能力）
+    assert len(toolsets.list()) == 7
+    # 默认产品 Registry 保持 15 项；M7 探针只在应用装配层增量注册。
     assert len(grouped) == 15
     assert {id(spec) for spec in grouped} == {id(spec) for spec in capabilities.list()}
     assert all(len(spec.toolsets) == 1 for spec in capabilities.list())
@@ -44,13 +44,14 @@ def test_default_toolset_membership_is_stable_and_business_facing() -> None:
         ToolsetName.PORTFOLIO_READ: 4,
         ToolsetName.FINANCIAL_PROFILE_READ: 1,
         ToolsetName.PLANNING_COMPUTE: 1,
+        ToolsetName.PLUGIN_PROBE_COMPUTE: 0,
     }
 
 
 def test_selection_manifest_does_not_expand_all_capabilities() -> None:
     manifest = build_default_toolset_registry().selection_manifest()
 
-    assert len(manifest) == 6
+    assert len(manifest) == 7
     assert all(set(item) == {"name", "description", "capability_count"} for item in manifest)
     assert all("mcp" not in str(item).lower() for item in manifest)
 
@@ -69,7 +70,7 @@ def test_selected_toolset_expands_only_safe_unified_capability_manifests() -> No
     assert all("server" not in item and "provider" not in item for item in manifest)
 
 
-def test_suitability_toolsets_expose_only_the_three_minimum_user_reads() -> None:
+def test_suitability_toolsets_expose_minimum_user_reads_and_local_valuation() -> None:
     toolsets = build_default_toolset_registry()
 
     portfolio = toolsets.capability_manifest(
@@ -84,8 +85,14 @@ def test_suitability_toolsets_expose_only_the_three_minimum_user_reads() -> None
     assert {item["name"] for item in portfolio} == {
         "portfolio.get_current_positions",
         "portfolio.get_account_snapshot",
+        "portfolio.build_current_valuation",
     }
     assert {item["name"] for item in profile} == {"user.get_risk_profile"}
+    valuation = next(
+        item for item in portfolio
+        if item["name"] == "portfolio.build_current_valuation"
+    )
+    assert "authenticated_user_id" not in valuation["required_arguments"]
 
 
 def test_toolset_view_is_dynamic_over_the_single_capability_registry() -> None:

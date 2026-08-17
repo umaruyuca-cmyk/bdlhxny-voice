@@ -17,7 +17,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 通过内部 HTTP API 调用独立 stock-wrapper，并解包为现有 Skill JSON 契约。
+ * 通过内部 HTTP API 调用已退役的 stock-wrapper（仅遗留 Java Agent 回滚路径）。
+ * 生产必须保持 legacy-agent-runtime 关闭，且不得依赖 STOCK_WRAPPER_* 环境变量。
  */
 @Component
 public class HttpStockAnalysisGateway implements StockAnalysisGateway {
@@ -30,7 +31,7 @@ public class HttpStockAnalysisGateway implements StockAnalysisGateway {
 
     @Autowired
     public HttpStockAnalysisGateway(
-            @Value("${bdlh_runtime.stock-analysis.base-url:http://localhost:3001}") String baseUrl,
+            @Value("${bdlh_runtime.stock-analysis.base-url:}") String baseUrl,
             @Value("${bdlh_runtime.stock-analysis.internal-token:}") String internalToken,
             @Value("${bdlh_runtime.stock-analysis.connect-timeout-ms:3000}") long connectTimeoutMs,
             @Value("${bdlh_runtime.stock-analysis.request-timeout-ms:120000}") long requestTimeoutMs,
@@ -146,6 +147,11 @@ public class HttpStockAnalysisGateway implements StockAnalysisGateway {
     }
 
     private static URI normalizeBaseUri(String baseUrl) {
+        // 1. 空配置表示 wrapper 已退役；保留合法占位 URI，避免启动期 NPE（遗留路径调用时仍会失败）。
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return URI.create("http://stock-wrapper.retired.invalid/");
+        }
+        // 2. 规范化尾部斜杠，供相对路径解析。
         String normalized = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
         return URI.create(normalized);
     }

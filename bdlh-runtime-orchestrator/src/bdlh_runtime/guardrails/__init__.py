@@ -1,4 +1,4 @@
-"""四时点 Guardrail 契约与接口骨架（``SW31-GUARDRAIL-SKELETON``）。"""
+"""M4 四时点 Guardrail 契约、接口与默认执行策略。"""
 
 from .contracts import (
     GuardrailContext,

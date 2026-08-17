@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import hashlib
 import logging
 import re
 from collections.abc import AsyncIterator
+from datetime import timezone
 from typing import Any
 from uuid import uuid4
 
@@ -22,17 +24,64 @@ from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
 from bdlh_runtime.runtimes.langgraph.graphs.root_graph import initial_state
+from bdlh_runtime.cognitive.contracts import InputEvent, PublicResponse
 from bdlh_runtime.runtime.application import AgentRuntimeApplication
 from bdlh_runtime.runtime.context import RunContext
 from bdlh_runtime.runtime.recovery import graph_config
 from bdlh_runtime.runtime.run_registry import RunLocation
+from bdlh_runtime.runtime.rollout import (
+    CognitiveExecutionProgress,
+    RuntimePath,
+)
 
 from .auth import AuthenticationError, JwtAuthenticator
-from .schemas import ChatRequest, ResumeRequest, RunRequest, RunResponse
+from .schemas import (
+    ChatRequest,
+    CreateFinancialTaskRequest,
+    ResumeRequest,
+    RunRequest,
+    RunResponse,
+)
 from .sse import encode_event
 
 
 logger = logging.getLogger("bdlh_runtime.api.routes")
+
+
+class _RolloutExecutionObserver:
+    def __init__(self, progress: CognitiveExecutionProgress) -> None:
+        self._progress = progress
+
+    def on_domain_request(self, request: Any) -> None:
+        del request
+        self._progress.domain_request_started = True
+
+
+def _cognitive_state(
+    run_id: str,
+    session_id: str,
+    response: PublicResponse,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    waiting = response.response_kind == "ASK_USER"
+    failed = response.response_kind in {"BLOCKED", "CAPABILITY_NOT_ENABLED"}
+    return {
+        "run_id": run_id,
+        "thread_id": session_id,
+        "user_id": user_id,
+        "runtime_path": RuntimePath.COGNITIVE.value,
+        "status": "WAITING_USER" if waiting else ("FAILED" if failed else "SUCCESS"),
+        "next_stage": "awaiting_user" if waiting else "completed",
+        "final_response": response.model_dump(mode="json"),
+        "events": [{
+            "schema_version": "1.0",
+            "event_type": "response.completed",
+            "run_id": run_id,
+            "runtime_path": RuntimePath.COGNITIVE.value,
+            "status": "WAITING_USER" if waiting else ("FAILED" if failed else "COMPLETED"),
+            "audit_codes": response.audit_codes,
+        }],
+    }
 
 
 class InMemoryRunStore:
@@ -145,6 +194,33 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         application.chat_session_store = create_chat_session_store()
     chat_sessions = application.chat_session_store
 
+    worker_stop = asyncio.Event()
+    worker_task: asyncio.Task[None] | None = None
+
+    async def start_financial_task_worker() -> None:
+        nonlocal worker_task
+        if not application.settings.financial_task_worker_enabled:
+            return
+        from bdlh_runtime.runtime.scheduler import run_worker_loop
+
+        worker_task = asyncio.create_task(
+            run_worker_loop(
+                scheduler=application.task_scheduler,
+                outbox_worker=application.notification_outbox_worker,
+                poll_seconds=application.settings.financial_task_poll_seconds,
+                stop_event=worker_stop,
+            ),
+            name="bdlh-financial-task-worker",
+        )
+
+    async def stop_financial_task_worker() -> None:
+        worker_stop.set()
+        if worker_task is not None:
+            await worker_task
+
+    app.router.add_event_handler("startup", start_financial_task_worker)
+    app.router.add_event_handler("shutdown", stop_financial_task_worker)
+
     def request_user_id(authorization: str | None, claimed_user_id: str | None = None) -> str | None:
         """返回 JWT 中的可信 user_id；开发模式才允许无 Token 的显式 user_id。"""
 
@@ -207,6 +283,11 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         不一定直接放进 ``values['__interrupt__']``，这里统一投影成 API 契约。
         """
         location = application.run_registry.get(run_id) if application.run_registry is not None else None
+        if (
+            location is not None
+            and location.runtime_path == RuntimePath.COGNITIVE.value
+        ):
+            return store.get(run_id)
         thread_id = location.thread_id if location is not None else run_id
         user_id = location.user_id if location is not None else None
         checkpoint_id = location.checkpoint_id if location is not None else None
@@ -249,6 +330,149 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         """本地健康检查。"""
         return {"status": "UP", "service": "bdlh-runtime-orchestrator"}
 
+    def authenticated_task_user(authorization: str | None) -> str:
+        user_id = request_user_id(authorization)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="持续任务需要已认证用户")
+        return user_id
+
+    @router.post("/financial-tasks", status_code=201)
+    async def create_financial_task(
+        payload: CreateFinancialTaskRequest,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, Any]:
+        from bdlh_runtime.runtime.tasks import (
+            FinancialTask,
+            FinancialTaskStatus,
+            PriceThresholdCondition,
+            TaskAuditEvent,
+            task_id_from_idempotency,
+            utc_now,
+        )
+
+        user_id = authenticated_task_user(authorization)
+        normalized_key = str(idempotency_key or "").strip()
+        if not normalized_key or len(normalized_key) > 255:
+            raise HTTPException(
+                status_code=422,
+                detail="创建持续任务必须提供 1..255 字符的 Idempotency-Key",
+            )
+        now = utc_now()
+        first_wakeup_at = payload.first_wakeup_at or now
+        if first_wakeup_at.tzinfo is None or payload.expires_at.tzinfo is None:
+            raise HTTPException(status_code=422, detail="任务时间必须包含时区")
+        first_wakeup_at = first_wakeup_at.astimezone(timezone.utc)
+        expires_at = payload.expires_at.astimezone(timezone.utc)
+        if expires_at <= now or first_wakeup_at >= expires_at:
+            raise HTTPException(
+                status_code=422,
+                detail="expires_at 必须晚于当前时间和 first_wakeup_at",
+            )
+        fingerprint_payload = payload.model_dump(mode="json")
+        creation_fingerprint = hashlib.sha256(
+            json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        task_id = task_id_from_idempotency(user_id, normalized_key)
+        task = FinancialTask(
+            task_id=task_id,
+            authenticated_user_id=user_id,
+            status=FinancialTaskStatus.SCHEDULED,
+            condition=PriceThresholdCondition(
+                symbol=payload.symbol.strip().upper(),
+                market=payload.market.strip().upper(),
+                instrument_name=payload.instrument_name,
+                direction=payload.direction,
+                threshold=payload.threshold,
+                currency=payload.currency.strip().upper(),
+            ),
+            confirmation_ref=f"task-confirmation:{task_id}",
+            creation_fingerprint=creation_fingerprint,
+            cadence_seconds=payload.cadence_seconds,
+            next_wakeup_at=first_wakeup_at,
+            expires_at=expires_at,
+            created_at=now,
+            updated_at=now,
+            audit_events=[TaskAuditEvent(
+                event_type="task.scheduled",
+                occurred_at=now,
+                reason_code="USER_CONFIRMED_PRICE_OBSERVATION",
+                details={"confirmation_ref": f"task-confirmation:{task_id}"},
+            )],
+        )
+        created = application.task_store.create(task)
+        if created.creation_fingerprint != creation_fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="同一 Idempotency-Key 已用于不同的任务创建请求",
+            )
+        return created.model_dump(mode="json")
+
+    @router.get("/financial-tasks")
+    async def list_financial_tasks(
+        authorization: str | None = Header(default=None),
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> list[dict[str, Any]]:
+        user_id = authenticated_task_user(authorization)
+        return [
+            task.model_dump(mode="json")
+            for task in application.task_store.list_for_user(user_id, limit=limit)
+        ]
+
+    @router.get("/financial-tasks/{task_id}")
+    async def get_financial_task(
+        task_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        user_id = authenticated_task_user(authorization)
+        task = application.task_store.get(task_id, user_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        return task.model_dump(mode="json")
+
+    @router.post("/financial-tasks/{task_id}/cancel")
+    async def cancel_financial_task(
+        task_id: str,
+        authorization: str | None = Header(default=None),
+    ) -> dict[str, Any]:
+        from bdlh_runtime.runtime.tasks import FinancialTaskStatus, TERMINAL_TASK_STATUSES, utc_now
+
+        user_id = authenticated_task_user(authorization)
+        task = application.task_store.get(task_id, user_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        if task.status in TERMINAL_TASK_STATUSES:
+            if task.status == FinancialTaskStatus.CANCELLED:
+                return task.model_dump(mode="json")
+            raise HTTPException(status_code=409, detail=f"任务已处于终态 {task.status.value}")
+        if task.status in {
+            FinancialTaskStatus.RUNNING,
+            FinancialTaskStatus.TRIGGERED,
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail="任务正在执行当前唤醒，请在本轮结束后重试取消",
+            )
+        expected_version = task.version
+        task.transition(
+            FinancialTaskStatus.CANCELLED,
+            reason_code="USER_CANCELLED_TASK",
+            now=utc_now(),
+        )
+        cancelled = application.task_store.update(task, expected_version=expected_version)
+        return cancelled.model_dump(mode="json")
+
+    @router.get("/notifications")
+    async def list_notifications(
+        authorization: str | None = Header(default=None),
+        limit: int = Query(default=50, ge=1, le=100),
+    ) -> list[dict[str, Any]]:
+        user_id = authenticated_task_user(authorization)
+        return [
+            message.model_dump(mode="json")
+            for message in application.notification_outbox.list_for_user(user_id, limit=limit)
+        ]
+
     @router.post("/chat/stream")
     async def chat_stream(
         payload: ChatRequest,
@@ -266,6 +490,235 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
             chat_sessions.prepare_regeneration(session.session_id, user_id)
         else:
             chat_sessions.add_message(session.session_id, user_id, "user", message)
+
+        routing = application.traffic_router.decide(
+            user_id=user_id,
+            session_id=session.session_id,
+        )
+        effective_path = (
+            RuntimePath(session.pending_runtime_path)
+            if session.pending_run_id and session.pending_thread_id
+            and session.pending_runtime_path in {item.value for item in RuntimePath}
+            else RuntimePath.LEGACY
+            if session.pending_run_id and session.pending_thread_id
+            else routing.path
+        )
+        application.rollout_metrics.increment("selected", path=effective_path)
+        logger.info(
+            "runtime_path_selected path=%s reason=%s session_id=%s",
+            effective_path.value,
+            (
+                "PENDING_RUN_PATH_STICKY"
+                if effective_path != routing.path
+                else routing.reason_code
+            ),
+            session.session_id,
+        )
+        use_cognitive = effective_path == RuntimePath.COGNITIVE
+
+        if use_cognitive:
+            run_id = session.pending_run_id or str(uuid4())
+            progress = CognitiveExecutionProgress()
+            if application.run_registry is not None:
+                application.run_registry.register(RunLocation(
+                    run_id=run_id,
+                    thread_id=session.session_id,
+                    user_id=user_id,
+                    runtime_path=RuntimePath.COGNITIVE.value,
+                ))
+
+            async def cognitive_chat_event_stream() -> AsyncIterator[str]:
+                yield encode_event("message", {
+                    "schema_version": "1.0",
+                    "type": "agent_run",
+                    "runId": run_id,
+                    "sessionId": session.session_id,
+                    "runtimePath": RuntimePath.COGNITIVE.value,
+                    "routingReason": routing.reason_code,
+                })
+                yield encode_event("message", {
+                    "schema_version": "1.0",
+                    "type": "status",
+                    "step": "classifying",
+                })
+                try:
+                    execution = await application.cognitive_application.run(
+                        InputEvent(
+                            event_id=f"chat:{run_id}",
+                            run_id=run_id,
+                            user_id=str(user_id),
+                            session_id=session.session_id,
+                            message=message,
+                        ),
+                        observer=_RolloutExecutionObserver(progress),
+                    )
+                except Exception:
+                    application.rollout_metrics.increment(
+                        "cognitive_error", path=RuntimePath.COGNITIVE
+                    )
+                    if progress.automatic_fallback_allowed:
+                        application.rollout_metrics.increment(
+                            "automatic_fallback", path=RuntimePath.COGNITIVE
+                        )
+                        internal_thread_id = checkpoint_thread_id(
+                            session.session_id, user_id
+                        )
+                        graph_input = initial_state(
+                            run_id,
+                            {"message": message},
+                            user_id,
+                            thread_id=session.session_id,
+                        )
+                        config = config_for(
+                            run_id, user_id, thread_id=internal_thread_id
+                        )
+                        if application.run_registry is not None:
+                            application.run_registry.register(RunLocation(
+                                run_id=run_id,
+                                thread_id=internal_thread_id,
+                                user_id=user_id,
+                            ))
+                        yield encode_event("message", {
+                            "schema_version": "1.0",
+                            "type": "status",
+                            "step": "fallback_legacy",
+                            "runtimePath": RuntimePath.LEGACY.value,
+                            "fallbackFrom": RuntimePath.COGNITIVE.value,
+                        })
+                        try:
+                            await application.graph.ainvoke(
+                                graph_input,
+                                config=config,
+                            )
+                            latest_config = config_for(
+                                run_id, user_id, thread_id=internal_thread_id
+                            )
+                            state, interrupts, checkpoint_id = await graph_snapshot(
+                                latest_config
+                            )
+                            store.put(run_id, state)
+                            if application.run_registry is not None:
+                                application.run_registry.register(RunLocation(
+                                    run_id=run_id,
+                                    thread_id=internal_thread_id,
+                                    user_id=user_id,
+                                    checkpoint_id=checkpoint_id,
+                                ))
+                            if interrupts:
+                                value = getattr(interrupts[0], "value", None)
+                                value = value if isinstance(value, dict) else {}
+                                yield encode_event("message", {
+                                    "schema_version": "1.0",
+                                    "type": "clarification",
+                                    "prompt": str(value.get("message") or "请补充完成分析所需的信息。"),
+                                    "options": [],
+                                })
+                                return
+                            answer = chat_answer_text(state.get("final_response"))
+                            for start in range(0, len(answer), 24):
+                                yield encode_event("message", {
+                                    "schema_version": "1.0",
+                                    "type": "token",
+                                    "content": answer[start:start + 24],
+                                })
+                            chat_sessions.add_message(
+                                session.session_id, user_id, "assistant", answer
+                            )
+                            yield encode_event("message", {
+                                "schema_version": "1.0",
+                                "type": "done",
+                                "status": "COMPLETED",
+                                "resultStatus": state.get("status"),
+                                "sessionId": session.session_id,
+                                "runId": run_id,
+                                "runtimePath": RuntimePath.LEGACY.value,
+                                "fallbackFrom": RuntimePath.COGNITIVE.value,
+                            })
+                        except Exception:
+                            logger.exception(
+                                "Cognitive 前置失败后旧路径回退也失败 run_id=%s", run_id
+                            )
+                            yield encode_event("message", {
+                                "schema_version": "1.0",
+                                "type": "error",
+                                "code": "COGNITIVE_AND_LEGACY_EXECUTION_FAILED",
+                                "message": "分析流程执行失败，请稍后重试。",
+                            })
+                        return
+                    logger.exception(
+                        "Cognitive 聊天在领域执行后失败，禁止旧路径重跑 run_id=%s", run_id
+                    )
+                    yield encode_event("message", {
+                        "schema_version": "1.0",
+                        "type": "error",
+                        "code": "COGNITIVE_EXECUTION_FAILED_AFTER_SIDE_EFFECT",
+                        "message": "新路径执行失败；为避免重复调用，本轮不会自动重跑。",
+                    })
+                    return
+
+                application.rollout_metrics.increment(
+                    "completed", path=RuntimePath.COGNITIVE
+                )
+                response = execution.response
+                if response.response_kind == "ASK_USER":
+                    chat_sessions.set_pending(
+                        session.session_id,
+                        user_id,
+                        run_id=run_id,
+                        thread_id=session.session_id,
+                        checkpoint_id=None,
+                        runtime_path=RuntimePath.COGNITIVE.value,
+                    )
+                    yield encode_event("message", {
+                        "schema_version": "1.0",
+                        "type": "clarification",
+                        "prompt": response.message,
+                        "options": response.next_steps,
+                    })
+                    yield encode_event("message", {
+                        "schema_version": "1.0",
+                        "type": "done",
+                        "status": "NEED_CLARIFICATION",
+                        "sessionId": session.session_id,
+                        "runId": run_id,
+                        "runtimePath": RuntimePath.COGNITIVE.value,
+                    })
+                    return
+                answer = chat_answer_text(response.model_dump(mode="json"))
+                for start in range(0, len(answer), 24):
+                    yield encode_event("message", {
+                        "schema_version": "1.0",
+                        "type": "token",
+                        "content": answer[start:start + 24],
+                    })
+                    await asyncio.sleep(0)
+                chat_sessions.add_message(
+                    session.session_id, user_id, "assistant", answer
+                )
+                chat_sessions.set_pending(
+                    session.session_id,
+                    user_id,
+                    run_id=None,
+                    thread_id=None,
+                    checkpoint_id=None,
+                    runtime_path=None,
+                )
+                yield encode_event("message", {
+                    "schema_version": "1.0",
+                    "type": "done",
+                    "status": "COMPLETED",
+                    "resultStatus": response.response_kind,
+                    "sessionId": session.session_id,
+                    "runId": run_id,
+                    "runtimePath": RuntimePath.COGNITIVE.value,
+                })
+
+            # Legacy closure is declared below and resolved when the stream is consumed.
+            return StreamingResponse(
+                cognitive_chat_event_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
 
         if session.pending_run_id and session.pending_thread_id:
             run_id = session.pending_run_id
@@ -296,13 +749,23 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                     RunLocation(run_id=run_id, thread_id=internal_thread_id, user_id=user_id)
                 )
 
-        async def chat_event_stream() -> AsyncIterator[str]:
+        async def _legacy_chat_event_stream(
+            *, fallback_from: str | None = None
+        ) -> AsyncIterator[str]:
             yield encode_event("message", {
+                "schema_version": "1.0",
                 "type": "agent_run",
                 "runId": run_id,
                 "sessionId": session.session_id,
+                "runtimePath": RuntimePath.LEGACY.value,
+                "routingReason": routing.reason_code,
+                "fallbackFrom": fallback_from,
             })
-            yield encode_event("message", {"type": "status", "step": "classifying"})
+            yield encode_event("message", {
+                "schema_version": "1.0",
+                "type": "status",
+                "step": "classifying",
+            })
             last_step = "classifying"
             try:
                 async for update in application.graph.astream(
@@ -326,6 +789,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                         thread_id=internal_thread_id,
                         user_id=user_id,
                         checkpoint_id=checkpoint_id,
+                        runtime_path=RuntimePath.LEGACY.value,
                     ))
 
                 if interrupts:
@@ -338,6 +802,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                         run_id=run_id,
                         thread_id=internal_thread_id,
                         checkpoint_id=checkpoint_id,
+                        runtime_path=RuntimePath.LEGACY.value,
                     )
                     yield encode_event("message", {
                         "type": "clarification",
@@ -372,6 +837,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                     run_id=None,
                     thread_id=None,
                     checkpoint_id=None,
+                    runtime_path=None,
                 )
                 yield encode_event("message", {
                     "type": "done",
@@ -388,7 +854,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                 })
 
         return StreamingResponse(
-            chat_event_stream(),
+            _legacy_chat_event_stream(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -451,6 +917,82 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         user_id = request_user_id(authorization, payload.user_id)
         run_id = str(uuid4())
         public_thread_id = payload.thread_id or run_id  # 未传则新建会话
+        routing = application.traffic_router.decide(
+            user_id=user_id,
+            session_id=public_thread_id,
+        )
+        application.rollout_metrics.increment("selected", path=routing.path)
+        logger.info(
+            "runtime_path_selected path=%s reason=%s run_id=%s thread_id=%s",
+            routing.path.value,
+            routing.reason_code,
+            run_id,
+            public_thread_id,
+        )
+        if routing.path == RuntimePath.COGNITIVE:
+            progress = CognitiveExecutionProgress()
+            if application.run_registry is not None:
+                application.run_registry.register(RunLocation(
+                    run_id=run_id,
+                    thread_id=public_thread_id,
+                    user_id=user_id,
+                    runtime_path=RuntimePath.COGNITIVE.value,
+                ))
+            try:
+                execution = await application.cognitive_application.run(
+                    InputEvent(
+                        event_id=f"run:{run_id}",
+                        run_id=run_id,
+                        user_id=str(user_id),
+                        session_id=public_thread_id,
+                        message=payload.message,
+                    ),
+                    observer=_RolloutExecutionObserver(progress),
+                )
+            except Exception as exc:
+                application.rollout_metrics.increment(
+                    "cognitive_error", path=RuntimePath.COGNITIVE
+                )
+                if not progress.automatic_fallback_allowed:
+                    logger.exception(
+                        "Cognitive agent-run 在领域执行后失败，禁止旧路径重跑 run_id=%s",
+                        run_id,
+                    )
+                    failed_state = {
+                        "run_id": run_id,
+                        "thread_id": public_thread_id,
+                        "user_id": user_id,
+                        "runtime_path": RuntimePath.COGNITIVE.value,
+                        "status": "FAILED",
+                        "next_stage": "completed",
+                        "final_response": {
+                            "response_kind": "BLOCKED",
+                            "response_structure": "SAFETY_BLOCK",
+                            "message": "新路径执行失败；为避免重复调用，本轮不会自动重跑。",
+                            "audit_codes": ["COGNITIVE_EXECUTION_FAILED_AFTER_SIDE_EFFECT"],
+                        },
+                        "events": [],
+                    }
+                    store.put(run_id, failed_state)
+                    return public_state(run_id, failed_state)
+                logger.warning(
+                    "Cognitive agent-run 前置失败，安全回退旧路径 run_id=%s error=%s",
+                    run_id,
+                    type(exc).__name__,
+                )
+                application.rollout_metrics.increment(
+                    "automatic_fallback", path=RuntimePath.COGNITIVE
+                )
+            else:
+                state = _cognitive_state(
+                    run_id, public_thread_id, execution.response, user_id
+                )
+                store.put(run_id, state)
+                application.rollout_metrics.increment(
+                    "completed", path=RuntimePath.COGNITIVE
+                )
+                return public_state(run_id, state)
+
         internal_thread_id = checkpoint_thread_id(public_thread_id, user_id)
         request = payload.model_dump(exclude_none=True)
         request.pop("user_id", None)
@@ -494,6 +1036,56 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         thread_id = location.thread_id if location is not None else state_before_resume.get("thread_id")
         user_id = location.user_id if location is not None else state_before_resume.get("user_id")
         checkpoint_id = location.checkpoint_id if location is not None else None
+        if (
+            location is not None
+            and location.runtime_path == RuntimePath.COGNITIVE.value
+        ):
+            message = (
+                payload.value
+                if isinstance(payload.value, str)
+                else str(payload.value.get("message") or payload.value.get("symbol") or "").strip()
+            )
+            if not message:
+                raise HTTPException(status_code=422, detail="resume value 缺少 message 或 symbol")
+            progress = CognitiveExecutionProgress()
+            try:
+                execution = await application.cognitive_application.run(
+                    InputEvent(
+                        event_id=f"resume:{run_id}:{uuid4()}",
+                        run_id=run_id,
+                        user_id=str(user_id),
+                        session_id=thread_id or run_id,
+                        message=message,
+                    ),
+                    observer=_RolloutExecutionObserver(progress),
+                )
+            except Exception:
+                logger.exception("Cognitive run 恢复失败 run_id=%s", run_id)
+                failed_state = {
+                    "run_id": run_id,
+                    "thread_id": thread_id,
+                    "user_id": user_id,
+                    "runtime_path": RuntimePath.COGNITIVE.value,
+                    "status": "FAILED",
+                    "next_stage": "completed",
+                    "final_response": {
+                        "response_kind": "BLOCKED",
+                        "response_structure": "SAFETY_BLOCK",
+                        "message": "新路径恢复失败，本轮不会切换路径重跑。",
+                        "audit_codes": ["COGNITIVE_RESUME_FAILED"],
+                    },
+                    "events": [],
+                }
+                store.put(run_id, failed_state)
+                return public_state(run_id, failed_state)
+            state = _cognitive_state(
+                run_id,
+                thread_id or run_id,
+                execution.response,
+                user_id,
+            )
+            store.put(run_id, state)
+            return public_state(run_id, state)
         state = await application.graph.ainvoke(
             Command(resume=payload.value),
             config=config_for(

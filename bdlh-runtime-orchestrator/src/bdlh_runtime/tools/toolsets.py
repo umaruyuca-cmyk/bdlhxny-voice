@@ -26,6 +26,7 @@ _TOOLSET_DESCRIPTIONS: dict[ToolsetName, str] = {
     ToolsetName.PORTFOLIO_READ: "只读访问当前用户持仓、账户和交易历史",
     ToolsetName.FINANCIAL_PROFILE_READ: "只读访问当前用户风险画像和金融档案",
     ToolsetName.PLANNING_COMPUTE: "对标准化数据执行确定性金融计算",
+    ToolsetName.PLUGIN_PROBE_COMPUTE: "执行无外部调用的插件契约探针",
 }
 
 

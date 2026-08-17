@@ -1,7 +1,7 @@
 """认知行动契约（31 号统一开发实施 Prompt §7.2、§11.5）。
 
-实施标记：``SW31-P1-COGNITIVE-ACTION``。本模块仅定义认知行动边界；
-Cognitive Graph 与运行时 Action Policy 仍由阶段 5 实现。
+实施标记：``SW31-M4-COGNITIVE-ACTION``。本模块定义 M4 认知行动、状态与
+公开表达边界；运行时 Action Policy 与独立编排由同包实现。
 
 ``CognitiveAction`` 是认知层唯一行动模型（架构概念 ``NextAction`` 不创建
 第二个同义模型）；旧 ReAct 层的 ``AgentAction`` 是数据获取层的工具动作
@@ -39,7 +39,14 @@ class CognitiveActionType(StrEnum):
     DO_NOTHING = "DO_NOTHING"
 
 
-#: 第一阶段 Action Policy 启用的行动集合（§7.2）。
+class InputEventType(StrEnum):
+    """进入 Cognitive Kernel 的事件来源；M6 Scheduler 只能投递唤醒事件。"""
+
+    USER_MESSAGE = "USER_MESSAGE"
+    SCHEDULED_WAKEUP = "SCHEDULED_WAKEUP"
+
+
+#: M4 Action Policy 启用的行动集合（§11.4.2）。
 ENABLED_ACTION_TYPES: frozenset[CognitiveActionType] = frozenset(
     {
         CognitiveActionType.RESPOND,
@@ -80,10 +87,20 @@ class InputEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     event_id: str = Field(min_length=1)
+    event_type: InputEventType = InputEventType.USER_MESSAGE
     user_id: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1, max_length=20_000)
     run_id: str | None = None
+    task_id: str | None = None
+
+    @model_validator(mode="after")
+    def validate_event_source(self) -> "InputEvent":
+        if self.event_type == InputEventType.SCHEDULED_WAKEUP and not self.task_id:
+            raise ValueError("SCHEDULED_WAKEUP requires task_id")
+        if self.event_type != InputEventType.SCHEDULED_WAKEUP and self.task_id is not None:
+            raise ValueError("task_id is reserved for SCHEDULED_WAKEUP")
+        return self
 
 
 class CognitiveState(BaseModel):
@@ -94,12 +111,38 @@ class CognitiveState(BaseModel):
     event: InputEvent
     situation_summary: str | None = None
     uncertainty_codes: list[str] = Field(default_factory=list)
-    action: CognitiveAction | None = None
-    domain_request: DomainRequest | None = None
-    domain_outcome: DomainOutcome | None = None
+    action: "CognitiveActionSummary | None" = None
+    action_history: list["CognitiveActionSummary"] = Field(default_factory=list)
+    domain_request_refs: list[str] = Field(default_factory=list)
+    domain_outcome_refs: list[str] = Field(default_factory=list)
+    domain_calls_used: int = Field(default=0, ge=0)
+    requested_tool_calls: int = Field(default=0, ge=0)
+    requested_runtime_seconds: int = Field(default=0, ge=0)
     communication_plan: "CommunicationPlan | None" = None
     public_events: list[str] = Field(default_factory=list)
     error_codes: list[str] = Field(default_factory=list)
+
+
+class CognitiveActionSummary(BaseModel):
+    """可持久化的行动摘要；不携带完整领域请求或供应商数据。"""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action_type: CognitiveActionType
+    reason_code: str = Field(min_length=1)
+    related_goal_ids: list[str] = Field(default_factory=list)
+    domain_request_ref: str | None = None
+
+    @classmethod
+    def from_action(cls, action: CognitiveAction) -> "CognitiveActionSummary":
+        return cls(
+            action_type=action.action_type,
+            reason_code=action.reason_code,
+            related_goal_ids=list(action.related_goal_ids),
+            domain_request_ref=(
+                action.domain_request.request_id if action.domain_request else None
+            ),
+        )
 
 
 class CommunicationPlan(BaseModel):
@@ -107,11 +150,26 @@ class CommunicationPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    response_kind: Literal["ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED"]
+    response_kind: Literal[
+        "ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED",
+        "CAPABILITY_NOT_ENABLED",
+    ]
+    response_structure: Literal[
+        "KNOWLEDGE",
+        "CLARIFICATION",
+        "RESEARCH",
+        "SUITABILITY",
+        "CAPABILITY_NOTICE",
+        "SAFETY_BLOCK",
+    ] = "KNOWLEDGE"
     summary: str = Field(min_length=1)
+    sections: list["CommunicationSection"] = Field(default_factory=list)
     required_fields: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    data_times: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+    risk_disclosures: list[str] = Field(default_factory=list)
+    next_steps: list[str] = Field(default_factory=list)
 
 
 class PublicResponse(BaseModel):
@@ -119,13 +177,40 @@ class PublicResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    response_kind: Literal["ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED"]
+    response_kind: Literal[
+        "ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED",
+        "CAPABILITY_NOT_ENABLED",
+    ]
+    response_structure: Literal[
+        "KNOWLEDGE",
+        "CLARIFICATION",
+        "RESEARCH",
+        "SUITABILITY",
+        "CAPABILITY_NOTICE",
+        "SAFETY_BLOCK",
+    ] = "KNOWLEDGE"
     message: str = Field(min_length=1)
+    sections: list["CommunicationSection"] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    data_times: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
+    risk_disclosures: list[str] = Field(default_factory=list)
+    next_steps: list[str] = Field(default_factory=list)
     audit_codes: list[str] = Field(default_factory=list)
 
 
+class CommunicationSection(BaseModel):
+    """公开回复中的可渲染分区，不承载隐藏推理。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    section_type: Literal[
+        "SUMMARY", "FACTS", "FINDINGS", "RISKS", "LIMITATIONS", "NEXT_STEPS"
+    ]
+    title: str = Field(min_length=1)
+    items: list[str] = Field(min_length=1)
+
+
 def is_action_enabled(action_type: CognitiveActionType) -> bool:
-    """第一阶段 Policy 简表：行动是否在启用集合内（阶段 5 前的最小策略）。"""
+    """M4 默认 Action Policy 是否启用该行动。"""
     return action_type in ENABLED_ACTION_TYPES

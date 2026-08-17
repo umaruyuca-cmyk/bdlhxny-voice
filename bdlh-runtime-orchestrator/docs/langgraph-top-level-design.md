@@ -111,7 +111,7 @@ graph.invoke(Command(resume=user_value), config={"configurable": {"thread_id": t
 - Market Data Graph 不调用真实 MCP；
 - Java Portfolio Tool 仍是 Mock；
 - Analysis Engine 只验证输入、状态和输出契约；
-- 不允许旧 `stock-wrapper` 进入新流程；
+- 不允许旧 `stock-wrapper` 进入新流程（服务与仓库目录已退出；勿配置 `STOCK_WRAPPER_*`）；
 - Node Skill 是否继续使用，待完整 Python 流程跑通后再评估。
 
 下一阶段按顺序替换：
