@@ -246,11 +246,10 @@ class FinanceRuntime:
 
                 state.analysis_input = assemble_analysis_input(
                     analysis_id=request.request_id,
-                    analysis_type=request.analysis_type,
                     symbol=request.instruments[0].symbol,
                     observations=state.observations,
-                    requirements=[
-                        item.model_dump() for item in plan.data_requirements
+                    requested_capabilities=[
+                        item.capability for item in plan.data_requirements
                     ],
                     methodology_version="finance-research.m2",
                 )

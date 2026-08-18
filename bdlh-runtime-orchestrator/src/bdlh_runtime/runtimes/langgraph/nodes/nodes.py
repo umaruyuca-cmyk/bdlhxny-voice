@@ -6,24 +6,27 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from langgraph.types import interrupt
 
-from bdlh_runtime.runtimes.langgraph.agents.query_agent import RuleBasedQueryAgent
+from bdlh_runtime.runtimes.langgraph.agents.query_agent import RuleBasedUnderstandAgent
 from bdlh_runtime.runtimes.langgraph.agents.summary_model import DeterministicSummaryModel
+from bdlh_runtime.cognitive.goal_coverage import backfill_criteria
+from bdlh_runtime.cognitive.goal_schema import UnderstandOutput
 from bdlh_runtime.contracts.analysis import AnalysisInput, AnalysisResult, InstrumentRef
 from bdlh_runtime.contracts.observation import DataQuality, Observation, ProvenanceRecord
 from bdlh_runtime.contracts.workflow import TaskSpec, WorkflowPlan
-from bdlh_runtime.runtime.budgets import budget_for
-from bdlh_runtime.tools.capabilities import (
-    CapabilityRegistry,
-    build_default_capability_registry,
+from bdlh_runtime.registry import (
+    RegistrySnapshot,
+    allowed_capabilities,
+    build_window,
+    effective_operations,
+    eligible_capabilities,
 )
-from bdlh_runtime.tools.requirement_planner import CapabilityRequirementPlanner
+from bdlh_runtime.runtime.budgets import budget_for_profile, budget_state
 
 from ..graphs.state import RootState
 
@@ -72,24 +75,18 @@ def current_run_observations(state: RootState) -> list[dict[str, Any]]:
     return observations[start:]
 
 
-def _enrich_intent_with_context(state: RootState, intent: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """跨轮标的继承（v2.1 §7.3）：缺 symbol 时从会话实体表找最近标的继承。
-
-    返回 (enriched_intent, entities_addition)。entities_addition 含本轮解析出的标的，
-    供写入 state.entities 供后续轮次继承。
-    """
+def _enrich_understand_with_context(
+    state: RootState, output: UnderstandOutput
+) -> tuple[UnderstandOutput, list[dict[str, Any]]]:
+    """跨轮标的继承：缺 instruments 时从会话实体表找最近标的继承。"""
     entities_addition: list[dict[str, Any]] = []
-    symbol = intent.get("symbol")
-    if not symbol:
-        # 从会话实体表找最近的 instrument 标的继承
+    instruments = list(output.entities.instruments)
+    if not instruments:
         for ent in reversed(state.get("entities", [])):
             if ent.get("entity_type") == "instrument" and ent.get("symbol"):
-                symbol = ent["symbol"]
-                intent["symbol"] = symbol
-                intent["_symbol_inherited"] = True  # 标记本次标的来自跨轮继承
+                instruments = [ent["symbol"]]
                 break
-    # 本轮有标的则写入实体表，供后续轮次继承
-    if symbol:
+    for symbol in instruments:
         entities_addition.append({
             "entity_id": str(uuid4()),
             "entity_type": "instrument",
@@ -98,41 +95,33 @@ def _enrich_intent_with_context(state: RootState, intent: dict[str, Any]) -> tup
             "resolution_status": "resolved",
             "source_run_id": state.get("run_id", ""),
         })
-    return intent, entities_addition
+    if instruments != list(output.entities.instruments):
+        # 继承补到标的后，清除因缺标的产生的 missing（补问已无必要）
+        missing = [item for item in output.missing if item != "symbol"] if instruments else output.missing
+        output = output.model_copy(
+            update={
+                "entities": output.entities.model_copy(update={"instruments": instruments}),
+                "missing": missing,
+            }
+        )
+    return output, entities_addition
 
 
 def understand_request(state: RootState) -> dict[str, Any]:
-    """解析当前请求的最小意图，并做跨轮标的继承（v2.1 §7.3）。
-
-    当前规则实现用于骨架验证；生产版本应委托 Query Agent 输出受 Pydantic 契约
-    约束的意图。缺 symbol 时从会话实体表继承前文标的。
-    """
-    intent = RuleBasedQueryAgent().understand(state.get("request", {})).model_dump()
-    intent, entities_addition = _enrich_intent_with_context(state, intent)
+    """理解节点（重写 §2）：goals[] 立案，不做工具选择。"""
+    output = RuleBasedUnderstandAgent().understand(state.get("request", {}))
+    output, entities_addition = _enrich_understand_with_context(state, output)
     return {
-        "intent": intent,
+        "understand": output.model_dump(),
         "entities": entities_addition,
-        "confirmation_required": intent["requires_confirmation"],
-        "events": [event(state, "query.understood", "understand_request", intent)],
+        "events": [event(state, "query.understood", "understand_request", {"goals": [g.goal_id for g in output.goals]})],
     }
 
 
 def check_missing_context(state: RootState) -> dict[str, Any]:
-    """检查是否存在无法合理默认且会明显改变答案的关键信息（v2.1 §8）。
-
-    不再因缺少 symbol 强制中断——宏观/行业/知识问答等问题不需要股票代码。
-    只在"确实需要标的且无法合理默认"时才补问。
-    """
-    intent = state.get("intent", {})
-    analysis_type = intent.get("analysis_type", "market_snapshot")
-    missing: list[str] = []
-
-    # 知识问答/市场整体/综合/宏观类不需要 symbol，不补问。
-    # 单股分析类（technical/fundamental/valuation/portfolio_impact）确实需要标的。
-    needs_symbol = analysis_type in {"technical", "fundamental", "valuation", "portfolio_impact"}
-    if needs_symbol and not intent.get("symbol"):
-        missing.append("symbol")
-
+    """检查理解节点给出的缺口（UnderstandOutput.missing），不做类型推断。"""
+    understand = state.get("understand", {})
+    missing = list(understand.get("missing", []))
     return {
         "needs_clarification": bool(missing),
         "clarification_request": {"reason": "missing_context", "required_fields": missing} if missing else None,
@@ -140,67 +129,26 @@ def check_missing_context(state: RootState) -> dict[str, Any]:
     }
 
 
-def route_execution(state: RootState) -> dict[str, Any]:
-    """执行模式选择（v2.1 §3）：direct_response / single_capability / agent_loop。
-
-    规则版降级（无 LLM）：基于 QueryIntent 判断。生产可注入 LLM 版（本阶段先规则版）。
-    - 知识问答（含"什么是/解释/定义"等）→ direct_response，不调工具；
-    - 有 symbol 且 market_snapshot → single_capability（一次 quote）；
-    - 其他（含名称需解析、复杂研究）→ agent_loop；拿不准偏向 agent_loop。
-    """
-    from bdlh_runtime.contracts.route import IntentRoute, ToolProposal
-
-    intent = state.get("intent", {})
-    analysis_type = intent.get("analysis_type", "market_snapshot")
-    symbol = intent.get("symbol")
-    message = str(state.get("request", {}).get("message", ""))
-
-    # 知识问答关键词 → direct_response（不依赖实时金融事实）
-    knowledge_keywords = ("什么是", "解释", "定义", "含义", "什么意思", "怎么理解", "是指")
-    if any(kw in message for kw in knowledge_keywords):
-        route = IntentRoute(mode="direct_response", reason="知识问答，无需工具", confidence=0.8)
-        return {"intent_route": route.model_dump(), "events": [event(state, "intent.routed", "route_execution", {"mode": "direct_response"})]}
-
-    # 有 symbol 且单点查询 → single_capability（v2.1 §3.4：已解析 symbol 才走单能力）
-    if symbol and analysis_type == "market_snapshot":
-        route = IntentRoute(
-            mode="single_capability",
-            reason="单点数据查询，标的已解析",
-            confidence=0.8,
-            tool_proposal=ToolProposal(capability="market.get_realtime_quote", arguments={"symbol": symbol}),
-        )
-        return {"intent_route": route.model_dump(), "events": [event(state, "intent.routed", "route_execution", {"mode": "single_capability"})]}
-
-    # 其他 → agent_loop（含名称需解析、复杂研究；拿不准偏向 agent_loop）
-    route = IntentRoute(mode="agent_loop", reason="复杂研究或名称需解析，走 planner", confidence=0.6)
-    return {"intent_route": route.model_dump(), "events": [event(state, "intent.routed", "route_execution", {"mode": "agent_loop"})]}
-
-
 def direct_response_node(state: RootState) -> dict[str, Any]:
     """direct_response 快路径（v2.1 §3）：不调工具/不分析，直接生成回答。
 
-    基于 intent_route.direct_answer 或简单模板生成 final_response。
-    生产环境应由 LLM 生成；当前规则版用模板兜底。
-    发现需要实时数据时由调用方升级到 agent_loop（记录 upgrade 事件）。
+    无工具回答（重写 §2）：仅服务快路径已结束或 needs_external=false 的情况；
+    生产环境由直接回答模型生成，规则版用模板兜底。
     """
-    route_data = state.get("intent_route", {})
-    direct_answer = route_data.get("direct_answer")
     message = str(state.get("request", {}).get("message", ""))
-
-    if not direct_answer:
-        direct_answer = f"关于「{message}」：这是一个金融知识问题。当前规则版未接入 LLM 直接回答能力，生产环境应由 LLM 生成解释。"
+    direct_answer = f"关于「{message}」：这是一个知识性问题，当前装配未注入直接回答模型。"
 
     response = {
         "analysis_id": state.get("run_id", ""),
         "answer": direct_answer,
-        "mode": "direct_response",
-        "limitations": ["规则版直接回答，未接入 LLM；生产环境应由 LLM 生成"],
+        "mode": "no_tool_response",
+        "limitations": ["规则版直接回答，未接入 LLM；生产环境应由 LLM 生成解释"],
     }
     return {
         "final_response": response,
         "status": "SUCCESS",
         "conversation": [{"role": "assistant", "content": response, "run_id": state.get("run_id", "")}],
-        "events": [event(state, "response.completed", "direct_response_node", {"mode": "direct_response"})],
+        "events": [event(state, "response.completed", "direct_response_node", {"mode": "no_tool_response"})],
     }
 
 
@@ -259,53 +207,58 @@ def make_direct_response_node(direct_response_model: Any):
     return answer_without_tools
 
 
-def _build_data_requirements(
-    state: RootState,
-    capability_registry: CapabilityRegistry,
-) -> dict[str, Any]:
-    """由确定性策略生成需求、候选白名单和可执行 WorkflowPlan。"""
-    intent = state.get("intent", {})
-    analysis_type = intent.get("analysis_type", "market_snapshot")
-    planner = CapabilityRequirementPlanner(capability_registry)
-    requirements = planner.plan(intent, state.get("request", {}))
-    candidates = planner.candidate_manifest(analysis_type)
+def make_build_allowed_menu_node(snapshot: RegistrySnapshot):
+    """菜单节点（重写 §5）：资格交集 → eligible → allowed → 窗口。
 
-    # resolve_instrument 和 portfolio 仍由独立节点执行，不能重复列入 ReAct
-    # requirements；候选目录也只包含本轮可能进入数据子图的能力。
-    # portfolio 由独立节点 load_portfolio_context 处理，不列入 ReAct requirements
-    return {
-        "data_requirements": [item.model_dump() for item in requirements],
-        "capability_candidates": candidates,
-        "budget": asdict(budget_for(analysis_type)),
-        "tool_calls_used": 0,
-        "budget_exhausted": False,
-        "workflow_plan": _plan_for(state, analysis_type, bool(intent.get("requires_portfolio"))),
-        "events": [event(state, "workflow.planned", "build_data_requirements", {
-            "analysis_type": analysis_type,
-            "budget": asdict(budget_for(analysis_type)),
-            "required_capabilities": [item.capability for item in requirements if item.required],
-            "optional_capabilities": [item.capability for item in requirements if not item.required],
-            "candidate_count": len(candidates),
-        })],
-    }
+    菜单由资格决定（不读 goals / 不读用户原句）；goals 只参与窗口排序。
+    同时回填 GoalCoverage 的 candidate_capabilities 并写入库表预算。
+    """
+    budget_record = budget_for_profile(snapshot, "default")
+
+    def build_allowed_menu(state: RootState) -> dict[str, Any]:
+        ops = effective_operations(snapshot, account_id="*")
+        eligible = eligible_capabilities(snapshot, ops)
+        authenticated = state.get("user_id") is not None
+        allowed = allowed_capabilities(eligible, authenticated=authenticated)
+        allowed_names = [cap.name for cap in allowed]
+        window = build_window(snapshot, allowed)
+
+        understand = UnderstandOutput.model_validate(state.get("understand", {}))
+        goals = backfill_criteria(snapshot, understand.goals, allowed_names)
+        understand = understand.model_copy(
+            update={"goals": goals}
+        ).model_dump()
+
+        return {
+            "understand": understand,
+            "eligible": [cap.name for cap in eligible],
+            "allowed": allowed_names,
+            "tool_window": {
+                "allowed_hash": window.allowed_hash,
+                "visible_toolsets": window.visible_toolsets,
+                "visible_capabilities": window.visible_capabilities,
+                "expansion_reason": window.expansion_reason,
+                "generation": window.generation,
+            },
+            "capability_candidates": [cap.manifest() for cap in allowed],
+            "budget": budget_state(budget_record),
+            "tool_calls_used": 0,
+            "budget_exhausted": False,
+            "workflow_plan": _plan_for(
+                state,
+                requires_portfolio=any(goal.needs_account for goal in goals),
+            ),
+            "events": [event(state, "menu.built", "build_allowed_menu", {
+                "eligible": len(eligible),
+                "allowed": len(allowed_names),
+                "authenticated": authenticated,
+            })],
+        }
+
+    return build_allowed_menu
 
 
-def build_data_requirements(state: RootState) -> dict[str, Any]:
-    """兼容默认 Graph 构建：使用当前代码支持的能力目录。"""
-
-    return _build_data_requirements(state, build_default_capability_registry())
-
-
-def make_build_data_requirements_node(capability_registry: CapabilityRegistry):
-    """注入应用级能力目录，确保规划、执行和可观测性使用同一白名单。"""
-
-    def build_with_registry(state: RootState) -> dict[str, Any]:
-        return _build_data_requirements(state, capability_registry)
-
-    return build_with_registry
-
-
-def _plan_for(state: RootState, analysis_type: str, requires_portfolio: bool) -> dict[str, Any]:
+def _plan_for(state: RootState, requires_portfolio: bool) -> dict[str, Any]:
     """构建任务依赖图；调度器据此选择下一个可执行节点。"""
     tasks = [
         TaskSpec(task_id="resolve_instrument", task_type="resolve_instrument", output_ref=["instrument"]),
@@ -323,7 +276,7 @@ def _plan_for(state: RootState, analysis_type: str, requires_portfolio: bool) ->
     )
     if state.get("request", {}).get("require_confirmation"):
         tasks.append(TaskSpec(task_id="user_confirmation", task_type="user_confirmation", depends_on=["compose_response"], output_ref=["confirmation"]))
-    return WorkflowPlan(plan_id=str(uuid4()), analysis_type=analysis_type, tasks=tasks).model_dump()
+    return WorkflowPlan(plan_id=str(uuid4()), tasks=tasks).model_dump()
 
 
 def dispatch_workflow(state: RootState) -> dict[str, Any]:
@@ -354,8 +307,9 @@ def resolve_instrument(state: RootState) -> dict[str, Any]:
     生产环境由 Application Runtime 注入 Gateway 版本（见下方工厂），
     标的解析必须经由 MarketDataGateway 而非在节点内拼接（审查文档 §4.6）。
     """
-    intent = state.get("intent", {})
-    symbol = intent.get("symbol") or state.get("request", {}).get("symbol")
+    understand = state.get("understand", {})
+    instruments = (understand.get("entities") or {}).get("instruments") or []
+    symbol = (instruments[0] if instruments else None) or state.get("request", {}).get("symbol")
     instrument = InstrumentRef(symbol=str(symbol), name=f"标的 {symbol}")
     observation = Observation(
         observation_id=str(uuid4()),
@@ -381,8 +335,9 @@ def make_resolve_instrument_node(gateway_adapter: Any):
     from bdlh_runtime.observations.normalizer import ObservationNormalizer
 
     async def resolve_with_gateway(state: RootState) -> dict[str, Any]:
-        intent = state.get("intent", {})
-        symbol = intent.get("symbol") or state.get("request", {}).get("symbol")
+        understand = state.get("understand", {})
+        instruments = (understand.get("entities") or {}).get("instruments") or []
+        symbol = (instruments[0] if instruments else None) or state.get("request", {}).get("symbol")
         if not symbol:
             # 无标的 → 触发中断请求补充
             answer = interrupt({"reason": "missing_symbol", "message": "请提供要分析的股票代码。"})
@@ -459,13 +414,13 @@ def assemble_analysis(state: RootState) -> dict[str, Any]:
     from bdlh_runtime.runtimes.shared import assemble_analysis_input
 
     observations = [Observation.model_validate(item) for item in current_run_observations(state)]
-    requirements = state.get("data_requirements", [])
+    understand = state.get("understand", {})
+    instruments = (understand.get("entities") or {}).get("instruments") or []
     analysis_input = assemble_analysis_input(
         analysis_id=state.get("run_id", str(uuid4())),
-        analysis_type=state.get("intent", {}).get("analysis_type", "market_snapshot"),
-        symbol=state.get("intent", {}).get("symbol") or "unknown",
+        symbol=instruments[0] if instruments else "unknown",
         observations=observations,
-        requirements=requirements,
+        requested_capabilities=state.get("allowed", []),
     )
     result = _complete_current_task(state)
     result.update({
@@ -621,7 +576,7 @@ def make_persist_memory_node(memory_store: Any):
                         metadata={
                             "run_id": state.get("run_id"),
                             "knowledge_type": "confirmed",  # 标记为已确认知识
-                            "symbol": state.get("intent", {}).get("symbol"),
+                            "symbol": ((state.get("understand", {}).get("entities") or {}).get("instruments") or [None])[0],
                         },
                     )
                     events.append(event(state, "memory.knowledge_saved", "persist_memory", {"knowledge_type": "confirmed"}))
@@ -651,7 +606,7 @@ def make_persist_history_node(history_store: Any):
                 run_id=state.get("run_id", ""),
                 authenticated_user_id=state.get("user_id"),
                 request_snapshot=state.get("request", {}),
-                intent_snapshot=state.get("intent", {}),
+                intent_snapshot=state.get("understand", {}),
                 observations_summary=[
                     {"capability": o.get("capability"), "status": o.get("status")}
                     for o in state.get("observations", [])
@@ -726,17 +681,16 @@ def make_understand_request_node(query_agent: Any, context_builder: Any = None):
                 "recalled_memories": ctx.blocks["recalled_memories"].content if "recalled_memories" in ctx.blocks else [],
             }
 
-        # LlmQueryAgent 支持 extra_context 参数；规则版忽略它
+        # LlmUnderstandAgent 支持 extra_context 参数；规则版忽略它
         try:
-            intent = query_agent.understand(request, extra_context=extra_context).model_dump()
+            output = query_agent.understand(request, extra_context=extra_context)
         except TypeError:
-            intent = query_agent.understand(request).model_dump()
-        intent, entities_addition = _enrich_intent_with_context(state, intent)
+            output = query_agent.understand(request)
+        output, entities_addition = _enrich_understand_with_context(state, output)
         return {
-            "intent": intent,
+            "understand": output.model_dump(),
             "entities": entities_addition,
-            "confirmation_required": intent["requires_confirmation"],
-            "events": [event(state, "query.understood", "understand_request", intent)],
+            "events": [event(state, "query.understood", "understand_request", {"goals": [g.goal_id for g in output.goals]})],
         }
 
     return understand_with_context

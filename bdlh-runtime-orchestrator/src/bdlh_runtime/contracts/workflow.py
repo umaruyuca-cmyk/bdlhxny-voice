@@ -26,7 +26,6 @@ class WorkflowPlan(BaseModel):
     """可序列化、可 Checkpoint 的动态任务计划。"""
 
     plan_id: str
-    analysis_type: str = "market_snapshot"
     tasks: list[TaskSpec] = Field(default_factory=list)
     current_task_id: str | None = None
     revision: int = 0

@@ -4,7 +4,7 @@
 """
 
 from .contracts import PluginProbeOutcome, PluginProbeRequest, PluginProbeResult
-from .capability import PLUGIN_PROBE_CAPABILITY, register_plugin_probe_capability
+from .capability import PLUGIN_PROBE_CAPABILITY
 from .manifests import PLUGIN_PROBE_DESCRIPTOR, PLUGIN_PROBE_MANIFEST
 from .runtime import PluginProbeRuntime
 
@@ -16,5 +16,4 @@ __all__ = [
     "PluginProbeRequest",
     "PluginProbeResult",
     "PluginProbeRuntime",
-    "register_plugin_probe_capability",
 ]

@@ -27,12 +27,10 @@ from bdlh_runtime.runtime.errors import ConfigurationError
 from bdlh_runtime.runtime.manifest_validation import (
     validate_descriptor_against_registry,
 )
-from bdlh_runtime.tools.capabilities import (
-    CapabilityRegistry,
+from tests.helpers_registry import build_default_capability_registry
+from bdlh_runtime.tools.capabilities import (    CapabilityRegistry,
     CapabilitySpec,
-    ToolsetName,
-    build_default_capability_registry,
-)
+    ToolsetName,)
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "bdlh_runtime"
 

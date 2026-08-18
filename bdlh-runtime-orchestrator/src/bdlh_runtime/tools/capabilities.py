@@ -1,34 +1,24 @@
 """统一业务能力目录。
 
-实施标记：``SW31-TOOLSET-VIEW``。Capability 规格仍是唯一能力真源；
-Toolset 只读取每个规格声明的业务分组，不复制底层路由定义。
-
-目录只描述 Agent 可以理解的稳定业务能力，不暴露 MCP 服务名、原始工具名、
-传输协议或供应商参数。底层路由仍由 integrations/mcp 负责。
+实施标记：``REWRITE-ENTRY-AND-TOOL-MENU``。目录真源是数据库（经
+``RegistrySnapshot`` 加载）；本模块只提供构建视图与查询，**不内置任何
+工具清单兜底**（库空由 loader fail-fast 拒绝启动）。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal
+from typing import Iterable
 
-
-CapabilityDomain = Literal[
-    "market",
-    "fundamental",
-    "sector",
-    "research",
-    "portfolio",
-    "user",
-    "analysis",
-    "plugin_probe",
-]
-CapabilityAdapter = Literal["mcp", "java", "web", "local"]
+from bdlh_runtime.registry import CapabilityRecord, RegistrySnapshot
 
 
 class ToolsetName(StrEnum):
-    """暴露给上层规划器的稳定业务能力分组。"""
+    """稳定业务分组名常量（名单真源在库表 bdlh_runtime_toolset）。
+
+    保留 enum 仅作字符串常量；启动时 loader 校验 DB 行，不以此为准。
+    """
 
     MARKET_READ = "market_read"
     FUNDAMENTAL_READ = "fundamental_read"
@@ -41,23 +31,23 @@ class ToolsetName(StrEnum):
 
 @dataclass(frozen=True)
 class CapabilitySpec:
-    """一个可暴露给规划器的统一只读能力。"""
+    """从 DB 行派生的能力视图；供 Graph/Adapter 消费。"""
 
     name: str
     description: str
-    domain: CapabilityDomain
-    adapter: CapabilityAdapter
-    analysis_types: frozenset[str]
+    domain: str
+    adapter: str
     required_arguments: frozenset[str] = frozenset()
     output_schema: str = "Observation"
     timeout_seconds: int = 20
     cost: int = 1
     read_only: bool = True
-    toolsets: frozenset[ToolsetName] = frozenset()
+    requires_authenticated_user: bool = False
+    depends_on: frozenset[str] = frozenset()
+    toolsets: frozenset[str] = frozenset()
 
     def manifest(self) -> dict[str, object]:
         """返回可安全放入模型上下文的描述；不包含底层路由细节。"""
-
         return {
             "name": self.name,
             "description": self.description,
@@ -65,15 +55,32 @@ class CapabilitySpec:
             "required_arguments": sorted(self.required_arguments),
             "output_schema": self.output_schema,
             "read_only": self.read_only,
-            "toolsets": sorted(item.value for item in self.toolsets),
+            "toolsets": sorted(self.toolsets),
         }
+
+    @classmethod
+    def from_record(cls, record: CapabilityRecord) -> "CapabilitySpec":
+        return cls(
+            name=record.name,
+            description=record.description,
+            domain=record.domain,
+            adapter=record.adapter,
+            required_arguments=record.required_arguments,
+            output_schema=record.output_schema,
+            timeout_seconds=record.timeout_seconds,
+            cost=record.cost,
+            read_only=record.read_only,
+            requires_authenticated_user=record.requires_authenticated_user,
+            depends_on=record.depends_on,
+            toolsets=record.toolsets,
+        )
 
 
 class CapabilityRegistry:
-    """全局统一能力白名单。"""
+    """从 RegistrySnapshot 派生的只读能力目录（唯一能力真源视图）。"""
 
-    def __init__(self) -> None:
-        self._items: dict[str, CapabilitySpec] = {}
+    def __init__(self, specs: Iterable[CapabilitySpec] = ()) -> None:
+        self._items: dict[str, CapabilitySpec] = {spec.name: spec for spec in specs}
 
     def register(self, spec: CapabilitySpec) -> None:
         if spec.name in self._items:
@@ -94,141 +101,14 @@ class CapabilityRegistry:
     def list(self) -> list[CapabilitySpec]:
         return [self._items[name] for name in sorted(self._items)]
 
-    def candidates_for(self, analysis_type: str) -> list[CapabilitySpec]:
-        """按分析类型生成候选集，避免每轮向模型暴露全部能力。"""
 
-        return [
-            spec
-            for spec in self.list()
-            if analysis_type in spec.analysis_types
-        ]
+def registry_from_snapshot(snapshot: RegistrySnapshot) -> CapabilityRegistry:
+    """从已通过启动校验的快照构建能力目录。"""
+    return CapabilityRegistry(
+        CapabilitySpec.from_record(record) for record in snapshot.capabilities
+    )
 
 
-def build_default_capability_registry() -> CapabilityRegistry:
-    """创建当前生产代码支持的统一能力目录。"""
-
-    registry = CapabilityRegistry()
-    market_types = frozenset({
-        "market_snapshot", "technical", "fundamental", "valuation",
-        "portfolio_impact", "comprehensive",
-    })
-
-    specs = [
-        CapabilitySpec(
-            "market.resolve_instrument",
-            "解析证券代码或名称并返回标准化标的信息",
-            "market", "mcp", market_types,
-            frozenset({"symbol"}), "InstrumentObservation",
-            toolsets=frozenset({ToolsetName.MARKET_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_realtime_quote",
-            "获取指定标的的最新标准化行情",
-            "market", "mcp", market_types,
-            frozenset({"symbol"}), "RealtimeQuoteObservation",
-            toolsets=frozenset({ToolsetName.MARKET_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_historical_prices",
-            "获取指定标的的标准化历史 OHLCV 数据",
-            "market", "mcp", frozenset({"technical", "portfolio_impact", "comprehensive"}),
-            frozenset({"symbol", "lookback_days"}), "HistoricalPriceObservation",
-            toolsets=frozenset({ToolsetName.MARKET_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_financial_statements",
-            "获取基本面分析所需的标准化财务报表数据",
-            "fundamental", "mcp", frozenset({"fundamental", "valuation", "comprehensive"}),
-            frozenset({"symbol"}), "FinancialStatementsObservation",
-            toolsets=frozenset({ToolsetName.FUNDAMENTAL_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_valuation",
-            "获取市盈率、市净率等标准化估值数据",
-            "fundamental", "mcp", frozenset({"fundamental", "valuation", "comprehensive"}),
-            frozenset({"symbol"}), "ValuationObservation",
-            toolsets=frozenset({ToolsetName.FUNDAMENTAL_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_industry_context",
-            "获取标的所属行业及行业背景",
-            "sector", "mcp", frozenset({"fundamental", "valuation", "comprehensive"}),
-            frozenset({"symbol"}), "IndustryObservation",
-            toolsets=frozenset({ToolsetName.FUNDAMENTAL_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_money_flow",
-            "获取标的资金流数据",
-            "market", "mcp", frozenset({"technical", "comprehensive"}),
-            frozenset({"symbol"}), "MoneyFlowObservation",
-            toolsets=frozenset({ToolsetName.MARKET_READ}),
-        ),
-        CapabilitySpec(
-            "market.get_news",
-            "获取与标的相关的结构化新闻",
-            "research", "mcp", frozenset({"technical", "fundamental", "valuation", "comprehensive"}),
-            frozenset({"symbol"}), "NewsObservation",
-            toolsets=frozenset({ToolsetName.NEWS_READ}),
-        ),
-        CapabilitySpec(
-            "portfolio.get_current_positions",
-            "读取当前用户持仓",
-            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive", "suitability"}),
-            output_schema="PortfolioObservation", timeout_seconds=10,
-            toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
-        ),
-        CapabilitySpec(
-            "portfolio.get_account_snapshot",
-            "读取当前用户账户快照",
-            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive", "suitability"}),
-            output_schema="AccountObservation", timeout_seconds=10,
-            toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
-        ),
-        CapabilitySpec(
-            "portfolio.get_transaction_history",
-            "读取当前用户交易历史",
-            "portfolio", "java", frozenset({"portfolio_impact", "comprehensive"}),
-            output_schema="TransactionObservation", timeout_seconds=10,
-            toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
-        ),
-        CapabilitySpec(
-            # 确定性重算能力：消费已标准化的持仓/账户/行情 Observation，
-            # 以 quantity * price 重算市值与权重，不经 Java adapter（adapter="local"）。
-            # M3 PortfolioValuationBuilder 产出；之前仅作 Observation.discriminator，
-            # 现补注册以便 ADR-010 manifest 启动校验时可见。
-            "portfolio.build_current_valuation",
-            "基于行情对当前持仓做确定性估值重算",
-            "portfolio", "local", frozenset({"portfolio_valuation", "suitability"}),
-            frozenset({
-                "positions_observation",
-                "account_observation",
-                "quote_observations",
-            }),
-            "PortfolioValuationObservation", timeout_seconds=30,
-            toolsets=frozenset({ToolsetName.PORTFOLIO_READ}),
-        ),
-        CapabilitySpec(
-            "user.get_risk_profile",
-            "读取当前用户风险画像",
-            "user", "java", frozenset({"portfolio_impact", "comprehensive", "suitability"}),
-            output_schema="RiskProfileObservation", timeout_seconds=10,
-            toolsets=frozenset({ToolsetName.FINANCIAL_PROFILE_READ}),
-        ),
-        CapabilitySpec(
-            "research.web_search",
-            "检索最新外部资料并返回带来源的标准化结果",
-            "research", "web", frozenset({"fundamental", "valuation", "comprehensive"}),
-            frozenset({"query"}), "WebSearchObservation",
-            toolsets=frozenset({ToolsetName.NEWS_READ}),
-        ),
-        CapabilitySpec(
-            "analysis.run_analysis",
-            "对已标准化的数据执行确定性金融分析",
-            "analysis", "local", market_types,
-            output_schema="AnalysisResult", timeout_seconds=60,
-            toolsets=frozenset({ToolsetName.PLANNING_COMPUTE}),
-        ),
-    ]
-    for spec in specs:
-        registry.register(spec)
-    return registry
+def load_capability_registry(snapshot: RegistrySnapshot) -> CapabilityRegistry:
+    """装配入口：唯一合法的目录构建方式（禁止默认清单兜底）。"""
+    return registry_from_snapshot(snapshot)

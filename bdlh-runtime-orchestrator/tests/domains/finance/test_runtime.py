@@ -24,7 +24,7 @@ from bdlh_runtime.domains.finance.contracts import (
 )
 from bdlh_runtime.domains.finance.planner import FinancePlanner
 from bdlh_runtime.domains.finance.runtime import FinanceRuntime
-from bdlh_runtime.tools.capabilities import build_default_capability_registry
+from tests.helpers_registry import build_default_capability_registry
 
 
 class FakeFinanceExecutor:

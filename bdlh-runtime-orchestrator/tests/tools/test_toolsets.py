@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from bdlh_runtime.tools.capabilities import (
-    CapabilityRegistry,
+from tests.helpers_registry import build_default_capability_registry
+from bdlh_runtime.tools.capabilities import (    CapabilityRegistry,
     CapabilitySpec,
-    ToolsetName,
-    build_default_capability_registry,
-)
-from bdlh_runtime.tools.toolsets import (
-    ToolsetRegistry,
-    build_default_toolset_registry,
-)
+    ToolsetName,)
+from bdlh_runtime.tools.toolsets import load_toolset_registry, toolset_registry_from_snapshot
+from bdlh_runtime.tools.toolsets import (    ToolsetRegistry,)
 
 
 def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None:
     capabilities = build_default_capability_registry()
-    toolsets = build_default_toolset_registry(capabilities)
+    toolsets = toolset_registry_from_snapshot(seeded_snapshot())
 
     grouped = [spec for toolset in toolsets.list() for spec in toolset.capabilities]
 
@@ -31,7 +27,7 @@ def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None
 
 
 def test_default_toolset_membership_is_stable_and_business_facing() -> None:
-    toolsets = build_default_toolset_registry()
+    toolsets = toolset_registry_from_snapshot(seeded_snapshot())
 
     assert {
         toolset.name: len(toolset.capabilities)
@@ -49,7 +45,7 @@ def test_default_toolset_membership_is_stable_and_business_facing() -> None:
 
 
 def test_selection_manifest_does_not_expand_all_capabilities() -> None:
-    manifest = build_default_toolset_registry().selection_manifest()
+    manifest = toolset_registry_from_snapshot(seeded_snapshot()).selection_manifest()
 
     assert len(manifest) == 7
     assert all(set(item) == {"name", "description", "capability_count"} for item in manifest)
@@ -57,9 +53,8 @@ def test_selection_manifest_does_not_expand_all_capabilities() -> None:
 
 
 def test_selected_toolset_expands_only_safe_unified_capability_manifests() -> None:
-    manifest = build_default_toolset_registry().capability_manifest(
+    manifest = toolset_registry_from_snapshot(seeded_snapshot()).capability_manifest(
         ToolsetName.NEWS_READ,
-        analysis_type="fundamental",
     )
 
     assert {item["name"] for item in manifest} == {
@@ -71,15 +66,13 @@ def test_selected_toolset_expands_only_safe_unified_capability_manifests() -> No
 
 
 def test_suitability_toolsets_expose_minimum_user_reads_and_local_valuation() -> None:
-    toolsets = build_default_toolset_registry()
+    toolsets = toolset_registry_from_snapshot(seeded_snapshot())
 
     portfolio = toolsets.capability_manifest(
         ToolsetName.PORTFOLIO_READ,
-        analysis_type="suitability",
     )
     profile = toolsets.capability_manifest(
         ToolsetName.FINANCIAL_PROFILE_READ,
-        analysis_type="suitability",
     )
 
     assert {item["name"] for item in portfolio} == {

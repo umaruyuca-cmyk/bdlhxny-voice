@@ -16,6 +16,7 @@ from bdlh_runtime.cognitive.contracts import (
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
+from tests.helpers_registry import seeded_snapshot
 from bdlh_runtime.runtime.rollout import (
     CognitiveTrafficRouter,
     RolloutConfig,
@@ -102,11 +103,14 @@ class GraphSpy:
 
 
 def _application(cognitive: Any):
-    application = create_application(Settings(
-        environment="development",
-        auth_required=True,
-        jwt_secret=SECRET,
-    ))
+    application = create_application(
+        Settings(
+            environment="development",
+            auth_required=True,
+            jwt_secret=SECRET,
+        ),
+        registry_snapshot=seeded_snapshot(),
+    )
     application.traffic_router = CognitiveTrafficRouter(RolloutConfig(
         mode=RolloutMode.ALL,
         gate=approved_test_gate(),

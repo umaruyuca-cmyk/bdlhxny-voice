@@ -81,7 +81,7 @@ async def test_persist_history_node_writes_record():
     assert records[0].run_id == "r1"
     assert records[0].authenticated_user_id == "u1"
     assert records[0].status == "SUCCESS"
-    assert records[0].intent_snapshot["symbol"] == "600519"
+    assert records[0].intent_snapshot["entities"]["instruments"] == ["600519"]
 
 
 @pytest.mark.asyncio

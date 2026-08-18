@@ -7,8 +7,7 @@
 1. 纯函数：analyze(input) -> result，相同输入永远相同输出（可复现）；
 2. 无 I/O：不访问 MCP/Java/数据库/行情接口；
 3. 防未来函数：所有指标只使用截至当前的数据点；
-4. 按 analysis_type 路由：不同分析类型计算不同指标组合，
-   market_snapshot 走轻量路径，comprehensive 走全量。
+4. 观察驱动：有哪些 Observation 就算哪些指标，只有 quote 时仍能出快照。
 
 计算责任（架构文档 v3.1 §8.3）：
 OHLCV → MA/EMA/MACD/RSI/ATR → 波动率/最大回撤/支撑阻力 → 信号/风险标记/结论。
@@ -44,18 +43,11 @@ INDICATOR_PARAMS = {
 def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
     """执行分析并返回结构化结果（纯函数，无副作用）。
 
-    输入 AnalysisInput，输出 AnalysisResult。数据质量状态传播：
-    - 输入 data_quality 为 OK 时按 analysis_type 完整计算；
-    - 输入为 PARTIAL/STALE 时仍计算可用维度，但状态标记 PARTIAL，
-      limitations 说明缺失项；
-    - 关键数据（历史K线）缺失时输出 LIMITED，不编造指标。
+    观察驱动（重写 §6.2）：有哪些 Observation 就算哪些——只有 quote 时
+    仍能出快照；关键数据（历史K线）缺失只标记 limitation，不编造指标。
     """
 
     prices = _extract_closes(analysis_input.historical_prices)
-    analysis_type = analysis_input.analysis_type or "market_snapshot"
-    objective_research = (
-        analysis_input.methodology_version == FINANCE_RESEARCH_M2_METHODOLOGY
-    )
 
     calculated: dict[str, Any] = {"engine": ENGINE_VERSION}
     signals: list[dict[str, Any]] = []
@@ -66,50 +58,12 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
             "数据能力不可用: " + ", ".join(analysis_input.data_quality.known_unavailable)
         )
 
-    # ── 基础数据状态判断 ──
+    # ── 数据状态判断 ──
     has_history = len(prices) >= 20  # 至少够算 20 日窗口的指标
     has_quote = analysis_input.realtime_quote is not None
-    if analysis_type == "market_snapshot" and not has_quote:
-        limitations.append("实时行情数据缺失，无法生成市场快照")
-    needs_history = (
-        analysis_type in {"technical", "comprehensive"}
-        if objective_research
-        else analysis_type != "market_snapshot"
-    )
-    if not has_history and needs_history:
-        limitations.append("历史K线不足，无法计算技术指标与风险指标")
 
-    # ── 按分析类型计算 ──
-    if analysis_type in {"technical", "comprehensive", "fundamental"} and has_history:
-        # 提取 OHLC 供 ATR/支撑阻力使用（审查文档 §6.2：补齐指标接线）
-        highs, lows, closes = _extract_ohlc(analysis_input.historical_prices)
-        technical = _technical_analysis(prices, analysis_input, limitations, highs=highs, lows=lows, closes=closes)
-        calculated.update(technical["indicators"])
-        signals.extend(technical["signals"])
-        risk_flags.extend(technical["risk_flags"])
-
-    if analysis_type in {"fundamental", "comprehensive"}:
-        fundamental = _fundamental_analysis(analysis_input, limitations)
-        calculated.update(fundamental["indicators"])
-        risk_flags.extend(fundamental["risk_flags"])
-
-    if analysis_type == "comprehensive":
-        risk = _risk_summary(analysis_input, limitations, prices)
-        calculated.update(risk["indicators"])
-        risk_flags.extend(risk["risk_flags"])
-
-    # ── 组合影响分析：持仓标的 vs 分析标的的重合与盈亏 ──
-    # M2 客观综合研究不读取持仓；旧默认链路保留原 comprehensive 兼容行为。
-    if analysis_type == "portfolio_impact" or (
-        analysis_type == "comprehensive" and not objective_research
-    ):
-        portfolio = _portfolio_analysis(analysis_input, limitations)
-        calculated.update(portfolio["indicators"])
-        signals.extend(portfolio["signals"])
-        risk_flags.extend(portfolio["risk_flags"])
-
-    # ── 快照类型：只需行情快照，不要求历史K线 ──
-    if analysis_type == "market_snapshot" and has_quote:
+    # ── 观察驱动计算：有什么算什么 ──
+    if has_quote:
         quote = analysis_input.realtime_quote
         calculated["snapshot"] = {
             "symbol": analysis_input.instrument.symbol,
@@ -117,20 +71,44 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
             "as_of": quote.get("as_of", quote.get("date")),
         }
 
-    # ── 状态判定 ──
-    status = _decide_status(
-        analysis_input,
-        has_history,
-        analysis_type,
-        limitations,
-        objective_research=objective_research,
+    if has_history:
+        highs, lows, closes = _extract_ohlc(analysis_input.historical_prices)
+        technical = _technical_analysis(prices, analysis_input, limitations, highs=highs, lows=lows, closes=closes)
+        calculated.update(technical["indicators"])
+        signals.extend(technical["signals"])
+        risk_flags.extend(technical["risk_flags"])
+        risk = _risk_summary(analysis_input, limitations, prices)
+        calculated.update(risk["indicators"])
+        risk_flags.extend(risk["risk_flags"])
+    else:
+        limitations.append("历史K线不足，未计算技术指标与风险指标")
+
+    if analysis_input.financial_data is not None:
+        fundamental = _fundamental_analysis(analysis_input, limitations)
+        calculated.update(fundamental["indicators"])
+        risk_flags.extend(fundamental["risk_flags"])
+
+    if analysis_input.portfolio_context is not None:
+        portfolio = _portfolio_analysis(analysis_input, limitations)
+        calculated.update(portfolio["indicators"])
+        signals.extend(portfolio["signals"])
+        risk_flags.extend(portfolio["risk_flags"])
+
+    # ── 状态判定（观察驱动）：无任何业务数据 → LIMITED ──
+    has_any_business_data = (
+        has_quote
+        or has_history
+        or analysis_input.financial_data is not None
+        or analysis_input.valuation_data is not None
+        or analysis_input.portfolio_context is not None
     )
+    status = _decide_status(analysis_input, has_any_business_data, limitations)
 
     # ── 结论：由确定性信号生成，不依赖 LLM ──
     conclusions = (
         [{"text": "数据不足，无法形成可靠分析结论", "confidence": "LOW"}]
         if status == "LIMITED"
-        else _build_conclusions(signals, risk_flags, analysis_type)
+        else _build_conclusions(signals, risk_flags)
     )
 
     return AnalysisResult(
@@ -376,55 +354,26 @@ def _portfolio_analysis(analysis_input: AnalysisInput, limitations: list[str]) -
 
 def _decide_status(
     analysis_input: AnalysisInput,
-    has_history: bool,
-    analysis_type: str,
+    has_any_business_data: bool,
     limitations: list[str],
-    *,
-    objective_research: bool = False,
 ) -> str:
-    """根据数据质量判定结果状态：SUCCESS / PARTIAL / LIMITED。"""
+    """观察驱动状态判定：无任何业务数据 → LIMITED；有缺口 → PARTIAL。"""
 
     base_quality = analysis_input.data_quality.quality_status
     if base_quality in ("INVALID", "FAILED"):
         return "LIMITED"
-
-    if objective_research:
-        # M2 五类研究只检查 Planner 为该类型声明的关键输入。
-        missing_critical_input = (
-            (analysis_type == "market_snapshot" and analysis_input.realtime_quote is None)
-            or (analysis_type == "technical" and not has_history)
-            or (analysis_type == "fundamental" and analysis_input.financial_data is None)
-            or (analysis_type == "valuation" and analysis_input.valuation_data is None)
-            or (
-                analysis_type == "comprehensive"
-                and (
-                    not has_history
-                    or analysis_input.financial_data is None
-                    or analysis_input.valuation_data is None
-                )
-            )
-        )
-        if missing_critical_input:
-            return "LIMITED"
-    else:
-        # 旧 Root Graph 的默认兼容规则保持不变。
-        if analysis_type == "market_snapshot" and analysis_input.realtime_quote is None:
-            return "LIMITED"
-        if analysis_type not in {"market_snapshot", "portfolio_impact"} and not has_history:
-            return "LIMITED"
-
-    # 数据质量 PARTIAL/STALE → PARTIAL
+    if not has_any_business_data:
+        return "LIMITED"
     if base_quality in ("PARTIAL", "STALE") or limitations:
         return "PARTIAL"
-
     return "SUCCESS"
 
 
-def _build_conclusions(signals: list[dict], risk_flags: list[dict], analysis_type: str) -> list[dict]:
+def _build_conclusions(signals: list[dict], risk_flags: list[dict]) -> list[dict]:
     """由确定性信号生成结论，不依赖 LLM（供 Summary Model 二次加工）。"""
 
     if not signals and not risk_flags:
-        return [{"text": f"{analysis_type} 分析完成，无显著信号", "confidence": "LOW"}]
+        return [{"text": "分析完成，无显著信号", "confidence": "LOW"}]
 
     conclusions: list[dict] = []
     bullish = [s for s in signals if s.get("direction") == "bullish"]

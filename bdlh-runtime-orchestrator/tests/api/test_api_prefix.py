@@ -5,12 +5,13 @@ from __future__ import annotations
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
+from tests.helpers_registry import seeded_snapshot
 
 
 def test_api_prefix_from_settings():
     """api_prefix 来自 Settings，路由挂在配置前缀下而非硬编码 /api/v1。"""
     app = create_api_app(
-        create_application(Settings(environment="development")),
+        create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot()),
         api_prefix="/custom/v2",
     )
     # url_path_for 按路由名解析完整路径，验证前缀生效
@@ -23,7 +24,7 @@ def test_api_prefix_from_settings():
 def test_default_prefix_is_api_v1():
     """默认 api_prefix 为 /api/v1。"""
     app = create_api_app(
-        create_application(Settings(environment="development")),
+        create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot()),
         api_prefix="/api/v1",
     )
     assert app.url_path_for("health") == "/api/v1/health"

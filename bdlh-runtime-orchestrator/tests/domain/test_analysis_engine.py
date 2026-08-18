@@ -88,7 +88,6 @@ def test_fundamental_does_not_require_unplanned_history():
     result = analyze(
         AnalysisInput(
             analysis_id="t-fundamental",
-            analysis_type="fundamental",
             instrument={"symbol": "600519"},
             realtime_quote={"price": 1500.0},
             financial_data={"revenue": 1000.0, "net_profit": 300.0},
@@ -106,7 +105,6 @@ def test_valuation_does_not_require_unplanned_history():
     result = analyze(
         AnalysisInput(
             analysis_id="t-valuation",
-            analysis_type="valuation",
             instrument={"symbol": "600519"},
             realtime_quote={"price": 1500.0},
             valuation_data={"pe": 20.0, "pb": 6.0},
@@ -124,7 +122,6 @@ def test_comprehensive_objective_research_does_not_read_portfolio_context():
     result = analyze(
         AnalysisInput(
             analysis_id="t-comprehensive-objective",
-            analysis_type="comprehensive",
             instrument={"symbol": "600519"},
             realtime_quote={"price": 1500.0},
             historical_prices=_SYNTHETIC_BARS,
@@ -151,7 +148,6 @@ def test_legacy_comprehensive_keeps_portfolio_compatibility() -> None:
     result = analyze(
         AnalysisInput(
             analysis_id="t-comprehensive-legacy",
-            analysis_type="comprehensive",
             instrument={"symbol": "600519"},
             realtime_quote={"price": 1500.0},
             historical_prices=_SYNTHETIC_BARS,

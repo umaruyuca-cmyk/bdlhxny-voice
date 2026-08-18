@@ -1,7 +1,7 @@
 """Controlled tools exposed to LangGraph nodes and agents.
 
-Toolset exports are marked ``SW31-TOOLSET-VIEW`` and are not wired into the
-current Root Graph by this module.
+Capability/Toolset 目录真源是数据库（RegistrySnapshot）；本模块导出
+派生视图构建器，不提供默认清单兜底。
 """
 
 from .models import ToolResult, ToolSpec
@@ -11,9 +11,10 @@ from .capabilities import (
     CapabilityRegistry,
     CapabilitySpec,
     ToolsetName,
-    build_default_capability_registry,
+    load_capability_registry,
+    registry_from_snapshot,
 )
-from .toolsets import ToolsetRegistry, ToolsetSpec, build_default_toolset_registry
+from .toolsets import ToolsetRegistry, ToolsetSpec, load_toolset_registry
 
 __all__ = [
     "CapabilityRegistry",
@@ -25,6 +26,7 @@ __all__ = [
     "ToolsetSpec",
     "ToolRegistry",
     "ToolRuntime",
-    "build_default_capability_registry",
-    "build_default_toolset_registry",
+    "load_capability_registry",
+    "load_toolset_registry",
+    "registry_from_snapshot",
 ]

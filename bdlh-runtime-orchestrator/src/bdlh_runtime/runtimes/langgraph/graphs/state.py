@@ -34,20 +34,22 @@ class RootState(TypedDict, total=False):
     request: dict[str, Any]
     # 列表字段采用 reducer 追加，避免子图更新时覆盖先前的轨迹。
     conversation: Annotated[list[dict[str, Any]], merge_state_items]
-    intent: dict[str, Any]
-    # 执行模式选择输出（v2.1 §3）：direct_response / single_capability / agent_loop
-    intent_route: dict[str, Any]
-    # 会话实体表（v2.1 §7.3）：本会话出现过的标的/指数/行业等，供指代消解与跨轮标的继承
+    # 理解节点输出（UnderstandOutput.model_dump()）：goals[] 立案与缺口
+    understand: dict[str, Any]
+    # 会话实体表：本会话出现过的标的等，供指代消解与跨轮标的继承
     entities: Annotated[list[dict[str, Any]], merge_state_items]
     needs_clarification: bool
     clarification_request: dict[str, Any] | None
     workflow_plan: dict[str, Any]
-    # 本轮仅向 Research Agent 暴露的统一能力候选，不包含 MCP 原始工具。
+    # 资格菜单（registry.menu 计算）：稳定源 allowed 与提示词窗口
+    eligible: list[str]
+    allowed: list[str]
+    tool_window: dict[str, Any]
+    # 本轮窗口可见能力（capability_candidates = tool_window.visible_capabilities）
     capability_candidates: list[dict[str, Any]]
     current_task_id: str | None
     next_stage: str | None
-    data_requirements: list[dict[str, Any]]
-    # analysis_type 对应的运行预算，由 build_data_requirements 写入，子图只消费并更新计数。
+    # 预算来自库表 run_budget（profile=default），子图只消费并更新计数。
     budget: dict[str, Any]
     tool_calls_used: int
     budget_exhausted: bool

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
+from tests.helpers_registry import seeded_snapshot
 
 
 SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes"
@@ -26,7 +27,8 @@ def _token(user_id: int, *, expired: bool = False) -> str:
 
 def _client():
     application = create_application(
-        Settings(environment="development", auth_required=True, jwt_secret=SECRET)
+        Settings(environment="development", auth_required=True, jwt_secret=SECRET),
+        registry_snapshot=seeded_snapshot(),
     )
     return application, TestClient(create_api_app(application))
 

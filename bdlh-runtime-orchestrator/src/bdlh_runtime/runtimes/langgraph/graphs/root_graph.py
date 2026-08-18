@@ -46,12 +46,13 @@ def route_stage(state: RootState) -> str:
 
 
 def route_after_query(state: RootState) -> str:
-    """query_graph 后：direct_response 走快路径直接回答；其他进 dispatch_workflow。"""
-    mode = state.get("intent_route", {}).get("mode", "agent_loop")
-    return "direct_response" if mode == "direct_response" else "dispatch"
+    """query_graph 后：无需外部工具 → 无工具回答；需要外部 → 进 Agent 循环。"""
+    needs_external = bool(state.get("understand", {}).get("needs_external"))
+    return "dispatch" if needs_external else "direct_response"
 
 
 def build_root_graph(
+    registry_snapshot=None,
     checkpointer=None,
     memory_store=None,
     query_agent=None,
@@ -65,7 +66,6 @@ def build_root_graph(
     analysis_capability=None,
     web_search_adapter=None,
     history_store=None,
-    capability_registry=None,
 ):
     """构建顶层动态流程。
 
@@ -92,7 +92,7 @@ def build_root_graph(
         build_query_graph(
             query_agent=query_agent,
             context_builder=context_builder,
-            capability_registry=capability_registry,
+            registry_snapshot=registry_snapshot,
         ),
     )
     direct_node = (
@@ -105,7 +105,7 @@ def build_root_graph(
     # 有 gateway 时标的解析走真实 Gateway（审查文档 §4.6），否则 mock
     resolve_node = make_resolve_instrument_node(gateway_adapter) if gateway_adapter is not None else resolve_instrument
     graph.add_node("resolve_instrument", resolve_node)
-    # research_agent（规则版）+ llm_research_agent（comprehensive 用，审查 §4.5）
+    # 单一 Research Agent（重写 §6.2）：窗口内选择，白名单=allowed
     graph.add_node(
         "market_data_graph",
         build_market_data_graph(

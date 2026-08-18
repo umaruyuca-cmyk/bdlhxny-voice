@@ -113,13 +113,6 @@ class FinancialDomainRequest(DomainRequest):
 
     domain: Literal["finance"] = "finance"
     financial_intent: FinancialIntent = FinancialIntent.STOCK_RESEARCH
-    analysis_type: Literal[
-        "market_snapshot",
-        "technical",
-        "fundamental",
-        "valuation",
-        "comprehensive",
-    ] = "market_snapshot"
     requested_topics: set[Literal[
         "news",
         "money_flow",
@@ -131,16 +124,10 @@ class FinancialDomainRequest(DomainRequest):
 
     @model_validator(mode="after")
     def validate_finance_request(self) -> "FinancialDomainRequest":
-        if self.financial_intent == FinancialIntent.STOCK_RESEARCH and len(self.instruments) != 1:
-            raise ValueError("STOCK_RESEARCH requires exactly one instrument")
-        if self.financial_intent == FinancialIntent.SUITABILITY:
-            if len(self.instruments) != 1:
-                raise ValueError("SUITABILITY requires exactly one instrument")
-            if self.analysis_type != "comprehensive":
-                raise ValueError(
-                    "SUITABILITY_RESEARCH_PROFILE_REQUIRED: "
-                    "SUITABILITY requires analysis_type=comprehensive"
-                )
+        # 重写 §6.2：允许多标的对比（instruments >= 1）；每个涉及标的的 Goal
+        # 必须最终有已解析 instrument（运行时由 resolve 闭包保证）。
+        if self.financial_intent in {FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY} and not self.instruments:
+            raise ValueError(f"{self.financial_intent} requires at least one instrument")
         return self
 
 

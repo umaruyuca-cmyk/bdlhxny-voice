@@ -45,7 +45,7 @@ _DEFAULT_MAX_REACT_ROUNDS = 6
 def build_market_query(state: RootState) -> dict:
     """根据 DataRequirement 形成统一能力查询计划。"""
     return {
-        "events": [event(state, "market.query_planned", "build_market_query", {"requirements_count": len(state.get("data_requirements", []))})]
+        "events": [event(state, "market.query_planned", "build_market_query", {"allowed_count": len(state.get("allowed", []))})]
     }
 
 
@@ -94,7 +94,7 @@ def execute_mock_market_tool(state: RootState) -> dict:
         provenance=[provenance],
     )
     observations = [quote.model_dump()]
-    if state.get("intent", {}).get("analysis_type") in {"technical", "comprehensive", "portfolio_impact"}:
+    if state.get("tool_window", {}).get("visible_capabilities") or state.get("allowed"):
         history = Observation(
             observation_id=str(uuid4()),
             capability="market.get_historical_prices",
@@ -114,7 +114,7 @@ def evaluate_market_data(state: RootState) -> dict:
     """完成市场数据任务，并区分关键能力与可选能力的缺失。"""
     result = _complete_current_task(state)
     coverage = evaluate_coverage(
-        state.get("data_requirements", []),
+        [{"capability": name, "required": False} for name in state.get("allowed", [])],
         current_run_observations(state),
     )
     if state.get("budget_exhausted") and coverage.status == "COMPLETE":
@@ -141,15 +141,9 @@ def build_market_data_graph(
     """构建市场数据获取子图（审查文档 §4.5 执行矩阵）。
 
     gateway_adapter / research_agent / llm_research_agent 为可选注入：
-    - 都注入：走真实 MCP ReAct 循环，select_action 节点在运行时按
-      analysis_type 选择 agent（comprehensive 用 LLM 版，其他用规则版）；
+    - 都注入：走真实 MCP ReAct 循环；单一 Agent 在窗口内选择下一步，
+      白名单 = state["allowed"]（重写 §6.2：凡 needs_external 均可 Agent 选）；
     - 都不传：走 mock 路径（execute_mock_market_tool），保证测试无网络依赖。
-
-    执行矩阵（运行时由 select_action 决策）：
-    - market_snapshot：确定性快路径，不启动 ReAct（直接 finish）；
-    - technical/fundamental/valuation/portfolio_impact：有限自适应 ReAct
-      （规则版 agent 按 DataRequirement 顺序执行）；
-    - comprehensive：完整有界 ReAct（LLM 版 agent 自主决策）。
     """
 
     # 子图必须输出 workflow_plan：evaluate_market_data 里的 _complete_current_task
@@ -161,18 +155,13 @@ def build_market_data_graph(
     if gateway_adapter is not None and research_agent is not None:
         # ── 真实 ReAct 模式 ──
         graph.add_node("build_market_query", build_market_query)
-        graph.add_node("execute_fast_path_quote", _make_fast_path_quote_node(gateway_adapter))
         graph.add_node("select_action", _make_select_action_node(research_agent, llm_research_agent))
         graph.add_node("execute_tool", _make_execute_tool_node(gateway_adapter, web_search_adapter, java_adapter))
         graph.add_node("normalize_observation", _normalize_observations_node)
         graph.add_node("evaluate_market_data", evaluate_market_data)
 
         graph.add_edge(START, "build_market_query")
-        graph.add_conditional_edges(
-            "build_market_query",
-            _route_after_market_query,
-            {"fast_path": "execute_fast_path_quote", "react": "select_action"},
-        )
+        graph.add_edge("build_market_query", "select_action")
         # select_action → execute_tool（有动作）或 evaluate（finish）
         graph.add_conditional_edges(
             "select_action",
@@ -180,7 +169,6 @@ def build_market_data_graph(
             {"execute": "execute_tool", "finish": "evaluate_market_data"},
         )
         graph.add_edge("execute_tool", "normalize_observation")
-        graph.add_edge("execute_fast_path_quote", "evaluate_market_data")
         # normalize → 回到 select_action 继续 ReAct 循环（受轮数限制）
         graph.add_conditional_edges(
             "normalize_observation",
@@ -208,40 +196,26 @@ def build_market_data_graph(
 
 
 def _make_select_action_node(research_agent: Any, llm_research_agent: Any = None):
-    """构建 ReAct 决策节点：按运行时 analysis_type 选择 Agent（审查文档 §4.5）。
+    """构建 ReAct 决策节点：候选 = 窗口 specs ⊆ allowed；Agent 唯一。"""
 
-    执行矩阵（运行时决策，不依赖构建时类型）：
-    - market_snapshot：直接 finish（确定性快路径，不启动 ReAct）；
-    - comprehensive 且有 LLM agent：用 LLM 版自主决策；
-    - 其他：规则版按 DataRequirement 顺序（有限自适应）。
-    """
 
     def select_action(state: RootState) -> dict:
-        analysis_type = state.get("intent", {}).get("analysis_type", "market_snapshot")
-
-        # market_snapshot 快路径：不经 ReAct，直接 finish
-        if analysis_type == "market_snapshot":
-            return {
-                "_react_round": state.get("_react_round", 0),
-                "_current_action": {"action": "finish", "arguments": {}, "reason": "快路径不启动 ReAct"},
-                "events": [event(state, "model.decision", "select_action", {"action": "finish", "mode": "fast_path"})],
-            }
-
-        # 按 analysis_type 选 agent：comprehensive 用 LLM 版，其他用规则版
-        agent = llm_research_agent if (analysis_type == "comprehensive" and llm_research_agent is not None) else research_agent
+        # 单一 Agent（重写 §6.2）：凡 needs_external 均可 LLM 选，白名单=allowed。
+        # 窗口 specs（含 depends_on）由 build_allowed_menu 写入 capability_candidates。
+        agent = llm_research_agent if llm_research_agent is not None else research_agent
         observations = current_run_observations(state)
-        attempted = {obs.get("capability") for obs in observations if obs.get("capability")}
-        requirements = [
-            item for item in state.get("data_requirements", [])
-            if item.get("capability") not in attempted
+        allowed = set(state.get("allowed", []))
+        window_specs = [
+            item for item in state.get("capability_candidates", [])
+            if item.get("name") in allowed
         ]
-        if not requirements:
+        if not window_specs:
             return {
                 "_react_round": state.get("_react_round", 0),
-                "_current_action": {"action": "finish", "arguments": {}, "reason": "所有规划能力均已执行"},
-                "events": [event(state, "model.decision", "select_action", {"action": "finish", "mode": "coverage_complete"})],
+                "_current_action": {"action": "finish", "arguments": {}, "reason": "窗口无可用能力"},
+                "events": [event(state, "model.decision", "select_action", {"action": "finish", "mode": "empty_window"})],
             }
-        action = agent.choose_next_action(observations, requirements)
+        action = agent.choose_next_action(observations, window_specs)
         # finish 是终止决策，不计入 ReAct 轮次（轮次只统计实际工具调用），
         # 但字段必须保留（保持 state 类型稳定，避免下游 KeyError）
         if action.is_finish:
@@ -266,11 +240,6 @@ def _route_after_action(state: RootState) -> str:
     return "finish" if action.get("action") == "finish" else "execute"
 
 
-def _route_after_market_query(state: RootState) -> str:
-    """market_snapshot 直接执行实时行情工具，其他分析类型进入 ReAct。"""
-    return "fast_path" if state.get("intent", {}).get("analysis_type") == "market_snapshot" else "react"
-
-
 def _budget_limit(state: RootState, name: str) -> int | None:
     budget = state.get("budget") or {}
     value = budget.get(name)
@@ -290,38 +259,9 @@ def _budget_exceeded_observation(capability: str) -> Observation:
 
 
 def _quote_arguments(state: RootState) -> dict[str, Any]:
-    for requirement in state.get("data_requirements", []):
-        if requirement.get("capability") == "market.get_realtime_quote":
-            return requirement.get("arguments") or {}
-    symbol = state.get("intent", {}).get("symbol") or state.get("request", {}).get("symbol")
+    instruments = (state.get("understand", {}).get("entities") or {}).get("instruments") or []
+    symbol = (instruments[0] if instruments else None) or state.get("request", {}).get("symbol")
     return {"symbol": symbol} if symbol else {}
-
-
-def _make_fast_path_quote_node(gateway_adapter: Any):
-    """market_snapshot 的确定性实时行情路径：只调用 quote，不启动 Agent/ReAct。"""
-
-    async def execute_fast_path_quote(state: RootState) -> dict[str, Any]:
-        capability = "market.get_realtime_quote"
-        used = state.get("tool_calls_used", 0)
-        limit = _budget_limit(state, "tool_call_limit")
-        if limit is not None and used >= limit:
-            observation = _budget_exceeded_observation(capability)
-            return {
-                "observations": [observation.model_dump()],
-                "budget_exhausted": True,
-                "events": [event(state, "tool.blocked", "execute_fast_path_quote", {"capability": capability, "reason": "budget_exceeded"})],
-            }
-        observation = await gateway_adapter.execute(capability, _quote_arguments(state), run_id=state.get("run_id", ""))
-        from bdlh_runtime.observations.normalizer import ObservationNormalizer
-
-        normalized = ObservationNormalizer().normalize(observation)
-        return {
-            "observations": [normalized.model_dump()],
-            "tool_calls_used": used + 1,
-            "events": [event(state, "tool.finished", "execute_fast_path_quote", {"capability": capability, "status": normalized.status})],
-        }
-
-    return execute_fast_path_quote
 
 
 def _make_execute_tool_node(gateway_adapter: Any, web_search_adapter: Any | None = None, java_adapter: Any | None = None):
@@ -340,11 +280,7 @@ def _make_execute_tool_node(gateway_adapter: Any, web_search_adapter: Any | None
         arguments = action_data.get("arguments", {})
         run_id = state.get("run_id", "")
         used = state.get("tool_calls_used", 0)
-        allowed = {
-            item.get("capability")
-            for item in state.get("data_requirements", [])
-            if item.get("capability")
-        }
+        allowed = set(state.get("allowed", []))
         if capability not in allowed:
             observation = Observation(
                 observation_id=str(uuid4()),
@@ -411,8 +347,7 @@ def _make_react_router(max_rounds: int):
         # 检查是否还有未满足的需求
         observations = current_run_observations(state)
         attempted = {o.get("capability") for o in observations if o.get("capability")}
-        requirements = state.get("data_requirements", [])
-        remaining = [r for r in requirements if r.get("capability") not in attempted]
+        remaining = [name for name in state.get("allowed", []) if name not in attempted]
         return "continue" if remaining else "stop"
 
     return router

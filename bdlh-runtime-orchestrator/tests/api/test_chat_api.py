@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
+from tests.helpers_registry import seeded_snapshot
 from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import (
     DeterministicDirectResponseModel,
 )
@@ -39,7 +40,8 @@ def _events(response) -> list[dict]:
 
 def _client() -> TestClient:
     application = create_application(
-        Settings(environment="development", auth_required=True, jwt_secret=SECRET)
+        Settings(environment="development", auth_required=True, jwt_secret=SECRET),
+        registry_snapshot=seeded_snapshot(),
     )
     # API 契约测试不连接外部 LLM/MCP，只验证 Root Graph 路由和恢复语义。
     application.graph = build_root_graph(

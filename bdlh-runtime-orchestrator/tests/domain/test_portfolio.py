@@ -17,7 +17,6 @@ def _portfolio_input(portfolio: dict | None, *, symbol: str = "600519", quote: d
     """构造带持仓上下文的 portfolio_impact 输入。"""
     return AnalysisInput(
         analysis_id="t-portfolio",
-        analysis_type="portfolio_impact",
         instrument={"symbol": symbol, "name": "茅台"},
         realtime_quote=quote,
         historical_prices=[],

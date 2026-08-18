@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtimes.langgraph.agents.query_agent import create_query_agent
+from bdlh_runtime.runtimes.langgraph.agents.query_agent import create_understand_agent
 from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import create_direct_response_model
 from bdlh_runtime.runtimes.langgraph.agents.research_agent import create_research_agent
 from bdlh_runtime.runtimes.langgraph.agents.summary_model import create_summary_model
@@ -65,6 +65,7 @@ def create_application(
     settings: Settings | None = None,
     *,
     checkpointer_override: Any | None = None,
+    registry_snapshot: Any | None = None,
 ) -> AgentRuntimeApplication:
     """从 Settings 装配完整应用。
 
@@ -101,14 +102,12 @@ def create_application(
     gateway_adapter = _create_gateway(settings)
 
     # ── 4. Agents（按 LLM 有无自动选 LLM 版或规则版）──
-    query_agent = create_query_agent(llm)
+    query_agent = create_understand_agent(llm)
     direct_response_model = create_direct_response_model(llm)
     summary_model = create_summary_model(llm)
-    # Research Agent 双版本（审查文档 §4.5 执行矩阵）：
-    # - research_agent：规则版（technical/fundamental 等有限自适应）；
-    # - llm_research_agent：comprehensive 用 LLM 版（无 LLM 时也降级规则版）。
-    research_agent = create_research_agent(llm, analysis_type="technical")
-    llm_research_agent = create_research_agent(llm, analysis_type="comprehensive")
+    # 单一 Research Agent（重写 §6.2）：窗口内选择，白名单=allowed。
+    research_agent = create_research_agent(llm)
+    llm_research_agent = research_agent
 
     # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
     # base_url 未配置时 Adapter 内部自动 mock 降级（见 java_data_adapter.py）
@@ -124,10 +123,11 @@ def create_application(
     # base_url 未配置时 Adapter 内部自动 mock 降级（见 web_search_adapter.py）
     web_search_adapter = _create_web_search_adapter(settings)
 
-    # ── 4.6 统一能力目录 + ContextBuilder（审查文档 §4.4）──
-    from bdlh_runtime.tools.capabilities import build_default_capability_registry
+    # ── 4.6 注册表快照（DB 真源；测试显式注入，禁止默认清单兜底）──
+    registry_snapshot = _load_registry_snapshot(settings, registry_snapshot=registry_snapshot)
+    from bdlh_runtime.tools.capabilities import load_capability_registry
 
-    capability_registry = build_default_capability_registry()
+    capability_registry = load_capability_registry(registry_snapshot)
     # 从 CapabilityRegistry 组装能力清单；Memory 召回内容由 load_memory 节点写入
     # state，ContextBuilder 只做组装不做 I/O。
     context_builder = _create_context_builder(capability_registry, memory_store=memory_store)
@@ -166,12 +166,9 @@ def create_application(
     from bdlh_runtime.domains.plugin_probe import (
         PLUGIN_PROBE_DESCRIPTOR,
         PluginProbeRuntime,
-        register_plugin_probe_capability,
     )
 
-    # 注册发生在 ContextBuilder 已从 Registry 生成用户工具清单之后，确保实验探针
-    # 不暴露到旧路径/聊天模型上下文，同时 Runtime 与校验器仍持有同一 Registry。
-    register_plugin_probe_capability(capability_registry)
+    # 探针能力只来自库表种子（重写 §6.1：删除内存硬编码注册）。
     domain_registry.register(
         "plugin_probe",
         PluginProbeRuntime(capability_registry),
@@ -198,7 +195,7 @@ def create_application(
     verified_entities = InMemoryVerifiedEntityStore()
     # 语义路由只做内核快路径；未命中再交给领域选择器，不在这里点名 Skill。
     cognitive_selector = SemanticRouteSelector(
-        build_kernel_router(),
+        build_kernel_router(snapshot=registry_snapshot),
         fallback=FinanceCognitiveSelector(verified_entities),
         knowledge_responder=direct_response_model,
     )
@@ -285,6 +282,7 @@ def create_application(
 
     # ── 5. Root Graph（注入全部组件）──
     graph = build_root_graph(
+        registry_snapshot=registry_snapshot,
         checkpointer=checkpointer,
         memory_store=memory_store,
         query_agent=query_agent,
@@ -298,7 +296,6 @@ def create_application(
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         history_store=history_store,
-        capability_registry=capability_registry,
     )
 
     return AgentRuntimeApplication(
@@ -329,6 +326,26 @@ def create_application(
         task_scheduler=task_scheduler,
         notification_outbox_worker=notification_outbox_worker,
     )
+
+
+def _load_registry_snapshot(settings: Settings, *, registry_snapshot: Any | None) -> Any:
+    """注册表快照：测试显式注入优先；生产从 POSTGRES_DSN 加载并 fail-fast。
+
+    禁止任何内置目录兜底（重写硬规则 7）——无注入且无 DSN 直接拒绝装配。
+    """
+    if registry_snapshot is not None:
+        return registry_snapshot
+    dsn = getattr(settings, "postgres_dsn", None)
+    if not dsn:
+        raise ConfigurationError(
+            "registry snapshot is required: pass registry_snapshot explicitly in tests, "
+            "or configure POSTGRES_DSN for production; in-memory fallback is forbidden"
+        )
+    from bdlh_runtime.registry import PostgresRegistryStore, load_and_validate
+
+    store = PostgresRegistryStore(dsn)
+    store.ensure_schema_and_seed()
+    return load_and_validate(store)
 
 
 def _create_memory(settings: Settings) -> Any:

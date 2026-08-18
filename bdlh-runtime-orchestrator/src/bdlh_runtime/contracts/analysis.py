@@ -26,7 +26,6 @@ class AnalysisInput(BaseModel):
     """纯分析输入；只包含已经标准化和带来源的数据。"""
     schema_version: str = "analysis-input.v1"
     analysis_id: str
-    analysis_type: str
     instrument: InstrumentRef
     realtime_quote: dict[str, Any] | None = None
     historical_prices: list[dict[str, Any]] = Field(default_factory=list)

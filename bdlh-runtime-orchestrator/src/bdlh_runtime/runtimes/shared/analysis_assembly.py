@@ -27,10 +27,9 @@ CAPABILITY_TO_ANALYSIS_FIELD: dict[str, str] = {
 def assemble_analysis_input(
     *,
     analysis_id: str,
-    analysis_type: str,
     symbol: str,
     observations: list[Observation],
-    requirements: list[dict[str, Any]],
+    requested_capabilities: list[str],
     methodology_version: str = "python-analysis.v1",
 ) -> AnalysisInput:
     """将标准 Observation 确定性地装配为 AnalysisInput，无 I/O 或框架依赖。"""
@@ -62,17 +61,14 @@ def assemble_analysis_input(
         else:
             assembled[field] = observation.data
 
-    requirement_dicts = [dict(item) for item in requirements]
+    # 覆盖按「本轮 allowed 能力是否拿到可用 Observation」计算，不再按类型桶。
+    requirement_dicts = [{"capability": name, "required": False} for name in requested_capabilities]
     observation_dicts = [item.model_dump() for item in observations]
     coverage = evaluate_coverage(requirement_dicts, observation_dicts)
     known_unavailable.extend(coverage.missing_required)
     known_unavailable.extend(coverage.missing_optional)
 
-    selected = {
-        str(item.get("capability"))
-        for item in requirement_dicts
-        if item.get("capability")
-    }
+    selected = set(requested_capabilities)
     fulfilled = {
         item.capability
         for item in observations
@@ -90,7 +86,6 @@ def assemble_analysis_input(
     instrument_data = assembled.get("instrument") or {"symbol": symbol}
     return AnalysisInput(
         analysis_id=analysis_id,
-        analysis_type=analysis_type,
         instrument=InstrumentRef.model_validate(instrument_data),
         realtime_quote=assembled.get("realtime_quote"),
         historical_prices=assembled.get("historical_prices", []),

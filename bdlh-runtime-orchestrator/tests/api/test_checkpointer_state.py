@@ -4,10 +4,11 @@ from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtimes.langgraph.graphs.root_graph import build_root_graph
 from bdlh_runtime.runtime.application import create_application
+from tests.helpers_registry import seeded_snapshot
 
 
 def test_get_run_reads_from_checkpointer_after_api_store_is_recreated():
-    application = create_application(Settings(environment="development"))
+    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
     first_app = create_api_app(application)
     created = TestClient(first_app).post(
         "/api/v1/agent-runs",
@@ -26,7 +27,7 @@ def test_get_run_reads_from_checkpointer_after_api_store_is_recreated():
 
 def test_get_run_with_explicit_thread_id_after_api_store_is_recreated():
     """run_id 与 thread_id 不同时也必须能定位 Checkpointer 状态。"""
-    application = create_application(Settings(environment="development"))
+    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
     first_app = create_api_app(application)
     created = TestClient(first_app).post(
         "/api/v1/agent-runs",
@@ -47,8 +48,8 @@ def test_get_run_with_explicit_thread_id_after_api_store_is_recreated():
 
 def test_resume_uses_registered_explicit_thread_id():
     """恢复 interrupt 时必须回到创建运行时使用的 LangGraph thread。"""
-    application = create_application(Settings(environment="development"))
-    application.graph = build_root_graph()
+    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
+    application.graph = build_root_graph(registry_snapshot=seeded_snapshot())
     created = TestClient(create_api_app(application)).post(
         "/api/v1/agent-runs",
         json={"message": "请做技术分析", "thread_id": "conversation-resume"},
@@ -71,8 +72,8 @@ def test_resume_uses_registered_explicit_thread_id():
 
 def test_each_run_reads_its_own_checkpoint_in_a_shared_thread():
     """同一会话产生多个 run 后，旧 run 不得被最新 checkpoint 覆盖。"""
-    application = create_application(Settings(environment="development"))
-    application.graph = build_root_graph()
+    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
+    application.graph = build_root_graph(registry_snapshot=seeded_snapshot())
     client = TestClient(create_api_app(application))
     first = client.post(
         "/api/v1/agent-runs",

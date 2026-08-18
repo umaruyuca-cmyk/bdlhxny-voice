@@ -12,7 +12,7 @@ from bdlh_runtime.domains.finance.contracts import (
     InstrumentResolutionRequest,
 )
 from bdlh_runtime.domains.finance.instrument_resolver import FinanceInstrumentResolver
-from bdlh_runtime.tools.capabilities import build_default_capability_registry
+from tests.helpers_registry import build_default_capability_registry
 
 
 class ResolverExecutor:

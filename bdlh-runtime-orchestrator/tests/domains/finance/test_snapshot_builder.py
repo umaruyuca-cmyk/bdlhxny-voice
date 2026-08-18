@@ -38,7 +38,7 @@ from bdlh_runtime.domains.finance.valuation_builder import (
     PortfolioValuationBuilder,
     PortfolioValuationError,
 )
-from bdlh_runtime.tools.capabilities import build_default_capability_registry
+from tests.helpers_registry import build_default_capability_registry
 
 
 def _request(user_id: str = "7") -> FinancialDomainRequest:
@@ -47,7 +47,6 @@ def _request(user_id: str = "7") -> FinancialDomainRequest:
         authenticated_user_id=user_id,
         objective="评估单一标的是否适合当前用户",
         financial_intent=FinancialIntent.SUITABILITY,
-        analysis_type="comprehensive",
         instruments=[FinancialInstrument(symbol="600519", name="贵州茅台")],
         authorized_operations={
             DomainOperation.READ_MARKET_DATA,

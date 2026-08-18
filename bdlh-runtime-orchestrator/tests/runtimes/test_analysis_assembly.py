@@ -13,8 +13,7 @@ from bdlh_runtime.contracts.observation import (
 from bdlh_runtime.contracts.workflow import TaskSpec, WorkflowPlan
 from bdlh_runtime.runtimes.langgraph.nodes.nodes import assemble_analysis
 from bdlh_runtime.runtimes.shared import assemble_analysis_input
-from bdlh_runtime.tools.capabilities import build_default_capability_registry
-from bdlh_runtime.tools.requirement_planner import CapabilityRequirementPlanner
+from tests.helpers_registry import build_default_capability_registry
 
 
 REQUESTED_TOPICS = {

@@ -202,7 +202,6 @@ class FinanceCognitiveSelector:
             },
             budget=DomainBudget(tool_call_limit=3, runtime_seconds=30, model_call_limit=0),
             financial_intent=FinancialIntent.STOCK_RESEARCH,
-            analysis_type="market_snapshot",
             instruments=[FinancialInstrument(symbol=symbol, market="CN")],
         )
         return CognitiveAction(
@@ -271,7 +270,6 @@ class FinanceCognitiveSelector:
             },
             budget=DomainBudget(tool_call_limit=12, runtime_seconds=60, model_call_limit=0),
             financial_intent=FinancialIntent.STOCK_RESEARCH,
-            analysis_type=_analysis_type(event.message),
             instruments=[candidate.instrument],
             requires_financial_snapshot=False,
         )
@@ -367,18 +365,6 @@ def _candidate_name(message: str) -> str | None:
 
 def _first_hint(message: str, mapping: dict[str, str]) -> str | None:
     return next((value for token, value in mapping.items() if token in message), None)
-
-
-def _analysis_type(message: str) -> str:
-    if "估值" in message:
-        return "valuation"
-    if "基本面" in message:
-        return "fundamental"
-    if "技术" in message or "走势" in message:
-        return "technical"
-    if "综合" in message:
-        return "comprehensive"
-    return "market_snapshot"
 
 
 def _knowledge_answer(message: str) -> str:

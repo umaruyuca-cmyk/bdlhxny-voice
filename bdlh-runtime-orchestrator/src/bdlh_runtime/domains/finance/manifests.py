@@ -100,7 +100,7 @@ STOCK_RESEARCH_MANIFEST = SkillManifest(
     on_missing_optional="SKIP_WITH_LIMITATION",
     on_budget_exhausted="FAILED + BUDGET_EXHAUSTED",
     # 幂等
-    idempotency_keys=frozenset({"request_id", "instruments[0].symbol", "analysis_type"}),
+    idempotency_keys=frozenset({"request_id", "instruments[0].symbol", "goal_ids"}),
     side_effects=frozenset(),
     # 观测
     audit_codes=frozenset({"STOCK_RESEARCH_EXECUTED"}),
@@ -178,7 +178,7 @@ SUITABILITY_MANIFEST = SkillManifest(
     # 输入
     request_contract="FinancialDomainRequest",
     accepted_intents=frozenset({FinancialIntent.SUITABILITY}),
-    input_constraints=("instrument_count == 1", "analysis_type == comprehensive"),
+    input_constraints=("instrument_count >= 1",),
     # 输出
     result_contract="SuitabilityAssessment",
     authority_field="suitability",

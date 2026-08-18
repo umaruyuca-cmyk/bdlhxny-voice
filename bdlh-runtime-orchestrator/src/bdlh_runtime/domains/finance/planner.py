@@ -1,16 +1,21 @@
-"""M1 Finance Runtime 的确定性 Planner。"""
+"""Finance Runtime 的确定性 Planner（重写：requested_topics 驱动）。
+
+不再按类型桶展开工具链；数据需求由「resolve/quote 基线 + topic 对照能力 +
+depends_on 闭包 + 确定性分析」组成。topic→能力对照来自库表
+（``bdlh_runtime_topic_capability``，经 RegistrySnapshot 派生注入）。
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from bdlh_runtime.contracts.data_requirements import DataRequirement
-from bdlh_runtime.tools.capabilities import CapabilityRegistry, ToolsetName
-from bdlh_runtime.tools.requirement_planner import CapabilityRequirementPlanner
-from bdlh_runtime.tools.toolsets import ToolsetRegistry
 
 from .authorization import ANALYSIS_CAPABILITY
 from .contracts import FinancialDomainRequest
+
+_QUOTE_CAPABILITY = "market.get_realtime_quote"
+_RESOLVE_CAPABILITY = "market.resolve_instrument"
 
 
 @dataclass(frozen=True)
@@ -28,48 +33,42 @@ class FinancePlan:
 
 
 class FinancePlanner:
-    """从显式请求字段生成数据需求，不读取自由文本关键词。"""
+    """从显式请求字段（topics + instruments）生成数据需求，不读自由文本。"""
 
-    _M1_TOOLSETS = (
-        ToolsetName.MARKET_READ,
-        ToolsetName.FUNDAMENTAL_READ,
-        ToolsetName.NEWS_READ,
-        ToolsetName.PLANNING_COMPUTE,
-    )
-
-    def __init__(self, registry: CapabilityRegistry) -> None:
-        self._registry = registry
-        self._requirements = CapabilityRequirementPlanner(registry)
-        self._toolsets = ToolsetRegistry(registry)
+    def __init__(self, topic_capabilities: dict[str, list[str]]) -> None:
+        self._topic_capabilities = topic_capabilities
 
     def plan(self, request: FinancialDomainRequest) -> FinancePlan:
-        symbol = request.instruments[0].symbol
-        requirements = self._requirements.plan_explicit(
-            analysis_type=request.analysis_type,
-            symbol=symbol,
-            requested_topics=request.requested_topics,
-        )
-        visible = self._visible_capabilities(request.analysis_type)
-        invalid = sorted(
-            item.capability for item in requirements
-            if item.capability not in visible
-        )
-        if invalid:
-            raise ValueError(
-                "Finance plan escaped Toolset boundary: " + ", ".join(invalid)
+        names: list[str] = []
+        for instrument in request.instruments:
+            symbol = instrument.symbol
+            names.append(_RESOLVE_CAPABILITY)
+            names.append(_QUOTE_CAPABILITY)
+            for topic in sorted(request.requested_topics):
+                for capability in self._topic_capabilities.get(topic, []):
+                    if capability not in (_RESOLVE_CAPABILITY, _QUOTE_CAPABILITY):
+                        names.append(capability)
+            # 去重保序
+            seen: set[str] = set()
+            ordered = [n for n in names if not (n in seen or seen.add(n))]
+            names = ordered
+        requirements = tuple(
+            DataRequirement(
+                requirement_id=f"cap-{index}-{name.replace('.', '-')}",
+                capability=name,
+                required=True,
+                reason=f"Finance plan for {instrument.symbol}",
+                arguments=self._arguments(name, request),
             )
-        if ANALYSIS_CAPABILITY not in visible:
-            raise ValueError(f"{ANALYSIS_CAPABILITY} is missing from the planning Toolset")
-        return FinancePlan(data_requirements=tuple(requirements))
+            for index, name in enumerate(dict.fromkeys(names))
+        )
+        return FinancePlan(data_requirements=requirements)
 
-    def _visible_capabilities(self, analysis_type: str) -> frozenset[str]:
-        names: set[str] = set()
-        for toolset in self._M1_TOOLSETS:
-            names.update(
-                item["name"]
-                for item in self._toolsets.capability_manifest(
-                    toolset,
-                    analysis_type=analysis_type,
-                )
-            )
-        return frozenset(names)
+    @staticmethod
+    def _arguments(name: str, request: FinancialDomainRequest) -> dict:
+        if name == _QUOTE_CAPABILITY or name == _RESOLVE_CAPABILITY or name.startswith("market."):
+            return {"symbol": request.instruments[0].symbol}
+        if name == "research.web_search":
+            topic = request.instruments[0].symbol
+            return {"query": f"{topic} 最新动态", "mode": "NEWS", "max_results": 5}
+        return {}

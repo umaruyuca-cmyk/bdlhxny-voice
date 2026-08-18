@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from bdlh_runtime.contracts.analysis import AnalysisResult
 from bdlh_runtime.runtimes.langgraph.agents.query_agent import (
-    LlmQueryAgent,
-    RuleBasedQueryAgent,
-    create_query_agent,
+    LlmUnderstandAgent,
+    RuleBasedUnderstandAgent,
+    create_understand_agent,
 )
 from bdlh_runtime.runtimes.langgraph.agents.research_agent import (
     RuleBasedResearchAgent,
@@ -26,14 +26,14 @@ from bdlh_runtime.runtimes.langgraph.agents.summary_model import (
 
 
 def test_query_agent_factory_no_llm_returns_rule_based():
-    """无 LLM 时工厂返回 RuleBasedQueryAgent。"""
-    agent = create_query_agent(None)
-    assert isinstance(agent, RuleBasedQueryAgent)
+    """无 LLM 时工厂返回 RuleBasedUnderstandAgent。"""
+    agent = create_understand_agent(None)
+    assert isinstance(agent, RuleBasedUnderstandAgent)
 
 
 def test_llm_query_agent_falls_back_when_no_llm():
-    """LlmQueryAgent 无 LLM 时降级为规则版行为。"""
-    agent = LlmQueryAgent(None)
+    """LlmUnderstandAgent 无 LLM 时降级为规则版行为。"""
+    agent = LlmUnderstandAgent(None)
     intent = agent.understand({"message": "分析 600519 技术面"})
     assert intent.symbol == "600519"
     assert intent.analysis_type == "technical"
@@ -46,7 +46,7 @@ def test_llm_query_agent_falls_back_on_llm_error():
         def invoke(self, messages):
             raise RuntimeError("模拟 LLM 故障")
 
-    agent = LlmQueryAgent(FakeLlm())
+    agent = LlmUnderstandAgent(FakeLlm())
     intent = agent.understand({"message": "600519 综合分析"})
     assert intent.symbol == "600519"
     assert intent.analysis_type == "comprehensive"

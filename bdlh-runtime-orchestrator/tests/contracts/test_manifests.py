@@ -23,7 +23,7 @@ from bdlh_runtime.domains.finance.manifests import (
     SUITABILITY_MANIFEST,
 )
 from bdlh_runtime.domains.registry import DomainRegistry
-from bdlh_runtime.tools.capabilities import build_default_capability_registry
+from tests.helpers_registry import build_default_capability_registry
 
 
 # ── descriptor 声明现状 ─────────────────────────────────────────────────────

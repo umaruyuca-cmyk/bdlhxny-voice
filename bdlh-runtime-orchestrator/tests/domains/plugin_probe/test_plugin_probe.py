@@ -12,14 +12,13 @@ from bdlh_runtime.domains.plugin_probe import (
     PluginProbeOutcome,
     PluginProbeRequest,
     PluginProbeRuntime,
-    register_plugin_probe_capability,
 )
 from bdlh_runtime.domains.registry import DomainRegistry
 from bdlh_runtime.guardrails.contracts import GuardrailContext, GuardrailDecision
 from bdlh_runtime.guardrails.policies import DefaultActionGuardrail, DefaultPlanGuardrail
 from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType
 from bdlh_runtime.runtime.manifest_validation import validate_descriptor_against_registry
-from bdlh_runtime.tools.capabilities import build_default_capability_registry
+from tests.helpers_registry import build_default_capability_registry
 
 
 NOW = datetime(2026, 8, 12, 12, 0, tzinfo=timezone.utc)

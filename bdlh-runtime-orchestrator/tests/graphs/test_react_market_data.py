@@ -64,19 +64,24 @@ def _observation(capability: str) -> Observation:
     )
 
 
-def _initial_state(data_requirements: list[dict]) -> dict:
-    """构造最小输入状态（含 evaluate 节点所需的 workflow_plan）。"""
+def _initial_state(capabilities: list[dict]) -> dict:
+    """构造最小输入状态（重写：allowed + 窗口 specs + workflow_plan）。"""
+    names = [item["capability"] for item in capabilities]
     return {
         "run_id": "test-react",
         "thread_id": "test-react",
         "request": {"message": "分析 600519"},
-        "intent": {"symbol": "600519", "analysis_type": "comprehensive"},
+        "understand": {"entities": {"instruments": ["600519"]}},
         "observations": [],
-        "data_requirements": data_requirements,
+        "allowed": names,
+        "capability_candidates": [
+            {"name": name, "required_arguments": ["symbol"], "depends_on": []}
+            for name in names
+        ],
+        "budget": {"react_round_limit": 6, "tool_call_limit": 10},
         # evaluate_market_data 会调用 _complete_current_task，需要有效 plan
         "workflow_plan": {
             "plan_id": "test-plan",
-            "analysis_type": "comprehensive",
             "tasks": [
                 {"task_id": "market_data", "task_type": "market_data", "depends_on": [], "status": "PENDING", "input_ref": [], "output_ref": []},
             ],
@@ -190,29 +195,36 @@ async def test_async_nodes_supported():
 
 
 @pytest.mark.asyncio
-async def test_market_snapshot_fast_path_calls_realtime_quote_without_react():
-    """market_snapshot 必须实际取行情，且不应让 Research Agent 参与决策。"""
+async def test_quote_only_window_executes_single_capability():
+    """重写语义：窗口仅剩 quote（resolve 已满足）→ 规则版一步执行 quote。"""
+    from bdlh_runtime.runtimes.langgraph.agents.research_agent import RuleBasedResearchAgent
 
     gateway = FakeGateway({"market.get_realtime_quote": _observation("market.get_realtime_quote")})
 
-    class FailingResearchAgent:
-        def choose_next_action(self, observations, remaining_requirements):
-            raise AssertionError("market_snapshot should bypass ReAct")
-
     graph = build_market_data_graph(
         gateway_adapter=gateway,
-        research_agent=FailingResearchAgent(),
+        research_agent=RuleBasedResearchAgent(),
     )
     state = _initial_state(
         [{"capability": "market.get_realtime_quote", "arguments": {"symbol": "600519"}}]
     )
-    state["intent"] = {"symbol": "600519", "analysis_type": "market_snapshot"}
-    state["budget"] = {"react_round_limit": 0, "tool_call_limit": 3}
+    # resolve 已在前序完成（observation 存在），quote 是窗口内唯一未执行能力
+    state["observations"] = [{
+        "observation_id": "obs-resolve",
+        "capability": "market.resolve_instrument",
+        "status": "SUCCESS",
+        "data": {"symbol": "600519"},
+        "data_quality": {"completeness": 1.0, "quality_status": "OK"},
+        "provenance": [],
+    }]
 
     result = await graph.ainvoke(state)
 
-    assert gateway.calls == [("market.get_realtime_quote", {"symbol": "600519"})]
-    assert {item["capability"] for item in result["observations"]} == {"market.get_realtime_quote"}
+    assert gateway.calls == [("market.get_realtime_quote", {"symbol": None})]
+    assert {item["capability"] for item in result["observations"]} == {
+        "market.resolve_instrument",
+        "market.get_realtime_quote",
+    }
     assert result["tool_calls_used"] == 1
 
 

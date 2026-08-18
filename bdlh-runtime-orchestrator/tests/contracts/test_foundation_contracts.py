@@ -140,7 +140,6 @@ def test_financial_request_extends_domain_request_and_validates_intent() -> None
     research = FinancialDomainRequest(
         **_domain_request().model_dump(),
         instruments=[FinancialInstrument(symbol="600519")],
-        analysis_type="technical",
         requested_topics={"news", "money_flow"},
     )
     assert research.analysis_type == "technical"
@@ -187,20 +186,17 @@ def test_suitability_request_requires_one_instrument_and_comprehensive_research(
         FinancialDomainRequest(
             **values,
             financial_intent=FinancialIntent.SUITABILITY,
-            analysis_type="comprehensive",
         )
     with pytest.raises(ValidationError, match="SUITABILITY_RESEARCH_PROFILE_REQUIRED"):
         FinancialDomainRequest(
             **values,
             financial_intent=FinancialIntent.SUITABILITY,
-            analysis_type="market_snapshot",
             instruments=[FinancialInstrument(symbol="600519")],
         )
 
     request = FinancialDomainRequest(
         **values,
         financial_intent=FinancialIntent.SUITABILITY,
-        analysis_type="comprehensive",
         instruments=[FinancialInstrument(symbol="600519")],
     )
     assert request.analysis_type == "comprehensive"
