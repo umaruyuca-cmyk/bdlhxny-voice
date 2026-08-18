@@ -19,8 +19,7 @@ import pytest
 
 from bdlh_runtime.domains.finance.contracts import FinancialIntent
 from bdlh_runtime.domains.finance.manifests import (
-    FINANCE_DESCRIPTOR,
-    STOCK_RESEARCH_MANIFEST,
+    build_finance_descriptor,
 )
 from bdlh_runtime.domains.manifests import DomainDescriptor, SkillManifest
 from bdlh_runtime.runtime.errors import ConfigurationError
@@ -28,6 +27,11 @@ from bdlh_runtime.runtime.manifest_validation import (
     validate_descriptor_against_registry,
 )
 from tests.helpers_registry import build_default_capability_registry
+
+STOCK_RESEARCH_MANIFEST = next(
+    s for s in build_finance_descriptor(build_default_capability_registry()).skills
+    if s.skill_id == "stock-research"
+)
 from bdlh_runtime.tools.capabilities import (    CapabilityRegistry,
     CapabilitySpec,
     ToolsetName,)
@@ -50,7 +54,7 @@ def test_startup_validation_passes_for_current_finance_descriptor() -> None:
     """ADR-010 §6 验收①：真实 finance descriptor 对真实 Registry 校验通过。"""
     registry = build_default_capability_registry()
     # 不抛即通过
-    validate_descriptor_against_registry(FINANCE_DESCRIPTOR, registry)
+    validate_descriptor_against_registry(build_finance_descriptor(registry), registry)
 
 
 # ── 启动校验：不一致必须 fail-fast ──────────────────────────────────────────

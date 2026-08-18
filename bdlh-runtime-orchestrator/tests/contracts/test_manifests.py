@@ -9,21 +9,18 @@ from __future__ import annotations
 import pytest
 
 from bdlh_runtime.domains.contracts import DomainOperation
-from bdlh_runtime.domains.finance.authorization import (
-    FINANCE_OPERATION_CAPABILITIES,
-)
 from bdlh_runtime.domains.finance.contracts import (
     FinancialDomainOutcome,
     FinancialIntent,
 )
-from bdlh_runtime.domains.finance.manifests import (
-    FINANCE_DESCRIPTOR,
-    PORTFOLIO_HEALTH_MANIFEST,
-    STOCK_RESEARCH_MANIFEST,
-    SUITABILITY_MANIFEST,
-)
+from bdlh_runtime.domains.finance.manifests import build_finance_descriptor
 from bdlh_runtime.domains.registry import DomainRegistry
 from tests.helpers_registry import build_default_capability_registry
+
+# 重写：manifest 从 Registry（库表派生）现算，模块级常量已删
+_registry = build_default_capability_registry()
+FINANCE_DESCRIPTOR = build_finance_descriptor(_registry)
+[STOCK_RESEARCH_MANIFEST, PORTFOLIO_HEALTH_MANIFEST, SUITABILITY_MANIFEST] =     list(FINANCE_DESCRIPTOR.skills)
 
 
 # ── descriptor 声明现状 ─────────────────────────────────────────────────────
@@ -92,13 +89,8 @@ def test_finance_manifest_capabilities_match_authorization_map() -> None:
         PORTFOLIO_VALUATION_CAPABILITY,
     )
 
-    # 授权映射声明的全部能力
-    authorization_capabilities = frozenset().union(
-        *FINANCE_OPERATION_CAPABILITIES.values()
-    )
-    # 域内派生能力（不在 OPERATION 映射中）
-    derived_capabilities = frozenset({PORTFOLIO_VALUATION_CAPABILITY})
-    expected = authorization_capabilities | derived_capabilities
+    # 重写：能力真源是 Registry（capability_operation 表派生）
+    expected = frozenset(spec.name for spec in _registry.list())
 
     manifest_capabilities: set[str] = set()
     for skill in FINANCE_DESCRIPTOR.skills:

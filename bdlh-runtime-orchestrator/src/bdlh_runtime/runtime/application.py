@@ -159,13 +159,14 @@ def create_application(
     # ── 4.6c Domain Descriptor + SkillManifest 注册与启动校验（ADR-010 §3.1.2/§6）──
     # 注册 finance 域的 descriptor（声明现状），并在启动时对 Capability Registry
     # 逐项校验——不一致即 fail-fast，绝不留到运行时静默跳过。
-    from bdlh_runtime.domains.finance.manifests import FINANCE_DESCRIPTOR
+    from bdlh_runtime.domains.finance.manifests import build_finance_descriptor
     from bdlh_runtime.runtime.manifest_validation import (
         validate_descriptor_against_registry,
     )
 
-    domain_registry.register_descriptor("finance", FINANCE_DESCRIPTOR)
-    validate_descriptor_against_registry(FINANCE_DESCRIPTOR, capability_registry)
+    finance_descriptor = build_finance_descriptor(capability_registry)
+    domain_registry.register_descriptor("finance", finance_descriptor)
+    validate_descriptor_against_registry(finance_descriptor, capability_registry)
 
     # ── 4.6c.1 M7 第二 Domain 插件契约探针（实验性、非用户入口）──
     # 仅注册 Runtime + Descriptor，并复用同一 Capability Registry 启动校验。

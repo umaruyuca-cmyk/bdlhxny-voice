@@ -1,4 +1,10 @@
-"""M1/M3 Finance Runtime 的精确 Capability 授权策略。"""
+"""Finance Runtime 的精确 Capability 授权策略（重写：读库形态）。
+
+operation→capability 映射不再硬编码（M1/M3 常量已删）；授权判断直接
+反查 Registry（真源为库表 bdlh_runtime_capability_operation，经
+RegistrySnapshot 派生注入）：capability 允许 ⟺ 其 required_operations
+全部 ⊆ 本次请求的 authorized_operations。
+"""
 
 from __future__ import annotations
 
@@ -12,35 +18,6 @@ from bdlh_runtime.tools.capabilities import CapabilityRegistry
 ANALYSIS_CAPABILITY = "analysis.run_analysis"
 
 
-M1_OPERATION_CAPABILITIES: dict[DomainOperation, frozenset[str]] = {
-    DomainOperation.READ_MARKET_DATA: frozenset({
-        "market.resolve_instrument",
-        "market.get_realtime_quote",
-        "market.get_historical_prices",
-        "market.get_financial_statements",
-        "market.get_valuation",
-        "market.get_industry_context",
-        "market.get_money_flow",
-        "market.get_news",
-    }),
-    DomainOperation.READ_PUBLIC_RESEARCH: frozenset({"research.web_search"}),
-    DomainOperation.RUN_ANALYSIS: frozenset({ANALYSIS_CAPABILITY}),
-}
-
-M3_OPERATION_CAPABILITIES: dict[DomainOperation, frozenset[str]] = {
-    DomainOperation.READ_PORTFOLIO: frozenset({
-        "portfolio.get_current_positions",
-        "portfolio.get_account_snapshot",
-    }),
-    DomainOperation.READ_PROFILE: frozenset({"user.get_risk_profile"}),
-}
-
-FINANCE_OPERATION_CAPABILITIES = {
-    **M1_OPERATION_CAPABILITIES,
-    **M3_OPERATION_CAPABILITIES,
-}
-
-
 @dataclass(frozen=True)
 class AuthorizationDecision:
     """一次确定性授权过滤结果。"""
@@ -51,41 +28,38 @@ class AuthorizationDecision:
 
 
 class FinanceCapabilityAuthorizationPolicy:
-    """将领域操作映射为 Registry 中的精确只读 Capability。"""
+    """将领域操作映射为 Registry 中的精确只读 Capability（读库派生）。"""
 
     def __init__(self, registry: CapabilityRegistry) -> None:
         self._registry = registry
-        configured = set().union(*FINANCE_OPERATION_CAPABILITIES.values())
-        missing = sorted(name for name in configured if not registry.contains(name))
-        if missing:
-            raise ValueError(
-                "Finance authorization references unregistered capabilities: "
-                + ", ".join(missing)
-            )
 
     def allowed_capabilities(
         self,
         operations: set[DomainOperation],
     ) -> frozenset[str]:
-        allowed: set[str] = set()
-        for operation in operations:
-            allowed.update(
-                FINANCE_OPERATION_CAPABILITIES.get(operation, frozenset())
-            )
-        return frozenset(allowed)
+        granted = set(operations)
+        return frozenset(
+            spec.name
+            for spec in self._registry.list()
+            if spec.operations  # capability_operation 表至少一行（loader 校验）
+            and set(spec.operations).issubset(granted)
+        )
 
     def is_allowed(
         self,
         capability: str,
         operations: set[DomainOperation],
     ) -> bool:
-        return capability in self.allowed_capabilities(operations)
+        if not self._registry.contains(capability):
+            return False
+        return set(self._registry.get(capability).operations).issubset(set(operations))
 
     def authorize(
         self,
         requirements: list[DataRequirement],
         operations: set[DomainOperation],
     ) -> AuthorizationDecision:
+        """确定性授权过滤：required 缺证失败、optional 缺证降级跳过。"""
         allowed = self.allowed_capabilities(operations)
         accepted: list[DataRequirement] = []
         missing_required: list[str] = []

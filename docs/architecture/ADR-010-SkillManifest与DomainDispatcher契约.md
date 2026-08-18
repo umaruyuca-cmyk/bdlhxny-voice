@@ -1,6 +1,13 @@
 # ADR-010：Skill Manifest 与 Domain Dispatcher 契约
 
 > 状态：APPROVED（字段表已冻结；§6 实现已落地——descriptor/manifest 切片，2026-08-11）
+> 修订：**2026-08-15 入口理解与资格菜单重写——「Manifest 编译期写死目录」作废**。
+> 资格与工具目录真源改为数据库（`bdlh_runtime_*` 表，经 `RegistrySnapshot` 加载，
+> loader fail-fast 校验）；本 ADR 冻结的**字段表与校验规则继续有效**，但
+> `required_capabilities` / `required_operations` / Skill 启用状态由库表派生
+> （`build_finance_descriptor(registry)`），不再以 Python 常量为真源。
+> 启动校验改为「DB 行 ↔ 执行路由」对账（`mcp|java|web` 校验 integrations 处理器，
+> `local` 校验领域 Builder），并新增空目录拒绝启动。详见重写实施 Prompt §3/§6。
 > 批准人：项目 owner
 > 日期：2026-08-11
 > 依赖：[ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)

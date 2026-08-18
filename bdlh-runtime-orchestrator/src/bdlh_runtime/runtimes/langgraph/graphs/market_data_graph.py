@@ -253,6 +253,31 @@ def _route_after_action(state: RootState) -> str:
     return "finish" if action.get("action") == "finish" else "execute"
 
 
+def _fill_action_arguments(action_data: dict, state: RootState) -> dict:
+    """执行前回填参数占位（规则版 Agent 产生 {arg: None}）。
+
+    symbol 类参数从 understand.entities.instruments 取当前标的；
+    web_search 的 query 以标的兜底。LLM 版输出完整参数，不受影响。
+    """
+    arguments = dict(action_data.get("arguments") or {})
+    if not any(value is None for value in arguments.values()):
+        return arguments
+    instruments = (state.get("understand", {}).get("entities") or {}).get("instruments") or []
+    symbol = instruments[0] if instruments else state.get("request", {}).get("symbol")
+    capability = str(action_data.get("action") or "")
+    for key, value in arguments.items():
+        if value is not None:
+            continue
+        if key == "symbol" and symbol is not None:
+            arguments[key] = symbol
+        elif key == "query" and symbol is not None:
+            arguments[key] = f"{symbol} 最新动态"
+        elif key == "lookback_days":
+            arguments[key] = 120
+    del capability
+    return arguments
+
+
 def _budget_limit(state: RootState, name: str) -> int | None:
     budget = state.get("budget") or {}
     value = budget.get(name)
@@ -296,7 +321,7 @@ def _make_execute_tool_node(
     async def execute_tool(state: RootState) -> dict:
         action_data = state.get("_current_action", {})
         capability = action_data.get("action", "")
-        arguments = action_data.get("arguments", {})
+        arguments = _fill_action_arguments(action_data, state)
         run_id = state.get("run_id", "")
         used = state.get("tool_calls_used", 0)
         allowed = set(state.get("allowed", []))

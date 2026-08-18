@@ -6,7 +6,7 @@ Skill 的契约、授权与 builder 已存在但被 ``FinanceRuntime.run()`` 的
 ``ACTION_NOT_ENABLED`` 门拦住（runtime.py:124），因此标记为 ``FOUNDATION``。
 
 关键防漂移设计（ADR-010 §3.1.4）：``required_capabilities`` 不手抄，直接从
-``authorization.py`` 的 ``M1_OPERATION_CAPABILITIES`` / ``M3_OPERATION_CAPABILITIES``
+Registry（库表 bdlh_runtime_capability_operation 派生）
 派生。这样授权策略与 manifest 永远同源——改授权必须同步改 manifest，反之亦然。
 
 本模块位于 ``domains/finance/`` 下，可以 import finance 契约；但它不 import
@@ -22,45 +22,44 @@ from bdlh_runtime.domains.manifests import (
 )
 from bdlh_runtime.tools.capabilities import ToolsetName
 
-from .authorization import (
-    ANALYSIS_CAPABILITY,
-    M1_OPERATION_CAPABILITIES,
-    M3_OPERATION_CAPABILITIES,
-)
+from .authorization import ANALYSIS_CAPABILITY
 from .contracts import FinancialIntent
 from .snapshot_builder import PORTFOLIO_VALUATION_CAPABILITY
 
 
-# ── 能力名派生：从授权映射导出，避免双源漂移 ──────────────────────────────────
+# ── 能力名派生：从 Registry（库表真源）反查，不维护第二份映射 ────────────────
 
-def _capabilities_for(*operations: DomainOperation) -> frozenset[str]:
-    """从授权映射导出指定操作集合对应的精确能力名。"""
-    source = {**M1_OPERATION_CAPABILITIES, **M3_OPERATION_CAPABILITIES}
-    result: set[str] = set()
-    for operation in operations:
-        result.update(source.get(operation, frozenset()))
-    return frozenset(result)
-
-
-# M1 客观研究能力（READ_MARKET_DATA 全部 + RUN_ANALYSIS）
-_M1_CAPABILITIES = _capabilities_for(
-    DomainOperation.READ_MARKET_DATA,
-    DomainOperation.RUN_ANALYSIS,
-)
-# READ_PUBLIC_RESEARCH 的能力（web_search），作为 stock-research 的 optional
-_PUBLIC_RESEARCH_CAPABILITIES = _capabilities_for(DomainOperation.READ_PUBLIC_RESEARCH)
-# M3 用户事实能力
-_M3_CAPABILITIES = _capabilities_for(
-    DomainOperation.READ_PORTFOLIO,
-    DomainOperation.READ_PROFILE,
-)
-# 确定性估值重算能力（M3 新增；不在 OPERATION 映射中，是域内派生能力）
-_VALUATION_CAPABILITIES = frozenset({PORTFOLIO_VALUATION_CAPABILITY})
+def _capabilities_for(registry, *operations: DomainOperation) -> frozenset[str]:
+    """从 Registry 派生：required_operations ⊆ 给定操作集合的全部能力名。"""
+    granted = set(operations)
+    return frozenset(
+        spec.name
+        for spec in registry.list()
+        if spec.operations and set(spec.operations).issubset(granted)
+    )
 
 
-# ── 三份 SkillManifest（声明现状） ────────────────────────────────────────────
+def build_skill_manifests(registry):
+    """从 Registry 现算三份 SkillManifest 的能力清单（重写 §6.1：读库）。"""
+    m1 = _capabilities_for(
+        registry,
+        DomainOperation.READ_MARKET_DATA,
+        DomainOperation.RUN_ANALYSIS,
+    )
+    public_research = _capabilities_for(registry, DomainOperation.READ_PUBLIC_RESEARCH)
+    m3 = _capabilities_for(
+        registry,
+        DomainOperation.READ_PORTFOLIO,
+        DomainOperation.READ_PROFILE,
+    )
+    valuation = frozenset({PORTFOLIO_VALUATION_CAPABILITY})
+    return m1, public_research, m3, valuation
 
-STOCK_RESEARCH_MANIFEST = SkillManifest(
+
+# ── 三份 SkillManifest（声明现状；能力清单由 build_xxx(registry) 现算） ──────
+
+def _stock_research_manifest(m1, public_research) -> SkillManifest:
+    return SkillManifest(
     # 身份
     skill_id="stock-research",
     skill_version="stock-research.v1",
@@ -85,8 +84,8 @@ STOCK_RESEARCH_MANIFEST = SkillManifest(
         ToolsetName.FUNDAMENTAL_READ,
         ToolsetName.PLANNING_COMPUTE,
     }),
-    required_capabilities=_M1_CAPABILITIES,
-    optional_capabilities=_PUBLIC_RESEARCH_CAPABILITIES,
+    required_capabilities=m1,
+    optional_capabilities=public_research,
     # 数据条件：客观研究对 data_mode 无强约束（可基于行情/LIVE 数据）
     required_data_modes=frozenset({"LIVE", "USER_CONFIRMED", "TEST_FIXTURE"}),
     completeness_policy="coverage_downgrade_on_missing_evidence",
@@ -117,7 +116,8 @@ STOCK_RESEARCH_MANIFEST = SkillManifest(
 )
 
 
-PORTFOLIO_HEALTH_MANIFEST = SkillManifest(
+def _portfolio_health_manifest(m3, valuation) -> SkillManifest:
+    return SkillManifest(
     # 身份
     skill_id="portfolio-health",
     skill_version="portfolio-health.v1",
@@ -141,7 +141,7 @@ PORTFOLIO_HEALTH_MANIFEST = SkillManifest(
         ToolsetName.PORTFOLIO_READ,
         ToolsetName.FINANCIAL_PROFILE_READ,
     }),
-    required_capabilities=_M3_CAPABILITIES | _VALUATION_CAPABILITIES,
+    required_capabilities=m3 | valuation,
     optional_capabilities=frozenset(),
     # 数据条件：拒绝 MOCK/UNAVAILABLE 驱动真实结论
     required_data_modes=frozenset({"LIVE", "USER_CONFIRMED"}),
@@ -169,7 +169,8 @@ PORTFOLIO_HEALTH_MANIFEST = SkillManifest(
 )
 
 
-SUITABILITY_MANIFEST = SkillManifest(
+def _suitability_manifest(m1, m3, valuation, public_research) -> SkillManifest:
+    return SkillManifest(
     # 身份
     skill_id="suitability-evaluation",
     skill_version="suitability-evaluation.v1",
@@ -198,8 +199,8 @@ SUITABILITY_MANIFEST = SkillManifest(
         ToolsetName.FINANCIAL_PROFILE_READ,
         ToolsetName.PLANNING_COMPUTE,
     }),
-    required_capabilities=_M1_CAPABILITIES | _M3_CAPABILITIES | _VALUATION_CAPABILITIES,
-    optional_capabilities=_PUBLIC_RESEARCH_CAPABILITIES,
+    required_capabilities=m1 | m3 | valuation,
+    optional_capabilities=public_research,
     # 数据条件：必须排除 MOCK/UNAVAILABLE（ADR-010 §3 示例）
     required_data_modes=frozenset({"LIVE", "USER_CONFIRMED"}),
     completeness_policy="INSUFFICIENT_INFORMATION_on_data_gap",
@@ -231,7 +232,9 @@ SUITABILITY_MANIFEST = SkillManifest(
 
 # ── DomainDescriptor ─────────────────────────────────────────────────────────
 
-FINANCE_DESCRIPTOR = DomainDescriptor(
+def build_finance_descriptor(registry) -> DomainDescriptor:
+    m1, public_research, m3, valuation = build_skill_manifests(registry)
+    return DomainDescriptor(
     domain="finance",
     descriptor_version="finance-v1",
     status="CURRENT",
@@ -246,9 +249,9 @@ FINANCE_DESCRIPTOR = DomainDescriptor(
     # 当前只有 STOCK_RESEARCH 端到端跑通。其余意图返回稳定失败，不静默降级。
     enabled_intents=frozenset({FinancialIntent.STOCK_RESEARCH}),
     skills=(
-        STOCK_RESEARCH_MANIFEST,
-        PORTFOLIO_HEALTH_MANIFEST,
-        SUITABILITY_MANIFEST,
+        _stock_research_manifest(m1, public_research),
+        _portfolio_health_manifest(m3, valuation),
+        _suitability_manifest(m1, m3, valuation, public_research),
     ),
     request_contract="FinancialDomainRequest",
     outcome_contract="FinancialDomainOutcome",

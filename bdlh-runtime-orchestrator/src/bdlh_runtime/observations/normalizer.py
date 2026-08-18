@@ -52,6 +52,10 @@ class ObservationNormalizer:
             return self._normalize_web_search(observation, data)
 
         raw_text = data.get("raw_text", "")
+        if not raw_text:
+            # 无 raw_text 的 dict data 已是结构化业务形态（本地/测试替身/适配器
+            # 预解析结果），无需再走 parser——禁止把已结构化数据误判 PARSE_ERROR。
+            return observation
 
         # ── 服务端吞错识别（error=true 藏在正常响应里）──
         swallowed = self._detect_swallowed_error(raw_text)

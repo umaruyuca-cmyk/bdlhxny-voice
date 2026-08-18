@@ -220,7 +220,7 @@ async def test_quote_only_window_executes_single_capability():
 
     result = await graph.ainvoke(state)
 
-    assert gateway.calls == [("market.get_realtime_quote", {"symbol": None})]
+    assert gateway.calls == [("market.get_realtime_quote", {"symbol": "600519"})]
     assert {item["capability"] for item in result["observations"]} == {
         "market.resolve_instrument",
         "market.get_realtime_quote",
@@ -246,3 +246,17 @@ async def test_tool_call_budget_stops_react_before_gateway_call():
     assert gateway.calls == []
     assert result["budget_exhausted"] is True
     assert result["observations"][0]["error_code"] == "BUDGET_EXCEEDED"
+
+
+@pytest.mark.asyncio
+async def test_rule_agent_placeholder_arguments_backfilled_from_understand():
+    """规则版 {arg: None} 占位在执行前从 understand.entities 回填真实标的。"""
+    gateway = FakeGateway({"market.get_realtime_quote": _observation("market.get_realtime_quote")})
+    agent = FakeResearchAgent(["market.get_realtime_quote"])
+    graph = build_market_data_graph(gateway_adapter=gateway, research_agent=agent, max_react_rounds=3)
+    state = _initial_state([{"capability": "market.get_realtime_quote"}])
+
+    result = await graph.ainvoke(state)
+
+    assert gateway.calls == [("market.get_realtime_quote", {"symbol": "600519"})]
+    assert result["observations"][-1]["status"] == "SUCCESS"

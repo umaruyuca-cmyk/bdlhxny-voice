@@ -55,8 +55,6 @@ from .authorization import (
     ANALYSIS_CAPABILITY,
     AuthorizationDecision,
     FinanceCapabilityAuthorizationPolicy,
-    M1_OPERATION_CAPABILITIES,
-    M3_OPERATION_CAPABILITIES,
 )
 from .planner import FinancePlan, FinancePlanner
 from .instrument_resolver import (
@@ -88,12 +86,7 @@ from .runtime import (
     FinanceRuntime,
     create_finance_runtime,
 )
-from .manifests import (
-    FINANCE_DESCRIPTOR,
-    PORTFOLIO_HEALTH_MANIFEST,
-    STOCK_RESEARCH_MANIFEST,
-    SUITABILITY_MANIFEST,
-)
+from .manifests import build_finance_descriptor
 
 __all__ = [
     "AccountSnapshot",
@@ -117,7 +110,7 @@ __all__ = [
     "FinanceRunState",
     "FinanceRuntime",
     "FinanceInstrumentResolver",
-    "FINANCE_DESCRIPTOR",
+    "build_finance_descriptor",
     "FinancialSnapshot",
     "FinancialSnapshotBuilder",
     "FinancialSnapshotError",
@@ -134,13 +127,10 @@ __all__ = [
     "MarketSnapshot",
     "MarketRiskProxy",
     "MarketRiskProxyThresholds",
-    "M1_OPERATION_CAPABILITIES",
-    "M3_OPERATION_CAPABILITIES",
     "MoneyFlow",
     "NewsEvent",
     "PortfolioImpact",
     "PortfolioPosition",
-    "PORTFOLIO_HEALTH_MANIFEST",
     "PortfolioValuationBuilder",
     "PortfolioValuationError",
     "PortfolioValuationInput",
@@ -153,7 +143,6 @@ __all__ = [
     "Scenario",
     "StockResearchResult",
     "StockResearchResultBuilder",
-    "STOCK_RESEARCH_MANIFEST",
     "SnapshotIdentityError",
     "SuitabilityAssessment",
     "SuitabilityCondition",
@@ -161,7 +150,6 @@ __all__ = [
     "SuitabilityV0RuleSet",
     "SuitabilityPreflight",
     "SuitabilityPreflightError",
-    "SUITABILITY_MANIFEST",
     "Technicals",
     "Valuation",
     "UserFinancialObservationNormalizer",

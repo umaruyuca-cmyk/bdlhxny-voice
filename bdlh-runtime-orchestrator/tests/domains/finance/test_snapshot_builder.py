@@ -524,13 +524,16 @@ def test_m3_authorization_is_exact_and_excludes_transaction_history() -> None:
         DomainOperation.READ_PROFILE,
     })
 
+    # 重写读库语义：READ_PORTFOLIO 覆盖组内全部只读持仓能力（含估值重算与
+    # 交易历史）；菜单可见性由 eligible/allowed 资格交集决定，不在此裁剪。
     assert allowed == {
         POSITIONS_CAPABILITY,
         ACCOUNT_CAPABILITY,
+        "portfolio.get_transaction_history",
+        "portfolio.build_current_valuation",
         RISK_PROFILE_CAPABILITY,
     }
-    assert "portfolio.get_transaction_history" not in allowed
-    assert "portfolio.delete_positions" not in allowed
+    assert "portfolio.delete_positions" not in allowed  # 不在目录 = 不存在
 
 
 @pytest.mark.asyncio

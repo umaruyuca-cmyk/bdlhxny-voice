@@ -45,6 +45,7 @@ class CapabilitySpec:
     requires_authenticated_user: bool = False
     depends_on: frozenset[str] = frozenset()
     toolsets: frozenset[str] = frozenset()
+    operations: frozenset[str] = frozenset()
 
     def manifest(self) -> dict[str, object]:
         """返回可安全放入模型上下文的描述；不包含底层路由细节。"""
@@ -73,6 +74,7 @@ class CapabilitySpec:
             requires_authenticated_user=record.requires_authenticated_user,
             depends_on=record.depends_on,
             toolsets=record.toolsets,
+            operations=record.operations,
         )
 
 
