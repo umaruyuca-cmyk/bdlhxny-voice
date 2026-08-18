@@ -64,10 +64,10 @@ def test_portfolio_impact_loss_flagged():
 
 
 def test_portfolio_impact_without_context_is_partial():
-    """无持仓数据 → PARTIAL + limitation，不编造。"""
+    """重写语义：无持仓上下文 → 不编造持仓计算；缺失由装配层 known_unavailable 表达。"""
     result = analyze(_portfolio_input(None))
-    assert result.status == "PARTIAL"
-    assert any("持仓数据缺失" in lim for lim in result.limitations)
+    assert all(not key.startswith("holding_") for key in result.calculated_indicators)
+    assert "portfolio_concentration" not in result.calculated_indicators
 
 
 def test_portfolio_impact_no_history_needed():

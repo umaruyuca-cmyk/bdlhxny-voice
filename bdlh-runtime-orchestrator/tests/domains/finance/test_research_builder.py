@@ -23,12 +23,11 @@ from bdlh_runtime.domains.finance.research_builder import (
 )
 
 
-def _request(analysis_type: str = "market_snapshot") -> FinancialDomainRequest:
+def _request(scenario: str = "research") -> FinancialDomainRequest:
     return FinancialDomainRequest(
-        request_id=f"builder-{analysis_type}",
+        request_id=f"builder-{scenario}",
         authenticated_user_id="user-1",
         objective="构建客观股票研究",
-        analysis_type=analysis_type,
         instruments=[FinancialInstrument(symbol="600519", name="贵州茅台")],
         authorized_operations={
             DomainOperation.READ_MARKET_DATA,
@@ -132,13 +131,13 @@ def test_builder_is_deterministic_and_preserves_calculated_indicators() -> None:
     builder = StockResearchResultBuilder()
 
     first = builder.build(
-        request=_request("technical"),
+        request=_request(),
         requirements=requirements,
         observations=observations,
         analysis_result=analysis,
     )
     second = builder.build(
-        request=_request("technical"),
+        request=_request(),
         requirements=requirements,
         observations=list(reversed(observations)),
         analysis_result=analysis,
@@ -273,7 +272,7 @@ def test_non_live_observation_cannot_support_complete_research(
 
 def test_event_text_is_sanitized_and_raw_snippet_is_not_copied() -> None:
     result = StockResearchResultBuilder().build(
-        request=_request("technical"),
+        request=_request(),
         requirements=[
             _requirement("market.get_realtime_quote"),
             _requirement("market.get_news", required=False),
@@ -306,7 +305,7 @@ def test_event_text_is_sanitized_and_raw_snippet_is_not_copied() -> None:
 
 def test_cn_financial_fundamentals_aliases_are_projected() -> None:
     result = StockResearchResultBuilder().build(
-        request=_request("fundamental"),
+        request=_request(),
         requirements=[
             _requirement("market.get_realtime_quote"),
             _requirement("market.get_financial_statements"),
@@ -340,7 +339,7 @@ def test_cn_financial_fundamentals_aliases_are_projected() -> None:
 
 def test_failed_analysis_does_not_project_risks_or_technical_signals() -> None:
     result = StockResearchResultBuilder().build(
-        request=_request("technical"),
+        request=_request(),
         requirements=[
             _requirement("market.get_realtime_quote"),
             _requirement("market.get_historical_prices"),

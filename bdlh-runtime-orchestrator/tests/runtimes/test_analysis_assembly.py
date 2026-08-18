@@ -13,15 +13,22 @@ from bdlh_runtime.contracts.observation import (
 from bdlh_runtime.contracts.workflow import TaskSpec, WorkflowPlan
 from bdlh_runtime.runtimes.langgraph.nodes.nodes import assemble_analysis
 from bdlh_runtime.runtimes.shared import assemble_analysis_input
-from tests.helpers_registry import build_default_capability_registry
+from tests.helpers_registry import seeded_snapshot
 
 
+def _topic_map() -> dict[str, list[str]]:
+    snapshot = seeded_snapshot()
+    return {
+        topic: snapshot.topic_capabilities_for(topic)
+        for topic in ("news", "money_flow", "industry", "web_research")
+    }
+
+
+#: 重写：场景 = 基线面板（resolve+quote）+ 附加 topics
 REQUESTED_TOPICS = {
-    "market_snapshot": set(),
-    "technical": {"news", "money_flow"},
-    "fundamental": {"news", "industry", "web_research"},
-    "valuation": {"news", "industry", "web_research"},
-    "comprehensive": set(),
+    "baseline": set(),
+    "news_flow": {"news", "money_flow"},
+    "research_ext": {"industry", "web_research"},
 }
 
 
@@ -68,31 +75,27 @@ def make_observations(capabilities: list[str]) -> list[Observation]:
     ]
 
 
-@pytest.mark.parametrize("analysis_type", list(REQUESTED_TOPICS))
+@pytest.mark.parametrize("scenario", list(REQUESTED_TOPICS))
 def test_legacy_node_and_finance_runtime_share_identical_assembly(
-    analysis_type: str,
+    scenario: str,
 ) -> None:
-    planner = CapabilityRequirementPlanner(build_default_capability_registry())
-    requirements = planner.plan_explicit(
-        analysis_type=analysis_type,
-        symbol="600519",
-        requested_topics=REQUESTED_TOPICS[analysis_type],
-    )
-    requirement_dicts = [item.model_dump() for item in requirements]
-    observations = make_observations(
-        ["market.resolve_instrument", *[item.capability for item in requirements]]
-    )
+    topics = REQUESTED_TOPICS[scenario]
+    topic_map = _topic_map()
+    names = ["market.resolve_instrument", "market.get_realtime_quote"]
+    for topic in sorted(topics):
+        for capability in topic_map.get(topic, []):
+            if capability not in names:
+                names.append(capability)
+    observations = make_observations(names)
 
     direct = assemble_analysis_input(
-        analysis_id=f"run-{analysis_type}",
-        analysis_type=analysis_type,
+        analysis_id=f"run-{scenario}",
         symbol="600519",
         observations=observations,
-        requirements=requirement_dicts,
+        requested_capabilities=names,
     )
     plan = WorkflowPlan(
-        plan_id=f"plan-{analysis_type}",
-        analysis_type=analysis_type,
+        plan_id=f"plan-{scenario}",
         tasks=[
             TaskSpec(
                 task_id="assemble-analysis",
@@ -104,11 +107,11 @@ def test_legacy_node_and_finance_runtime_share_identical_assembly(
     )
     node_result = assemble_analysis(
         {
-            "run_id": f"run-{analysis_type}",
-            "intent": {"analysis_type": analysis_type, "symbol": "600519"},
+            "run_id": f"run-{scenario}",
+            "understand": {"entities": {"instruments": ["600519"]}},
             "observations": [item.model_dump() for item in observations],
             "_observation_start_index": 0,
-            "data_requirements": requirement_dicts,
+            "allowed": names,
             "workflow_plan": plan.model_dump(),
             "current_task_id": "assemble-analysis",
         }

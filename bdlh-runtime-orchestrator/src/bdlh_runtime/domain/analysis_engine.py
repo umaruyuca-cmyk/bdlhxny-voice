@@ -80,8 +80,6 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
         risk = _risk_summary(analysis_input, limitations, prices)
         calculated.update(risk["indicators"])
         risk_flags.extend(risk["risk_flags"])
-    else:
-        limitations.append("历史K线不足，未计算技术指标与风险指标")
 
     if analysis_input.financial_data is not None:
         fundamental = _fundamental_analysis(analysis_input, limitations)

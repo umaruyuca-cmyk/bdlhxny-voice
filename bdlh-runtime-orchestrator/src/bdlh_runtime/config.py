@@ -96,6 +96,9 @@ class Settings:
     web_search_token: str | None = None
     web_search_timeout_seconds: float = 20.0
 
+    # ── Deep Research（ADR-016；默认关闭，PROPOSED 不改生产浅搜语义）──
+    deep_research_enabled: bool = False
+
     # ── 模型凭证（供记忆层和后续 Agent 使用）──
     deepseek_api_key: str | None = None
     qwen3_base_url: str | None = None
@@ -177,4 +180,6 @@ class Settings:
             web_search_agent_id=os.getenv("WEB_SEARCH_AGENT_ID"),
             web_search_token=os.getenv("WEB_SEARCH_TOKEN"),
             web_search_timeout_seconds=float(os.getenv("WEB_SEARCH_TIMEOUT", "20")),
+            deep_research_enabled=os.getenv("BDLH_DEEP_RESEARCH_ENABLED", "false").lower()
+            in {"1", "true", "yes", "on"},
         )

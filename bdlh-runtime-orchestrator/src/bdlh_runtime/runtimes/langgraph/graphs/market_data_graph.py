@@ -137,6 +137,7 @@ def build_market_data_graph(
     max_react_rounds: int = _DEFAULT_MAX_REACT_ROUNDS,
     web_search_adapter: Any | None = None,
     java_adapter: Any | None = None,
+    deep_research_adapter: Any | None = None,
 ):
     """构建市场数据获取子图（审查文档 §4.5 执行矩阵）。
 
@@ -144,6 +145,10 @@ def build_market_data_graph(
     - 都注入：走真实 MCP ReAct 循环；单一 Agent 在窗口内选择下一步，
       白名单 = state["allowed"]（重写 §6.2：凡 needs_external 均可 Agent 选）；
     - 都不传：走 mock 路径（execute_mock_market_tool），保证测试无网络依赖。
+
+    ``research.web_search`` → web_search_adapter；``research.deep_search`` →
+    deep_research_adapter（默认关闭，ADR-016 PROPOSED）；禁止把任意 ``research.*``
+    都丢进浅搜 Adapter。
     """
 
     # 子图必须输出 workflow_plan：evaluate_market_data 里的 _complete_current_task
@@ -156,7 +161,15 @@ def build_market_data_graph(
         # ── 真实 ReAct 模式 ──
         graph.add_node("build_market_query", build_market_query)
         graph.add_node("select_action", _make_select_action_node(research_agent, llm_research_agent))
-        graph.add_node("execute_tool", _make_execute_tool_node(gateway_adapter, web_search_adapter, java_adapter))
+        graph.add_node(
+            "execute_tool",
+            _make_execute_tool_node(
+                gateway_adapter,
+                web_search_adapter,
+                java_adapter,
+                deep_research_adapter,
+            ),
+        )
         graph.add_node("normalize_observation", _normalize_observations_node)
         graph.add_node("evaluate_market_data", evaluate_market_data)
 
@@ -264,14 +277,20 @@ def _quote_arguments(state: RootState) -> dict[str, Any]:
     return {"symbol": symbol} if symbol else {}
 
 
-def _make_execute_tool_node(gateway_adapter: Any, web_search_adapter: Any | None = None, java_adapter: Any | None = None):
-    """构建工具执行节点：按能力前缀路由到对应 adapter（同步工厂，返回异步节点）。
+def _make_execute_tool_node(
+    gateway_adapter: Any,
+    web_search_adapter: Any | None = None,
+    java_adapter: Any | None = None,
+    deep_research_adapter: Any | None = None,
+):
+    """构建工具执行节点：按能力精确路由到对应 adapter（同步工厂，返回异步节点）。
 
-    能力前缀路由（架构文档 §13）：
-    - research.*  → web_search_adapter（网络搜索，HTTP 非 MCP）
-    - portfolio.* / user.* → java_adapter（用户数据，Java API）
-    - 其他（market.* 等） → gateway_adapter（MCP 金融数据）
-    各 adapter 失败时内部降级，这里只做分发。
+    能力路由（架构文档 §13 + ADR-016）：
+    - research.web_search → web_search_adapter（SearXNG 浅搜）
+    - research.deep_search → deep_research_adapter（复合研究；未注入则 UNAVAILABLE）
+    - portfolio.* / user.* → java_adapter
+    - 其他（market.* 等） → gateway_adapter（MCP）
+    禁止 ``research.*`` 前缀整段丢进浅搜 Adapter（避免 deep 静默串味）。
     """
 
     async def execute_tool(state: RootState) -> dict:
@@ -303,9 +322,51 @@ def _make_execute_tool_node(gateway_adapter: Any, web_search_adapter: Any | None
                 "budget_exhausted": True,
                 "events": [event(state, "tool.blocked", "execute_tool", {"capability": capability, "reason": "budget_exceeded"})],
             }
-        # 能力前缀路由：research./portfolio./user. 走独立 adapter，其他走 MCP gateway
-        if capability.startswith("research.") and web_search_adapter is not None:
-            observation = await web_search_adapter.execute(capability, arguments)
+        if capability == "research.web_search":
+            if web_search_adapter is None:
+                observation = Observation(
+                    observation_id=str(uuid4()),
+                    capability=capability,
+                    status="UNAVAILABLE",
+                    data=None,
+                    data_quality=DataQuality(
+                        quality_status="INVALID",
+                        known_unavailable=[capability],
+                    ),
+                    error_code="WEB_SEARCH_ADAPTER_MISSING",
+                    error_message="research.web_search adapter is not configured",
+                )
+            else:
+                observation = await web_search_adapter.execute(capability, arguments)
+        elif capability == "research.deep_search":
+            if deep_research_adapter is None:
+                observation = Observation(
+                    observation_id=str(uuid4()),
+                    capability=capability,
+                    status="UNAVAILABLE",
+                    data=None,
+                    data_quality=DataQuality(
+                        quality_status="INVALID",
+                        known_unavailable=[capability],
+                    ),
+                    error_code="DEEP_RESEARCH_NOT_ENABLED",
+                    error_message=(
+                        "research.deep_search is not wired (ADR-016 PROPOSED); "
+                        "ordinary queries must use research.web_search"
+                    ),
+                )
+            else:
+                observation = await deep_research_adapter.execute(capability, arguments)
+        elif capability.startswith("research."):
+            observation = Observation(
+                observation_id=str(uuid4()),
+                capability=capability,
+                status="FAILED",
+                data=None,
+                data_quality=DataQuality(quality_status="INVALID"),
+                error_code="UNKNOWN_RESEARCH_CAPABILITY",
+                error_message=f"unsupported research capability: {capability}",
+            )
         elif (capability.startswith("portfolio.") or capability.startswith("user.")) and java_adapter is not None:
             observation = await java_adapter.execute(capability, arguments)
         else:

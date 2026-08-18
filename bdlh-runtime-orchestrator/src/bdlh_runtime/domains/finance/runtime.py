@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Protocol
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from bdlh_runtime.contracts.analysis import AnalysisInput, AnalysisResult
 from bdlh_runtime.contracts.data_requirements import DataRequirement
-from bdlh_runtime.contracts.observation import Observation
+from bdlh_runtime.contracts.observation import DataQuality, Observation
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainError,
@@ -80,6 +81,22 @@ class ApplicationFinanceCapabilityExecutor:
         if capability == "research.web_search":
             observation = await self._web_search.execute(capability, arguments)
             return self._normalizer.normalize(observation)
+        if capability == "research.deep_search":
+            return Observation(
+                observation_id=str(uuid4()),
+                capability=capability,
+                status="UNAVAILABLE",
+                data=None,
+                data_quality=DataQuality(
+                    quality_status="INVALID",
+                    known_unavailable=[capability],
+                ),
+                error_code="DEEP_RESEARCH_NOT_ENABLED",
+                error_message=(
+                    "Finance runtime does not execute research.deep_search while "
+                    "ADR-016 is PROPOSED; use research.web_search"
+                ),
+            )
         if capability in USER_SNAPSHOT_CAPABILITIES:
             if self._java is None:
                 raise ValueError("Finance executor has no Java user-data adapter")
@@ -395,6 +412,7 @@ class FinanceRuntime:
 def create_finance_runtime(
     *,
     capability_registry: Any,
+    topic_capabilities: dict[str, list[str]] | None = None,
     gateway_adapter: Any,
     web_search_adapter: Any,
     analysis_capability: Any,
@@ -402,7 +420,7 @@ def create_finance_runtime(
 ) -> FinanceRuntime:
     """使用现有 Application 组件装配 M1 Runtime 与 M2 研究 Builder。"""
 
-    planner = FinancePlanner(capability_registry)
+    planner = FinancePlanner(topic_capabilities)
     authorization = FinanceCapabilityAuthorizationPolicy(capability_registry)
     executor = ApplicationFinanceCapabilityExecutor(
         gateway_adapter=gateway_adapter,

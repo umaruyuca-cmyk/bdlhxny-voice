@@ -31,7 +31,7 @@ def _state_with_result(confirmation=None):
         "user_id": "u1",
         "run_id": "run-1",
         "request": {"message": "分析 600519"},
-        "intent": {"symbol": "600519", "analysis_type": "comprehensive"},
+        "understand": {"entities": {"instruments": ["600519"]}},
         "analysis_result": {
             "conclusions": [
                 {"text": "技术面偏多", "confidence": "MEDIUM"},

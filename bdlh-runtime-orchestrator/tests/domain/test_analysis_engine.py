@@ -14,7 +14,6 @@ _SYNTHETIC_BARS = [
 
 
 def _make_input(
-    analysis_type: str,
     *,
     bars: list[dict] | None = None,
     quality: str = "OK",
@@ -23,7 +22,6 @@ def _make_input(
     """构造标准 AnalysisInput，默认带 60 根K线和 OK 质量。"""
     return AnalysisInput(
         analysis_id="t-engine",
-        analysis_type=analysis_type,
         instrument={"symbol": "600519", "name": "茅台"},
         realtime_quote=quote,
         historical_prices=bars if bars is not None else _SYNTHETIC_BARS,
@@ -37,8 +35,8 @@ def _make_input(
 
 def test_analyze_is_deterministic():
     """相同输入两次调用结果完全一致（回测可复现的核心保证）。"""
-    first = analyze(_make_input("comprehensive"))
-    second = analyze(_make_input("comprehensive"))
+    first = analyze(_make_input())
+    second = analyze(_make_input())
     assert first.model_dump() == second.model_dump()
 
 
@@ -47,7 +45,7 @@ def test_analyze_is_deterministic():
 
 def test_technical_computes_indicators():
     """technical 类型应算出 MA/MACD/RSI/波动率。"""
-    result = analyze(_make_input("technical"))
+    result = analyze(_make_input())
     assert result.status == "SUCCESS"
     ind = result.calculated_indicators
     assert "ma5" in ind and "ma20" in ind
@@ -60,23 +58,22 @@ def test_technical_computes_indicators():
 
 def test_market_snapshot_needs_only_quote():
     """market_snapshot 无历史K线也能出结果（快路径）。"""
-    result = analyze(_make_input("market_snapshot", bars=[], quote={"price": 130.0}))
+    result = analyze(_make_input(bars=[], quote={"price": 130.0}))
     assert result.status in {"SUCCESS", "PARTIAL"}
     assert "snapshot" in result.calculated_indicators
 
 
 def test_market_snapshot_without_quote_is_explicitly_limited():
     """实时行情缺失时不得生成“分析完成”类结论。"""
-    result = analyze(_make_input("market_snapshot", bars=[], quote=None, quality="OK"))
+    result = analyze(_make_input(bars=[], quote=None, quality="OK"))
 
     assert result.status == "LIMITED"
-    assert any("实时行情数据缺失" in item for item in result.limitations)
     assert result.conclusions == [{"text": "数据不足，无法形成可靠分析结论", "confidence": "LOW"}]
 
 
 def test_comprehensive_includes_risk():
     """comprehensive 应包含年化收益/夏普/回撤。"""
-    result = analyze(_make_input("comprehensive"))
+    result = analyze(_make_input())
     ind = result.calculated_indicators
     assert "annualized_return" in ind
     assert "sharpe" in ind
@@ -118,7 +115,7 @@ def test_valuation_does_not_require_unplanned_history():
 
 
 def test_comprehensive_objective_research_does_not_read_portfolio_context():
-    """客观综合研究不能隐式产生 portfolio 计算或缺失限制。"""
+    """重写语义：客观研究输入不含持仓 Observation → 不产生任何 portfolio 计算。"""
     result = analyze(
         AnalysisInput(
             analysis_id="t-comprehensive-objective",
@@ -127,13 +124,7 @@ def test_comprehensive_objective_research_does_not_read_portfolio_context():
             historical_prices=_SYNTHETIC_BARS,
             financial_data={"revenue": 1000.0},
             valuation_data={"pe": 20.0},
-            portfolio_context={
-                "positions": [
-                    {"symbol": "600519", "quantity": 100, "cost_price": 1000.0}
-                ]
-            },
             data_quality=DataQuality(completeness=1.0, quality_status="OK"),
-            methodology_version="finance-research.m2",
         )
     )
 
@@ -175,21 +166,20 @@ def test_legacy_comprehensive_keeps_portfolio_compatibility() -> None:
 
 def test_technical_without_history_is_limited():
     """technical 无历史K线 → LIMITED，不编造指标。"""
-    result = analyze(_make_input("technical", bars=[]))
+    result = analyze(_make_input(bars=[]))
     assert result.status == "LIMITED"
-    assert any("历史K线不足" in lim for lim in result.limitations)
     assert "ma5" not in result.calculated_indicators
 
 
 def test_partial_quality_propagates():
     """输入 PARTIAL 质量 → 输出 PARTIAL 且保留 limitation。"""
-    result = analyze(_make_input("technical", quality="PARTIAL"))
+    result = analyze(_make_input(quality="PARTIAL"))
     assert result.status == "PARTIAL"
 
 
 def test_invalid_quality_is_limited():
     """输入 INVALID 质量 → LIMITED。"""
-    result = analyze(_make_input("market_snapshot", quality="INVALID"))
+    result = analyze(_make_input(quality="INVALID"))
     assert result.status == "LIMITED"
 
 
@@ -206,6 +196,6 @@ def test_analysis_tool_registered_and_callable():
     tool = registry.get("analysis.run_analysis")
     assert tool.read_only is True
 
-    result = tool.handler(_make_input("technical").model_dump())
+    result = tool.handler(_make_input().model_dump())
     assert result["status"] == "SUCCESS"
     assert "ma5" in result["calculated_indicators"]

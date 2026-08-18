@@ -24,7 +24,8 @@ from bdlh_runtime.domains.finance.contracts import (
 )
 from bdlh_runtime.domains.finance.planner import FinancePlanner
 from bdlh_runtime.domains.finance.runtime import FinanceRuntime
-from tests.helpers_registry import build_default_capability_registry
+from bdlh_runtime.tools.capabilities import load_capability_registry
+from tests.helpers_registry import seeded_snapshot
 
 
 class FakeFinanceExecutor:
@@ -56,7 +57,9 @@ class FakeFinanceExecutor:
             return analyze(AnalysisInput.model_validate(arguments))
 
         data: Any
-        if capability == "market.get_realtime_quote":
+        if capability == "market.resolve_instrument":
+            data = {"symbol": "600519", "name": "贵州茅台"}
+        elif capability == "market.get_realtime_quote":
             data = {"symbol": "600519", "price": 1500.0, "date": "2026-08-10"}
         elif capability == "market.get_historical_prices":
             data = [
@@ -103,63 +106,58 @@ class FakeFinanceExecutor:
 
 
 def build_runtime(executor: FakeFinanceExecutor) -> FinanceRuntime:
-    registry = build_default_capability_registry()
+    registry = load_capability_registry(seeded_snapshot())
     return FinanceRuntime(
-        planner=FinancePlanner(registry),
+        planner=FinancePlanner(topic_capabilities=_TOPIC_CAPABILITIES),
         authorization=FinanceCapabilityAuthorizationPolicy(registry),
         executor=executor,
     )
 
 
-EXPECTED_DEFAULT_DATA_CAPABILITIES = {
-    "market_snapshot": ["market.get_realtime_quote"],
-    "technical": [
-        "market.get_realtime_quote",
-        "market.get_historical_prices",
-    ],
-    "fundamental": [
-        "market.get_realtime_quote",
-        "market.get_financial_statements",
-    ],
-    "valuation": [
-        "market.get_realtime_quote",
-        "market.get_valuation",
-    ],
-    "comprehensive": [
-        "market.get_realtime_quote",
-        "market.get_historical_prices",
-        "market.get_financial_statements",
-        "market.get_valuation",
-        "market.get_industry_context",
-        "market.get_money_flow",
-        "market.get_news",
-        "research.web_search",
-    ],
-}
+def _topic_map() -> dict[str, list[str]]:
+    snapshot = seeded_snapshot()
+    return {
+        topic: snapshot.topic_capabilities_for(topic)
+        for topic in ("news", "money_flow", "industry", "web_research")
+    }
 
+
+_TOPIC_CAPABILITIES = _topic_map()
+
+
+#: 重写语义：STOCK_RESEARCH 统一基线研究面板（不随问话体裁变化）
+EXPECTED_DEFAULT_DATA_CAPABILITIES = [
+    "market.resolve_instrument",
+    "market.get_realtime_quote",
+    "market.get_historical_prices",
+    "market.get_financial_statements",
+    "market.get_valuation",
+    "market.get_industry_context",
+    "market.get_news",
+]
+
+#: 面板中的关键数据能力（预算保留与不可用降级参数化）
 UNAVAILABLE_REQUIRED_CAPABILITY = {
-    "market_snapshot": "market.get_realtime_quote",
-    "technical": "market.get_historical_prices",
-    "fundamental": "market.get_financial_statements",
-    "valuation": "market.get_valuation",
-    "comprehensive": "market.get_historical_prices",
+    "market.get_realtime_quote",
+    "market.get_historical_prices",
+    "market.get_financial_statements",
+    "market.get_valuation",
 }
 
 
 def request_for(
-    analysis_type: str = "market_snapshot",
     *,
+    request_id: str = "request-research",
     requested_topics: set[str] | None = None,
     intent: FinancialIntent = FinancialIntent.STOCK_RESEARCH,
     operations: set[DomainOperation] | None = None,
     tool_call_limit: int = 20,
 ) -> FinancialDomainRequest:
     return FinancialDomainRequest(
-        request_id=f"request-{analysis_type}",
+        request_id=request_id,
         authenticated_user_id="user-1",
         objective="执行兼容股票研究",
         financial_intent=intent,
-        analysis_type=analysis_type,
         requested_topics=requested_topics or set(),
         instruments=[FinancialInstrument(symbol="600519", name="贵州茅台")],
         authorized_operations=operations or {
@@ -175,133 +173,36 @@ def request_for(
     )
 
 
-@pytest.mark.parametrize(
-    "analysis_type",
-    ["market_snapshot", "technical", "fundamental", "valuation", "comprehensive"],
-)
 @pytest.mark.asyncio
-async def test_five_analysis_types_use_the_shared_analysis_capability(analysis_type: str) -> None:
+async def test_explicit_topics_attach_to_any_research_request() -> None:
+    """重写语义：topic 附加无类型门槛（类型白名单已删），随时可请求。"""
     executor = FakeFinanceExecutor()
-    outcome = await build_runtime(executor).run(request_for(analysis_type))
-
-    assert outcome.status == "COMPLETE"
-    assert outcome.analysis_result is not None
-    assert outcome.stock_research_result is not None
-    assert outcome.stock_research_result.coverage == "COMPLETE"
-    assert outcome.stock_research_result.confidence.level == "HIGH"
-    research = outcome.stock_research_result
-    assert research.market_snapshot is not None
-    assert (research.technicals is not None) == (
-        analysis_type in {"technical", "comprehensive"}
-    )
-    assert (research.fundamentals is not None) == (
-        analysis_type in {"fundamental", "comprehensive"}
-    )
-    assert (research.valuation is not None) == (
-        analysis_type in {"valuation", "comprehensive"}
-    )
-    assert (research.money_flow is not None) == (analysis_type == "comprehensive")
-    assert (research.industry_context is not None) == (
-        analysis_type == "comprehensive"
-    )
-    assert bool(research.events) == (analysis_type == "comprehensive")
-    assert research.scenarios == []
-    assert set(outcome.analysis_result.limitations) <= set(research.limitations)
-    assert all(item.evidence_ids or item.calculation_ids for item in research.findings)
-    if research.technicals is not None:
-        assert (
-            research.technicals.indicators
-            == outcome.analysis_result.calculated_indicators
-        )
-    assert outcome.analysis_result.analysis_id == f"request-{analysis_type}"
-    assert executor.calls == [
-        *EXPECTED_DEFAULT_DATA_CAPABILITIES[analysis_type],
-        ANALYSIS_CAPABILITY,
-    ]
-    assert all(not name.startswith(("portfolio.", "user.")) for name in executor.calls)
-
-
-@pytest.mark.parametrize("analysis_type", list(EXPECTED_DEFAULT_DATA_CAPABILITIES))
-@pytest.mark.asyncio
-async def test_each_analysis_type_reports_required_data_unavailability(
-    analysis_type: str,
-) -> None:
-    unavailable = UNAVAILABLE_REQUIRED_CAPABILITY[analysis_type]
-    executor = FakeFinanceExecutor({unavailable})
-
-    outcome = await build_runtime(executor).run(request_for(analysis_type))
-
-    assert outcome.status == "LIMITED"
-    assert outcome.stock_research_result is not None
-    assert outcome.stock_research_result.coverage == "LIMITED"
-    assert outcome.stock_research_result.findings == []
-    assert any(item.code == "FIXTURE_UNAVAILABLE" for item in outcome.errors)
-    assert unavailable in outcome.analysis_result.data_quality.known_unavailable
-
-
-@pytest.mark.parametrize("analysis_type", list(EXPECTED_DEFAULT_DATA_CAPABILITIES))
-@pytest.mark.asyncio
-async def test_each_analysis_type_reserves_budget_for_required_analysis(
-    analysis_type: str,
-) -> None:
-    executor = FakeFinanceExecutor()
-    required_data_calls = sum(
-        capability in {
-            "market.get_realtime_quote",
-            "market.get_historical_prices",
-            "market.get_financial_statements",
-            "market.get_valuation",
-        }
-        for capability in EXPECTED_DEFAULT_DATA_CAPABILITIES[analysis_type]
-    )
-
     outcome = await build_runtime(executor).run(
-        request_for(analysis_type, tool_call_limit=required_data_calls)
+        request_for(requested_topics={"news", "money_flow"})
     )
-
-    assert outcome.status == "LIMITED"
-    assert outcome.errors[0].code == "BUDGET_EXHAUSTED"
-    assert executor.calls == []
-
-
-@pytest.mark.asyncio
-async def test_explicit_topic_is_bounded_by_analysis_policy() -> None:
-    rejected_executor = FakeFinanceExecutor()
-    rejected = await build_runtime(rejected_executor).run(
-        request_for("market_snapshot", requested_topics={"news"})
-    )
-    assert rejected.status == "FAILED"
-    assert rejected.errors[0].code == "REQUESTED_TOPIC_NOT_ALLOWED"
-    assert rejected_executor.calls == []
-
-    accepted_executor = FakeFinanceExecutor()
-    accepted = await build_runtime(accepted_executor).run(
-        request_for("technical", requested_topics={"news", "money_flow"})
-    )
-    assert accepted.status in {"COMPLETE", "PARTIAL"}
-    assert "market.get_news" in accepted_executor.calls
-    assert "market.get_money_flow" in accepted_executor.calls
+    assert outcome.status in {"COMPLETE", "PARTIAL"}
+    assert "market.get_news" in executor.calls
+    assert "market.get_money_flow" in executor.calls
 
 
 @pytest.mark.parametrize(
-    ("analysis_type", "topic", "capability"),
+    ("topic", "capability"),
     [
-        ("technical", "news", "market.get_news"),
-        ("fundamental", "web_research", "research.web_search"),
-        ("valuation", "industry", "market.get_industry_context"),
-        ("comprehensive", "news", "market.get_news"),
+        ("news", "market.get_news"),
+        ("web_research", "research.web_search"),
+        ("industry", "market.get_industry_context"),
+        ("money_flow", "market.get_money_flow"),
     ],
 )
 @pytest.mark.asyncio
-async def test_optional_policies_accept_their_explicit_topics(
-    analysis_type: str,
+async def test_topics_attach_their_topic_capabilities(
     topic: str,
     capability: str,
 ) -> None:
     executor = FakeFinanceExecutor()
 
     outcome = await build_runtime(executor).run(
-        request_for(analysis_type, requested_topics={topic})
+        request_for(requested_topics={topic})
     )
 
     assert outcome.status in {"COMPLETE", "PARTIAL", "LIMITED"}
@@ -313,7 +214,6 @@ async def test_required_authorization_fails_before_external_calls() -> None:
     executor = FakeFinanceExecutor()
     outcome = await build_runtime(executor).run(
         request_for(
-            "technical",
             operations={DomainOperation.READ_MARKET_DATA},
         )
     )
@@ -324,17 +224,19 @@ async def test_required_authorization_fails_before_external_calls() -> None:
 
 @pytest.mark.asyncio
 async def test_optional_public_research_permission_degrades_without_leaking_access() -> None:
+    """重写语义：web_research 是 optional 附加——无 READ_PUBLIC_RESEARCH 时
+    降级为 limitation，不失败、不泄漏访问。"""
     executor = FakeFinanceExecutor()
     outcome = await build_runtime(executor).run(
         request_for(
-            "comprehensive",
+            requested_topics={"web_research"},
             operations={
                 DomainOperation.READ_MARKET_DATA,
                 DomainOperation.RUN_ANALYSIS,
             },
         )
     )
-    assert outcome.status in {"PARTIAL", "LIMITED"}
+    assert outcome.status in {"COMPLETE", "PARTIAL", "LIMITED"}
     assert "research.web_search" not in executor.calls
     assert any("research.web_search" in item for item in outcome.limitations)
 
@@ -344,7 +246,6 @@ async def test_profile_permission_does_not_grant_m1_data_or_analysis_access() ->
     executor = FakeFinanceExecutor()
     outcome = await build_runtime(executor).run(
         request_for(
-            "market_snapshot",
             operations={DomainOperation.READ_PROFILE},
         )
     )
@@ -377,7 +278,7 @@ async def test_failed_analysis_result_is_returned_as_a_stable_domain_error() -> 
             )
 
     executor = FailedAnalysisExecutor()
-    outcome = await build_runtime(executor).run(request_for("market_snapshot"))
+    outcome = await build_runtime(executor).run(request_for())
 
     assert outcome.status == "FAILED"
     assert outcome.stock_research_result is not None
@@ -393,15 +294,15 @@ async def test_builder_failure_returns_stable_error_and_preserves_analysis_resul
             raise ValueError("private builder detail")
 
     executor = FakeFinanceExecutor()
-    registry = build_default_capability_registry()
+    registry = load_capability_registry(seeded_snapshot())
     runtime = FinanceRuntime(
-        planner=FinancePlanner(registry),
+        planner=FinancePlanner(topic_capabilities=_TOPIC_CAPABILITIES),
         authorization=FinanceCapabilityAuthorizationPolicy(registry),
         executor=executor,
         research_builder=BrokenBuilder(),  # type: ignore[arg-type]
     )
 
-    outcome = await runtime.run(request_for("market_snapshot"))
+    outcome = await runtime.run(request_for())
 
     assert outcome.status == "FAILED"
     assert outcome.analysis_result is not None
@@ -421,13 +322,8 @@ async def test_builder_failure_returns_stable_error_and_preserves_analysis_resul
 @pytest.mark.asyncio
 async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> None:
     disabled_executor = FakeFinanceExecutor()
-    analysis_type = (
-        "comprehensive"
-        if intent == FinancialIntent.SUITABILITY
-        else "market_snapshot"
-    )
     disabled = await build_runtime(disabled_executor).run(
-        request_for(analysis_type, intent=intent)
+        request_for(intent=intent)
     )
     assert disabled.status == "FAILED"
     assert disabled.errors[0].code == "ACTION_NOT_ENABLED"
@@ -438,7 +334,7 @@ async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> N
 async def test_insufficient_budget_has_stable_error() -> None:
     budget_executor = FakeFinanceExecutor()
     limited = await build_runtime(budget_executor).run(
-        request_for("technical", tool_call_limit=1)
+        request_for(tool_call_limit=1)
     )
     assert limited.status == "LIMITED"
     assert limited.errors[0].code == "BUDGET_EXHAUSTED"

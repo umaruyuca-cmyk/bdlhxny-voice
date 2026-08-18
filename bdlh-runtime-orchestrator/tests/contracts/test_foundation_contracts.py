@@ -121,28 +121,29 @@ def test_domain_outcome_rejects_final_chat_response_fields() -> None:
 
 
 def test_financial_request_extends_domain_request_and_validates_intent() -> None:
-    with pytest.raises(ValidationError, match="requires exactly one instrument"):
+    with pytest.raises(ValidationError, match="requires at least one instrument"):
         FinancialDomainRequest(
             **_domain_request().model_dump(),
             financial_intent=FinancialIntent.STOCK_RESEARCH,
         )
 
-    with pytest.raises(ValidationError, match="requires exactly one instrument"):
-        FinancialDomainRequest(
-            **_domain_request().model_dump(),
-            financial_intent=FinancialIntent.STOCK_RESEARCH,
-            instruments=[
-                FinancialInstrument(symbol="600519"),
-                FinancialInstrument(symbol="000001"),
-            ],
-        )
+    # 重写 §6.2：允许多标的对比（instruments >= 1）
+    multi = FinancialDomainRequest(
+        **_domain_request().model_dump(),
+        financial_intent=FinancialIntent.STOCK_RESEARCH,
+        instruments=[
+            FinancialInstrument(symbol="600519"),
+            FinancialInstrument(symbol="000001"),
+        ],
+    )
+    assert len(multi.instruments) == 2
 
     research = FinancialDomainRequest(
         **_domain_request().model_dump(),
         instruments=[FinancialInstrument(symbol="600519")],
         requested_topics={"news", "money_flow"},
     )
-    assert research.analysis_type == "technical"
+    # 重写：analysis_type 已删除；requested_topics 是唯一主题表达
     assert research.requested_topics == {"news", "money_flow"}
 
     planning = FinancialDomainRequest(
@@ -182,24 +183,19 @@ def test_financial_snapshot_distinguishes_live_mock_and_user_confirmed_data() ->
 def test_suitability_request_requires_one_instrument_and_comprehensive_research() -> None:
     values = _domain_request(objective="评估单一标的适配性").model_dump()
 
-    with pytest.raises(ValidationError, match="requires exactly one instrument"):
+    with pytest.raises(ValidationError, match="requires at least one instrument"):
         FinancialDomainRequest(
             **values,
             financial_intent=FinancialIntent.SUITABILITY,
         )
-    with pytest.raises(ValidationError, match="SUITABILITY_RESEARCH_PROFILE_REQUIRED"):
-        FinancialDomainRequest(
-            **values,
-            financial_intent=FinancialIntent.SUITABILITY,
-            instruments=[FinancialInstrument(symbol="600519")],
-        )
+    # 重写：SUITABILITY 不再要求特定研究体裁；启用与否由运行时读库判定
 
     request = FinancialDomainRequest(
         **values,
         financial_intent=FinancialIntent.SUITABILITY,
         instruments=[FinancialInstrument(symbol="600519")],
     )
-    assert request.analysis_type == "comprehensive"
+    assert request.financial_intent == FinancialIntent.SUITABILITY
 
 
 def test_suitability_assessment_requires_versioned_unique_rule_evidence() -> None:

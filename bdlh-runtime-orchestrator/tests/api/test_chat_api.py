@@ -45,6 +45,7 @@ def _client() -> TestClient:
     )
     # API 契约测试不连接外部 LLM/MCP，只验证 Root Graph 路由和恢复语义。
     application.graph = build_root_graph(
+        registry_snapshot=seeded_snapshot(),
         direct_response_model=DeterministicDirectResponseModel()
     )
     return TestClient(create_api_app(application))

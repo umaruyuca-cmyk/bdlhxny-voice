@@ -207,7 +207,7 @@ async def test_ellipsis_followup_reuses_verified_entity_but_new_topic_does_not()
     followup = await app.run(_event("估值呢", event_id="event-2"))
     request = dispatcher.requests[0]
     assert isinstance(request, FinancialDomainRequest)
-    assert request.analysis_type == "valuation"
+    # 重写：analysis_type 已删除；由 requested_topics/研究面板表达
     assert followup.response.response_kind == "DOMAIN_RESULT"
 
     dispatcher.requests.clear()

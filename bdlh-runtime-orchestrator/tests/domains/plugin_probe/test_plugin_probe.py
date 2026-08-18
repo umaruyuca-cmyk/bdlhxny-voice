@@ -45,8 +45,8 @@ def request(
 
 
 def dispatcher() -> DomainDispatcher:
+    # 重写：探针能力来自种子目录（registry snapshot），不再内存注册
     capabilities = build_default_capability_registry()
-    register_plugin_probe_capability(capabilities)
     registry = DomainRegistry()
     registry.register("plugin_probe", PluginProbeRuntime(capabilities))
     registry.register_descriptor("plugin_probe", PLUGIN_PROBE_DESCRIPTOR)
@@ -100,12 +100,10 @@ async def test_probe_uses_shared_budget_and_operation_contracts() -> None:
 
 def test_probe_manifest_validates_against_the_single_capability_registry() -> None:
     registry = build_default_capability_registry()
-    before = tuple(registry.list())
-    register_plugin_probe_capability(registry)
 
     validate_descriptor_against_registry(PLUGIN_PROBE_DESCRIPTOR, registry)
 
-    assert len(registry.list()) == len(before) + 1
+    assert registry.contains("plugin_probe.run_contract_check")  # 来自种子
     assert registry.contains("plugin_probe.run_contract_check")
     assert PLUGIN_PROBE_DESCRIPTOR.status == "EXPERIMENTAL"
     assert PLUGIN_PROBE_DESCRIPTOR.enabled_intents == frozenset({"CONTRACT_PROBE"})

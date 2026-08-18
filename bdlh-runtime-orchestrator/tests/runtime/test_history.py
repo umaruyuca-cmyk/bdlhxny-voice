@@ -69,7 +69,7 @@ async def test_persist_history_node_writes_record():
         "thread_id": "t1",
         "user_id": "u1",
         "request": {"message": "分析 600519"},
-        "intent": {"symbol": "600519", "analysis_type": "technical"},
+        "understand": {"entities": {"instruments": ["600519"]}},
         "observations": [{"capability": "market.get_realtime_quote", "status": "SUCCESS"}],
         "analysis_result": {"status": "SUCCESS", "conclusions": []},
         "status": "SUCCESS",

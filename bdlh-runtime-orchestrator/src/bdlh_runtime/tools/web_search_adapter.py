@@ -8,6 +8,8 @@ Python 不允许绕过 wrapper 直接调用 SearXNG 或搜索引擎。
 - wrapper 返回结果转换为 Observation，不允许 Graph 节点直接拼接搜索 JSON；
 - 降级：wrapper 服务不可用（未部署/超时）时返回 mock 搜索结果，保证开发环境
   和测试可跑通完整流程。mock 数据带 is_mock 标记，不伪装成真实搜索结果。
+- **只处理 research.web_search**。``research.deep_search`` 是独立复合 Capability
+  （ADR-016），不得在本 Adapter 内静默升档或转发。
 
 与 Java adapter 的差异（bdlh-web-search-adapter 接口特性）：
 - 鉴权：双 header（x-agent-id + x-search-token）而非 Bearer；

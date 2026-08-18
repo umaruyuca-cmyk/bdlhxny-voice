@@ -65,6 +65,7 @@ def build_root_graph(
     context_builder=None,
     analysis_capability=None,
     web_search_adapter=None,
+    deep_research_adapter=None,
     history_store=None,
 ):
     """构建顶层动态流程。
@@ -80,6 +81,7 @@ def build_root_graph(
     - gateway_adapter + research_agent：有则 market_data_graph 走真实 MCP ReAct。
     - java_adapter：有则 load_portfolio_context 走真实 Java 服务（内部自带 mock 降级）。
     - context_builder：有则理解节点用七块上下文（审查文档 §4.4）。
+    - deep_research_adapter：``research.deep_search`` 执行器（默认关闭，ADR-016）。
     """
 
     graph = StateGraph(RootState)
@@ -114,6 +116,7 @@ def build_root_graph(
             llm_research_agent=llm_research_agent,
             web_search_adapter=web_search_adapter,
             java_adapter=java_adapter,
+            deep_research_adapter=deep_research_adapter,
         ),
     )
     # 有 java_adapter 用工厂节点（真实 Java + 内部降级），否则用默认 mock

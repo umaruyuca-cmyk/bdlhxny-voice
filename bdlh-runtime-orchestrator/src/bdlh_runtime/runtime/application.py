@@ -123,6 +123,9 @@ def create_application(
     # base_url 未配置时 Adapter 内部自动 mock 降级（见 web_search_adapter.py）
     web_search_adapter = _create_web_search_adapter(settings)
 
+    # ── 4.5c Deep Research 执行器（ADR-016；默认关闭，不改浅搜语义）──
+    deep_research_adapter = _create_deep_research_adapter(settings)
+
     # ── 4.6 注册表快照（DB 真源；测试显式注入，禁止默认清单兜底）──
     registry_snapshot = _load_registry_snapshot(settings, registry_snapshot=registry_snapshot)
     from bdlh_runtime.tools.capabilities import load_capability_registry
@@ -141,6 +144,10 @@ def create_application(
 
     finance_runtime = create_finance_runtime(
         capability_registry=capability_registry,
+        topic_capabilities={
+            topic: registry_snapshot.topic_capabilities_for(topic)
+            for topic in ("news", "money_flow", "industry", "web_research")
+        },
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,
         analysis_capability=analysis_capability,
@@ -295,6 +302,7 @@ def create_application(
         context_builder=context_builder,
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
+        deep_research_adapter=deep_research_adapter,
         history_store=history_store,
     )
 
@@ -398,6 +406,24 @@ def _create_web_search_adapter(settings: Settings) -> Any:
         production=(settings.environment == "production"),
         agent_id=settings.web_search_agent_id,
         token=settings.web_search_token,
+    )
+
+
+def _create_deep_research_adapter(settings: Settings) -> Any:
+    """创建 Deep Research 执行器（ADR-016 / §6.5）。
+
+    默认 ``deep_research_enabled=False``：调用返回 UNAVAILABLE，不改浅搜路径。
+    仅非生产且显式开启时注入 FakeAtomicSearchPort，供隔离评测；生产开启时
+    在未接百炼 Provider 前仍无原子口（UNAVAILABLE），禁止静默回落 SearXNG。
+    """
+    from bdlh_runtime.tools.deep_research import DeepResearchToolExecutor, FakeAtomicSearchPort
+
+    atomic = None
+    if settings.deep_research_enabled and settings.environment != "production":
+        atomic = FakeAtomicSearchPort()
+    return DeepResearchToolExecutor(
+        enabled=bool(settings.deep_research_enabled),
+        atomic_search=atomic,
     )
 
 
