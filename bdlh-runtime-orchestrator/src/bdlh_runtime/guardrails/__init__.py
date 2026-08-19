@@ -18,6 +18,11 @@ from .policies import (
     DefaultPlanGuardrail,
     DefaultResponseGuardrail,
 )
+from .research_rules import (
+    evaluate_research_observation,
+    evaluate_research_response_text,
+    plan_requires_deep_capability,
+)
 
 __all__ = [
     "ActionGuardrail",
@@ -32,4 +37,7 @@ __all__ = [
     "GuardrailStage",
     "PlanGuardrail",
     "ResponseGuardrail",
+    "evaluate_research_observation",
+    "evaluate_research_response_text",
+    "plan_requires_deep_capability",
 ]

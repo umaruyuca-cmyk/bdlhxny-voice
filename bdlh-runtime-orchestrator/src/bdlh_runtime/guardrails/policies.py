@@ -7,6 +7,12 @@ from typing import Any
 from bdlh_runtime.cognitive.contracts import CognitiveAction, PublicResponse
 
 from .contracts import GuardrailContext, GuardrailDecision, GuardrailResult, GuardrailStage
+from .research_rules import (
+    action_rejects_unauthorized_deep,
+    evaluate_research_observation,
+    evaluate_research_response_text,
+    plan_requires_deep_capability,
+)
 
 
 class DefaultPlanGuardrail:
@@ -57,6 +63,18 @@ class DefaultPlanGuardrail:
                     "PLAN-SCOPE-001",
                     "当前入口只允许只读研究与分析",
                 )
+            deep_code = plan_requires_deep_capability(
+                objective=request.objective,
+                success_criteria=list(request.success_criteria),
+                authorized_capabilities=context.authorized_capabilities,
+            )
+            if deep_code:
+                return _block(
+                    GuardrailStage.PLAN,
+                    deep_code,
+                    "PLAN-RESEARCH-DEEP-001",
+                    "本轮能力白名单未包含 research.deep_search，不能规划深度研究",
+                )
         return _allow(GuardrailStage.PLAN)
 
 
@@ -95,6 +113,18 @@ class DefaultActionGuardrail:
                     "ACTION-AUTH-002",
                     "领域请求包含本轮未授权的操作",
                 )
+            deep_code = action_rejects_unauthorized_deep(
+                objective=request.objective,
+                success_criteria=list(request.success_criteria),
+                authorized_capabilities=context.authorized_capabilities,
+            )
+            if deep_code:
+                return _block(
+                    GuardrailStage.ACTION,
+                    deep_code,
+                    "ACTION-RESEARCH-DEEP-001",
+                    "深度研究未在本轮授权能力内，禁止调用",
+                )
         return _allow(GuardrailStage.ACTION)
 
 
@@ -102,6 +132,7 @@ class DefaultDataQualityGuardrail:
     def evaluate_data_quality(
         self, observation: Any, *, context: GuardrailContext
     ) -> GuardrailResult[Any]:
+        del context
         data = observation.model_dump(mode="json") if hasattr(observation, "model_dump") else observation
         if not isinstance(data, dict):
             return _block(
@@ -115,6 +146,9 @@ class DefaultDataQualityGuardrail:
             first_error = errors[0] if isinstance(errors, list) and errors else None
             error_code = first_error.get("code") if isinstance(first_error, dict) else None
             error_message = first_error.get("message") if isinstance(first_error, dict) else None
+            if error_code is None and data.get("error_code"):
+                error_code = data.get("error_code")
+                error_message = data.get("error_message")
             return _block(
                 GuardrailStage.DATA_QUALITY,
                 str(error_code or "DATA_UNAVAILABLE"),
@@ -138,6 +172,10 @@ class DefaultDataQualityGuardrail:
                 "DATA-COVERAGE-001",
                 "领域状态与覆盖率不一致，不能升格为完整结论",
             )
+        research_hit = evaluate_research_observation(data)
+        if research_hit is not None:
+            code, rule_id, reason = research_hit
+            return _block(GuardrailStage.DATA_QUALITY, code, rule_id, reason)
         return _allow(GuardrailStage.DATA_QUALITY)
 
 
@@ -150,6 +188,7 @@ class DefaultResponseGuardrail:
     def evaluate_response(
         self, response: PublicResponse, *, context: GuardrailContext
     ) -> GuardrailResult[PublicResponse]:
+        del context
         scanned_text = "\n".join(
             [
                 response.message,
@@ -174,6 +213,10 @@ class DefaultResponseGuardrail:
                 "RESPONSE-PRIVACY-001",
                 "回复包含被禁止的账户披露语义",
             )
+        research_hit = evaluate_research_response_text(scanned_text)
+        if research_hit is not None:
+            code, rule_id, reason = research_hit
+            return _block(GuardrailStage.RESPONSE, code, rule_id, reason)
         if response.response_kind == "DOMAIN_RESULT" and not response.evidence_refs:
             return _block(
                 GuardrailStage.RESPONSE,

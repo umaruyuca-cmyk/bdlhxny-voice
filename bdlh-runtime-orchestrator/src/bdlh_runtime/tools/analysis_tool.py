@@ -24,7 +24,7 @@ logger = logging.getLogger("bdlh_runtime.tools.analysis")
 def _analyze_handler(args: dict[str, Any]) -> dict[str, Any]:
     """Tool handler：接收 AnalysisInput dict，返回 AnalysisResult dict。
 
-    args 即 AnalysisInput 的 model_dump()。缺 analysis_id/analysis_type 时
+    args 即 AnalysisInput 的 model_dump()。缺 analysis_id 时
     用安全默认值兜底，避免工具层抛未捕获异常。
     """
 

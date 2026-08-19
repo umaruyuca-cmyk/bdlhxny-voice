@@ -65,30 +65,45 @@ class SseMcpClient:
 
 
 class StreamableHttpMcpClient:
-    """Streamable HTTP 传输的 MCP 客户端（用于 akshare-one-mcp）。
+    """Streamable HTTP 传输的 MCP 客户端（akshare-one-mcp / 百炼 WebSearch 等）。
 
     与 SseMcpClient 接口一致，但底层用 streamable_http_client。两者返回
     都是 2 元组 (read, write)，但握手协议不同，不能混用。
+
+    ``headers`` 用于需要 Bearer 鉴权的远端 MCP（如百炼联网搜索）；金融 MCP 可不传。
     """
 
-    def __init__(self, endpoint: str, timeout_seconds: float = 20.0):
+    def __init__(
+        self,
+        endpoint: str,
+        timeout_seconds: float = 20.0,
+        *,
+        headers: dict[str, str] | None = None,
+    ):
         self._endpoint = endpoint
         self._timeout = timeout_seconds
+        self._headers = dict(headers or {})
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         import asyncio
 
+        import httpx2
         from mcp.client.session import ClientSession
         from mcp.client.streamable_http import streamable_http_client
 
         # 注意：streamable_http_client 返回 2 元组 (read, write)，不是 3 元组
-        async with streamable_http_client(url=self._endpoint) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), timeout=self._timeout)
-                result = await asyncio.wait_for(
-                    session.call_tool(tool_name, arguments), timeout=self._timeout
-                )
-                return _extract_result(result)
+        # 鉴权 headers 必须经自定义 httpx2.AsyncClient 注入（SDK 不直接收 headers）
+        timeout = httpx2.Timeout(self._timeout)
+        async with httpx2.AsyncClient(headers=self._headers or None, timeout=timeout) as http_client:
+            async with streamable_http_client(
+                url=self._endpoint, http_client=http_client
+            ) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await asyncio.wait_for(session.initialize(), timeout=self._timeout)
+                    result = await asyncio.wait_for(
+                        session.call_tool(tool_name, arguments), timeout=self._timeout
+                    )
+                    return _extract_result(result)
 
 
 def _extract_result(result: Any) -> dict[str, Any]:
@@ -111,14 +126,23 @@ def _extract_result(result: Any) -> dict[str, Any]:
     }
 
 
-def create_mcp_client(transport: str, endpoint: str, timeout_seconds: float = 20.0) -> McpClient:
+def create_mcp_client(
+    transport: str,
+    endpoint: str,
+    timeout_seconds: float = 20.0,
+    *,
+    headers: dict[str, str] | None = None,
+) -> McpClient:
     """工厂函数：按传输类型创建对应客户端。
 
     传输类型来自 Settings.mcp_*.transport，必须在配置里显式指定——
     不能假设两个 MCP 用同一种传输（实测就是不同的）。
+    ``headers`` 仅对 streamable_http 生效（百炼等 Bearer MCP）。
     """
     if transport == "sse":
+        if headers:
+            logger.warning("sse transport ignores headers; auth not wired for SseMcpClient")
         return SseMcpClient(endpoint, timeout_seconds)
     if transport == "streamable_http":
-        return StreamableHttpMcpClient(endpoint, timeout_seconds)
+        return StreamableHttpMcpClient(endpoint, timeout_seconds, headers=headers)
     raise ValueError(f"不支持的 MCP 传输类型: {transport}（仅支持 sse / streamable_http）")

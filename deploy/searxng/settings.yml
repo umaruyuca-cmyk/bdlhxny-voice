@@ -1,8 +1,12 @@
 use_default_settings:
   engines:
     keep_only:
+      - google
+      - bing
+      - bing news
       - baidu
       - 360search
+      - sogou
 
 general:
   debug: false

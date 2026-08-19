@@ -20,15 +20,16 @@
 ## 技术栈
 
 - **Agent 编排（唯一）**: Python 3.11+ + FastAPI + LangGraph（`bdlh-runtime-orchestrator`，端口 8090）
-- **用户与认证数据服务**: Java 17 + Spring Boot（`bdlh-runtime-data`，端口 8081）；对 Agent 只暴露只读数据接口
+- **Java Data Plane**: Java 17 + Spring Boot（`bdlh-runtime-data`，端口 8081）；当前承载认证与 L4 用户事实，目标按 ADR-017 扩展为单 JVM 模块化数据平面（Runtime Data、Registry、Outbox 与消息适配）
 - **前端**: 独立 Nginx 静态站点（`bdlh-runtime-console`）
 - **外部数据**: cn-financial / akshare-one MCP + Web Search Wrapper（`bdlh-web-search-adapter`）
-- **数据库**: PostgreSQL 16（Checkpoint / 会话 / 运行索引 / 历史 / 审计）+ Redis 7（缓存与限流，非真源）
+- **数据库**: 单实例 PostgreSQL 16，按 `business/runtime/registry/checkpoint/memory` schema 与 Role 隔离；当前不建设 PostgreSQL HA 集群；Redis 7 仅作可选缓存与限流
+- **消息基础设施（目标）**: 单 NameServer + 单 Broker/Proxy RocketMQ；数据库事件统一经 Transactional Outbox 发布，消费者使用 Inbox 幂等
 - **模型**: DeepSeek；确定性金融计算不依赖模型
-- **可选记忆**: Mem0（L3 语义记忆，失败降级为无记忆）
+- **可选记忆（目标）**: 独立 Python Memory Service + Mem0（L3 语义记忆，复用单实例 PostgreSQL 的 `memory` schema，失败降级为无记忆）
 - **部署**: Docker Compose + Nginx
 
-历史 Java Agent 链路已从仓库移除；Java 服务仅保留认证、用户金融事实维护与受控数据查询，新功能不得恢复该链路。
+历史 Java Agent 链路已从仓库移除；Java 服务不得恢复 Agent/LLM/领域编排，但允许按 ADR-017 承载确定性的结构化数据、事务、Outbox 和消息适配。
 
 ## 文档索引
 
@@ -56,6 +57,8 @@
 | [ADR-013](docs/architecture/ADR-013-RAG作为可插拔KnowledgeSkill的边界.md) | RAG 作为可插拔 Knowledge Skill 的边界 | `APPROVED`（实施未排期） |
 | [ADR-014](docs/architecture/ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md) | 系统/用户截断 Pause·Resume 与 Turn Router | `APPROVED` |
 | [ADR-015](docs/architecture/ADR-015-Context组装服务与压缩策略.md) | Context 组装与压缩（挂靠 ADR-011） | `APPROVED` |
+| [ADR-016](docs/architecture/ADR-016-固定复合DeepResearchTool.md) | 固定复合 Deep Research Tool | `APPROVED`（生产切流仍受门禁） |
+| [ADR-017](docs/architecture/ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md) | Java Data Plane、单实例 PostgreSQL、单节点 RocketMQ 与独立 Memory Service | `APPROVED` |
 
 ### 设计、评审与运维
 

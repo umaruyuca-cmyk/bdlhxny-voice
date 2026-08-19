@@ -1,7 +1,7 @@
-"""固定复合 Deep Research Tool（ADR-016 / 00 Prompt §6.5）。
+"""固定复合 Deep Research Tool（ADR-016 APPROVED 开发阶段 / 00 Prompt §6.5）。
 
-ADR 仍为 PROPOSED 时：本包提供契约、调用策略、私有原子搜索口与隔离执行骨架；
-**默认关闭**，不得改变 ``research.web_search`` 生产语义，不得经 Adapter 静默升档。
+契约、调用策略、私有原子搜索口与 Supervisor/Researcher 编排；**默认 Feature Flag 关闭**，
+不得改变 ``research.web_search`` 生产语义，不得经 Adapter 静默升档。
 """
 
 from __future__ import annotations
@@ -13,6 +13,11 @@ from bdlh_runtime.tools.deep_research.atomic_search import (
     AtomicSearchPort,
     AtomicSearchRequest,
     FakeAtomicSearchPort,
+)
+from bdlh_runtime.tools.deep_research.bailian_provider import (
+    DEFAULT_BAILIAN_WEB_SEARCH_ENDPOINT,
+    BailianWebSearchProvider,
+    parse_bailian_search_payload,
 )
 from bdlh_runtime.tools.deep_research.call_policy import (
     DeepTriggerDecision,
@@ -28,22 +33,41 @@ from bdlh_runtime.tools.deep_research.contracts import (
     ResearchSource,
 )
 from bdlh_runtime.tools.deep_research.executor import DeepResearchToolExecutor
+from bdlh_runtime.tools.deep_research.graph import build_deep_research_graph
+from bdlh_runtime.tools.deep_research.models import (
+    LangchainDeepResearchModel,
+    RuleBasedDeepResearchModel,
+)
+from bdlh_runtime.tools.deep_research.orchestration import run_deep_research
+from bdlh_runtime.tools.deep_research.cognitive_bridge import (
+    apply_deep_call_policy_to_action,
+    build_deep_research_arguments,
+)
 
 __all__ = [
     "DEEP_SEARCH_CAPABILITY",
+    "DEFAULT_BAILIAN_WEB_SEARCH_ENDPOINT",
     "WEB_SEARCH_CAPABILITY",
     "AtomicSearchBatch",
     "AtomicSearchHit",
     "AtomicSearchPort",
     "AtomicSearchRequest",
+    "BailianWebSearchProvider",
     "DeepResearchBudget",
     "DeepResearchRequest",
     "DeepResearchToolExecutor",
     "DeepTriggerDecision",
     "FakeAtomicSearchPort",
+    "LangchainDeepResearchModel",
     "ResearchBundle",
     "ResearchFinding",
     "ResearchSource",
+    "RuleBasedDeepResearchModel",
+    "apply_deep_call_policy_to_action",
     "assemble_research_bundle",
+    "build_deep_research_arguments",
+    "build_deep_research_graph",
     "evaluate_deep_research_trigger",
+    "parse_bailian_search_payload",
+    "run_deep_research",
 ]

@@ -43,9 +43,10 @@ class FakeResearchAgent:
     def __init__(self, actions: list[str]):
         self._actions = list(actions)
 
-    def choose_next_action(self, observations, remaining_requirements):
+    def choose_next_action(self, observations, allowed_specs, *, goals=None):
         from bdlh_runtime.runtimes.langgraph.agents.research_agent import ResearchAction
 
+        del allowed_specs, goals
         if self._actions:
             action = self._actions.pop(0)
             return ResearchAction(action=action, arguments={"symbol": "600519"}, reason="test")

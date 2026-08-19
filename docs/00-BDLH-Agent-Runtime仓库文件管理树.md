@@ -25,7 +25,7 @@
 | `README.md` | 入口 | `ACTIVE` | 定位、技术栈与文档导航；只做索引，不承载决策 |
 | `docs/` | 文档 | — | 全部架构、Prompt、评审与本索引 |
 | `bdlh-runtime-orchestrator/` | 代码 | `ACTIVE` | Python + LangGraph，Agent 编排唯一实现 |
-| `bdlh-runtime-data/` | 代码 | `ACTIVE` | Java：认证与用户金融数据服务；不承载 Agent、LLM、记忆或外部工具调用 |
+| `bdlh-runtime-data/` | 代码 | `ACTIVE` | Java Data Plane：当前认证与用户金融事实；按 ADR-017 渐进承载 Runtime Data、Registry、Outbox 与 RocketMQ 适配；不承载 Agent、LLM、Mem0 或领域编排 |
 | `bdlh-runtime-console/` | 代码 | `ACTIVE` | 独立 Nginx 静态前端与契约测试 |
 | `bdlh-web-search-adapter/` | 代码 | `ACTIVE` | 公开资料检索封装，经 Capability Gateway 调用 |
 | `stock-wrapper/` | — | `RETIRED`（已移出仓库） | 旧 Node HTTP 包装层；勿恢复目录，勿配置 `STOCK_WRAPPER_*` |
@@ -50,7 +50,8 @@ docs/
 │   ├── ADR-013-RAG作为可插拔KnowledgeSkill的边界.md        APPROVED（实施未排期）
 │   ├── ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md  APPROVED（Pause/Turn Router 按切片落地）
 │   ├── ADR-015-Context组装服务与压缩策略.md               APPROVED（挂靠 ADR-011；禁止第二套 L 编号）
-│   └── ADR-016-固定复合DeepResearchTool.md               PROPOSED（固定 Tool，非 Skill/Domain；待 owner 评审）
+│   ├── ADR-016-固定复合DeepResearchTool.md               APPROVED（固定 Tool，非 Skill/Domain；生产切流仍受门禁）
+│   └── ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md APPROVED（单 PG、Java Data Plane、单节点 MQ、独立 Memory Service）
 ├── prompts/
 │   └── 00-BDLH-Agent-Runtime生产开发实施Prompt.md    AUTHORITATIVE  唯一生产开发执行 Prompt
 ├── reviews/                        审查与阶段报告
@@ -131,7 +132,9 @@ bdlh-runtime-orchestrator/
 |---|---|---|
 | `api/`、`security/`、`config/`、`handler/`、`entity/`、`mapper/`、`dto/`、`service/` | `ACTIVE` | 认证、用户金融数据、只读查询与确认入口；Java 不承载 Agent、LLM、记忆或外部工具调用 |
 
-Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用户资料的写入走独立认证 API，不是 Agent Capability。旧 Java Agent 链路已从仓库删除。
+Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用户资料的写入走独立认证 API，不是 Agent Capability。旧 Java Agent 链路已从仓库删除。ADR-017 目标态下，现有单 JVM 还会按模块化单体承载 L1/Run/History/Task/Registry、Transactional Outbox 和 RocketMQ 适配，但仍禁止承载 Agent、LLM、Mem0 或领域编排。
+
+`bdlh-memory-service/` 在 PLATFORM-P5 创建前不存在；创建后只承载 Python/FastAPI/Mem0 的 L3 语义记忆服务，目录结构和文件归属以 ADR-017 与生产 Prompt §26.11 为准。
 
 ### 3.3 `bdlh-runtime-console/`
 

@@ -120,6 +120,7 @@ def build_root_graph(
             web_search_adapter=web_search_adapter,
             java_adapter=java_adapter,
             deep_research_adapter=deep_research_adapter,
+            registry_snapshot=registry_snapshot,
         ),
     )
     # 有 java_adapter 用工厂节点（真实 Java + 内部降级），否则用默认 mock

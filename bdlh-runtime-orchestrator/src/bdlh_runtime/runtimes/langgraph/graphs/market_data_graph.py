@@ -3,7 +3,7 @@
 两种运行模式：
 - 注入 gateway_adapter + research_agent：走真实 MCP 链路，Research Agent 决策
   下一步统一能力 → Gateway 按路由表执行 → normalizer 标准化（含吞错识别）。
-  循环直到所有 DataRequirement 满足或达到 ReAct 轮数上限。
+  循环直到 GoalCoverage settled（或无 Goal 时 allowed 覆盖）或触顶预算/轮次。
 - 无注入（默认）：走 mock 路径，只产出占位 Observation，保证测试不依赖网络。
 
 ReAct 边界：Agent 只输出结构化动作（choose_next_action），不直接执行工具；
@@ -19,7 +19,9 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from bdlh_runtime.contracts.observation import DataQuality, Observation, ProvenanceRecord
-from bdlh_runtime.tools.coverage import evaluate_coverage
+from bdlh_runtime.cognitive.goal_coverage import all_goals_settled, evaluate_goals
+from bdlh_runtime.cognitive.goal_schema import GoalSpec, UnderstandOutput
+from bdlh_runtime.tools.coverage import CoverageResult, evaluate_coverage
 
 from ..nodes.nodes import _complete_current_task, current_run_observations, event, now_iso
 from .state import RootState
@@ -110,15 +112,20 @@ def execute_mock_market_tool(state: RootState) -> dict:
     }
 
 
-def evaluate_market_data(state: RootState) -> dict:
-    """完成市场数据任务，并区分关键能力与可选能力的缺失。"""
+def evaluate_market_data(state: RootState, *, registry_snapshot: Any | None = None) -> dict:
+    """完成市场数据任务；优先用 GoalCoverage，无 Goal 时退回 allowed 覆盖。"""
     result = _complete_current_task(state)
-    coverage = evaluate_coverage(
-        [{"capability": name, "required": False} for name in state.get("allowed", [])],
-        current_run_observations(state),
-    )
+    observations = current_run_observations(state)
+    goals_update = _refresh_goals(state, registry_snapshot, observations)
+    if goals_update is not None:
+        result.update(goals_update)
+        coverage = _coverage_from_goals((goals_update.get("understand") or {}).get("goals") or [])
+    else:
+        coverage = evaluate_coverage(
+            [{"capability": name, "required": False} for name in state.get("allowed", [])],
+            observations,
+        )
     if state.get("budget_exhausted") and coverage.status == "COMPLETE":
-        # 正常情况下预算耗尽会伴随缺失；保留防御性降级，避免错误标记完整。
         coverage = coverage.model_copy(update={"status": "PARTIAL"})
     result["coverage"] = coverage.model_dump()
     result["events"] = [event(
@@ -138,6 +145,7 @@ def build_market_data_graph(
     web_search_adapter: Any | None = None,
     java_adapter: Any | None = None,
     deep_research_adapter: Any | None = None,
+    registry_snapshot: Any | None = None,
 ):
     """构建市场数据获取子图（审查文档 §4.5 执行矩阵）。
 
@@ -160,7 +168,14 @@ def build_market_data_graph(
     if gateway_adapter is not None and research_agent is not None:
         # ── 真实 ReAct 模式 ──
         graph.add_node("build_market_query", build_market_query)
-        graph.add_node("select_action", _make_select_action_node(research_agent, llm_research_agent))
+        graph.add_node(
+            "select_action",
+            _make_select_action_node(
+                research_agent,
+                llm_research_agent,
+                registry_snapshot=registry_snapshot,
+            ),
+        )
         graph.add_node(
             "execute_tool",
             _make_execute_tool_node(
@@ -170,22 +185,26 @@ def build_market_data_graph(
                 deep_research_adapter,
             ),
         )
-        graph.add_node("normalize_observation", _normalize_observations_node)
-        graph.add_node("evaluate_market_data", evaluate_market_data)
+        graph.add_node(
+            "normalize_observation",
+            _make_normalize_observations_node(registry_snapshot),
+        )
+        graph.add_node(
+            "evaluate_market_data",
+            lambda state: evaluate_market_data(state, registry_snapshot=registry_snapshot),
+        )
 
         graph.add_edge(START, "build_market_query")
         graph.add_edge("build_market_query", "select_action")
-        # select_action → execute_tool（有动作）或 evaluate（finish）
         graph.add_conditional_edges(
             "select_action",
             _route_after_action,
             {"execute": "execute_tool", "finish": "evaluate_market_data"},
         )
         graph.add_edge("execute_tool", "normalize_observation")
-        # normalize → 回到 select_action 继续 ReAct 循环（受轮数限制）
         graph.add_conditional_edges(
             "normalize_observation",
-            _make_react_router(max_react_rounds),
+            _make_react_router(max_react_rounds, registry_snapshot=registry_snapshot),
             {"continue": "select_action", "stop": "evaluate_market_data"},
         )
         graph.add_edge("evaluate_market_data", END)
@@ -193,28 +212,32 @@ def build_market_data_graph(
         # ── Mock 模式（保持向后兼容）──
         graph.add_node("build_market_query", build_market_query)
         graph.add_node("execute_mock_market_tool", execute_mock_market_tool)
-        graph.add_node("evaluate_market_data", evaluate_market_data)
+        graph.add_node(
+            "evaluate_market_data",
+            lambda state: evaluate_market_data(state, registry_snapshot=registry_snapshot),
+        )
         graph.add_edge(START, "build_market_query")
         graph.add_edge("build_market_query", "execute_mock_market_tool")
         graph.add_edge("execute_mock_market_tool", "evaluate_market_data")
         graph.add_edge("evaluate_market_data", END)
 
-    # 子图只输出自己负责的字段（observations/events/ReAct 内部状态），
-    # 不输出 workflow_plan——避免子图入口快照覆盖主图的调度进度，
-    # 导致 resolve_instrument 等任务被重复执行（冒烟发现的 bug）。
     return graph.compile()
 
 
 # ── 真实 ReAct 模式的节点工厂 ──
 
 
-def _make_select_action_node(research_agent: Any, llm_research_agent: Any = None):
+def _make_select_action_node(
+    research_agent: Any,
+    llm_research_agent: Any = None,
+    *,
+    registry_snapshot: Any | None = None,
+):
     """构建 ReAct 决策节点：候选 = 窗口 specs ⊆ allowed；Agent 唯一。"""
 
+    from bdlh_runtime.tools.deep_research.cognitive_bridge import apply_deep_call_policy_to_action
 
     def select_action(state: RootState) -> dict:
-        # 单一 Agent（重写 §6.2）：凡 needs_external 均可 LLM 选，白名单=allowed。
-        # 窗口 specs（含 depends_on）由 build_allowed_menu 写入 capability_candidates。
         agent = llm_research_agent if llm_research_agent is not None else research_agent
         observations = current_run_observations(state)
         allowed = set(state.get("allowed", []))
@@ -222,27 +245,54 @@ def _make_select_action_node(research_agent: Any, llm_research_agent: Any = None
             item for item in state.get("capability_candidates", [])
             if item.get("name") in allowed
         ]
+        goals = _goals_from_state(state)
+        refreshed = _refresh_goals(state, registry_snapshot, observations)
+        if refreshed is not None:
+            goals = (refreshed.get("understand") or {}).get("goals") or goals
+
         if not window_specs:
-            return {
+            payload = {
                 "_react_round": state.get("_react_round", 0),
                 "_current_action": {"action": "finish", "arguments": {}, "reason": "窗口无可用能力"},
                 "events": [event(state, "model.decision", "select_action", {"action": "finish", "mode": "empty_window"})],
             }
-        action = agent.choose_next_action(observations, window_specs)
-        # finish 是终止决策，不计入 ReAct 轮次（轮次只统计实际工具调用），
-        # 但字段必须保留（保持 state 类型稳定，避免下游 KeyError）
-        if action.is_finish:
-            return {
+            if refreshed is not None:
+                payload.update(refreshed)
+            return payload
+
+        action = agent.choose_next_action(observations, window_specs, goals=goals)
+        action_data = apply_deep_call_policy_to_action(
+            action.model_dump(), state, allowed=allowed
+        )
+        if action_data.get("action") == "finish":
+            payload = {
                 "_react_round": state.get("_react_round", 0),
-                "_current_action": action.model_dump(),
+                "_current_action": action_data,
                 "events": [event(state, "model.decision", "select_action", {"action": "finish"})],
             }
+            if refreshed is not None:
+                payload.update(refreshed)
+            return payload
         round_count = state.get("_react_round", 0) + 1
-        return {
+        payload = {
             "_react_round": round_count,
-            "_current_action": action.model_dump(),
-            "events": [event(state, "model.decision", "select_action", {"action": action.action, "round": round_count})],
+            "_current_action": action_data,
+            "events": [
+                event(
+                    state,
+                    "model.decision",
+                    "select_action",
+                    {
+                        "action": action_data.get("action"),
+                        "round": round_count,
+                        "deep_trigger_reasons": action_data.get("deep_trigger_reasons"),
+                    },
+                )
+            ],
         }
+        if refreshed is not None:
+            payload.update(refreshed)
+        return payload
 
     return select_action
 
@@ -257,14 +307,19 @@ def _fill_action_arguments(action_data: dict, state: RootState) -> dict:
     """执行前回填参数占位（规则版 Agent 产生 {arg: None}）。
 
     symbol 类参数从 understand.entities.instruments 取当前标的；
-    web_search 的 query 以标的兜底。LLM 版输出完整参数，不受影响。
+    web_search 的 query 以标的兜底；deep_search 拼 DeepResearchRequest 契约字段。
     """
+    from bdlh_runtime.tools.deep_research.cognitive_bridge import build_deep_research_arguments
+
     arguments = dict(action_data.get("arguments") or {})
+    capability = str(action_data.get("action") or "")
+    if capability == "research.deep_search":
+        return build_deep_research_arguments(state, base=arguments)
+
     if not any(value is None for value in arguments.values()):
         return arguments
     instruments = (state.get("understand", {}).get("entities") or {}).get("instruments") or []
     symbol = instruments[0] if instruments else state.get("request", {}).get("symbol")
-    capability = str(action_data.get("action") or "")
     for key, value in arguments.items():
         if value is not None:
             continue
@@ -274,7 +329,6 @@ def _fill_action_arguments(action_data: dict, state: RootState) -> dict:
             arguments[key] = f"{symbol} 最新动态"
         elif key == "lookback_days":
             arguments[key] = 120
-    del capability
     return arguments
 
 
@@ -382,6 +436,7 @@ def _make_execute_tool_node(
                 )
             else:
                 observation = await deep_research_adapter.execute(capability, arguments)
+                observation = _apply_research_data_guardrail(observation, state)
         elif capability.startswith("research."):
             observation = Observation(
                 observation_id=str(uuid4()),
@@ -405,23 +460,75 @@ def _make_execute_tool_node(
     return execute_tool
 
 
+def _apply_research_data_guardrail(observation: Observation, state: RootState) -> Observation:
+    """Result 时点：对可用的 deep_search Observation 跑 Data-quality 研究规则。
+
+    已是 FAILED/UNAVAILABLE 的观测不再二次改写，避免掩盖执行器原始错误码。
+    """
+    if observation.status in {"FAILED", "UNAVAILABLE"}:
+        return observation
+
+    from bdlh_runtime.guardrails import DefaultDataQualityGuardrail, GuardrailContext, GuardrailDecision
+
+    context = GuardrailContext(
+        run_id=str(state.get("run_id") or "unknown"),
+        authenticated_user_id=str(
+            (state.get("request") or {}).get("user_id")
+            or (state.get("auth") or {}).get("user_id")
+            or "anonymous"
+        ),
+        authorized_capabilities=frozenset(state.get("allowed") or []),
+    )
+    result = DefaultDataQualityGuardrail().evaluate_data_quality(observation, context=context)
+    if result.decision == GuardrailDecision.ALLOW:
+        return observation
+    return observation.model_copy(
+        update={
+            "status": "FAILED",
+            "error_code": result.audit_code or "DATA_QUALITY_BLOCKED",
+            "error_message": "; ".join(result.reasons) or "research data quality blocked",
+        }
+    )
+
+
 def _normalize_observations_node(state: RootState) -> dict:
-    """标准化刚获取的 Observation（含服务端吞错识别）。"""
-    from bdlh_runtime.observations.normalizer import ObservationNormalizer
-
-    pending = state.get("_pending_observation")
-    if not pending:
-        return {}
-    obs = Observation.model_validate(pending)
-    normalized = ObservationNormalizer().normalize(obs)
-    return {
-        "observations": [normalized.model_dump()],
-        "events": [event(state, "observation.created", "normalize_observation", {"capability": obs.capability, "status": normalized.status})],
-    }
+    """兼容旧调用：无快照时只做 Observation 标准化。"""
+    return _make_normalize_observations_node(None)(state)
 
 
-def _make_react_router(max_rounds: int):
-    """构建 ReAct 循环路由器：未达上限且需求未满足则继续，否则停止。"""
+def _make_normalize_observations_node(registry_snapshot: Any | None):
+    """标准化 Observation，并按 GoalCoverage 回写 goals 状态。"""
+
+    def normalize_observation(state: RootState) -> dict:
+        from bdlh_runtime.observations.normalizer import ObservationNormalizer
+
+        pending = state.get("_pending_observation")
+        if not pending:
+            return {}
+        obs = Observation.model_validate(pending)
+        normalized = ObservationNormalizer().normalize(obs)
+        payload: dict[str, Any] = {
+            "observations": [normalized.model_dump()],
+            "events": [
+                event(
+                    state,
+                    "observation.created",
+                    "normalize_observation",
+                    {"capability": obs.capability, "status": normalized.status},
+                )
+            ],
+        }
+        observations = current_run_observations(state) + [normalized.model_dump()]
+        refreshed = _refresh_goals(state, registry_snapshot, observations)
+        if refreshed is not None:
+            payload.update(refreshed)
+        return payload
+
+    return normalize_observation
+
+
+def _make_react_router(max_rounds: int, *, registry_snapshot: Any | None = None):
+    """ReAct 循环路由：Goal settled / 预算 / 轮次触顶则停，禁止扫完整个 allowed。"""
 
     def router(state: RootState) -> str:
         if state.get("budget_exhausted"):
@@ -430,10 +537,92 @@ def _make_react_router(max_rounds: int):
         configured_limit = _budget_limit(state, "react_round_limit")
         if round_count >= (configured_limit if configured_limit is not None else max_rounds):
             return "stop"
-        # 检查是否还有未满足的需求
+
         observations = current_run_observations(state)
+        refreshed = _refresh_goals(state, registry_snapshot, observations)
+        goals = (
+            ((refreshed or {}).get("understand") or {}).get("goals")
+            or _goals_from_state(state)
+        )
+        if goals:
+            try:
+                specs = [GoalSpec.model_validate(item) for item in goals]
+            except Exception:  # noqa: BLE001
+                specs = []
+            if specs and all_goals_settled(specs):
+                return "stop"
+            # 仍有 PENDING：若候选都已尝试则停，避免空转
+            pending_names = {
+                name
+                for goal in goals
+                if str(goal.get("status") or "PENDING") == "PENDING"
+                for criterion in (goal.get("success_criteria") or [])
+                for name in (criterion.get("candidate_capabilities") or [])
+            }
+            attempted = {
+                o.get("capability") for o in observations if o.get("capability")
+            }
+            remaining = [name for name in pending_names if name not in attempted]
+            return "continue" if remaining else "stop"
+
+        # 无 Goal：退回旧语义（未尝试的 allowed）
         attempted = {o.get("capability") for o in observations if o.get("capability")}
         remaining = [name for name in state.get("allowed", []) if name not in attempted]
         return "continue" if remaining else "stop"
 
     return router
+
+
+def _goals_from_state(state: RootState) -> list[dict[str, Any]]:
+    understand = state.get("understand") or {}
+    goals = understand.get("goals") or []
+    return list(goals) if isinstance(goals, list) else []
+
+
+def _refresh_goals(
+    state: RootState,
+    registry_snapshot: Any | None,
+    observations: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if registry_snapshot is None:
+        return None
+    raw = state.get("understand")
+    if not raw:
+        return None
+    try:
+        understand = UnderstandOutput.model_validate(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    allowed = list(state.get("allowed") or [])
+    updated = evaluate_goals(
+        understand.goals,
+        observations,
+        allowed,
+        registry_snapshot,
+    )
+    return {
+        "understand": understand.model_copy(update={"goals": updated}).model_dump(),
+    }
+
+
+def _coverage_from_goals(goals: list[dict[str, Any]]) -> CoverageResult:
+    statuses = [str(goal.get("status") or "PENDING") for goal in goals]
+    if not statuses:
+        return CoverageResult(status="LIMITED", missing_required=["goals"])
+    if all(status in {"COVERED", "BLOCKED"} for status in statuses):
+        if any(status == "COVERED" for status in statuses):
+            return CoverageResult(
+                status="COMPLETE" if all(status == "COVERED" for status in statuses) else "PARTIAL",
+                fulfilled=[g.get("goal_id", "") for g in goals if g.get("status") == "COVERED"],
+                missing_optional=[g.get("goal_id", "") for g in goals if g.get("status") == "BLOCKED"],
+            )
+        return CoverageResult(
+            status="LIMITED",
+            missing_required=[g.get("goal_id", "") for g in goals],
+        )
+    return CoverageResult(
+        status="PARTIAL",
+        fulfilled=[g.get("goal_id", "") for g in goals if g.get("status") == "COVERED"],
+        missing_required=[g.get("goal_id", "") for g in goals if g.get("status") == "PENDING"],
+        missing_optional=[g.get("goal_id", "") for g in goals if g.get("status") == "BLOCKED"],
+    )

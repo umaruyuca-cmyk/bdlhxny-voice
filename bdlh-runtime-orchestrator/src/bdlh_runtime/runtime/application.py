@@ -124,7 +124,7 @@ def create_application(
     web_search_adapter = _create_web_search_adapter(settings)
 
     # ── 4.5c Deep Research 执行器（ADR-016；默认关闭，不改浅搜语义）──
-    deep_research_adapter = _create_deep_research_adapter(settings)
+    deep_research_adapter = _create_deep_research_adapter(settings, llm=llm)
 
     # ── 4.6 注册表快照（DB 真源；测试显式注入，禁止默认清单兜底）──
     registry_snapshot = _load_registry_snapshot(settings, registry_snapshot=registry_snapshot)
@@ -304,6 +304,7 @@ def create_application(
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         deep_research_adapter=deep_research_adapter,
+        deep_research_enabled=bool(settings.deep_research_enabled),
         history_store=history_store,
     )
 
@@ -410,21 +411,42 @@ def _create_web_search_adapter(settings: Settings) -> Any:
     )
 
 
-def _create_deep_research_adapter(settings: Settings) -> Any:
+def _create_deep_research_adapter(settings: Settings, *, llm: Any | None = None) -> Any:
     """创建 Deep Research 执行器（ADR-016 / §6.5）。
 
     默认 ``deep_research_enabled=False``：调用返回 UNAVAILABLE，不改浅搜路径。
-    仅非生产且显式开启时注入 FakeAtomicSearchPort，供隔离评测；生产开启时
-    在未接百炼 Provider 前仍无原子口（UNAVAILABLE），禁止静默回落 SearXNG。
+    原子搜索优先百炼 Provider（已配置时）；非生产且未配百炼时用 Fake 供隔离评测；
+    生产开启但未配百炼 → 无原子口（UNAVAILABLE），禁止静默回落 SearXNG。
     """
-    from bdlh_runtime.tools.deep_research import DeepResearchToolExecutor, FakeAtomicSearchPort
+    from bdlh_runtime.tools.deep_research import (
+        BailianWebSearchProvider,
+        DeepResearchToolExecutor,
+        FakeAtomicSearchPort,
+        LangchainDeepResearchModel,
+        RuleBasedDeepResearchModel,
+    )
 
     atomic = None
-    if settings.deep_research_enabled and settings.environment != "production":
-        atomic = FakeAtomicSearchPort()
+    if settings.deep_research_enabled:
+        bailian = BailianWebSearchProvider(
+            api_key=settings.bailian_web_search_api_key,
+            endpoint=settings.bailian_web_search_endpoint,
+            timeout_seconds=settings.bailian_web_search_timeout_seconds,
+            rate_limit_per_minute=settings.bailian_web_search_rate_limit_per_minute,
+        )
+        if bailian.configured:
+            atomic = bailian
+        elif settings.environment != "production":
+            atomic = FakeAtomicSearchPort()
+
+    research_model: Any = RuleBasedDeepResearchModel()
+    if settings.deep_research_enabled and llm is not None:
+        research_model = LangchainDeepResearchModel(llm)
+
     return DeepResearchToolExecutor(
         enabled=bool(settings.deep_research_enabled),
         atomic_search=atomic,
+        research_model=research_model,
     )
 
 

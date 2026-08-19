@@ -19,16 +19,21 @@ ResearchBundleStatus = Literal[
 
 
 class DeepResearchBudget(BaseModel):
-    """一次 Deep 调用的内部预算上限（外层仍计为一次 Capability）。"""
+    """一次 Deep 调用的内部预算上限（外层仍计为一次 Capability）。
+
+    默认值对齐 ADR-016 §17.1（开发阶段）。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    runtime_seconds: int = Field(default=90, ge=1)
+    runtime_seconds: int = Field(default=90, ge=1, le=180)
     model_call_limit: int = Field(default=24, ge=1)
     search_call_limit: int = Field(default=20, ge=1)
-    max_concurrent_research_units: int = Field(default=3, ge=1)
-    max_supervisor_iterations: int = Field(default=6, ge=1)
+    max_concurrent_research_units: int = Field(default=3, ge=1, le=8)
+    max_supervisor_iterations: int = Field(default=5, ge=1)
     max_react_tool_calls: int = Field(default=8, ge=1)
+    # 连续无新增 URL 的轮次上限（Researcher 空转硬停）
+    no_new_url_rounds_limit: int = Field(default=2, ge=1, le=5)
 
 
 class DeepResearchRequest(BaseModel):

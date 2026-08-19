@@ -1,36 +1,44 @@
 # ADR-016：固定复合 Deep Research Tool
 
-> 状态：PROPOSED
-> 批准人：待项目 owner 评审
+> 状态：APPROVED（开发阶段已裁定；默认流量仍 Feature Flag 关闭，生产切流走 M5）
+> 批准人：项目 owner（2026-08-15 裁定 §17）
 > 日期：2026-08-13
+> 修订：2026-08-15（owner 裁定公开 ID、无兼容期、预算/SLO/百炼默认区间、策略直接生效、DB 登记）
 > 依赖：[ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)、[ADR-012](./ADR-012-多Skill与多Agent演进门槛.md)、[ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)、[ADR-015](./ADR-015-Context组装服务与压缩策略.md)
 > 影响：[00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) §5、§10、§13、§15、§18；[00-BDLH-Agent-Runtime生产开发实施Prompt.md](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) §6.5；`bdlh-runtime-orchestrator/src/bdlh_runtime/tools/`、`bdlh-runtime-orchestrator/src/bdlh_runtime/runtime/`、`bdlh-web-search-adapter/`
 > 参考实现：[langchain-ai/open_deep_research](https://github.com/langchain-ai/open_deep_research)，版本 `0.0.16`，提交 `1b7d2e80db9faa586165c60e09096dbbfd483a64`，MIT License
 
 ## 1. 决策目标
 
-将 Deep Research 建模为 BDLH Runtime 编译期注册的一个固定、只读、复合 Capability Tool，
-供获得授权的 Agent 按需调用。该 Tool 内部采用经 BDLH 适配的
-`open_deep_research` 工作流形态，完成研究任务整理、研究子题拆分、并行研究、多轮搜索、
-缺口判断、压缩和结构化研究资料装配。
+将 Deep Research 建模为 BDLH Runtime 登记的一个固定、只读、复合 Capability Tool
+（公开 ID 默认 `research.deep_search`），供获得授权的 Agent 按策略调用。该 Tool 内部采用
+经 BDLH 适配的 `open_deep_research` 工作流形态，完成研究任务整理、研究子题拆分、并行研究、
+多轮搜索、缺口判断、压缩和结构化研究资料装配。
 
 本 ADR 冻结以下核心判断：
 
-1. Deep Research 是固定 Tool，不是 Skill、Domain、客户入口或独立 Agent 服务；
-2. 调用方 Agent 可以不经过 Skill，直接通过 Capability Gateway 调用该 Tool；
+1. Deep Research 是固定 Tool，不是 Skill、Domain、客户入口、独立 Agent 服务，也不是替换
+   全部联网的「唯一底层搜索引擎」；
+2. 调用方 Agent 可以不经过 Skill，直接通过 Capability Gateway 调用该 Tool；Skill 最多将
+   其列为 optional 依赖以控制菜单资格；
 3. `open_deep_research` 是研究编排逻辑，不是 Search Provider；
-4. Tool 内部继续需要私有原子搜索端口，首发复用现有
-   `bdlh-web-search-adapter + SearXNG`；
-5. 不因上游支持 MCP 而强制接入外部 Search MCP；
+4. 当前 `research.web_search` 继续通过现有 `bdlh-web-search-adapter + SearXNG`
+   提供普通查询；Deep Research 内部使用私有原子搜索端口，并固定接入百炼联网搜索 MCP；
+5. 百炼 MCP 只能是 `AtomicSearchPort` 背后的受控 Provider，不能作为可由模型动态发现或直接
+   调用的 MCP Tool；
 6. 上游工作流只能在替换模型、工具、状态、预算、错误与输出边界后接入；
-7. 最终输出是供调用 Agent 消费的结构化 `ResearchBundle`，不是直接面向客户的报告。
+7. 最终输出是供调用 Agent 消费的结构化 `ResearchBundle`，不是直接面向客户的报告；
+8. 职责分三层，不得混用：
+   - **调用策略**（进 Deep 之前，BDLH Policy，见 §8.3）；
+   - **内部编排**（Brief → Supervisor → 并行 Researcher → 压缩，参考官方）；
+   - **确定性收口**（`assemble_research_bundle`，**由 BDLH 定义**，非官方 final_report）。
 
-本 ADR 处于 `PROPOSED` 时不授权生产切流。批准前只允许审计、契约草案、离线评测、
-假 Provider 原型和不接默认流量的隔离实验。
+本 ADR 已由 owner **APPROVED（开发阶段）**：允许按 §14 做隔离实现与评测接线；
+**不得**在 Feature Flag 关闭时改变默认生产搜索语义。生产灰度仍属 M5。
 
 ## 2. 背景与现状
 
-当前 Web Search 链路为：
+当前普通 Web Search 链路为：
 
 ```text
 Agent / Finance Planner
@@ -213,27 +221,34 @@ Supervisor 和 Researcher 的“继续还是结束”属于模型建议；最终
 
 ## 7. 原子搜索边界
 
-### 7.1 必须保留底层 Search Provider
+### 7.1 Deep Research 的固定底层 Provider
 
-`open_deep_research` 没有互联网索引，不替代 SearXNG、Tavily、Exa、原生 Search 或 Search
-MCP。它只是多轮研究编排器。
+`open_deep_research` 没有互联网索引，不替代任何搜索 Provider；它只是多轮研究编排器。
 
-首发链路冻结为：
+普通搜索与深度研究使用不同的 Provider 链路：
 
 ```text
-Researcher
-→ private AtomicSearchPort
+research.web_search
 → bdlh-web-search-adapter
 → SearXNG
-→ configured search engines
+→ Bing / Bing News / Baidu / 360 Search / Sogou
+
+research.deep_search
+→ DeepResearchToolExecutor
+→ private AtomicSearchPort
+→ BailianWebSearchProvider
+→ 百炼联网搜索 MCP
 ```
 
-外部 Search MCP 不是前置依赖；未配置任何 Search MCP 时，本能力必须仍可通过现有 Node +
-SearXNG 运行。
+`research.deep_search` 不得把 SearXNG 当作成功时的隐式兜底：百炼 Provider 不可用、超时或
+限流时，必须返回 `ATOMIC_SEARCH_UNAVAILABLE`、`PARTIAL` 或 `LIMITED`，并保留已获得的有效
+来源。这样不会把“深度研究的稳定来源失败”伪装成普通聚合搜索成功。普通 `research.web_search`
+不依赖百炼，百炼未配置时仍按原有链路运行。
 
 ### 7.2 AtomicSearchPort
 
-从现有 `HttpWebSearchAdapter` 提取或包裹私有端口：
+建立独立的私有端口；不得让 Deep Research 经 Capability Gateway 回调现有
+`HttpWebSearchAdapter`：
 
 ```text
 search(
@@ -247,9 +262,10 @@ search(
 ) → AtomicSearchBatch
 ```
 
-原子搜索层负责：
+`BailianWebSearchProvider` 负责以服务端凭证调用百炼 MCP，并把返回的页面/结果映射为
+`AtomicSearchBatch`。原子搜索层负责：
 
-- 鉴权、限流、缓存、熔断和 Provider fallback；
+- 鉴权、限流、缓存、熔断和受控重试；M2 首发不得切换到 SearXNG 或其他 Provider；
 - URL 规范化和基础去重；
 - HTML/Markdown 清洗和提示注入卫生；
 - 标题、URL、摘要或受控正文、发布时间、检索时间和 Provider 元数据；
@@ -262,9 +278,9 @@ search(
 `AtomicSearchPort` 默认是 `DeepResearchToolExecutor` 的私有依赖，不对普通 Agent 暴露，
 不创建第二份 Capability Registry。
 
-若迁移期继续保留公开 `research.web_search`：
+公开 `research.web_search` 是长期保留的普通查询入口：
 
-- 它只能作为旧路径、兼容投影或影子对照入口；
+- 它继续走 `bdlh-web-search-adapter + SearXNG`，不承载 Deep Research 的多轮语义；
 - Deep Research 内部不得通过 Capability Gateway 调用它；
 - 内部只能直接调用私有 `AtomicSearchPort`，防止复合 Tool 递归进入自身或旧公开语义。
 
@@ -281,24 +297,47 @@ research.deep_search
 原因：它的输入、延迟、预算和输出与当前一次性 `research.web_search` 明显不同，使用新 ID
 可以避免在同一 Capability 下静默改变契约。
 
-`APPROVED` 前 owner 必须在以下两项中裁定：
+### 8.1 公开 ID（已裁定）
 
-1. **新 ID（推荐）**：`research.deep_search` 为复合 Tool，`research.web_search` 迁移期保留；
-2. **沿用旧 ID**：`research.web_search` 升级为复合 Tool，但必须升级 Schema 版本、提供旧格式
-   投影，并明确超时/预算语义变化。
+**冻结使用新 ID：`research.deep_search`。**
 
-### 8.2 旧 Search 退出
+- `research.web_search` 长期保留为普通 SearXNG 查询，不承载 Deep 多轮语义；
+- **不设兼容期**：当前为开发阶段，不维护「旧 ID 承载复合语义」的双写或投影；
+- 禁止在 `research.web_search` 下静默改变为 Deep 行为。
 
-旧 `research.web_search` 不得在新能力出现后立即删除。退出必须满足：
+### 8.2 普通 Search 的长期边界
 
-- 新旧同输入影子评测完成；
-- 现有 Finance 消费方已迁移或使用确定性兼容投影；
-- 新路径来源覆盖、错误率、延迟和成本达到放行阈值；
-- Feature Flag 回滚演练通过；
-- 稳定观察期结束；
-- owner 明确批准 `RETIRED`。
+`research.web_search` 不因 `research.deep_search` 出现而退休；两者分别承担普通查询和深度研究。
+它可以独立演进其 SearXNG 引擎清单、缓存和限流，但不得改变为多轮研究或复用 Deep Research 的
+输出 Schema。未来若要退休或合并普通 Search，必须以独立 ADR 重新评审调用量、延迟、成本、来源
+质量和迁移方案。
 
-兼容期可以存在两个公开 ID，但只能存在一份 Deep Research 核心工作流。
+禁止在 `research.web_search` Adapter 内静默升级为 Deep。两个公开 Capability 显式调用；
+策略层只做「选哪个」。
+
+「旧路径」仅指 Deep 实验别名、双写执行器或兼容投影，**不是**删除长期 `research.web_search`。
+
+### 8.3 调用策略（进 Deep 之前）
+
+调用方必须先拼好结构化研究参数与目标，再由确定性 Policy 决定是否触发 Deep。
+**默认走 `research.web_search`（或根本不搜）。** 满足以下**任一项** → 允许/应调用
+`research.deep_search`（仍须 `allowed`、Feature Flag、预算与 entitlement 许可）：
+
+1. 用户明确要求：深度调研、报告、比较、证据链、交叉验证；
+2. `research_topics` 数量 ≥ 2；
+3. `success_criteria` 数量 ≥ 2，且每条可验证（禁止空话凑数）；
+4. 要求比较多个主体、归因、趋势、风险/机会或冲突观点；
+5. 预期需要 ≥ 3 个独立检索问题，或明确需要补搜判断。
+
+硬约束：
+
+- Flag 关闭 / 未授予 / 不在本轮 `allowed` → 不得调用；
+- 同步预算不足 → 降级浅搜、可解释 limitation，或 ADR-014 长任务；禁止砍轮次假 COMPLETE；
+- 禁止把入口 Goal 的四值 `requested_topics`（含单独 `web_research`）自动升级为 Deep。
+
+Policy 应输出可审计的 `deep_trigger_reasons[]`。
+
+详细字段与验收见 00 Prompt §6.5.1a。
 
 ## 9. 输入与输出契约
 
@@ -311,7 +350,7 @@ request_id
 question
 objective
 success_criteria[]
-required_topics[]
+research_topics[]         # Deep 主题命名空间；独立于入口 Goal 的 requested_topics
 time_range?
 language
 include_domains[]
@@ -321,7 +360,7 @@ budget:
   model_call_limit
   search_call_limit
   max_concurrent_research_units
-  max_supervisor_iterations
+  max_supervisor_iterations   # 对应上游 max_researcher_iterations（Supervisor 侧）
   max_react_tool_calls
 ```
 
@@ -477,17 +516,17 @@ Checkpoint 只允许保存：
 
 模型负责建议：如何拆题、缺什么、是否补搜、是否建议结束。
 
-确定性装配器负责最终裁定：
+确定性装配器负责最终裁定（收口规则由 BDLH 定义，非官方 final_report）：
 
 - 是否超预算；
-- `required_topics` 和 `success_criteria` 覆盖情况；
+- `research_topics` 和 `success_criteria` 覆盖情况（不可计算则不得 `COMPLETE`）；
 - finding/source 引用是否闭合；
 - 是否至少有一个有效来源；
 - 关键冲突是否显式保留；
 - Provider、模型和研究单元失败情况；
 - 最终是 `COMPLETE`、`PARTIAL`、`LIMITED` 还是 `FAILED`。
 
-模型调用 `ResearchComplete` 不能单独决定 `COMPLETE`。
+模型调用 `ResearchComplete` 不能单独决定 `COMPLETE`。Supervisor / Researcher 须有硬停（轮次上限、连续无新增 URL、预算耗尽）。
 
 ### 12.2 稳定错误码
 
@@ -530,16 +569,16 @@ DEEP_RESEARCH_ASSEMBLY_FAILED
 
 1. 冻结请求、ResearchBundle、Observation 投影、预算和错误码；
 2. 建立金标准与失败/攻击样本；
-3. 提取私有 `AtomicSearchPort`，旧 Search 行为保持不变；
+3. 建立私有 `AtomicSearchPort` 和 `BailianWebSearchProvider`，旧 SearXNG Search 行为保持不变；
 4. 用假 LLM 和假 Search 实现确定性工作流测试；
 5. 替换模型与工具装配，接 BDLH 预算和 Observation；
-6. 接入现有 Node + SearXNG 做隔离实测；
+6. 接入百炼联网搜索 MCP 做隔离实测；
 7. 建立旧 Search 与 Deep Research 的同输入离线对照。
 
 退出门槛：
 
 - 没有 Skill/Domain 依赖；
-- 没有外部 Search MCP 也能运行；
+- 百炼 MCP 未配置或不可用时，普通 Search 行为不变，Deep Research 返回真实的受限状态；
 - 拆题、并行、补搜、压缩、装配和预算终止均有测试；
 - findings/source 引用闭合；
 - 空结果不能变成 `COMPLETE`；
@@ -577,7 +616,8 @@ AtomicSearchPort。
 
 - Agent 获得统一、可复用的深度公开资料研究工具；
 - 无需创建虚假的 Skill 或 Domain；
-- 复用现有 Search Provider、Capability、Observation、预算和治理真源；
+- 复用 Capability、Observation、预算和治理真源；搜索 Provider **分层**（浅搜 SearXNG /
+  Deep 私有百炼），不把两套语义混在一个公开 ID 下；
 - 查询从单轮模板升级为受预算约束的多轮研究；
 - 调用 Agent 继续掌握业务判断和最终表达。
 
@@ -604,23 +644,72 @@ AtomicSearchPort。
 
 拒绝。Deep Research 工作流没有互联网索引，必须依赖至少一个 Search Provider。
 
-### 16.4 强制使用外部 Search MCP
+### 16.4 将百炼联网搜索 MCP 接入 Deep Research
 
-拒绝。MCP 是可选 Provider 接法，不是工作流成立条件。首发复用现有 Node + SearXNG。
+接受，但边界固定：百炼 MCP 只通过 `BailianWebSearchProvider` 实现 `AtomicSearchPort`，不作为
+普通 Agent Tool、不由模型动态加载，也不改变当前 `research.web_search → SearXNG` 的普通查询
+路径。
 
 ### 16.5 在旧 Capability ID 下静默改变语义
 
 拒绝。若沿用 `research.web_search`，必须升级 Schema 并提供明确兼容层；推荐使用新的
 `research.deep_search` ID。
 
-## 17. 待 owner 批准项
+## 17. Owner 裁定（2026-08-15）
 
-ADR 从 `PROPOSED` 进入 `APPROVED` 前必须裁定：
+下列项已裁定；数值为开发阶段默认，可在评测后微调但须改本 ADR 修订记录。
 
-1. 公开 Capability 使用 `research.deep_search`，还是升级现有 `research.web_search`；
-2. 兼容期长度和旧路径 `RETIRED` 门槛；
-3. 首发同步最大运行时间，超过后是否立即启用 ADR-014 长任务模式；
-4. 默认 `model_call_limit / search_call_limit / concurrency`；
-5. DeepSeek 结构化输出成功率、端到端成功率、P95 延迟和费用阈值；
-6. 首发是否只使用 SearXNG，还是同时增加第二 Provider；
-7. 是否移植上游代码；若移植，第三方通知文件的落位与维护责任人。
+| # | 议题 | 裁定 |
+|---|---|---|
+| 1 | 公开 Capability ID | **`research.deep_search`（新 ID）**；浅搜仍用 `research.web_search` |
+| 2 | 兼容期 | **不设**。开发阶段不维护旧 ID 复合语义 / 双写兼容层 |
+| 3 | 同步超时与长任务 | 见 §17.1 |
+| 4 | 默认预算与硬停 | 见 §17.1 |
+| 5 | DeepSeek 放行门槛 | 见 §17.2 |
+| 6 | 百炼边界 | 见 §17.3 |
+| 7 | 上游代码 | **同开发阶段策略**：不整包移植为独立服务；以 BDLH 自研骨架 + 经审查的官方思路/片段为准。若日后合入上游源码文件，再补 MIT 第三方通知与维护人，不在本阶段强制 |
+| 8 | 调用策略 | **§8.3 五条直接生效**；须输出 `deep_trigger_reasons[]` |
+| 9 | Capability 登记 | **入口资格菜单重写后的数据库目录**为真源；Deep 不进编译期硬编码清单兜底 |
+
+### 17.1 同步时限与默认预算（开发默认）
+
+| 项 | 默认值 | 合理区间 | 说明 |
+|---|---|---|---|
+| `budget.runtime_seconds` | **90** | 60–120 | 单次同步 Deep 墙钟上限 |
+| 同步硬顶（网关/HTTP） | **120s** | 90–180 | 超过必须停；不得无限拖 |
+| 何时启用 ADR-014 | 请求声明 `runtime_seconds > 90`，或同步已跑到 **75s** 仍有 PENDING 子题 | — | 开发阶段：优先返回 `PARTIAL` + `budget_exhausted` 并写 limitation；具备 Run Registry 后改为安全点 Pause |
+| `model_call_limit` | **24** | 16–32 | Brief+Supervisor+Researcher+压缩合计 |
+| `search_call_limit` | **20** | 12–30 | 原子搜索次数（非网页抓取次数） |
+| `max_concurrent_research_units` | **3** | 2–4 | 并行 Researcher |
+| `max_supervisor_iterations` | **5** | 3–6 | 对应上游 researcher iterations（总控侧） |
+| `max_react_tool_calls` | **8** | 5–10 | 单 Researcher 工具轮次 |
+| 空转硬停 N | **2** | 2–3 | 连续 N 轮无新增独立 URL → 强制进压缩 |
+
+### 17.2 DeepSeek 放行门槛（开发默认）
+
+评测集建议 ≥ 30 条（中/英/中英、空结果、冲突源、恶意页各若干）。开启非生产 Flag 前：
+
+| 指标 | 门槛 | 说明 |
+|---|---|---|
+| `with_structured_output` 成功率 | **≥ 90%** | 含一次受控重试后 |
+| 端到端可用率（有 ≥1 有效来源的 `PARTIAL`/`COMPLETE`） | **≥ 75%** | 开发门槛；生产 M5 建议升到 ≥ 80% |
+| 同步路径 P95 | **≤ 90s** | 与默认 `runtime_seconds` 对齐 |
+| 单次评测均费软警 | **≤ ¥0.5 / 请求** | 超则降并发或缩预算，非硬失败 |
+| 月度实验室费用软顶 | **¥1000** | 告警用，可调 |
+
+### 17.3 百炼 MCP（开发默认）
+
+| 项 | 默认 | 说明 |
+|---|---|---|
+| 地域 | 中国大陆（阿里云默认地域） | 凭证仅服务端配置 |
+| 单 Run 并发原子搜 | **3** | 与 `max_concurrent_research_units` 对齐 |
+| 进程级并发软顶 | **10** | 防打爆配额 |
+| 速率软顶 | **30 次搜索 / 分钟 / runtime** | 超则排队或 PARTIAL |
+| 月度费用软顶 | **¥2000** | 实验室告警；生产另定 |
+| 失败策略 | **不得**回落 SearXNG 伪装成功 | 返回 `ATOMIC_SEARCH_UNAVAILABLE` / `PARTIAL` / `LIMITED` |
+
+### 17.4 登记与策略生效说明
+
+- §8.3 调用策略在开发代码路径**直接生效**（仍受 Feature Flag / `allowed` / entitlement 约束）。
+- `research.deep_search` 登记进 **Postgres 资格目录**（与入口重写同一真源）；未开 Flag 或未授予时不得出现在默认 `allowed`。
+- `research.web_search` 行为不变。

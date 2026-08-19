@@ -1,9 +1,9 @@
 # BDLH Agent Runtime 生产开发实施 Prompt
 
 > **文档状态：唯一有效的生产开发执行 Prompt**  
-> **Prompt 版本：v1.15**
-> **生效日期：2026-08-11**  
-> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3；v1.14 吸收 ADR-014/015；v1.15 增加固定复合 Deep Research Tool 专项实施约束（§6.5）**
+> **Prompt 版本：v1.19**
+> **生效日期：2026-08-15**
+> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3；v1.14 吸收 ADR-014/015；v1.15–v1.18 Deep Research（§6.5）；v1.19 Data Plane/RocketMQ/Memory Service 专项（§26）**
 > **阶段说明：M7 为可选的插件契约验证阶段，排在 M6 之后，不得抢占 M0–M6**
 > **上位架构：[00-BDLH-Agent-Runtime统一生产架构.md](../architecture/00-BDLH-Agent-Runtime统一生产架构.md)**  
 > **适用项目：`bdlh-runtime-orchestrator`、必要的 Java 用户数据接口、Nginx 与生产部署配置**  
@@ -18,7 +18,7 @@
 调用时应在 Prompt 后附加任务参数：
 
 ```text
-TASK_PHASE: M0 | M1 | M2 | M3 | M4 | M5 | M6 | M7
+TASK_PHASE: M0 | M1 | M2 | M3 | M4 | M5 | M6 | M7 | PLATFORM-P0 | PLATFORM-P1 | PLATFORM-P2 | PLATFORM-P3 | PLATFORM-P4 | PLATFORM-P5 | PLATFORM-P6 | PLATFORM-P7
 TASK_OBJECTIVE: 本次要完成的单一目标
 AUTHORIZED_SCOPE: 允许修改的模块或目录
 OUT_OF_SCOPE: 本次明确不处理的内容
@@ -71,7 +71,8 @@ Observation、Guardrail、预算和审计链，不得套用 Finance 的业务字
 3. 本次任务涉及的实际源代码和测试；
 4. 本次任务涉及的部署、数据库迁移或 Java 接口文件；
 5. 若任务触及暂停恢复或上下文组装：`ADR-014`、`ADR-015`（以及 Memory 边界时的 `ADR-011`）。
-6. 若任务触及固定复合 Deep Research Tool：§6.5、经批准的 `ADR-016`（若尚未批准，
+6. 若任务触及 Data Plane、PostgreSQL、RocketMQ、Outbox/Inbox 或 Memory Service：`ADR-017` 与本文 §26。
+7. 若任务触及固定复合 Deep Research Tool：§6.5、经批准的 `ADR-016`（若尚未批准，
    只允许完成审计、契约草案、隔离原型与评测，不得切换生产 Search 语义）以及 §6.5.2
    固定的上游开源参考版本。
 
@@ -80,7 +81,7 @@ Observation、Guardrail、预算和审计链，不得套用 Finance 的业务字
 1. 用户在当前任务中的明确要求；
 2. 身份、安全、隐私、数据真实性和只读金融边界；
 3. `00-BDLH-Agent-Runtime统一生产架构.md`；
-4. 已批准 ADR（含 ADR-011 / 014 / 015）；
+4. 已批准 ADR（含 ADR-011 / 014 / 015 / 016 / 017）；
 5. 本 Prompt；
 6. 当前代码和测试证明的实现事实；
 7. Review、历史版本档案和 Git 历史。
@@ -107,10 +108,16 @@ M0 生产基线修复（可与 M1～M4 并行开发，但最迟在 M5 前关闭�
 
 可选扩展验证：
 M7 插件契约验证（仅在 M6 之后执行；验证既有 manifest/descriptor 能被新增 Skill/Domain 复用，不设业务目标）
+
+正交平台迁移：
+PLATFORM-P0 → P1 → P2 → P3 → P4 → P5 → P6 → P7
+（Data Plane、单实例 PostgreSQL、RocketMQ、Memory Service；不得改变 M0–M7 业务范围）
 ```
 
 `M7` 只能在 M6 之后执行，不得抢占 M0–M6 的任何门禁；未提供 `TASK_PHASE` 时也不得
 自动选择 M7。
+
+`PLATFORM-P0`～`PLATFORM-P7` 只在用户明确指定平台专项时执行；未提供 `TASK_PHASE` 时不得自动选择。平台阶段内部必须按 P0→P7 顺序，每次只做一个最小可验收切片；业务阶段和平台阶段不得在同一任务中混做。
 
 每个开发任务只能处理一个阶段。完成当前阶段后必须停止并交付结果，除非用户明确授权继续下一阶段。
 M0 未关闭不阻止 M1–M4 在独立、非默认入口开发和测试，但这些阶段只能标记
@@ -422,38 +429,93 @@ API → Application → Cognitive → Domain Runtime（当前 Finance）→ Capa
 #### 6.5.1 定位与生效门禁
 
 本专项的目标是把经过 BDLH 适配的 Deep Research 工作流注册为 Runtime 的一个**固定、
-只读、复合 Capability Tool**，供获得授权的 Agent 按需调用。它不是面向客户的独立入口，
-不要求调用方先进入某个 Skill，也不新建 Domain Runtime。
+只读、复合 Capability Tool**（公开 ID 默认 `research.deep_search`），供获得授权的
+Agent 按策略调用。
+
+产品形态冻结为三层，不得混为一谈：
+
+```text
+research.web_search     公开浅搜 Capability → SearXNG（长期保留）
+research.deep_search    公开复合研究 Capability → 改编自 open_deep_research 的编排
+AtomicSearchPort        Deep 私有原子搜索 → 百炼 MCP（不对普通 Agent 暴露）
+```
+
+- **不是** `deep-research` Skill / Domain / 客户入口 / 独立服务；
+- **不是** 替换全部联网的「唯一底层搜索引擎」；浅查不得默认走 Deep；
+- Skill（如 `stock-research`）最多把 `research.deep_search` 列为 **optional 依赖**，
+  用于资格菜单是否出现该工具；Deep 本体仍是 Capability，不是 Skill。
+
+三层职责（实施与评审时必须按层验收，禁止把触发规则写进装配器，也禁止把收口规则写进搜索 Adapter）：
+
+| 层 | 谁定义 | 何时 | 职责 |
+|---|---|---|---|
+| **调用策略** | BDLH Policy（§6.5.1a） | **进入 Deep 之前** | 在已拼好研究参数/目标后，决定调 `deep_search` 还是 `web_search` |
+| **内部编排** | 参考官方 + BDLH 预算硬停 | Deep **内部** | Brief → Supervisor 派工 → 并行 Researcher 多轮检索 → 压缩 |
+| **确定性收口** | **BDLH 装配器**（非官方、非调用方 LLM） | Deep **结尾** | 裁定 `COMPLETE / PARTIAL / LIMITED / FAILED`，来源闭合与覆盖 |
 
 冻结以下边界：
 
-- 调用方 Agent 负责理解用户目标、决定是否调用 Tool、合并其他业务数据、执行最终
-  Guardrail，并生成面向用户的回答；
+- 调用方 Agent 负责理解用户目标、按 §6.5.1a 决定是否调用 Deep、合并其他业务数据、
+  执行最终 Guardrail，并生成面向用户的回答；
 - Deep Research Tool 只接受结构化研究任务，执行拆题、并行研究、多轮检索、压缩与
   研究资料装配；
 - Supervisor / Researcher 是 Tool 内部同一 Runtime 进程中的 LangGraph 角色子图，
   不是独立进程、独立信任域或对外 Agent；
 - Tool 不直接向用户追问，不直接拥有会话入口，不直接发布客户文案；
-- Tool 必须经 `CapabilityRegistry` 编译期注册，并继续经过现有 Toolset、精确授权、预算、
-  Observation、审计与 Guardrail 链；
+- Tool 必须经 Capability 登记并继续经过现有 Toolset、精确授权、预算、Observation、
+  审计与 Guardrail 链；登记方式跟随当时有效的 Registry 真源（现网编译期 Registry；
+  若入口资格菜单重写已切换为数据库目录，则 Deep 亦登记进库，禁止再维护第二份硬编码清单）；
 - Capability 的 `domain="research"` 只表示能力分类，不等于创建 `research` Domain；
 - 不创建 `SkillManifest` / `DomainDescriptor`，除非未来另有已批准 ADR 明确把它升级为
   一项业务 Skill；
 - 外部 Agent 可以在不调用 Skill 的情况下使用该 Tool，但不得绕过 Capability Gateway
-  或 Policy 直接调用其执行器。
+  或 Policy 直接调用其执行器；
+- **禁止**在 `research.web_search` Adapter 内静默升级为 Deep；两个公开 Capability
+  显式调用，策略层只做「选哪个」，不做「一个 ID 两套语义」。
 
-本节是专项实施 Prompt，不自行批准架构变更。生产实现和切流前必须先新增并批准
+本节是专项实施 Prompt，不自行批准架构变更。生产实现和切流前必须先批准
 `docs/architecture/ADR-016-固定复合DeepResearchTool.md`，至少冻结：
 
-1. 对外 Capability ID 与兼容期；
+1. 对外 Capability ID（默认 `research.deep_search`）与兼容期；
 2. 输入、输出和 Observation Schema；
 3. 内部原子搜索边界；
 4. 预算、超时、暂停/取消与持久化策略；
-5. 旧 `research.web_search` 的兼容、迁移和退出条件；
-6. DeepSeek Tool Calling / Structured Output 放行门槛。
+5. 普通 `research.web_search` 与 `research.deep_search` 的长期边界；
+6. §6.5.1a 调用策略与 DeepSeek Tool Calling / Structured Output 放行门槛。
 
 在 ADR-016 为 `PROPOSED` 或不存在时，只允许：代码审计、契约草案、离线评测、假
 Provider 原型与不接默认流量的实验；不得改变现有生产调用语义。
+
+ADR-016 已于 2026-08-15 **APPROVED（开发阶段）**：允许按 §6.5.11 做隔离实现与评测；
+默认 Feature Flag 仍关闭；预算/SLO/百炼默认见 ADR §17.1–§17.3；公开 ID 冻结为
+`research.deep_search`；调用策略直接生效；Capability 登记走入口重写后的数据库目录。
+生产灰度仍属 M5。
+
+#### 6.5.1a 调用策略（进 Deep 之前）
+
+调用方必须先拼好结构化研究参数与目标（`question` / `objective` /
+`success_criteria` / `research_topics` 等），再由 **确定性 Policy**（可辅以已结构化
+的用户意图标记，禁止裸 LLM 在 Adapter 里临时改路由）决定是否触发 Deep。
+
+**默认走 `research.web_search`（或根本不搜）。** 满足以下**任一项** → 允许/应调用
+`research.deep_search`（仍须 `allowed`、Feature Flag、预算与 entitlement 许可）：
+
+1. 用户明确要求：深度调研、报告、比较、证据链、交叉验证；
+2. `research_topics`（Deep 请求内主题，见 §6.5.5）数量 ≥ 2；
+3. `success_criteria` 数量 ≥ 2，且每条可验证（禁止两条空话凑数触发）；
+4. 要求比较多个主体、归因、趋势、风险/机会或冲突观点；
+5. 预期需要 ≥ 3 个独立检索问题，或明确需要补搜判断。
+
+硬约束（任一条不满足则不得开 Deep，或开了必须走 ADR-014 异步，不得砍轮次假 COMPLETE）：
+
+- Feature Flag 关闭、或账户/Skill 未授予 Deep、或不在本轮 `allowed` → 不得调用；
+- 同步请求预算不足以支撑最小 Deep 配置 → 降级浅搜、返回可解释 limitation，或转为
+  Pause/长任务；禁止静默开 Deep 再伪装成功；
+- **禁止**把入口 Goal 的四值 `requested_topics`
+  （`news|money_flow|industry|web_research`）或单独一条 `web_research`
+  **自动升级**为 Deep；浅搜主题映射仍只对应 `research.web_search`。
+
+Policy 输出应可审计（例如 `deep_trigger_reasons[]`），便于影子对照与费用归因。
 
 #### 6.5.2 上游开源参考登记
 
@@ -504,9 +566,17 @@ validate_research_request
    → 并行 researcher_subgraph
       → researcher / execute_atomic_search 循环
       → compress_research
-→ assemble_research_bundle
+→ assemble_research_bundle          # BDLH 确定性收口（非官方 final_report）
 → Observation
 ```
+
+大逻辑（参考官方、BDLH 保留）：**研究简报 → Supervisor 并行派题 → 每题多轮检索 → 压缩 → 装配。**
+
+小逻辑硬停（官方偏软，BDLH 必须有确定性上限，防止空转）：
+
+- **Supervisor**：轮次 ≥ `max_supervisor_iterations`，或收到 `ResearchComplete` 且无新派工，或总预算耗尽 → 结束研究阶段进入装配；
+- **Researcher**：本单元搜索/工具次数触顶，或连续 N 轮无新增独立 URL/信息，或单元预算耗尽 → 进入压缩（N 与上限由 ADR/预算表冻结）；
+- **`ResearchComplete` / 模型建议结束**：只是建议，不得单独决定外层 `COMPLETE`。
 
 逐项处理规则：
 
@@ -521,7 +591,7 @@ validate_research_request
 | `get_all_tools()` | 删除并替换 | 禁止动态加载 Tavily、原生 Search 或 MCP 绕过 BDLH 网关 |
 | `compress_research` | 保留并改为结构化压缩 | 控制上下文，同时保留来源 ID 和关键摘录 |
 | `raw_notes` | 不跨层、不长期持久化 | 原始网页和推理消息不是 BDLH 权威结果 |
-| `final_report_generation` | 替换为 `assemble_research_bundle` | 输出供其他 Agent 消费的研究资料，而非客户文案 |
+| `final_report_generation` | 替换为 `assemble_research_bundle` | **确定性收口由 BDLH 定义**；输出供 Agent 消费的研究资料，而非客户文案 |
 
 不得原样复制上游中“捕获任意异常后直接结束研究”、把 Tool 错误降成普通字符串、完整
 保存 AI/Tool Message、直接加载 MCP/Tavily 凭证等行为。所有失败必须进入 BDLH 稳定状态和
@@ -538,31 +608,27 @@ Authorized Agent
 → DeepResearchToolExecutor
 → adapted open_deep_research graph
 → private AtomicSearchPort
-→ bdlh-web-search-adapter
-→ SearXNG / 经批准的其他 Search Provider
+→ BailianWebSearchProvider
+→ 百炼联网搜索 MCP
 → sanitized atomic results
 → ResearchBundle
 → Observation
 → calling Agent
 ```
 
-`open_deep_research` 是研究编排逻辑，不是互联网索引或搜索供应商。接入它不强制引入外部
-Search MCP；首个实现应复用现有 `bdlh-web-search-adapter + SearXNG` 作为原子搜索来源。
-Tavily、Exa、原生 Web Search 或 Search MCP 只能作为后续经批准的 Provider 选项。
+`open_deep_research` 是研究编排逻辑，不是互联网索引或搜索供应商。当前普通查询固定走现有
+`research.web_search → bdlh-web-search-adapter → SearXNG`（Bing、Bing News、Baidu、360 Search、
+Sogou）；首个 Deep Research 实现固定使用 `BailianWebSearchProvider → 百炼联网搜索 MCP` 作为
+原子搜索来源。百炼 MCP 只位于私有 Provider 边界，不作为普通 Agent 可动态调用的 MCP Tool。
 
-对外 Capability ID 由 ADR-016 冻结。默认迁移建议为：
+对外 Capability ID 已由 ADR-016 §8.1 / §17 **冻结为 `research.deep_search`**：
 
-- 新复合语义使用 `research.deep_search`；
-- 旧 `research.web_search` 在兼容期只做代理、影子对照或原子检索旧入口；
-- 如果 owner 决定沿用 `research.web_search`，必须升级 Schema 版本并提供兼容投影，禁止
-  在同一 ID 下静默改变响应结构；
-- 无论选择哪个 ID，复合 Tool 内部都不得再次通过 Capability Gateway 调用同一个公开
-  Capability，否则形成递归；
+- `research.web_search` 是**长期**普通查询入口，继续走 SearXNG，不承载 Deep 的多轮语义；
+- **不设兼容期**（开发阶段不维护旧 ID 复合语义双写）；
+- 复合 Tool 内部不得再次通过 Capability Gateway 调用同一个公开 Capability，否则形成递归；
 - 私有 `AtomicSearchPort` 是执行器内部依赖，默认不对普通 Agent 暴露，也不创建第二份
   Capability Registry。
-
-迁移完成后只能保留一份复合研究实现。兼容别名可以短期存在，但不得长期维护两套
-Supervisor / Researcher / 压缩逻辑。
+- 默认预算与硬停、DeepSeek/百炼门槛以 ADR-016 §17.1–§17.3 为准。
 
 #### 6.5.5 输入契约
 
@@ -572,8 +638,10 @@ Supervisor / Researcher / 压缩逻辑。
 request_id
 question                 # 调用方 Agent 已整理的研究问题
 objective                # 本次研究要支持什么决策或回答
-success_criteria[]       # 可验证的覆盖要求
-required_topics[]        # 可为空；非空时必须覆盖
+success_criteria[]       # 可验证的覆盖要求（调用策略与装配器共用）
+research_topics[]        # Deep 研究主题；可为空；非空时装配器按可计算规则覆盖
+                         # 命名空间独立于入口 Goal 的 requested_topics
+                         # （news|money_flow|industry|web_research），禁止混用
 time_range?              # 明确时效范围
 language
 include_domains[]
@@ -594,7 +662,9 @@ budget:
 - 输入缺少实质性条件时返回结构化 `NEEDS_CLARIFICATION`，包含 `missing_fields[]` 和
   `clarification_questions[]`，由调用方 Agent 决定如何处理；
 - Tool 自己不得向用户发消息或等待用户输入；
-- `request_id` 必须进入幂等、审计、日志和内部搜索关联键。
+- `request_id` 必须进入幂等、审计、日志和内部搜索关联键；
+- `success_criteria` / `research_topics` 不可计算时，装配器默认偏 `PARTIAL` 并写入
+  `limitations`，不得放宽成「有任意来源即 COMPLETE」。
 
 #### 6.5.6 输出契约与 Observation
 
@@ -648,18 +718,25 @@ usage:
 
 #### 6.5.7 内部原子搜索端口
 
-必须从现有 `HttpWebSearchAdapter` 中提取或包裹私有 `AtomicSearchPort`，其语义仅为一次或
-一批受控网页检索：
+必须建立独立的私有 `AtomicSearchPort`，其语义仅为一次或一批受控网页检索。Deep Research
+不得经 Capability Gateway 回调现有 `HttpWebSearchAdapter`：
 
 ```text
-search(queries[], mode, freshness, include_domains, exclude_domains, max_results)
-→ AtomicSearchBatch
+search(
+  request_id,
+  queries[],
+  mode,
+  freshness,
+  include_domains[],
+  exclude_domains[],
+  max_results
+) → AtomicSearchBatch
 ```
 
 原子搜索层负责：
 
-- 调用 Node Web Search Adapter；
-- 鉴权、限流、缓存、熔断和 Provider fallback；
+- 调用 `BailianWebSearchProvider`，由它以服务端凭证访问百炼联网搜索 MCP；
+- 鉴权、限流、缓存、熔断和受控重试；M2 首发不得切换到 SearXNG 或其他 Provider；
 - URL 规范化、基础去重、HTML 清洗和提示注入卫生；
 - 返回标题、URL、摘要/受控正文、发布时间、检索时间和 Provider 元数据；
 - 如实返回空结果、超时和 Provider 不可用。
@@ -670,7 +747,9 @@ search(queries[], mode, freshness, include_domains, exclude_domains, max_results
 - 决定研究是否完成；
 - 生成最终报告；
 - 直接向调用 Agent 返回自由文本；
-- 绕过 BDLH 配置读取外部凭证。
+- 绕过 BDLH 配置读取外部凭证；
+- 在百炼 Provider 失败时静默回退到 SearXNG 并伪装为 Deep Research 成功；
+- 根据 §6.5.1a 决定是否应走 Deep（调用策略在 Gateway 之外的 Policy，不在原子口内）。
 
 #### 6.5.8 模型、工具和状态适配
 
@@ -698,25 +777,25 @@ search(queries[], mode, freshness, include_domains, exclude_domains, max_results
 Checkpoint。若任务超过同步请求预算，必须复用 ADR-014 的 Pause/Resume、Cancel、Run Registry
 和 Checkpointer，不得另造第二套长任务状态机。
 
-#### 6.5.9 双层完成判断
+#### 6.5.9 双层完成判断与确定性收口
 
-保留上游模型驱动的研究判断：
+保留上游模型驱动的研究判断（内部编排层）：
 
 - 研究问题应拆成什么子题；
 - 当前材料缺少什么；
 - 是否需要改写查询并继续搜索；
 - 是否建议结束本研究单元。
 
-同时增加确定性完成门槛：
+**确定性收口由 BDLH `assemble_research_bundle` 定义与实现**，不是官方
+`final_report_generation`，也不是调用方 Agent 的口头「够了」。装配器最终裁定：
 
-- 总运行时间、模型调用、原子搜索调用和并发数均未超预算；
-- `required_topics` 和 `success_criteria` 具有可计算覆盖结果；
-- findings 均引用真实存在的 sources；
-- 无有效来源时不得返回 `COMPLETE`；
+- 总运行时间、模型调用、原子搜索调用和并发数是否超预算；
+- `research_topics` 和 `success_criteria` 具有可计算覆盖结果；不可计算则不得标 `COMPLETE`；
+- findings 均引用真实存在的 sources；无有效来源时不得返回 `COMPLETE`；
 - 关键冲突不得静默丢弃；
 - Provider 失败、空结果和预算耗尽必须进入 limitations 与稳定状态；
-- LLM 调用 `ResearchComplete` 只表示“建议结束”，最终 `COMPLETE / PARTIAL / LIMITED`
-  由确定性装配器裁定。
+- LLM 调用 `ResearchComplete` 只表示“建议结束”，最终
+  `COMPLETE / PARTIAL / LIMITED / FAILED` 由装配器裁定。
 
 #### 6.5.10 统一预算与稳定错误码
 
@@ -729,8 +808,9 @@ Checkpoint。若任务超过同步请求预算，必须复用 ADR-014 的 Pause/
 - 输入/输出 Token（可取得时）；
 - 总运行时间和取消状态。
 
-官方的 `max_concurrent_research_units`、`max_researcher_iterations` 和
-`max_react_tool_calls` 只能作为 DomainBudget 的派生执行参数，不能形成第二套互不一致的预算真源。
+官方的 `max_concurrent_research_units`、`max_researcher_iterations`（映射为 BDLH 请求字段
+`max_supervisor_iterations`）和 `max_react_tool_calls` 只能作为预算派生执行参数，不能形成
+第二套互不一致的预算真源。ADR 必须附「上游参数 → BDLH 字段」对照表。
 
 至少冻结以下稳定错误码：
 
@@ -754,45 +834,58 @@ DEEP_RESEARCH_ASSEMBLY_FAILED
 
 获得 ADR-016 `APPROVED` 后，按以下最小可回滚切片执行，每个切片独立提交验收：
 
-1. **契约与评测基线**：冻结请求、ResearchBundle、错误码、预算和金标准任务集；不改流量；
-2. **原子搜索拆分**：从当前 Web Adapter 提取 `AtomicSearchPort`，保持旧 Search 回归全绿；
+1. **契约与评测基线**：冻结请求、ResearchBundle、错误码、预算、§6.5.1a 触发样例和金标准
+   任务集；不改流量；
+2. **原子搜索接入**：建立 `AtomicSearchPort` 与 `BailianWebSearchProvider`，保持
+   `research.web_search` / SearXNG 回归全绿；
 3. **隔离工作流**：实现适配后的 Supervisor / Researcher / Compression Graph，使用假 LLM
-   和假 Search 完成确定性状态机测试；
+   和假 Search 完成确定性状态机测试（含空转硬停与装配收口）；
 4. **BDLH 工具接线**：替换上游 `get_all_tools()` 与模型创建，接入统一预算、Observation、
-   日志和取消；仍不接默认 Agent；
-5. **真实 Provider / DeepSeek 评测**：接现有 Node + SearXNG，运行中文、英文、失败和恶意
+   日志和取消；仍不接默认 Agent；**不改**现网 `analysis_type` / Finance Planner 作为 Deep
+   的长期挂载点（避免与入口资格菜单重写双迁）；
+5. **真实 Provider / DeepSeek 评测**：接百炼联网搜索 MCP，运行中文、英文、失败和恶意
    内容样本；
 6. **兼容消费层**：为现有 Finance `news_context` 提供版本化投影，验证不会把研究摘要误当
    确定性金融事实；
-7. **影子对照**：同一任务比较旧 Search 与复合 Tool 的覆盖、来源、延迟、成本和错误率；
-8. **灰度切流与退出**：满足门槛后逐步切换，观察期结束才删除旧直接路径和兼容投影。
+7. **调用策略与影子对照**：落地 §6.5.1a；同一任务比较浅搜与 Deep 的覆盖、来源、延迟、
+   成本和错误率；
+8. **灰度切流**：满足门槛后逐步打开 Feature Flag；观察期结束仅删除 Deep 实验别名/兼容
+   投影，**不得**删除长期 `research.web_search`。
 
-不得在第 2～5 步为了“尽快看到效果”提前删除旧路径或更改默认 Agent 工具清单。
+不得在第 2～5 步为了“尽快看到效果”提前删除浅搜路径或更改默认 Agent 工具清单。
 
 #### 6.5.12 验收条件
 
 专项至少满足：
 
-- 架构：无需 Skill/Domain 即可由获授权 Agent 通过 Capability Gateway 调用；
-- 工具边界：Deep Research 内部没有直接 Tavily/MCP/Provider 私线；
-- 搜索：现有 SearXNG 可作为首个 Atomic Provider，外部 Search MCP 未配置时功能仍可运行；
-- 循环：能证明拆题、并行研究、补搜、压缩、确定性装配和预算终止均发生；
-- 证据：findings/source 引用闭合，空结果不能变成 `COMPLETE`；
+- 架构：无需 Skill/Domain 即可由获授权 Agent 通过 Capability Gateway 调用；非默认底层搜索；
+- 调用策略：§6.5.1a 五条触发与硬约束有单测；`web_research` topic 不得自动升级为 Deep；
+- 工具边界：Deep Research 只能经 `AtomicSearchPort → BailianWebSearchProvider` 访问百炼 MCP，
+  没有其他 Tavily/MCP/Provider 私线；
+- 搜索：普通 `research.web_search` 固定使用 SearXNG；Deep Research 使用百炼 MCP，未配置或
+  不可用时必须返回真实受限状态而不能伪装为普通 Search 成功；
+- 循环：能证明拆题、并行研究、补搜、压缩、确定性装配和预算/空转终止均发生；
+- 收口：装配器（非官方 final_report、非调用方口头完成）裁定状态；空结果不能变成 `COMPLETE`；
+- 证据：findings/source 引用闭合；
 - 安全：提示注入样本不能修改 Tool 白名单、预算、系统指令或触发额外 Capability；
 - 隐私：日志、Observation、Checkpoint 无 Secret、隐藏思维链和无限原文；
-- DeepSeek：结构化输出和长 Tool Calling 链达到 ADR-016 规定的成功率；
+- DeepSeek：结构化输出和长 Tool Calling 链达到 ADR-016 或配套评测计划冻结的成功率；
 - 兼容：旧 Finance 调用在兼容期有稳定投影，旧测试与新增专项测试全绿；
 - 可靠性：超时、取消、模型失败、单 Researcher 失败、Provider 空结果和部分成功均有稳定状态；
-- 可观测：记录 `model_calls/search_calls/research_units/duration_ms/budget_exhausted`；
-- 回滚：关闭 Feature Flag 后恢复旧 Search 路径，不需要数据回滚或 Capability Registry 重建。
+- 可观测：记录 `model_calls/search_calls/research_units/duration_ms/budget_exhausted` 与
+  `deep_trigger_reasons`（若走 Deep）；
+- 回滚：关闭 Feature Flag 后不再调用 Deep，**浅搜 `research.web_search` 行为不变**，不需要
+  数据回滚或 Capability Registry 重建。
 
 #### 6.5.13 明确禁止
 
 - 不把固定复合 Tool 包装成 `deep-research` Skill 来绕一层调用；
+- 不把 Deep 做成替换 SearXNG 的唯一底层搜索引擎；
+- 不在 `web_search` Adapter 内静默升级为 Deep；
 - 不新增 `general` / `research` Domain 来承载本 Tool；
 - 不让 Tool 直接面向客户、管理客户会话或发布最终答复；
 - 不把 `open_deep_research` 误当 Search Provider，删除全部底层 Search 后声称仍可联网研究；
-- 不因上游支持 MCP 就强制引入外部 Search MCP；
+- 不让百炼 MCP 绕过 `AtomicSearchPort` 直接暴露给普通 Agent 或由模型动态加载；
 - 不直接使用上游 `get_all_tools()`、动态 MCP 配置或供应商 Key 读取；
 - 不让复合 Tool 递归调用自己的公开 Capability ID；
 - 不把 LLM 的完成判断当成唯一质量门禁；
@@ -801,7 +894,8 @@ DEEP_RESEARCH_ASSEMBLY_FAILED
 - 不让一次外层 Tool Call 掩盖内部数十次模型和搜索调用的预算；
 - 不整包安装上游所有 Provider SDK，按 BDLH 实际依赖最小引入；
 - 不未经评测就在生产默认路径启用 DeepSeek 长链工具调用；
-- 不在旧路径退出门槛满足前物理删除现有 Search Adapter。
+- 不把入口 `requested_topics=web_research` 自动映射为 `research.deep_search`；
+- 不在灰度观察期后删除长期保留的 `research.web_search` / SearXNG Adapter。
 
 ## 7. M0：生产基线修复
 
@@ -2620,4 +2714,626 @@ uv run pytest -q
 | v1.12 | 2026-08-11 | 头部；§1；§3；§4.2；§5.1；§5.2；§6.2；§11；§24 | 与统一生产架构 v1.5 对齐：① 修正 Finance Domain 与 Skill 术语；② 明确 Finance-first Prompt 范围；③ 拆分业务开发主线与 M0 生产门禁；④ 增加代码状态与架构发布状态映射；⑤ 明确 SkillManifest/DomainDescriptor 已生效；⑥ 增加受控 Plan–Execute–Observe 循环约束；⑦ 更新 M3 当前状态和下一开发起点；⑧ 替换具体证券名称示例；⑨ 规定阶段报告归档规则 |
 | v1.13 | 2026-08-11 | 头部；§3.1 | 与统一生产架构 v1.6 对齐：M7 明确为验证既有 manifest/descriptor 可被新增 Skill/Domain 复用，不再表述为重新验证其是否可用 |
 | v1.14 | 2026-08-11 | 头部；§2；§16.1.1/§16.1.2；§17；§23 | 吸收 ADR-014/015：① 权威阅读清单与冲突优先级纳入已批准 ADR，桌面草案降为非权威；② Memory/Context 映射表与压缩禁令；③ Pause/Turn Router 强制规则；④ API 兼容增加 pause/cancel 与 `run.paused`；⑤ 禁止第二套 L 编号、盲目 resume、仅前端砍流当 Pause |
-| v1.15 | 2026-08-13 | 头部；§2；§6.5 | 增加固定复合 Deep Research Tool 专项实施约束：① 明确它是可被获授权 Agent 直接调用的 Runtime Capability，不是 Skill/Domain/客户入口；② 固定参考 `langchain-ai/open_deep_research` v0.0.16、提交 `1b7d2e80...`、MIT 许可证；③ 裁剪官方 Clarify/Final Report/动态工具装配，保留 Supervisor/Researcher/Compression 循环；④ 规定私有 AtomicSearchPort 与现有 Node+SearXNG 首发接法，不强制 Search MCP；⑤ 冻结结构化请求、ResearchBundle、Observation、双层完成判断、内部预算、错误码、实施顺序、验收和回滚；⑥ 要求 ADR-016 APPROVED 后方可生产实施 |
+| v1.15 | 2026-08-13 | 头部；§2；§6.5 | 增加固定复合 Deep Research Tool 专项实施约束：① 明确它是可被获授权 Agent 直接调用的 Runtime Capability，不是 Skill/Domain/客户入口；② 固定参考 `langchain-ai/open_deep_research` v0.0.16、提交 `1b7d2e80...`、MIT 许可证；③ 裁剪官方 Clarify/Final Report/动态工具装配，保留 Supervisor/Researcher/Compression 循环；④ 规定私有 AtomicSearchPort（当时草案含 Node 接法，已被 v1.16 覆盖为百炼）；⑤ 冻结结构化请求、ResearchBundle、Observation、双层完成判断、内部预算、错误码、实施顺序、验收和回滚；⑥ 要求 ADR-016 APPROVED 后方可生产实施 |
+| v1.16 | 2026-08-14 | §6.5 | 搜索 Provider 分层决策：① 当前 SearXNG（Bing、Bing News、Baidu、360 Search、Sogou）只服务普通 `research.web_search`；② Deep Research 的私有 `AtomicSearchPort` 固定经 `BailianWebSearchProvider` 调用百炼联网搜索 MCP；③ 百炼失败不得静默回退 SearXNG；④ 百炼 MCP 不暴露为普通 Agent Tool，仍受统一配置、预算、审计和错误语义约束 |
+| v1.17 | 2026-08-15 | 头部；§2；§6.5 | Deep Research 三层边界与调用策略：① 明确调用策略 / 内部编排 / BDLH 确定性收口分层；② 冻结「满足任一项 → deep」五条触发与 Flag/预算/allowed 硬约束；③ 禁止 web_search Adapter 静默升档、禁止 Goal `web_research` 自动升级 Deep；④ `research_topics` 与入口 `requested_topics` 命名空间分离；⑤ AtomicSearchPort 补 `request_id`；⑥ 「旧路径」不含长期浅搜；⑦ 小循环硬停与装配收口写清；⑧ 冲突优先级显式含已批准 ADR-016 |
+| v1.18 | 2026-08-15 | §6.5；ADR-016 | Owner 裁定落地：① ADR-016 APPROVED（开发阶段）；② 公开 ID 冻结 `research.deep_search`、无兼容期；③ 预算/同步/DeepSeek/百炼默认见 ADR §17；④ 调用策略直接生效；⑤ Capability 登记跟入口重写后的 DB 目录；⑥ 默认 Flag 仍关、生产切流仍属 M5 |
+| v1.19 | 2026-08-15 | 头部；§2；§3.1；§26；ADR-017 | Data Plane/RocketMQ/Memory Service 专项：① 结构化数据、事务、Registry、Outbox 与消息适配收敛到现有 Java Data Plane 模块化单体；② Mem0 抽离为独立 Python Memory Service；③ PostgreSQL 当前保持单实例并按 schema/Role 隔离，不做 HA 集群；④ RocketMQ 部署单 NameServer + 单 Broker/Proxy；⑤ 数据库事件统一使用 Transactional Outbox，消费者使用 Inbox 幂等；⑥ Checkpointer 保留 Orchestrator 专属直连例外；⑦ 增加 PLATFORM-P0～P7 可回滚实施轨道 |
+
+## 26. PLATFORM：Data Plane、RocketMQ 与 Memory Service 专项实施 Prompt
+
+本节可作为一套完整实施 Prompt 使用，但仍属于本文，不产生第二份权威执行文档。架构决策真源是 [ADR-017](../architecture/ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md)，Memory 语义继续服从 ADR-011/015。
+
+### 26.1 调用参数
+
+执行者开始前必须获得以下参数：
+
+```text
+TASK_PHASE: PLATFORM-P0 | PLATFORM-P1 | PLATFORM-P2 | PLATFORM-P3 |
+            PLATFORM-P4 | PLATFORM-P5 | PLATFORM-P6 | PLATFORM-P7
+TASK_OBJECTIVE: 本次平台切片的单一目标
+AUTHORIZED_SCOPE: 本次允许修改的目录和服务
+OUT_OF_SCOPE: 本次明确不处理的业务阶段、基础设施和数据集
+ACCEPTANCE_CRITERIA: 用户补充的验收标准
+DEPLOYMENT_PROFILE: local | single-node-cloud
+```
+
+未提供 `TASK_PHASE` 时停止平台实施，只允许完成只读审计并报告建议阶段。不得自动从 P0 一路执行到 P7。
+
+### 26.2 角色与最终目标
+
+你是本仓库的高级 Java/Spring、Python/FastAPI、PostgreSQL、RocketMQ 和生产平台工程师。你必须在现有代码上渐进迁移，不得另起一个与仓库无关的示例工程。
+
+最终边界固定为：
+
+```text
+Python Agent Orchestrator
+  - Cognitive / Domain / Skill / Graph / SSE / Context
+  - 只通过内部 API 访问结构化业务与运行数据
+  - 只允许 LangGraph Checkpointer 直连 checkpoint schema
+
+Java Data Plane（现有 bdlh-runtime-data，一个 JVM）
+  - identity / finance / conversation / agent_run / history
+  - task / notification / registry / outbox / messaging
+  - Spring Transaction + Flyway + PostgreSQL
+  - RocketMQ Publisher / Consumer Adapter
+
+Python Memory Service（新增 bdlh-memory-service）
+  - Mem0 / L3 search / delete / async add
+  - LLM / Embedding / pgvector
+  - 失败可降级，不是 L4 真源
+
+基础设施
+  - 单实例 PostgreSQL；不做主从、Patroni、etcd 或 HA 集群
+  - 单 NameServer + 单 Broker/Proxy RocketMQ
+  - Transactional Outbox + Consumer Inbox
+```
+
+### 26.3 全阶段硬规则
+
+以下任一违反即判定该阶段不合格：
+
+1. 不做 PostgreSQL 集群，不引入 Patroni、etcd、repmgr、自动主从或分布式数据库。
+2. 不把 Data Plane 做成 `executeSql`、任意表 CRUD、用户可控表名或通用数据库代理。
+3. 当前只保留一个 `bdlh-runtime-data` JVM；通过 Java 包/模块隔离职责，不新建第二个 Java 数据服务进程。
+4. Java 使用现有 Spring Boot 3 + Java 17+；普通 CRUD 可继续 MyBatis-Plus，复杂锁/Outbox 使用显式 MyBatis SQL 或 Spring JDBC；不得为“统一”强制改写为 JPA。
+5. 所有新 DDL 由 Flyway migration 管理；业务服务启动不得执行临时 `CREATE TABLE`、`ALTER TABLE` 或生产 seed。
+6. PostgreSQL 当前单实例，但 `business/runtime/registry/checkpoint/memory` 必须有明确 schema、Role 和所有者。
+7. Orchestrator 目标态除 Checkpointer 外不得直连其他 schema；Checkpointer 账号不得读取业务、runtime、registry 或 memory schema。
+8. 数据库状态变化产生的事件必须与聚合更新在同一事务写入 Outbox；禁止数据库提交后直接发送 MQ 的双写。
+9. 消费按至少一次设计；必须使用 `event_id + consumer_group` Inbox 去重，不得宣称端到端 exactly-once。
+10. RocketMQ 不作 Chat、Checkpoint、Task 或业务事实真源；Broker 不可用时事件保留在 Outbox。
+11. Memory Service 只负责 ADR-011 L3；L4 用户画像、持仓、账户和风险等级只能来自 Java Data Plane。
+12. Memory 读取只从 Context Service 发起；写入只从 Run 出口过滤后经 Outbox/RocketMQ 发起；禁止中间节点随手 `search/add`。
+13. 完整对话、Checkpoint、Pause/Resume、Task 进度、临时行情、原始 Observation、Secret 和未确认推断不得写入 Mem0。
+14. 对外 API 路由保持兼容。平台迁移优先替换内部 Adapter，不随意改变前端 API/SSE 契约。
+15. 一个数据集同一时刻只允许一个写入真源。允许 shadow read 对比，禁止长期双写。
+16. 当前工作树可能包含用户未提交修改；不得覆盖、回退或格式化无关文件。
+17. 每个阶段通过验收后停止。没有用户明确授权不得继续下一阶段。
+
+### 26.4 开发前事实审计
+
+每个 PLATFORM 阶段都必须先执行只读审计：
+
+```text
+git status --short --branch
+现有 PostgreSQL/MySQL 数据源和表清单
+现有 Python Store、连接方式、事务和启动 DDL
+现有 Java Controller/Service/Mapper/@Transactional
+现有 migration、schema.sql、seed.sql 与重复语义表
+现有 Task/Outbox 状态机和 crash recovery
+现有 MemoryStore、Context Service、Memory Writer 和 NoOp 降级
+现有 Compose、端口、磁盘卷、健康检查和 Secret
+当前 Python/Java/前端测试基线
+```
+
+至少输出以下事实矩阵：
+
+| 数据集/能力 | 当前读者 | 当前写者 | 当前表/存储 | 事务边界 | 目标所有者 | 本阶段动作 |
+|---|---|---|---|---|---|---|
+| Chat Session |  |  |  |  | Java Data Plane |  |
+| Run Registry |  |  |  |  | Java Data Plane |  |
+| Analysis History |  |  |  |  | Java Data Plane |  |
+| Task / Outbox |  |  |  |  | Java Data Plane |  |
+| Registry |  |  |  |  | Java Data Plane |  |
+| Checkpoint |  |  |  |  | Python Checkpointer |  |
+| L3 Memory |  |  |  |  | Memory Service |  |
+| L4 User Facts |  |  |  |  | Java Data Plane |  |
+
+表名、测试数量、现状状态必须以本次审计为准，禁止照抄本文中的可能过期描述。
+
+### 26.5 稳定契约
+
+#### 26.5.1 内部身份与错误
+
+所有内部 API 必须：
+
+- 使用服务间凭证；当前可使用可轮换 Internal Token，未来升级短期 JWT/mTLS 不改变业务 API；
+- 用户级操作携带由 Orchestrator 已认证上下文产生的 `authenticated_user_id`；
+- 不信任来自外部请求体的任意 `user_id`；
+- 使用统一错误结构：`error_code / message / retryable / trace_id / details`；
+- 不在错误和日志中暴露 SQL、DSN、Token、内网 Secret 或完整金融载荷。
+
+#### 26.5.2 Event Envelope
+
+所有消息使用版本化 Envelope：
+
+```json
+{
+  "event_id": "uuid-or-stable-id",
+  "event_type": "RUN_COMPLETED",
+  "schema_version": "runtime-event.v1",
+  "aggregate_type": "agent_run",
+  "aggregate_id": "...",
+  "aggregate_version": 1,
+  "occurred_at": "RFC3339 UTC",
+  "producer": "bdlh-runtime-data",
+  "trace_id": "...",
+  "correlation_id": "...",
+  "authenticated_user_id": "...",
+  "payload": {}
+}
+```
+
+约束：
+
+- `event_id` 全局唯一且重试不变；
+- `occurred_at` 使用 UTC；
+- payload 最小化，优先发送 ID、版本和引用；
+- 敏感字段不得为消费便利复制到所有 Topic；
+- 消费者忽略未知可选字段；
+- 破坏性变更使用新 `schema_version`，不得静默改变旧字段语义。
+
+#### 26.5.3 首批 Topic 与 Consumer Group
+
+```text
+Topics:
+  bdlh.user.events
+  bdlh.runtime.events
+  bdlh.notification.commands
+  bdlh.memory.commands
+
+Consumer groups:
+  bdlh-notification-consumer
+  bdlh-memory-consumer
+  bdlh-audit-consumer
+```
+
+Topic 和 Group 必须通过显式初始化脚本或发布步骤创建并可重复执行；生产不得依赖不可审计的自动建 Topic。
+
+### 26.6 PLATFORM-P0：审计、契约与迁移基线
+
+目标：在不改变生产读写路径的前提下，冻结迁移清单、接口、表所有权和测试基线。
+
+必须完成：
+
+1. 完成 §26.4 事实矩阵；
+2. 识别重复语义表，例如旧/新 Chat、History、Run 表，给出保留、迁移、兼容、退役结论；
+3. 冻结 Java Data Plane 的模块边界和内部 API 草案；
+4. 冻结 Memory Service API、Event Envelope、Topic、Consumer Group 和错误码；
+5. 冻结 schema/Role/权限矩阵；
+6. 给出每个数据集的唯一写源切换点与回滚点；
+7. 记录现有测试基线和单机资源基线；
+8. 若发现 ADR-017 与代码事实无法兼容，只更新 ADR/架构并停止，不得边猜边改代码。
+
+不得处理：
+
+- 新增 RocketMQ 容器；
+- 移动生产数据；
+- 切换 Store；
+- 新建 Memory Service 实现；
+- 删除旧表或旧 Adapter。
+
+验收：
+
+- 所有目标数据集有唯一 owner；
+- 所有写路径有事务边界；
+- 所有切换步骤有回滚说明；
+- 无未解释的同义表；
+- 现有全量测试无回归。
+
+### 26.7 PLATFORM-P1：单 PostgreSQL Schema、Role、Flyway 与连接池
+
+目标：建立单实例 PostgreSQL 的生产级逻辑隔离和 migration 基线，不切换业务 Store。
+
+必须完成：
+
+1. 建立或迁移 `business/runtime/registry/checkpoint/memory` schema；
+2. 建立最小权限 Role；权限 DDL 由运维 migration 管理，应用账号不得自行授权；
+3. Java 引入 Flyway，按所属 schema 管理版本化 SQL；
+4. 将 Java/Python 启动时 DDL 分类为 migration，启动逻辑改为版本/对象校验；
+5. Java 使用 HikariCP，并配置连接、事务、查询和锁超时；
+6. Python Checkpointer 使用受控连接池或官方受支持的池化方式；
+7. 明确 pgvector 扩展的运维安装与 Memory schema 使用方式；
+8. 增加 migration 从空库执行和从现有库升级的测试；
+9. 增加权限否定测试：每个 Role 访问非所属 schema 必须失败。
+
+不得处理：
+
+- PostgreSQL 集群；
+- 把身份 MySQL 无方案地迁入 PostgreSQL；
+- 切换 Chat/Run/History 写者；
+- 部署 RocketMQ；
+- 删除兼容表。
+
+验收：
+
+- 空库 migration 一次成功，重复启动不修改 schema；
+- 现有库 migration 保留数据且可验证；
+- 应用启动不执行生产 DDL；
+- 权限矩阵测试通过；
+- 连接池、慢查询和 migration 状态可观测；
+- 备份与恢复命令在隔离环境至少演练一次。
+
+### 26.8 PLATFORM-P2：Java Runtime Data 模块与内部 API
+
+目标：在现有 `bdlh-runtime-data` 单 JVM 中实现 Runtime Data 用例，不改变外部前端 API。
+
+Java 包按职责组织，至少包括：
+
+```text
+conversation/
+agentrun/
+history/
+task/
+notification/
+registry/
+outbox/
+messaging/
+```
+
+每个模块使用：
+
+```text
+api/              Controller、Request、Response
+application/      CommandService、QueryService、@Transactional
+domain/           状态机、聚合、领域事件
+infrastructure/   Mapper、SQL、外部 Adapter
+```
+
+必须实现或冻结的内部用例级 API：
+
+```text
+Conversation:
+  create/ensure session
+  list/get session
+  append message
+  set/clear pending
+  prepare regeneration
+  delete session
+
+Run:
+  start run
+  append auditable step/summary
+  transition run status
+  get/list run
+
+History:
+  save idempotently
+  get/list by authenticated user
+
+Registry:
+  load validated snapshot
+  expose version/etag
+
+Task/Notification:
+  create/get/list/cancel task
+  list notifications
+```
+
+实现要求：
+
+- API 输入输出不暴露数据库 Entity；
+- 乐观锁使用显式 `version`；
+- 幂等写使用唯一约束，不使用“先查再插”的竞态；
+- 用户隔离进入所有 SQL 条件和测试；
+- JSONB 只保存需要版本化的 payload/snapshot，查询和约束关键字段必须列化；
+- Python 新增 Remote Adapter，但本阶段默认仍走旧 Store；只允许 shadow read 对比；
+- shadow read 不改变用户结果，差异必须结构化记录且脱敏；
+- 不允许双写。
+
+验收：
+
+- Java 单元、Repository、Controller 契约和真实 PostgreSQL 集成测试通过；
+- Python Adapter 契约测试通过；
+- 跨用户读取/更新全部拒绝；
+- 版本冲突返回稳定错误码；
+- shadow read 差异可观测；
+- 默认生产路径未切换。
+
+### 26.9 PLATFORM-P3：Task、Transactional Outbox 与 Consumer Inbox
+
+目标：消除 Task 完成与 Notification Outbox 的跨事务窗口，为 RocketMQ 建立可靠消息源。
+
+最低表模型：
+
+```text
+runtime.outbox_event
+  event_id PK
+  topic
+  event_type
+  schema_version
+  aggregate_type
+  aggregate_id
+  aggregate_version
+  status: PENDING | PUBLISHING | PUBLISHED | FAILED
+  attempts
+  next_attempt_at
+  payload JSONB
+  trace_id
+  created_at / published_at / updated_at
+
+runtime.consumer_inbox
+  consumer_group
+  event_id
+  status
+  processed_at
+  result/error summary
+  PK (consumer_group, event_id)
+```
+
+必须完成：
+
+1. 提供单一事务用例 `completeTaskAndEnqueueNotification`；
+2. 聚合状态更新与 Outbox insert 使用同一 Java `@Transactional`；
+3. Outbox claim 使用 `FOR UPDATE SKIP LOCKED` 或等价安全机制；
+4. 支持 Publisher crash 后回收 `PUBLISHING`；
+5. `event_id` 和业务幂等键重试保持稳定；
+6. Consumer Inbox 与消费业务状态写入同一消费者本地事务；
+7. 明确最大重试、退避、失败状态和人工补偿字段；
+8. 修复或迁移现有 Python Notification Outbox，禁止保留第二套生产写入。
+
+必须测试的 crash window：
+
+```text
+数据库事务提交前崩溃
+数据库提交后、Relay claim 前崩溃
+Relay claim 后、发送前崩溃
+Broker 已接收但 ACK 丢失
+ACK 成功但 PUBLISHED 更新前崩溃
+消费者业务提交前崩溃
+消费者提交后、ACK 前崩溃
+重复消息和乱序消息
+```
+
+验收：
+
+- 不存在“任务完成但没有可恢复事件”或“事件已发但聚合事务回滚”；
+- 重复发送不产生重复通知或重复 Memory；
+- Outbox 可安全多 Worker claim，即使当前只部署一个 Worker；
+- 所有故障路径可恢复或进入明确补偿状态。
+
+### 26.10 PLATFORM-P4：单节点 RocketMQ 与 Relay/Consumer
+
+目标：部署正式 RocketMQ 基础设施并接通一条最小真实事件链。
+
+部署基线：
+
+```text
+rmq-namesrv       1 个
+rmq-broker-proxy  1 个，Local Mode 优先
+PostgreSQL        仍为单实例
+Dashboard         不常驻
+```
+
+必须完成：
+
+1. 使用固定版本镜像，不使用 `latest`；版本需在实施时核对官方兼容矩阵；
+2. Broker Store 和日志挂载明确的持久卷；
+3. NameServer、Broker/Proxy 仅加入内部 Docker 网络，不暴露公网；
+4. 配置健康检查、重启策略、磁盘上限/水位和日志轮转；
+5. 显式创建 Topic 和 Consumer Group；
+6. Java Relay 从 Outbox 发布标准消息并在 ACK 后标记 PUBLISHED；
+7. 至少接通 `NOTIFICATION_REQUESTED` 的真实 Consumer；
+8. 配置消费 Retry 与 DLQ，提供查看和重放的运维步骤；
+9. 暴露 Outbox backlog、oldest age、publish latency、retry、DLQ、consumer lag 指标；
+10. Python 不使用非必要的旧 C 扩展客户端；若 Python 需要直接消费，优先使用实施时验证可用的 RocketMQ 5.x gRPC 客户端；Memory 写路径在 P5 接入。
+
+故障注入必须覆盖：
+
+- NameServer 暂停；
+- Broker 暂停和重启；
+- 网络超时；
+- 重复 ACK/重复消费；
+- Broker 磁盘不可写；
+- Consumer 持续失败进入 DLQ。
+
+验收：
+
+- Broker 停机期间同步数据库事务仍可提交；
+- 事件留在 Outbox，Broker 恢复后最终发布；
+- Consumer 重复收到消息时业务结果只有一份；
+- MQ 端口未暴露公网；
+- 单节点非 HA 风险在部署文档中明确，不伪装成高可用。
+
+### 26.11 PLATFORM-P5：独立 Python Memory Service
+
+目标：将 Mem0 SDK、LLM/Embedding 调用和向量存储从 Orchestrator 抽离。
+
+新增服务建议结构：
+
+```text
+bdlh-memory-service/
+  pyproject.toml
+  Dockerfile
+  src/bdlh_memory/
+    api/
+    application/
+    domain/
+    integrations/mem0/
+    integrations/rocketmq/
+    persistence/
+    config.py
+    main.py
+  tests/
+```
+
+稳定 API：
+
+```text
+POST   /internal/v1/memories/search
+GET    /internal/v1/memories/{memory_id}
+DELETE /internal/v1/memories/{memory_id}
+DELETE /internal/v1/users/{user_id}/memories
+GET    /health/live
+GET    /health/ready
+```
+
+写入主路径：
+
+```text
+Run 出口 MemoryWriter.filter
+→ Java Data Plane 写 Outbox
+→ RocketMQ bdlh.memory.commands
+→ bdlh-memory-consumer
+→ Mem0.add
+→ memory schema / pgvector
+```
+
+必须完成：
+
+1. 从 `MemoryStore` 拆出 L3 `MemoryPort`；`get_profile` 不再属于 Mem0，改由 Java L4 User Data API 提供；
+2. Orchestrator 增加 `RemoteMemoryStore`，接口失败返回空召回并记录 degraded；
+3. Memory Service 同时校验服务身份和 `authenticated_user_id` 作用域；
+4. search 有严格 top-k、超时、内容长度和返回预算；
+5. Memory Candidate 在 Orchestrator 出口先过滤，Memory Service 再做第二道策略校验；
+6. 消费使用 Inbox 幂等，重复事件不得重复沉淀同一记忆；
+7. 用户删除覆盖 Mem0 元数据、向量索引和可重建派生数据，并留下合规审计摘要；
+8. LLM/Embedding/Vector 任一失败不得阻断 Agent 主回答；
+9. 禁止把完整 conversation 或 L4 profile 同步复制进 Mem0；
+10. 本地开发保留 NoOp Adapter；Embedded Mem0 只允许测试/迁移对照，不作为目标生产路径。
+
+验收：
+
+- Memory Service 关闭时 Agent 主流程继续且明确 degraded；
+- search 只返回当前用户数据；
+- 重复候选事件不重复写；
+- 未确认金融推断被过滤；
+- 删除用户 Memory 后无法再召回；
+- L4 profile 不来自 Memory Service；
+- Orchestrator 中不再实例化生产 Mem0 SDK。
+
+### 26.12 PLATFORM-P6：Remote Adapter 切换与数据库直连收口
+
+目标：按数据集逐一切换到 Java Data Plane / Memory Service，最终让 Orchestrator 只直连 Checkpointer。
+
+推荐切换顺序：
+
+```text
+Registry snapshot
+→ Analysis History
+→ Run Registry
+→ Chat Session / Messages
+→ Task / Notification
+→ L3 Memory
+```
+
+每个数据集执行：
+
+1. 迁移或确认历史数据；
+2. 运行 shadow read 并达到约定一致率；
+3. 短暂停写或使用受控迁移窗口；
+4. 将唯一写源切换到 Java Data Plane；
+5. 验证读、写、重启恢复、用户隔离和回滚条件；
+6. 关闭对应 Python 直接 Store 的生产装配；
+7. 保留代码级回退 Adapter，直到该数据集稳定期结束；
+8. 一旦新写源产生旧路径无法理解的数据，不得盲目回滚旧写者；必须执行前向修复或明确的数据回迁。
+
+最终架构测试必须静态或装配级证明：
+
+```text
+Python Orchestrator production DSN usage
+  allowed: LangGraph Checkpointer
+  forbidden: Chat / Run / History / Task / Outbox / Registry / Memory
+```
+
+验收：
+
+- Orchestrator 生产配置除 Checkpointer 外无直接 Store；
+- Data Plane/Mem0 暂时不可用时错误和降级符合依赖等级；
+- 对外 Chat、Conversation、Run、Task、Notification API 契约兼容；
+- Pause/Resume 在远程 Chat/Run Store 下仍通过；
+- 不存在双写和第二份 Registry/Memory 真源。
+
+### 26.13 PLATFORM-P7：灰度、恢复、安全和旧路径退役
+
+目标：完成生产化门禁，但不建设数据库或 Broker 集群。
+
+必须完成：
+
+1. 单机资源压测：PostgreSQL、Java、Python、Memory、Broker/Proxy 共存时记录 CPU、内存、磁盘、连接数和 P95/P99；
+2. 根据真实服务器规格设置容器/JVM/连接池限制，不复制未经测量的固定数值；
+3. PostgreSQL 全量备份、增量/WAL 条件评估、异机或对象存储复制与恢复演练；
+4. RocketMQ Store 持久卷备份策略、Broker 重建和 Outbox 重放演练；
+5. Secret 轮换、最小权限、内部端口和跨用户安全测试；
+6. Outbox/DLQ/Memory 删除/数据修复运维手册；
+7. 灰度开关、指标阈值、停止条件和回滚演练；
+8. 删除已经过稳定期且无回滚价值的 Python 直接 Store 和运行时 DDL；
+9. 清理重复表必须先做数据校验、备份和引用审计，使用可恢复 migration；
+10. 更新 README、统一架构图、部署手册、环境变量模板和生产审查报告。
+
+发布阻断条件：
+
+- 任一数据集仍存在两个生产写者；
+- Task 与 Outbox 不在同一本地事务；
+- Consumer 无 Inbox 幂等；
+- Broker 停机导致已提交业务事件永久丢失；
+- Memory Service 故障阻断主回答；
+- Orchestrator 仍直连非 Checkpoint 生产表；
+- Schema/Role 越权；
+- MQ/数据库/Memory 端口暴露公网；
+- migration 未验证现有数据升级；
+- 无可用备份或未完成恢复演练；
+- 旧表删除不可恢复；
+- 文档声称单节点具备 HA。
+
+### 26.14 测试矩阵
+
+每个阶段按改动执行，最终至少包括：
+
+```powershell
+Set-Location bdlh-runtime-data
+mvn test
+
+Set-Location ..\bdlh-runtime-orchestrator
+uv run pytest -q
+
+Set-Location ..\bdlh-memory-service
+uv run pytest -q
+
+Set-Location ..\deploy
+docker compose config
+```
+
+测试层：
+
+- Java application/domain/repository/controller 单元与契约测试；
+- 真实 PostgreSQL migration、锁、事务和并发测试；
+- RocketMQ Producer/Consumer、Retry、DLQ 和重复消息测试；
+- Python Remote Data/Memory Adapter 契约测试；
+- Context 与 MemoryWriter 治理测试；
+- API/SSE/Pause/Resume 回归；
+- 跨用户隔离和内部认证测试；
+- MQ、Memory、Java Data Plane、PostgreSQL 故障注入；
+- Compose 配置、健康检查、端口和持久卷检查；
+- 备份恢复演练。
+
+如果本地缺少 Docker、PostgreSQL、RocketMQ 或外部模型，不得伪造通过。应明确列出未执行项、原因、替代静态验证和生产前必须补跑的命令。
+
+### 26.15 每阶段交付格式
+
+最终输出必须使用：
+
+```markdown
+# PLATFORM-Px 阶段结果
+
+## 结论
+- COMPLETE / PARTIAL / BLOCKED
+
+## 当前与目标写入真源
+- 数据集、旧写者、新写者、切换状态
+
+## 变更
+- 文件、migration、API、事件和部署配置
+
+## 事务与一致性
+- 本地事务、Outbox、Inbox、幂等、Crash Window
+
+## 安全与隐私
+- 身份、Role、用户隔离、敏感数据和端口
+
+## 验证
+- 实际执行命令、通过数量、未执行项
+
+## 资源与部署
+- 单 PostgreSQL、单 RocketMQ、容器和持久卷影响
+
+## 兼容与回滚
+- 开关、数据迁移、回滚前置条件、不可盲目回滚点
+
+## 剩余风险
+- 单点故障、积压、DLQ、备份和恢复风险
+
+## 下一阶段
+- 只建议下一 PLATFORM 阶段，不自动执行
+```
