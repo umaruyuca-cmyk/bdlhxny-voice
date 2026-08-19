@@ -7,8 +7,10 @@
 from .loader import load_and_validate
 from .menu import (
     FLAT_WINDOW_LIMIT,
+    FEATURE_GATED_CAPABILITIES,
     ToolWindow,
     allowed_capabilities,
+    apply_feature_gates,
     build_window,
     dependency_closure,
     effective_operations,
@@ -50,7 +52,9 @@ __all__ = [
     "ToolWindow",
     "ToolsetRecord",
     "TopicCapabilityRecord",
+    "FEATURE_GATED_CAPABILITIES",
     "allowed_capabilities",
+    "apply_feature_gates",
     "build_window",
     "create_registry_store",
     "dependency_closure",

@@ -22,8 +22,8 @@ def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None
     # 重写：目录与视图均来自同一 RegistrySnapshot（名字级一致即同源）
     assert sorted(c.name for c in toolsets.capability_registry.list()) ==         sorted(c.name for c in capabilities.list())
     assert len(toolsets.list()) == 7
-    # 种子含 16 项能力（M7 探针能力来自库表种子，不再装配层注册）。
-    assert len(grouped) == 16
+    # 种子含 17 项能力（含 ADR-016 research.deep_search；M7 探针来自库表种子）。
+    assert len(grouped) == 17
     assert all(len(spec.toolsets) == 1 for spec in capabilities.list())
 
 
@@ -36,7 +36,7 @@ def test_default_toolset_membership_is_stable_and_business_facing() -> None:
     } == {
         ToolsetName.MARKET_READ: 4,
         ToolsetName.FUNDAMENTAL_READ: 3,
-        ToolsetName.NEWS_READ: 2,
+        ToolsetName.NEWS_READ: 3,
         # PORTFOLIO_READ 含 build_current_valuation（确定性重算，adapter=local）
         ToolsetName.PORTFOLIO_READ: 4,
         ToolsetName.FINANCIAL_PROFILE_READ: 1,
@@ -61,6 +61,7 @@ def test_selected_toolset_expands_only_safe_unified_capability_manifests() -> No
     assert {item["name"] for item in manifest} == {
         "market.get_news",
         "research.web_search",
+        "research.deep_search",
     }
     assert all("adapter" not in item for item in manifest)
     assert all("server" not in item and "provider" not in item for item in manifest)

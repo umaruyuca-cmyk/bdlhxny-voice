@@ -13,7 +13,7 @@ from .seeded_store import build_seeded_store
 def test_seeded_store_passes_validation() -> None:
     """与种子一致的目录通过全部启动校验。"""
     snapshot = load_and_validate(build_seeded_store())
-    assert len(snapshot.capabilities) == 16
+    assert len(snapshot.capabilities) == 17
     assert snapshot.budget_for("default") is not None
 
 

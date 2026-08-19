@@ -93,8 +93,8 @@ class ApplicationFinanceCapabilityExecutor:
                 ),
                 error_code="DEEP_RESEARCH_NOT_ENABLED",
                 error_message=(
-                    "Finance runtime does not execute research.deep_search while "
-                    "ADR-016 is PROPOSED; use research.web_search"
+                    "Finance runtime does not execute research.deep_search on the "
+                    "default path; use research.web_search or enable Deep Research Flag"
                 ),
             )
         if capability in USER_SNAPSHOT_CAPABILITIES:

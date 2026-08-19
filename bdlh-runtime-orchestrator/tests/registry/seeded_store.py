@@ -56,6 +56,7 @@ CAPABILITIES = [
     ("market.get_money_flow", "mcp", False, {"market.resolve_instrument"}, {"READ_MARKET_DATA"}, {"market_read"}),
     ("market.get_news", "mcp", False, {"market.resolve_instrument"}, {"READ_MARKET_DATA"}, {"news_read"}),
     ("research.web_search", "web", False, frozenset(), {"READ_PUBLIC_RESEARCH"}, {"news_read"}),
+    ("research.deep_search", "local", False, frozenset(), {"READ_PUBLIC_RESEARCH"}, {"news_read"}),
     ("analysis.run_analysis", "local", False, frozenset(), {"RUN_ANALYSIS"}, {"planning_compute"}),
     ("portfolio.get_current_positions", "java", True, frozenset(), {"READ_PORTFOLIO"}, {"portfolio_read"}),
     ("portfolio.get_account_snapshot", "java", True, frozenset(), {"READ_PORTFOLIO"}, {"portfolio_read"}),
@@ -157,7 +158,7 @@ def build_seeded_store() -> InMemoryRegistryStore:
             }),
             capabilities=frozenset(
                 [(cap, True) for cap in STOCK_RESEARCH_CAPS]
-                + [("research.web_search", False)]
+                + [("research.web_search", False), ("research.deep_search", False)]
             ),
         ),
         SkillRecord(
@@ -176,7 +177,7 @@ def build_seeded_store() -> InMemoryRegistryStore:
             }),
             capabilities=frozenset(
                 [(cap, True) for cap in SUITABILITY_CAPS]
-                + [("research.web_search", False)]
+                + [("research.web_search", False), ("research.deep_search", False)]
             ),
         ),
         SkillRecord(

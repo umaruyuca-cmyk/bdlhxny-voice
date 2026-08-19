@@ -96,8 +96,12 @@ class Settings:
     web_search_token: str | None = None
     web_search_timeout_seconds: float = 20.0
 
-    # ── Deep Research（ADR-016；默认关闭，PROPOSED 不改生产浅搜语义）──
+    # ── Deep Research（ADR-016；默认关闭，不改生产浅搜语义）──
     deep_research_enabled: bool = False
+    bailian_web_search_api_key: str | None = None
+    bailian_web_search_endpoint: str | None = None
+    bailian_web_search_timeout_seconds: float = 20.0
+    bailian_web_search_rate_limit_per_minute: int = 30
 
     # ── 模型凭证（供记忆层和后续 Agent 使用）──
     deepseek_api_key: str | None = None
@@ -182,4 +186,13 @@ class Settings:
             web_search_timeout_seconds=float(os.getenv("WEB_SEARCH_TIMEOUT", "20")),
             deep_research_enabled=os.getenv("BDLH_DEEP_RESEARCH_ENABLED", "false").lower()
             in {"1", "true", "yes", "on"},
+            bailian_web_search_api_key=os.getenv("BDLH_BAILIAN_WEB_SEARCH_API_KEY")
+            or os.getenv("DASHSCOPE_API_KEY"),
+            bailian_web_search_endpoint=os.getenv("BDLH_BAILIAN_WEB_SEARCH_ENDPOINT"),
+            bailian_web_search_timeout_seconds=float(
+                os.getenv("BDLH_BAILIAN_WEB_SEARCH_TIMEOUT", "20")
+            ),
+            bailian_web_search_rate_limit_per_minute=int(
+                os.getenv("BDLH_BAILIAN_WEB_SEARCH_RATE_LIMIT_PER_MINUTE", "30")
+            ),
         )

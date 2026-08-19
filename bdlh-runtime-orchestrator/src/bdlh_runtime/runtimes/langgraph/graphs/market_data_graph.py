@@ -376,7 +376,7 @@ def _make_execute_tool_node(
                     ),
                     error_code="DEEP_RESEARCH_NOT_ENABLED",
                     error_message=(
-                        "research.deep_search is not wired (ADR-016 PROPOSED); "
+                        "research.deep_search is not wired or Flag is off (ADR-016); "
                         "ordinary queries must use research.web_search"
                     ),
                 )

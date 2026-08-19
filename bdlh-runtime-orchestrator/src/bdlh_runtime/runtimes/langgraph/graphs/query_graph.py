@@ -30,7 +30,13 @@ def route_after_understand(state: RootState) -> str:
     return "menu"
 
 
-def build_query_graph(query_agent=None, context_builder=None, registry_snapshot=None):
+def build_query_graph(
+    query_agent=None,
+    context_builder=None,
+    registry_snapshot=None,
+    *,
+    deep_research_enabled: bool = False,
+):
     """构建理解与菜单子图。
 
     registry_snapshot 必须由装配层注入（RegistrySnapshot）；
@@ -49,7 +55,13 @@ def build_query_graph(query_agent=None, context_builder=None, registry_snapshot=
     graph.add_node("receive_request", receive_request)
     graph.add_node("understand_request", understand_node)
     graph.add_node("interrupt_for_clarification", interrupt_for_clarification)
-    graph.add_node("build_allowed_menu", make_build_allowed_menu_node(registry_snapshot))
+    graph.add_node(
+        "build_allowed_menu",
+        make_build_allowed_menu_node(
+            registry_snapshot,
+            deep_research_enabled=deep_research_enabled,
+        ),
+    )
 
     graph.add_edge(START, "receive_request")
     graph.add_edge("receive_request", "understand_request")

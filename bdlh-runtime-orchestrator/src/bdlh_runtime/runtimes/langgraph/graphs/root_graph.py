@@ -66,6 +66,7 @@ def build_root_graph(
     analysis_capability=None,
     web_search_adapter=None,
     deep_research_adapter=None,
+    deep_research_enabled: bool = False,
     history_store=None,
 ):
     """构建顶层动态流程。
@@ -82,6 +83,7 @@ def build_root_graph(
     - java_adapter：有则 load_portfolio_context 走真实 Java 服务（内部自带 mock 降级）。
     - context_builder：有则理解节点用七块上下文（审查文档 §4.4）。
     - deep_research_adapter：``research.deep_search`` 执行器（默认关闭，ADR-016）。
+    - deep_research_enabled：Feature Flag；关闭时 deep_search 不进本轮 allowed。
     """
 
     graph = StateGraph(RootState)
@@ -95,6 +97,7 @@ def build_root_graph(
             query_agent=query_agent,
             context_builder=context_builder,
             registry_snapshot=registry_snapshot,
+            deep_research_enabled=deep_research_enabled,
         ),
     )
     direct_node = (

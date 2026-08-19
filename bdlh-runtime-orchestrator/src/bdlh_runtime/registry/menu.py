@@ -73,6 +73,21 @@ def allowed_capabilities(
     ]
 
 
+#: Feature Flag 门控能力（ADR-016）：Flag 关闭时不得进入本轮 allowed
+FEATURE_GATED_CAPABILITIES = frozenset({"research.deep_search"})
+
+
+def apply_feature_gates(
+    allowed: list[CapabilityRecord],
+    *,
+    deep_research_enabled: bool = False,
+) -> list[CapabilityRecord]:
+    """按运行期 Feature Flag 从 allowed 中剔除未开放能力。"""
+    if deep_research_enabled:
+        return list(allowed)
+    return [cap for cap in allowed if cap.name not in FEATURE_GATED_CAPABILITIES]
+
+
 def dependency_closure(snapshot: RegistrySnapshot, names: list[str]) -> list[str]:
     """对给定能力做 depends_on 闭包（含自身），返回去重排序列表。"""
     by_name = {cap.name: cap for cap in snapshot.capabilities}

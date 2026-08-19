@@ -22,6 +22,7 @@ from bdlh_runtime.contracts.workflow import TaskSpec, WorkflowPlan
 from bdlh_runtime.registry import (
     RegistrySnapshot,
     allowed_capabilities,
+    apply_feature_gates,
     build_window,
     effective_operations,
     eligible_capabilities,
@@ -207,11 +208,15 @@ def make_direct_response_node(direct_response_model: Any):
     return answer_without_tools
 
 
-def make_build_allowed_menu_node(snapshot: RegistrySnapshot):
+def make_build_allowed_menu_node(
+    snapshot: RegistrySnapshot,
+    *,
+    deep_research_enabled: bool = False,
+):
     """菜单节点（重写 §5）：资格交集 → eligible → allowed → 窗口。
 
     菜单由资格决定（不读 goals / 不读用户原句）；goals 只参与窗口排序。
-    同时回填 GoalCoverage 的 candidate_capabilities 并写入库表预算。
+    ``research.deep_search`` 另受 Feature Flag 门控（ADR-016 §17.4）。
     """
     budget_record = budget_for_profile(snapshot, "default")
 
@@ -220,6 +225,9 @@ def make_build_allowed_menu_node(snapshot: RegistrySnapshot):
         eligible = eligible_capabilities(snapshot, ops)
         authenticated = state.get("user_id") is not None
         allowed = allowed_capabilities(eligible, authenticated=authenticated)
+        allowed = apply_feature_gates(
+            allowed, deep_research_enabled=deep_research_enabled
+        )
         allowed_names = [cap.name for cap in allowed]
         window = build_window(snapshot, allowed)
 
