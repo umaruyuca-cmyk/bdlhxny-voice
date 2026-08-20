@@ -30,8 +30,8 @@ class RunRegistry(Protocol):
         """登记一次运行。"""
         ...
 
-    def get(self, run_id: str) -> RunLocation | None:
-        """按 run_id 查询运行位置。"""
+    def get(self, run_id: str, user_id: str | None = None) -> RunLocation | None:
+        """按 run_id 查询运行位置；提供用户时必须匹配记录所有者。"""
         ...
 
 
@@ -44,8 +44,11 @@ class InMemoryRunRegistry:
     def register(self, location: RunLocation) -> None:
         self._locations[location.run_id] = location
 
-    def get(self, run_id: str) -> RunLocation | None:
-        return self._locations.get(run_id)
+    def get(self, run_id: str, user_id: str | None = None) -> RunLocation | None:
+        location = self._locations.get(run_id)
+        if location is None or user_id is None:
+            return location
+        return location if str(location.user_id) == str(user_id) else None
 
 
 class PostgresRunRegistry:
@@ -116,16 +119,26 @@ class PostgresRunRegistry:
                 ),
             )
 
-    def get(self, run_id: str) -> RunLocation | None:
+    def get(self, run_id: str, user_id: str | None = None) -> RunLocation | None:
         with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT run_id, thread_id, user_id, checkpoint_id, runtime_path
-                FROM bdlh_runtime_run_registry
-                WHERE run_id = %s
-                """,
-                (run_id,),
-            ).fetchone()
+            if user_id is None:
+                row = connection.execute(
+                    """
+                    SELECT run_id, thread_id, user_id, checkpoint_id, runtime_path
+                    FROM bdlh_runtime_run_registry
+                    WHERE run_id = %s
+                    """,
+                    (run_id,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT run_id, thread_id, user_id, checkpoint_id, runtime_path
+                    FROM bdlh_runtime_run_registry
+                    WHERE run_id = %s AND user_id = %s
+                    """,
+                    (run_id, str(user_id)),
+                ).fetchone()
         if row is None:
             return None
         return RunLocation(

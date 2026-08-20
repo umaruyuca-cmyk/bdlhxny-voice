@@ -6,6 +6,69 @@
 # ============================================================
 
 services:
+  rmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: bdlh-rmq-namesrv
+    restart: unless-stopped
+    command: sh mqnamesrv
+    expose:
+      - "9876"
+    volumes:
+      - rocketmq-namesrv-logs:/home/rocketmq/logs
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "sh mqadmin clusterList -n 127.0.0.1:9876 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  rmq-broker:
+    image: apache/rocketmq:5.3.2
+    container_name: bdlh-rmq-broker
+    restart: unless-stopped
+    command: sh mqbroker --enable-proxy -c /home/rocketmq/rocketmq-5.3.2/conf/bdlh-broker.conf
+    environment:
+      NAMESRV_ADDR: rmq-namesrv:9876
+    depends_on:
+      rmq-namesrv:
+        condition: service_healthy
+    expose:
+      - "8081"
+      - "10909"
+      - "10911"
+      - "10912"
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/bdlh-broker.conf:ro
+      - rocketmq-store:/home/rocketmq/store
+      - rocketmq-broker-logs:/home/rocketmq/logs
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "sh mqadmin clusterList -n rmq-namesrv:9876 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  rmq-init:
+    image: apache/rocketmq:5.3.2
+    container_name: bdlh-rmq-init
+    restart: "no"
+    environment:
+      NAMESRV_ADDR: rmq-namesrv:9876
+    depends_on:
+      rmq-broker:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - |
+        sh mqadmin updatetopic -n rmq-namesrv:9876 -c DefaultCluster -t bdlh.notification.commands
+        sh mqadmin updatetopic -n rmq-namesrv:9876 -c DefaultCluster -t bdlh.runtime.events
+        sh mqadmin updatetopic -n rmq-namesrv:9876 -c DefaultCluster -t bdlh.user.events
+        sh mqadmin updatetopic -n rmq-namesrv:9876 -c DefaultCluster -t bdlh.memory.commands
+        sh mqadmin updateSubGroup -n rmq-namesrv:9876 -c DefaultCluster -g bdlh-notification-consumer
+
   bdlh-runtime-orchestrator:
     build:
       context: ../bdlh-runtime-orchestrator
@@ -18,6 +81,7 @@ services:
       BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-development}
       BDLH_RUNTIME_CHECKPOINTER_BACKEND: ${BDLH_RUNTIME_CHECKPOINTER_BACKEND:-postgres}
       BDLH_RUNTIME_AUTH_REQUIRED: ${BDLH_RUNTIME_AUTH_REQUIRED:-true}
+      BDLH_RUNTIME_DATA_MODE: ${BDLH_RUNTIME_DATA_MODE:-legacy}
       BDLH_FINANCIAL_TASK_WORKER_ENABLED: ${BDLH_FINANCIAL_TASK_WORKER_ENABLED:-false}
       BDLH_FINANCIAL_TASK_POLL_SECONDS: ${BDLH_FINANCIAL_TASK_POLL_SECONDS:-10}
       POSTGRES_DSN: ${POSTGRES_DSN}
@@ -26,6 +90,9 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       JAVA_API_BASE_URL: ${JAVA_API_BASE_URL:-http://bdlh-runtime-data:8080}
       JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
+      BDLH_MEMORY_MODE: ${BDLH_MEMORY_MODE:-noop}
+      MEMORY_SERVICE_BASE_URL: ${MEMORY_SERVICE_BASE_URL:-http://bdlh-memory-service:8091}
+      MEMORY_SERVICE_INTERNAL_TOKEN: ${MEMORY_SERVICE_INTERNAL_TOKEN}
       AKSHARE_ONE_MCP_ENDPOINT: ${AKSHARE_ONE_MCP_ENDPOINT:-https://akshare-mcp.bdlhxny.com/mcp}
       CN_FINANCIAL_MCP_ENDPOINT: ${CN_FINANCIAL_MCP_ENDPOINT:-https://cn-financial-mcp.bdlhxny.com/sse}
       WEB_SEARCH_BASE_URL: ${WEB_SEARCH_BASE_URL:-http://bdlh-web-search-adapter:3002}
@@ -41,6 +108,8 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       bdlh-runtime-data:
+        condition: service_healthy
+      bdlh-memory-service:
         condition: service_healthy
       bdlh-web-search-adapter:
         condition: service_healthy
@@ -58,6 +127,11 @@ services:
       PG_URL: ${PG_URL}
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
+      BDLH_FLYWAY_ENABLED: ${BDLH_FLYWAY_ENABLED:-true}
+      ROCKETMQ_ENABLED: ${ROCKETMQ_ENABLED:-false}
+      ROCKETMQ_ENDPOINTS: ${ROCKETMQ_ENDPOINTS:-rmq-broker:8081}
+      ROCKETMQ_RELAY_FIXED_DELAY_MS: ${ROCKETMQ_RELAY_FIXED_DELAY_MS:-1000}
+      ROCKETMQ_RELAY_BATCH_SIZE: ${ROCKETMQ_RELAY_BATCH_SIZE:-50}
       MYSQL_URL: ${MYSQL_URL}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
@@ -66,8 +140,42 @@ services:
       JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
       JAVA_DATA_REQUIRE_AUTHENTICATED: ${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
       LEGACY_JAVA_AGENT_RUNTIME_ENABLED: ${LEGACY_JAVA_AGENT_RUNTIME_ENABLED:-false}
+    depends_on:
+      rmq-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  bdlh-memory-service:
+    build:
+      context: ../bdlh-memory-service
+      dockerfile: Dockerfile
+    container_name: bdlh-memory-service
+    restart: unless-stopped
+    environment:
+      BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-development}
+      MEMORY_SERVICE_INTERNAL_TOKEN: ${MEMORY_SERVICE_INTERNAL_TOKEN}
+      MEMORY_POSTGRES_DSN: ${MEMORY_POSTGRES_DSN}
+      MEMORY_ROCKETMQ_ENABLED: ${MEMORY_ROCKETMQ_ENABLED:-false}
+      ROCKETMQ_ENDPOINTS: ${ROCKETMQ_ENDPOINTS:-rmq-broker:8081}
+      MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-chat}
+      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-Qwen3-Embedding}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      QWEN3_API_KEY: ${QWEN3_API_KEY:-}
+      QWEN3_BASE_URL: ${QWEN3_BASE_URL:-}
+      MEM0_CONFIG_JSON: ${MEM0_CONFIG_JSON:-}
+    expose:
+      - "8091"
+    depends_on:
+      rmq-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health/live')"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -120,3 +228,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+volumes:
+  rocketmq-namesrv-logs:
+  rocketmq-store:
+  rocketmq-broker-logs:

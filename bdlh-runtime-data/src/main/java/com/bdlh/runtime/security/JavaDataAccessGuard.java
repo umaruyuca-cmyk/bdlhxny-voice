@@ -53,6 +53,13 @@ public class JavaDataAccessGuard {
         return effectiveUserId;
     }
 
+    /** Scheduler/relay administration must never be callable with an end-user identity alone. */
+    public void requireInternalService() {
+        if (!hasValidInternalToken()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "该内部操作需要服务凭证");
+        }
+    }
+
     private boolean hasValidInternalToken() {
         if (internalToken.isBlank()) {
             return false;

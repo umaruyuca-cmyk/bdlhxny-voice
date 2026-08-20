@@ -5,6 +5,16 @@ spring:
     active: dev
   application:
     name: bdlh-runtime-data
+  flyway:
+    enabled: ${BDLH_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    schemas: business,runtime,registry
+    default-schema: registry
+    create-schemas: false
+    clean-disabled: true
+    validate-on-migrate: true
+    out-of-order: false
+    connect-retries: 2
 
 management:
   endpoints:
@@ -54,3 +64,9 @@ bdlh_runtime:
     require-authenticated: ${JAVA_DATA_REQUIRE_AUTHENTICATED:false}
     # Python -> Java 的服务间凭证；不得与用户 JWT 或外部 API Key 共用。
     internal-token: ${JAVA_DATA_INTERNAL_TOKEN:}
+  rocketmq:
+    # P4 默认关闭，只有单节点 Broker/Proxy 与 Topic 初始化完成后才开启。
+    enabled: ${ROCKETMQ_ENABLED:false}
+    endpoints: ${ROCKETMQ_ENDPOINTS:rmq-broker:8081}
+    relay-fixed-delay-ms: ${ROCKETMQ_RELAY_FIXED_DELAY_MS:1000}
+    relay-batch-size: ${ROCKETMQ_RELAY_BATCH_SIZE:50}

@@ -4,7 +4,7 @@
 只依赖 MemoryStore，不感知底层是 Mem0 还是 NoOp。
 """
 
-from .base import MemoryRecord, MemoryStore, UserProfile
+from .base import MemoryRecord, MemoryStore
 from .noop import NoOpMemoryStore
 
-__all__ = ["MemoryRecord", "MemoryStore", "UserProfile", "NoOpMemoryStore"]
+__all__ = ["MemoryRecord", "MemoryStore", "NoOpMemoryStore"]

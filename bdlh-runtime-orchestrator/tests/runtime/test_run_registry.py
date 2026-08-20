@@ -23,6 +23,8 @@ def test_in_memory_registry_round_trip() -> None:
     )
     registry.register(location)
     assert registry.get("run-1") == location
+    assert registry.get("run-1", "user-1") == location
+    assert registry.get("run-1", "other-user") is None
     assert registry.get("missing") is None
 
 

@@ -19,6 +19,10 @@ deploy/packages/
 *.tgz
 *.jar
 
+# Python 运行与测试缓存
+__pycache__/
+*.py[cod]
+
 # Skill本地依赖、IDE文件和历史分析记录
 skills/**/node_modules/
 skills/**/.idea/

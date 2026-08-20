@@ -523,11 +523,9 @@ def make_load_memory_node(memory_store: Any):
     async def load_memory(state: RootState) -> dict[str, Any]:
         user_id = state.get("user_id")
         events: list[dict[str, Any]] = []
-        profile = None
         recalled: list[dict[str, Any]] = []
         if user_id:
             try:
-                profile = await memory_store.get_profile(user_id)
                 query = str(state.get("request", {}).get("message", ""))
                 if query:
                     records = await memory_store.search(query, user_id, limit=5)
@@ -535,14 +533,15 @@ def make_load_memory_node(memory_store: Any):
                         {"content": r.content, "score": r.score, "metadata": r.metadata}
                         for r in records
                     ]
-                events.append(event(state, "memory.read", "load_memory", {"profile_hit": profile is not None, "recall_count": len(recalled)}))
+                events.append(event(state, "memory.read", "load_memory", {"profile_hit": False, "recall_count": len(recalled)}))
             except Exception as exc:
                 # 二次兜底：MemoryStore 实现本应自行降级，这里再保一层
                 events.append(event(state, "memory.read_failed", "load_memory", {"error": str(exc)[:120]}))
         else:
             events.append(event(state, "memory.skipped", "load_memory", {"reason": "no user_id"}))
         return {
-            "user_profile": profile.__dict__ if profile else None,
+            # L4 profile 必须由 Java User Data API/Context Service 读取，绝不来自 L3 Memory。
+            "user_profile": None,
             "recalled_memories": recalled,
             "events": events,
         }

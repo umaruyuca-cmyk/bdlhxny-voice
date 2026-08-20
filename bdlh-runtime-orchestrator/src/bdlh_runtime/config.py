@@ -71,6 +71,14 @@ class Settings:
     # 生产 Checkpointer 连接参数（postgres/redis 后端使用）
     postgres_dsn: str | None = None
     redis_url: str | None = None
+    # PLATFORM-P2：默认不切换；设为 java 后 Chat/Run/History 仅走 Java Data Plane。
+    runtime_data_mode: str = "legacy"
+    java_api_base_url: str | None = None
+    java_data_internal_token: str | None = None
+    # PLATFORM-P5：生产只允许 Remote Memory Service；embedded Mem0 仅测试/迁移对照。
+    memory_mode: str = "noop"
+    memory_service_base_url: str | None = None
+    memory_service_internal_token: str | None = None
 
     # ── MCP 数据源（两个服务传输协议不同，必须分别配置）──
     mcp_akshare_one: McpSourceConfig = field(
@@ -158,6 +166,12 @@ class Settings:
             ),
             postgres_dsn=postgres_dsn,
             redis_url=os.getenv("REDIS_URL"),
+            runtime_data_mode=os.getenv("BDLH_RUNTIME_DATA_MODE", "legacy").strip().lower(),
+            java_api_base_url=os.getenv("JAVA_API_BASE_URL"),
+            java_data_internal_token=os.getenv("JAVA_DATA_INTERNAL_TOKEN"),
+            memory_mode=os.getenv("BDLH_MEMORY_MODE", "noop").strip().lower(),
+            memory_service_base_url=os.getenv("MEMORY_SERVICE_BASE_URL"),
+            memory_service_internal_token=os.getenv("MEMORY_SERVICE_INTERNAL_TOKEN"),
             mcp_akshare_one=McpSourceConfig(
                 transport=os.getenv("AKSHARE_ONE_MCP_TRANSPORT", "streamable_http"),
                 endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "https://akshare-mcp.bdlhxny.com/mcp"),

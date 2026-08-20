@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..base import MemoryRecord, MemoryStore, UserProfile
+from ..base import MemoryRecord, MemoryStore
 from ..noop import NoOpMemoryStore
 
 logger = logging.getLogger("bdlh_runtime.memory.mem0")
@@ -31,14 +31,9 @@ class Mem0MemoryStore:
     由工厂函数降级为 NoOpMemoryStore，调用方不感知。
     """
 
-    def __init__(self, mem0_client: Any, profile_store: Any = None):
-        """注入已初始化的 Mem0 client 和可选的画像存储。
-
-        profile_store 负责读写结构化 UserProfile（PG 表），与 Mem0 的语义
-        记忆分离——画像走确定性查询，不走向量召回。
-        """
+    def __init__(self, mem0_client: Any):
+        """注入已初始化的 Mem0 client。L4 profile 不属于此 Port。"""
         self._client = mem0_client
-        self._profile_store = profile_store
 
     async def search(self, query: str, user_id: str, *, limit: int = 5) -> list[MemoryRecord]:
         """语义召回相关记忆。Mem0 失败时返回空列表（降级语义）。"""
@@ -57,16 +52,6 @@ class Mem0MemoryStore:
             logger.warning("Mem0 search 降级返回空 (user_id=%s): %s", user_id, exc)
             return []
 
-    async def get_profile(self, user_id: str) -> UserProfile | None:
-        """读取用户结构化画像。profile_store 失败或无画像时返回 None。"""
-        if self._profile_store is None:
-            return None
-        try:
-            return self._profile_store.get_profile(user_id)
-        except Exception as exc:
-            logger.warning("画像读取降级返回 None (user_id=%s): %s", user_id, exc)
-            return None
-
     async def add(self, content: str, user_id: str, *, metadata: dict[str, Any] | None = None) -> None:
         """沉淀记忆。Mem0 内部会抽取要点并去重。失败时仅记日志不抛异常。"""
         try:
@@ -83,7 +68,6 @@ def create_memory_store(
     mem0_embedder_model: str,
     mem0_embedder_api_key: str | None,
     mem0_embedder_base_url: str | None,
-    profile_store: Any = None,
 ) -> MemoryStore:
     """工厂函数：尝试初始化 Mem0，失败则降级为 NoOp。
 
@@ -118,7 +102,7 @@ def create_memory_store(
 
         client = Memory.from_config(config)
         logger.info("Mem0 记忆层初始化成功 (llm=%s, embedder=%s)", mem0_llm_model, mem0_embedder_model)
-        return Mem0MemoryStore(client, profile_store=profile_store)
+        return Mem0MemoryStore(client)
 
     except ImportError:
         logger.info("mem0 包未安装，记忆层降级为 NoOp")

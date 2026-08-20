@@ -229,18 +229,31 @@ def create_application(
     from .history import InMemoryAnalysisHistoryStore, create_history_store
     from .run_registry import InMemoryRunRegistry, create_run_registry
 
-    history_store = create_history_store(
-        environment=settings.environment,
-        postgres_dsn=settings.postgres_dsn,
-    )
-    run_registry = create_run_registry(
-        environment=settings.environment,
-        postgres_dsn=settings.postgres_dsn,
-    )
-    chat_session_store = create_chat_session_store(
-        environment=settings.environment,
-        postgres_dsn=settings.postgres_dsn,
-    )
+    if settings.runtime_data_mode == "java":
+        from .remote_runtime_data import create_remote_runtime_stores
+
+        history_store, run_registry, chat_session_store = create_remote_runtime_stores(
+            base_url=settings.java_api_base_url,
+            internal_token=settings.java_data_internal_token,
+            production=(settings.environment == "production"),
+        )
+    elif settings.runtime_data_mode == "legacy":
+        history_store = create_history_store(
+            environment=settings.environment,
+            postgres_dsn=settings.postgres_dsn,
+        )
+        run_registry = create_run_registry(
+            environment=settings.environment,
+            postgres_dsn=settings.postgres_dsn,
+        )
+        chat_session_store = create_chat_session_store(
+            environment=settings.environment,
+            postgres_dsn=settings.postgres_dsn,
+        )
+    else:
+        raise ConfigurationError(
+            "BDLH_RUNTIME_DATA_MODE 只允许 legacy 或 java"
+        )
     # M5 灰度要求 Run Registry、Analysis History、Chat Store 均为非内存实现。
     # 云上联调只要配置了 POSTGRES_DSN，上述工厂会一律返回 PG 实现。
     # Cognitive VerifiedEntityStore 仍为进程内短生命周期上下文，不计入该门禁。
@@ -265,16 +278,24 @@ def create_application(
         FinancialTaskWakeupHandler,
         NotificationOutboxWorker,
     )
-    from .tasks import create_notification_outbox, create_task_store
+    if settings.runtime_data_mode == "java":
+        from .remote_tasks import create_remote_task_stores
 
-    task_store = create_task_store(
-        environment=settings.environment,
-        postgres_dsn=settings.postgres_dsn,
-    )
-    notification_outbox = create_notification_outbox(
-        environment=settings.environment,
-        postgres_dsn=settings.postgres_dsn,
-    )
+        task_store, notification_outbox = create_remote_task_stores(
+            base_url=settings.java_api_base_url,
+            internal_token=settings.java_data_internal_token,
+        )
+    else:
+        from .tasks import create_notification_outbox, create_task_store
+
+        task_store = create_task_store(
+            environment=settings.environment,
+            postgres_dsn=settings.postgres_dsn,
+        )
+        notification_outbox = create_notification_outbox(
+            environment=settings.environment,
+            postgres_dsn=settings.postgres_dsn,
+        )
     task_wakeup_handler = FinancialTaskWakeupHandler(
         task_store=task_store,
         outbox=notification_outbox,
@@ -359,17 +380,40 @@ def _load_registry_snapshot(settings: Settings, *, registry_snapshot: Any | None
 
 
 def _create_memory(settings: Settings) -> Any:
-    """创建记忆存储，Mem0 不可用时降级 NoOp。"""
-    from bdlh_runtime.memory.mem0.mem0_store import create_memory_store
+    """创建 L3 Memory Port；生产不再在 Orchestrator 内实例化 Mem0 SDK。"""
+    from bdlh_runtime.memory.noop import NoOpMemoryStore
 
-    return create_memory_store(
-        mem0_llm_model=settings.mem0.llm_model,
-        mem0_llm_api_key=settings.mem0.llm_api_key,
-        mem0_llm_base_url=settings.mem0.llm_base_url,
-        mem0_embedder_model=settings.mem0.embedder_model,
-        mem0_embedder_api_key=settings.mem0.embedder_api_key,
-        mem0_embedder_base_url=settings.mem0.embedder_base_url,
-    )
+    if settings.memory_mode == "noop":
+        return NoOpMemoryStore()
+    if settings.memory_mode == "remote":
+        if not settings.memory_service_base_url or not settings.memory_service_internal_token:
+            if settings.environment == "production":
+                raise ConfigurationError("生产 Remote Memory Service 需要地址和独立服务凭证")
+            return NoOpMemoryStore()
+        from bdlh_runtime.memory.remote import RemoteMemoryStore
+        from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
+
+        if not settings.java_api_base_url or not settings.java_data_internal_token:
+            raise ConfigurationError("Remote Memory Store 写入 Outbox 需要 Java Data Plane 服务凭证")
+        return RemoteMemoryStore(
+            base_url=settings.memory_service_base_url,
+            internal_token=settings.memory_service_internal_token,
+            java_client=RuntimeDataClient(
+                base_url=settings.java_api_base_url,
+                internal_token=settings.java_data_internal_token,
+            ),
+        )
+    if settings.memory_mode == "embedded-test" and settings.environment != "production":
+        from bdlh_runtime.memory.mem0.mem0_store import create_memory_store
+        return create_memory_store(
+            mem0_llm_model=settings.mem0.llm_model,
+            mem0_llm_api_key=settings.mem0.llm_api_key,
+            mem0_llm_base_url=settings.mem0.llm_base_url,
+            mem0_embedder_model=settings.mem0.embedder_model,
+            mem0_embedder_api_key=settings.mem0.embedder_api_key,
+            mem0_embedder_base_url=settings.mem0.embedder_base_url,
+        )
+    raise ConfigurationError("BDLH_MEMORY_MODE 只允许 noop、remote 或 embedded-test（非生产）")
 
 
 def _create_gateway(settings: Settings) -> Any:

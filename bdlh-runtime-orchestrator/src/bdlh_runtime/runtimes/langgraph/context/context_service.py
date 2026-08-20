@@ -31,8 +31,8 @@ class ContextService:
         degraded = False
         if self._memory_store is not None and user_id:
             try:
-                stored_profile = await self._memory_store.get_profile(user_id)
-                profile = stored_profile.__dict__ if stored_profile else None
+                # L4 profile is assembled by Java User Data API, never by L3 semantic memory.
+                profile = None
                 query = str(user_input.get("message", ""))
                 if query and purpose != "confirm_route":
                     records = await self._memory_store.search(query, user_id, limit=5)

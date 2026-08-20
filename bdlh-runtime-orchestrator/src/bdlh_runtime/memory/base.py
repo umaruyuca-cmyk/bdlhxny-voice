@@ -1,7 +1,7 @@
 """记忆层统一抽象。
 
 所有记忆实现（Mem0、降级 NoOp、未来其他后端）都遵守这套接口。LangGraph
-版只允许 Context Service 在入口读取 search/get_profile，并由 Run 出口写入 add；
+版只允许 Context Service 在入口读取 search，并由 Run 出口写入 add；
 ReAct 循环中不碰记忆——这是保证流程确定性的关键边界（ADR-015）。
 
 为什么用 Protocol 而非 ABC：记忆实现可能是异步的（Mem0 内部调 LLM），
@@ -32,36 +32,17 @@ class MemoryRecord:
     layer: str = "L3"
 
 
-@dataclass
-class UserProfile:
-    """用户结构化画像。
-
-    从 PG 表字段读取（确定性），非语义召回。包含风险偏好、偏好板块等，
-    由 LLM 定期归纳写入，ContextBuilder 第 ② 块直接注入。
-    """
-
-    user_id: str
-    risk_tolerance: str | None = None
-    preferred_sectors: list[str] = field(default_factory=list)
-    forbidden_symbols: list[str] = field(default_factory=list)  # 禁忌标的
-    notes: str | None = None
-
-
 class MemoryStore(Protocol):
     """记忆存储统一接口。
 
     实现必须保证：
-    - search/get_profile 失败时不抛致命异常，返回空结果（降级语义）；
+    - search 失败时不抛致命异常，返回空结果（降级语义）；
     - add 失败时仅记录日志，不阻塞主流程；
     - 记忆是增强项，不是关键路径——挂了分析照常跑（见架构文档 §5.4）。
     """
 
     async def search(self, query: str, user_id: str, *, limit: int = 5) -> list[MemoryRecord]:
         """语义召回与 query 相关的历史记忆。失败时返回空列表。"""
-        ...
-
-    async def get_profile(self, user_id: str) -> UserProfile | None:
-        """读取用户结构化画像。无画像时返回 None。"""
         ...
 
     async def add(self, content: str, user_id: str, *, metadata: dict[str, Any] | None = None) -> None:

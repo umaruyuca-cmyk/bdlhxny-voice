@@ -236,7 +236,11 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
     def authorize_run(run_id: str, requester_user_id: str | None, state: dict[str, Any]) -> None:
         """阻止用户读取或恢复其他用户的运行。"""
 
-        location = application.run_registry.get(run_id) if application.run_registry is not None else None
+        location = (
+            application.run_registry.get(run_id, requester_user_id)
+            if application.run_registry is not None
+            else None
+        )
         owner_user_id = location.user_id if location is not None else state.get("user_id")
         if requester_user_id is not None and owner_user_id is not None:
             if str(requester_user_id) != str(owner_user_id):
@@ -276,13 +280,17 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
             )
         )
 
-    async def load_run_state(run_id: str) -> dict[str, Any] | None:
+    async def load_run_state(run_id: str, requester_user_id: str | None) -> dict[str, Any] | None:
         """优先从 LangGraph Checkpointer 读取状态，内存快照只作兼容兜底。
 
         Checkpointer 的 StateSnapshot 会把 interrupt 保存在 ``tasks`` 中，
         不一定直接放进 ``values['__interrupt__']``，这里统一投影成 API 契约。
         """
-        location = application.run_registry.get(run_id) if application.run_registry is not None else None
+        location = (
+            application.run_registry.get(run_id, requester_user_id)
+            if application.run_registry is not None
+            else None
+        )
         if (
             location is not None
             and location.runtime_path == RuntimePath.COGNITIVE.value
@@ -1057,7 +1065,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         authorization: str | None = Header(default=None),
     ) -> RunResponse:
         requester_user_id = request_user_id(authorization)
-        state = await load_run_state(run_id)
+        state = await load_run_state(run_id, requester_user_id)
         if state is None:
             raise HTTPException(status_code=404, detail="run not found")
         authorize_run(run_id, requester_user_id, state)
@@ -1071,11 +1079,15 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
     ) -> RunResponse:
         """使用同一 LangGraph thread_id 恢复用户补充/确认后的运行。"""
         requester_user_id = request_user_id(authorization)
-        state_before_resume = await load_run_state(run_id)
+        state_before_resume = await load_run_state(run_id, requester_user_id)
         if state_before_resume is None:
             raise HTTPException(status_code=404, detail="run not found")
         authorize_run(run_id, requester_user_id, state_before_resume)
-        location = application.run_registry.get(run_id) if application.run_registry is not None else None
+        location = (
+            application.run_registry.get(run_id, requester_user_id)
+            if application.run_registry is not None
+            else None
+        )
         thread_id = location.thread_id if location is not None else state_before_resume.get("thread_id")
         user_id = location.user_id if location is not None else state_before_resume.get("user_id")
         checkpoint_id = location.checkpoint_id if location is not None else None
@@ -1142,10 +1154,10 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         store.put(run_id, state)
         return public_state(run_id, state)
 
-    async def event_stream(run_id: str) -> AsyncIterator[str]:
+    async def event_stream(run_id: str, requester_user_id: str | None) -> AsyncIterator[str]:
         index = 0
         while True:
-            state = await load_run_state(run_id)
+            state = await load_run_state(run_id, requester_user_id)
             if state is None:
                 yield encode_event("error", {"message": "run not found"})
                 return
@@ -1163,11 +1175,14 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         authorization: str | None = Header(default=None),
     ):
         requester_user_id = request_user_id(authorization)
-        state = await load_run_state(run_id)
+        state = await load_run_state(run_id, requester_user_id)
         if state is None:
             raise HTTPException(status_code=404, detail="run not found")
         authorize_run(run_id, requester_user_id, state)
-        return StreamingResponse(event_stream(run_id), media_type="text/event-stream")
+        return StreamingResponse(
+            event_stream(run_id, requester_user_id),
+            media_type="text/event-stream",
+        )
 
     app.include_router(router)
     return app

@@ -143,28 +143,33 @@ class FinancialTaskWakeupHandler:
             wakeup_key=wakeup_key,
             details={"observed_price": price},
         )
-        notification = self._outbox.enqueue(
-            NotificationOutboxMessage(
-                outbox_id=new_outbox_id(),
-                task_id=task.task_id,
-                authenticated_user_id=task.authenticated_user_id,
-                idempotency_key=f"task-notification:{wakeup_key}",
-                title=f"{task.condition.symbol} 价格观察条件已满足",
-                body=_notification_body(task, price, currency or task.condition.currency),
-                observed_price=price,
-                currency=currency or task.condition.currency,
-                observation_time=observation_time,
-                created_at=timestamp,
-            )
+        notification_request = NotificationOutboxMessage(
+            outbox_id=new_outbox_id(),
+            task_id=task.task_id,
+            authenticated_user_id=task.authenticated_user_id,
+            idempotency_key=f"task-notification:{wakeup_key}",
+            title=f"{task.condition.symbol} 价格观察条件已满足",
+            body=_notification_body(task, price, currency or task.condition.currency),
+            observed_price=price,
+            currency=currency or task.condition.currency,
+            observation_time=observation_time,
+            created_at=timestamp,
         )
-        task.notification_outbox_id = notification.outbox_id
+        task.notification_outbox_id = notification_request.outbox_id
         task.transition(
             FinancialTaskStatus.COMPLETED,
             reason_code="NOTIFICATION_ENQUEUED",
             now=timestamp,
             wakeup_key=wakeup_key,
-            details={"outbox_id": notification.outbox_id},
+            details={"outbox_id": notification_request.outbox_id},
         )
+        complete_atomically = getattr(self._tasks, "complete_task_and_enqueue_notification", None)
+        if callable(complete_atomically):
+            return complete_atomically(
+                task, expected_version=expected_version, notification=notification_request
+            )
+        notification = self._outbox.enqueue(notification_request)
+        task.notification_outbox_id = notification.outbox_id
         return self._tasks.update(task, expected_version=expected_version)
 
 
