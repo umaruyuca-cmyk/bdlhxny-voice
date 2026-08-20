@@ -1,35 +1,72 @@
+"""Cognitive agent-run 状态查询与恢复（不再依赖 Root Graph Checkpointer）。"""
+
+from typing import Any
+
 from fastapi.testclient import TestClient
 
 from bdlh_runtime.api.routes import create_api_app
+from bdlh_runtime.cognitive.contracts import (
+    CognitiveState,
+    InputEvent,
+    PublicResponse,
+)
+from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtimes.langgraph.graphs.root_graph import build_root_graph
 from bdlh_runtime.runtime.application import create_application
+from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH
 from tests.helpers_registry import seeded_snapshot
 
 
-def test_get_run_reads_from_checkpointer_after_api_store_is_recreated():
-    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
-    first_app = create_api_app(application)
-    created = TestClient(first_app).post(
+class ScriptedCognitive:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+        del observer
+        self.calls += 1
+        asking = self.calls == 1 and "分析" in event.message
+        return CognitiveExecution(
+            state=CognitiveState(event=event),
+            response=PublicResponse(
+                response_kind="ASK_USER" if asking else "ANSWER",
+                response_structure="CLARIFICATION" if asking else "KNOWLEDGE",
+                message="请补充标的" if asking else f"已回答：{event.message}",
+                next_steps=["请提供代码"] if asking else [],
+                audit_codes=["TEST_RUN"],
+            ),
+        )
+
+
+def _application() -> Any:
+    application = create_application(
+        Settings(environment="test"),
+        registry_snapshot=seeded_snapshot(),
+    )
+    application.cognitive_application = ScriptedCognitive()
+    return application
+
+
+def test_get_run_reads_cognitive_state_from_api_store():
+    application = _application()
+    client = TestClient(create_api_app(application))
+    created = client.post(
         "/api/v1/agent-runs",
-        json={"message": "分析 600000", "symbol": "600000"},
+        json={"message": "什么是市盈率？"},
     )
     assert created.status_code == 200
     run_id = created.json()["run_id"]
+    assert created.json()["final_response"]["message"].startswith("已回答")
 
-    # 新 API 实例没有旧的 InMemoryRunStore，但复用同一个 Graph/Checkpointer。
-    second_app = create_api_app(application)
-    fetched = TestClient(second_app).get(f"/api/v1/agent-runs/{run_id}")
-
+    fetched = client.get(f"/api/v1/agent-runs/{run_id}")
     assert fetched.status_code == 200
     assert fetched.json()["run_id"] == run_id
+    assert created.json()["events"][0]["runtime_path"] == COGNITIVE_RUNTIME_PATH
 
 
-def test_get_run_with_explicit_thread_id_after_api_store_is_recreated():
-    """run_id 与 thread_id 不同时也必须能定位 Checkpointer 状态。"""
-    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
-    first_app = create_api_app(application)
-    created = TestClient(first_app).post(
+def test_get_run_with_explicit_thread_id():
+    application = _application()
+    client = TestClient(create_api_app(application))
+    created = client.post(
         "/api/v1/agent-runs",
         json={"message": "什么是市盈率？", "thread_id": "conversation-001"},
     )
@@ -37,20 +74,16 @@ def test_get_run_with_explicit_thread_id_after_api_store_is_recreated():
     run_id = created.json()["run_id"]
     assert created.json()["thread_id"] == "conversation-001"
 
-    # 新 API 实例没有旧的 InMemoryRunStore，必须通过 RunRegistry 找到 thread_id。
-    second_app = create_api_app(application)
-    fetched = TestClient(second_app).get(f"/api/v1/agent-runs/{run_id}")
-
+    fetched = client.get(f"/api/v1/agent-runs/{run_id}")
     assert fetched.status_code == 200
     assert fetched.json()["run_id"] == run_id
     assert fetched.json()["thread_id"] == "conversation-001"
 
 
-def test_resume_uses_registered_explicit_thread_id():
-    """恢复 interrupt 时必须回到创建运行时使用的 LangGraph thread。"""
-    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
-    application.graph = build_root_graph(registry_snapshot=seeded_snapshot())
-    created = TestClient(create_api_app(application)).post(
+def test_resume_uses_registered_cognitive_thread():
+    application = _application()
+    client = TestClient(create_api_app(application))
+    created = client.post(
         "/api/v1/agent-runs",
         json={"message": "请做技术分析", "thread_id": "conversation-resume"},
     )
@@ -59,21 +92,18 @@ def test_resume_uses_registered_explicit_thread_id():
     assert created.json()["status"] == "WAITING_USER"
     run_id = created.json()["run_id"]
 
-    # 使用新的 API 实例，确保不能依赖旧实例的运行快照缓存。
-    resumed = TestClient(create_api_app(application)).post(
+    resumed = client.post(
         f"/api/v1/agent-runs/{run_id}/resume",
         json={"value": {"symbol": "600000"}},
     )
 
     assert resumed.status_code == 200
     assert resumed.json()["thread_id"] == "conversation-resume"
-    assert resumed.json()["status"] in {"SUCCESS", "PARTIAL", "LIMITED"}
+    assert resumed.json()["status"] == "SUCCESS"
 
 
-def test_each_run_reads_its_own_checkpoint_in_a_shared_thread():
-    """同一会话产生多个 run 后，旧 run 不得被最新 checkpoint 覆盖。"""
-    application = create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
-    application.graph = build_root_graph(registry_snapshot=seeded_snapshot())
+def test_each_run_keeps_its_own_cognitive_state_in_a_shared_thread():
+    application = _application()
     client = TestClient(create_api_app(application))
     first = client.post(
         "/api/v1/agent-runs",
@@ -86,10 +116,8 @@ def test_each_run_reads_its_own_checkpoint_in_a_shared_thread():
 
     assert first.status_code == second.status_code == 200
 
-    # 重建 API 实例，强制从 Checkpointer + RunRegistry 查询而不是命中本地快照。
-    recreated = TestClient(create_api_app(application))
-    fetched_first = recreated.get(f"/api/v1/agent-runs/{first.json()['run_id']}")
-    fetched_second = recreated.get(f"/api/v1/agent-runs/{second.json()['run_id']}")
+    fetched_first = client.get(f"/api/v1/agent-runs/{first.json()['run_id']}")
+    fetched_second = client.get(f"/api/v1/agent-runs/{second.json()['run_id']}")
 
     assert fetched_first.status_code == fetched_second.status_code == 200
     first_completed = [e for e in fetched_first.json()["events"] if e["event_type"] == "response.completed"]

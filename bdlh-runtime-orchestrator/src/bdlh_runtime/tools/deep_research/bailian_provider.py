@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -22,17 +22,14 @@ from bdlh_runtime.tools.deep_research.atomic_search import (
 
 logger = logging.getLogger("bdlh_runtime.tools.deep_research.bailian")
 
-DEFAULT_BAILIAN_WEB_SEARCH_ENDPOINT = (
-    "https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp"
-)
+DEFAULT_BAILIAN_WEB_SEARCH_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp"
 BAILIAN_WEB_SEARCH_TOOL = "bailian_web_search"
 # ADR-016 §17.3：进程级速率软顶（次 / 分钟）
 DEFAULT_RATE_LIMIT_PER_MINUTE = 30
 
 
 class _McpToolCaller(Protocol):
-    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        ...
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]: ...
 
 
 class ProcessRateLimiter:
@@ -72,9 +69,7 @@ class BailianWebSearchProvider:
         self._api_key = (api_key or "").strip() or None
         raw_endpoint = (endpoint or "").strip() or None
         # 仅有 Key 时默认官方 Streamable HTTP 地址（ADR §17.3 中国大陆默认）
-        self._endpoint = raw_endpoint or (
-            DEFAULT_BAILIAN_WEB_SEARCH_ENDPOINT if self._api_key else None
-        )
+        self._endpoint = raw_endpoint or (DEFAULT_BAILIAN_WEB_SEARCH_ENDPOINT if self._api_key else None)
         self._timeout = timeout_seconds
         self._tool_name = tool_name
         self._mcp_client = mcp_client
@@ -185,19 +180,13 @@ def parse_bailian_search_payload(text: str) -> list[AtomicSearchHit]:
         return []
 
     pages = _extract_pages(payload)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     hits: list[AtomicSearchHit] = []
     seen_urls: set[str] = set()
     for page in pages:
         if not isinstance(page, dict):
             continue
-        url = str(
-            page.get("url")
-            or page.get("link")
-            or page.get("href")
-            or page.get("page_url")
-            or ""
-        ).strip()
+        url = str(page.get("url") or page.get("link") or page.get("href") or page.get("page_url") or "").strip()
         if not url or url in seen_urls:
             continue
         seen_urls.add(url)
@@ -231,7 +220,7 @@ def parse_bailian_search_payload(text: str) -> list[AtomicSearchHit]:
 
 def hits_from_dicts(rows: list[dict]) -> list[AtomicSearchHit]:
     """测试辅助：把简单 dict 转成 AtomicSearchHit。"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     return [
         AtomicSearchHit(
             title=str(row.get("title") or "untitled"),

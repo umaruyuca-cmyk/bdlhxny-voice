@@ -34,23 +34,41 @@ def test_plan_and_action_reject_unenabled_actions() -> None:
 
 def test_data_quality_rejects_fixture_and_unavailable_data() -> None:
     guardrail = DefaultDataQualityGuardrail()
-    assert guardrail.evaluate_data_quality({"status": "SUCCESS", "data_mode": "MOCK"}, context=_context()).audit_code == "NON_PRODUCTION_DATA"
-    assert guardrail.evaluate_data_quality({"status": "UNAVAILABLE"}, context=_context()).audit_code == "DATA_UNAVAILABLE"
+    assert (
+        guardrail.evaluate_data_quality({"status": "SUCCESS", "data_mode": "MOCK"}, context=_context()).audit_code
+        == "NON_PRODUCTION_DATA"
+    )
+    assert (
+        guardrail.evaluate_data_quality({"status": "UNAVAILABLE"}, context=_context()).audit_code == "DATA_UNAVAILABLE"
+    )
 
 
 def test_response_blocks_trading_semantics_and_requires_evidence() -> None:
     guardrail = DefaultResponseGuardrail()
-    assert guardrail.evaluate_response(PublicResponse(response_kind="ANSWER", message="建议立即买入"), context=_context()).audit_code == "TRADING_SEMANTICS_BLOCKED"
-    assert guardrail.evaluate_response(
-        PublicResponse(
-            response_kind="DOMAIN_RESULT",
-            message="研究完成",
-            evidence_refs=["e1"],
-            sections=[{"section_type": "FINDINGS", "title": "结论", "items": ["建议立即买入"]}],
-        ),
-        context=_context(),
-    ).audit_code == "TRADING_SEMANTICS_BLOCKED"
-    assert guardrail.evaluate_response(PublicResponse(response_kind="DOMAIN_RESULT", message="研究完成"), context=_context()).audit_code == "EVIDENCE_REQUIRED"
+    assert (
+        guardrail.evaluate_response(
+            PublicResponse(response_kind="ANSWER", message="建议立即买入"), context=_context()
+        ).audit_code
+        == "TRADING_SEMANTICS_BLOCKED"
+    )
+    assert (
+        guardrail.evaluate_response(
+            PublicResponse(
+                response_kind="DOMAIN_RESULT",
+                message="研究完成",
+                evidence_refs=["e1"],
+                sections=[{"section_type": "FINDINGS", "title": "结论", "items": ["建议立即买入"]}],
+            ),
+            context=_context(),
+        ).audit_code
+        == "TRADING_SEMANTICS_BLOCKED"
+    )
+    assert (
+        guardrail.evaluate_response(
+            PublicResponse(response_kind="DOMAIN_RESULT", message="研究完成"), context=_context()
+        ).audit_code
+        == "EVIDENCE_REQUIRED"
+    )
 
 
 def test_plan_rejects_excessive_budget_and_non_read_only_objective() -> None:
@@ -71,12 +89,16 @@ def test_plan_rejects_excessive_budget_and_non_read_only_objective() -> None:
     )
     assert guardrail.evaluate_plan(action, context=_context("INVOKE_DOMAIN")).audit_code == "PLAN_BUDGET_EXCEEDED"
 
-    trading = excessive.model_copy(update={
-        "objective": "execute trade after research",
-        "budget": DomainBudget(tool_call_limit=1, runtime_seconds=5),
-    })
+    trading = excessive.model_copy(
+        update={
+            "objective": "execute trade after research",
+            "budget": DomainBudget(tool_call_limit=1, runtime_seconds=5),
+        }
+    )
     action = action.model_copy(update={"domain_request": trading})
-    assert guardrail.evaluate_plan(action, context=_context("INVOKE_DOMAIN")).audit_code == "PLAN_OUT_OF_READ_ONLY_SCOPE"
+    assert (
+        guardrail.evaluate_plan(action, context=_context("INVOKE_DOMAIN")).audit_code == "PLAN_OUT_OF_READ_ONLY_SCOPE"
+    )
 
 
 def test_action_rejects_cross_user_domain_request() -> None:

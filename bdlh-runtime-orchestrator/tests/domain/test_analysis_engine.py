@@ -8,7 +8,14 @@ from bdlh_runtime.domain.analysis_engine import analyze
 
 # 确定性合成K线：60 根缓涨序列（与 mock 不同，这里手工构造便于断言）
 _SYNTHETIC_BARS = [
-    {"date": f"2026-01-{i+1:02d}", "open": 100.0 + i, "high": 102.0 + i, "low": 99.0 + i, "close": 101.0 + i, "volume": 1000000}
+    {
+        "date": f"2026-01-{i + 1:02d}",
+        "open": 100.0 + i,
+        "high": 102.0 + i,
+        "low": 99.0 + i,
+        "close": 101.0 + i,
+        "volume": 1000000,
+    }
     for i in range(60)
 ]
 

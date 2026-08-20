@@ -24,7 +24,6 @@ from .snapshot_builder import (
     POSITIONS_CAPABILITY,
 )
 
-
 QUOTE_CAPABILITY = "market.get_realtime_quote"
 # PORTFOLIO_VALUATION_CAPABILITY / PORTFOLIO_VALUATION_SCHEMA 的唯一真源在
 # snapshot_builder.py（与其它 portfolio 能力常量同处），本模块只导入不重定义，
@@ -83,14 +82,10 @@ class PortfolioValuationBuilder:
                 self._identity_part(item.get("currency"), "position currency"),
             )
             if identity[2] != currency:
-                raise PortfolioValuationError(
-                    "Cross-currency portfolio valuation requires an explicit FX capability"
-                )
+                raise PortfolioValuationError("Cross-currency portfolio valuation requires an explicit FX capability")
             quote = quotes.get(identity)
             if quote is None:
-                raise PortfolioValuationError(
-                    "Current quote missing for " + ":".join(identity)
-                )
+                raise PortfolioValuationError("Current quote missing for " + ":".join(identity))
             market_value = quantity * quote["price"]
             valued_positions.append(
                 {
@@ -151,7 +146,10 @@ class PortfolioValuationBuilder:
     def _user_data(observation: Observation, capability: str) -> dict[str, Any]:
         if observation.capability != capability or observation.status not in {"SUCCESS", "PARTIAL"}:
             raise PortfolioValuationError(f"Required user observation unavailable: {capability}")
-        if not isinstance(observation.data, dict) or observation.data.get("schema_version") != NORMALIZED_USER_DATA_SCHEMA:
+        if (
+            not isinstance(observation.data, dict)
+            or observation.data.get("schema_version") != NORMALIZED_USER_DATA_SCHEMA
+        ):
             raise PortfolioValuationError(f"Required user observation is not normalized: {capability}")
         if observation.data.get("data_mode") in {FinancialDataMode.MOCK.value, FinancialDataMode.UNAVAILABLE.value}:
             raise PortfolioValuationError(f"Required user observation cannot support valuation: {capability}")

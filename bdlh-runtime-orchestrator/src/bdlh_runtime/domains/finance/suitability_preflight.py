@@ -15,7 +15,6 @@ from .contracts import (
     SuitabilityCondition,
 )
 
-
 PENDING_RULE_SET_VERSION = "suitability-v0.pending-adr-004-approval"
 PENDING_RULE_IDS = (
     "SUIT-RESEARCH-COVERAGE-001",
@@ -47,9 +46,7 @@ class SuitabilityPreflight:
     ) -> SuitabilityAssessment:
         evidence_refs = sorted(set(snapshot.provenance))
         if not evidence_refs:
-            raise SuitabilityPreflightError(
-                "SUITABILITY_EVIDENCE_REQUIRED: snapshot provenance is required"
-            )
+            raise SuitabilityPreflightError("SUITABILITY_EVIDENCE_REQUIRED: snapshot provenance is required")
 
         limitations = self._input_limitations(research=research, snapshot=snapshot)
         limitations.append("ADR-004 rule thresholds and aggregation are not approved")
@@ -69,9 +66,7 @@ class SuitabilityPreflight:
                     verification_source="ADR-004 approval record",
                 )
             ],
-            reasons=[
-                "No personalized suitability determination is produced before ADR-004 approval"
-            ],
+            reasons=["No personalized suitability determination is produced before ADR-004 approval"],
             limitations=list(dict.fromkeys(limitations)),
         )
 
@@ -93,10 +88,7 @@ class SuitabilityPreflight:
             limitations.append("Financial snapshot is not COMPLETE")
         if snapshot.risk_profile is None or snapshot.risk_profile.risk_level is None:
             limitations.append("Risk profile risk_level is unavailable")
-        if (
-            snapshot.risk_profile is None
-            or snapshot.risk_profile.max_loss_tolerance_pct is None
-        ):
+        if snapshot.risk_profile is None or snapshot.risk_profile.max_loss_tolerance_pct is None:
             limitations.append("Risk profile max_loss_tolerance_pct is unavailable")
         if snapshot.liquidity is None or snapshot.liquidity.status == "UNKNOWN":
             limitations.append("Liquidity facts are unavailable")

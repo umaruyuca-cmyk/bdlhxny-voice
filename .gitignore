@@ -42,3 +42,6 @@ skills/**/portfolio.json
 .workbuddy-ai/
 .workbuddy/
 .zcode/
+
+# Python 打包产物
+*.egg-info/

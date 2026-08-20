@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from tests.helpers_registry import build_default_capability_registry
 
 from bdlh_runtime.contracts.observation import (
     DataQuality,
@@ -38,7 +39,6 @@ from bdlh_runtime.domains.finance.valuation_builder import (
     PortfolioValuationBuilder,
     PortfolioValuationError,
 )
-from tests.helpers_registry import build_default_capability_registry
 
 
 def _request(user_id: str = "7") -> FinancialDomainRequest:
@@ -109,10 +109,7 @@ def _normalize_all(
     user_id: str = "7",
 ) -> list[Observation]:
     normalizer = UserFinancialObservationNormalizer()
-    return [
-        normalizer.normalize(item, authenticated_user_id=user_id)
-        for item in observations
-    ]
+    return [normalizer.normalize(item, authenticated_user_id=user_id) for item in observations]
 
 
 def _complete_raw_observations() -> list[Observation]:
@@ -263,9 +260,7 @@ def test_user_confirmed_snapshot_preserves_controlled_references() -> None:
         assert isinstance(observation.data, dict)
         observation.data["metadata"]["data_mode"] = "USER_CONFIRMED"
         observation.data["metadata"]["source_type"] = "USER_INPUT"
-        observation.data["metadata"]["confirmation_ref"] = (
-            f"confirm-{observation.observation_id}"
-        )
+        observation.data["metadata"]["confirmation_ref"] = f"confirm-{observation.observation_id}"
 
     snapshot = FinancialSnapshotBuilder().build(
         request=_request(),
@@ -519,10 +514,12 @@ def test_m3_authorization_is_exact_and_excludes_transaction_history() -> None:
     registry = build_default_capability_registry()
     policy = FinanceCapabilityAuthorizationPolicy(registry)
 
-    allowed = policy.allowed_capabilities({
-        DomainOperation.READ_PORTFOLIO,
-        DomainOperation.READ_PROFILE,
-    })
+    allowed = policy.allowed_capabilities(
+        {
+            DomainOperation.READ_PORTFOLIO,
+            DomainOperation.READ_PROFILE,
+        }
+    )
 
     # 重写读库语义：READ_PORTFOLIO 覆盖组内全部只读持仓能力（含估值重算与
     # 交易历史）；菜单可见性由 eligible/allowed 资格交集决定，不在此裁剪。

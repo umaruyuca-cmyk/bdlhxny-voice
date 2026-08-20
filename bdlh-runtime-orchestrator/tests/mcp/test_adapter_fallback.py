@@ -52,7 +52,9 @@ async def test_protocol_error_triggers_fallback():
 @pytest.mark.asyncio
 async def test_swallowed_error_triggers_fallback():
     """首选服务端吞错（{"error":true} 且 isError=false）→ 触发 fallback。"""
-    primary = FakeClient({"get_realtime_data": {"text": '{"error": true, "message": "RemoteDisconnected"}', "is_error": False}})
+    primary = FakeClient(
+        {"get_realtime_data": {"text": '{"error": true, "message": "RemoteDisconnected"}', "is_error": False}}
+    )
     fallback = FakeClient({"get_realtime_quote": {"text": '[{"price": 1301.5}]', "is_error": False}})
     adapter = McpGatewayAdapter(_clients(primary, fallback))
 
@@ -65,12 +67,14 @@ async def test_swallowed_error_triggers_fallback():
 @pytest.mark.asyncio
 async def test_text_wrapped_tool_error_triggers_fallback():
     """MCP 将工具错误包装成普通文本且 isError=false 时仍应触发 fallback。"""
-    primary = FakeClient({
-        "get_realtime_data": {
-            "text": "Error calling tool 'get_realtime_data': upstream token expired",
-            "is_error": False,
+    primary = FakeClient(
+        {
+            "get_realtime_data": {
+                "text": "Error calling tool 'get_realtime_data': upstream token expired",
+                "is_error": False,
+            }
         }
-    })
+    )
     fallback = FakeClient({"get_realtime_quote": {"text": '[{"price": 1302.0}]', "is_error": False}})
     adapter = McpGatewayAdapter(_clients(primary, fallback))
 
@@ -138,11 +142,13 @@ async def test_unregistered_capability_fails():
 async def test_financial_statements_fans_out_to_three_primary_tools():
     """一个统一财报能力应并行取得资产负债表、利润表和现金流量表。"""
     akshare = FakeClient({})
-    cn_financial = FakeClient({
-        "get_balance_sheet": {"text": '[{"报告期":"2026Q2","资产":1}]', "is_error": False},
-        "get_income_statement": {"text": '[{"报告期":"2026Q2","营业收入":2}]', "is_error": False},
-        "get_cash_flow_statement": {"text": '[{"报告期":"2026Q2","经营现金流":3}]', "is_error": False},
-    })
+    cn_financial = FakeClient(
+        {
+            "get_balance_sheet": {"text": '[{"报告期":"2026Q2","资产":1}]', "is_error": False},
+            "get_income_statement": {"text": '[{"报告期":"2026Q2","营业收入":2}]', "is_error": False},
+            "get_cash_flow_statement": {"text": '[{"报告期":"2026Q2","经营现金流":3}]', "is_error": False},
+        }
+    )
     adapter = McpGatewayAdapter(_clients(akshare, cn_financial))
 
     observation = await adapter.execute("market.get_financial_statements", {"symbol": "600519"})
@@ -165,14 +171,18 @@ async def test_financial_statements_fans_out_to_three_primary_tools():
 @pytest.mark.asyncio
 async def test_financial_statements_preserve_partial_data_when_one_statement_fails():
     """单张报表主备均失败时保留其余报表，并把统一能力标为 PARTIAL。"""
-    akshare = FakeClient({
-        "get_cash_flow": {"text": '{"error":true,"message":"fallback failed"}', "is_error": False},
-    })
-    cn_financial = FakeClient({
-        "get_balance_sheet": {"text": '[{"报告期":"2026Q2","资产":1}]', "is_error": False},
-        "get_income_statement": {"text": '[{"报告期":"2026Q2","营业收入":2}]', "is_error": False},
-        "get_cash_flow_statement": {"text": '{"error":true,"message":"primary failed"}', "is_error": False},
-    })
+    akshare = FakeClient(
+        {
+            "get_cash_flow": {"text": '{"error":true,"message":"fallback failed"}', "is_error": False},
+        }
+    )
+    cn_financial = FakeClient(
+        {
+            "get_balance_sheet": {"text": '[{"报告期":"2026Q2","资产":1}]', "is_error": False},
+            "get_income_statement": {"text": '[{"报告期":"2026Q2","营业收入":2}]', "is_error": False},
+            "get_cash_flow_statement": {"text": '{"error":true,"message":"primary failed"}', "is_error": False},
+        }
+    )
     adapter = McpGatewayAdapter(_clients(akshare, cn_financial))
 
     observation = await adapter.execute("market.get_financial_statements", {"symbol": "600519"})

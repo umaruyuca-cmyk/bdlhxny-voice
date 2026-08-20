@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "bdlh_runtime"
 PROBE_ROOT = SRC_ROOT / "domains" / "plugin_probe"
 
@@ -45,13 +44,10 @@ def test_plugin_does_not_duplicate_shared_infrastructure_classes() -> None:
     declarations: set[str] = set()
     for file_path in probe_files():
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
-        declarations.update(
-            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-        )
+        declarations.update(node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
 
     assert not declarations & FORBIDDEN_CLASS_NAMES, (
-        "M7 plugin duplicated shared infrastructure: "
-        f"{sorted(declarations & FORBIDDEN_CLASS_NAMES)}"
+        f"M7 plugin duplicated shared infrastructure: {sorted(declarations & FORBIDDEN_CLASS_NAMES)}"
     )
 
 
@@ -103,10 +99,11 @@ def test_domain_neutral_kernel_does_not_import_the_m7_plugin() -> None:
         for file_path in files:
             tree = ast.parse(file_path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
+                imported_names: list[str] = []
                 if isinstance(node, ast.ImportFrom) and node.module:
-                    if "plugin_probe" in node.module:
-                        violations.append(str(file_path.relative_to(SRC_ROOT)))
+                    imported_names.append(node.module)
                 elif isinstance(node, ast.Import):
-                    if any("plugin_probe" in alias.name for alias in node.names):
-                        violations.append(str(file_path.relative_to(SRC_ROOT)))
+                    imported_names.extend(alias.name for alias in node.names)
+                if any("plugin_probe" in name for name in imported_names):
+                    violations.append(str(file_path.relative_to(SRC_ROOT)))
     assert not violations, f"domain-neutral kernel imports M7 plugin: {violations}"

@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Protocol
+from datetime import UTC
+from typing import Protocol
 from uuid import uuid4
 
 from bdlh_runtime.contracts.observation import DataQuality, Observation, ProvenanceRecord
@@ -116,13 +117,15 @@ class HttpJavaDataAdapter:
                             quality_status="PARTIAL",
                             known_unavailable=[capability],
                         ),
-                        provenance=[ProvenanceRecord(
-                            source="java-api",
-                            tool=capability,
-                            as_of=metadata.get("data_time"),
-                            retrieved_at=_now_iso(),
-                            elapsed_ms=elapsed_ms,
-                        )],
+                        provenance=[
+                            ProvenanceRecord(
+                                source="java-api",
+                                tool=capability,
+                                as_of=metadata.get("data_time"),
+                                retrieved_at=_now_iso(),
+                                elapsed_ms=elapsed_ms,
+                            )
+                        ],
                         error_code=f"JAVA_DATA_{query_status}",
                         error_message=f"Java Data API 查询状态: {query_status}",
                     )
@@ -132,13 +135,15 @@ class HttpJavaDataAdapter:
                     status="SUCCESS",
                     data=data,
                     data_quality=DataQuality(completeness=1.0, quality_status="OK"),
-                    provenance=[ProvenanceRecord(
-                        source="java-api",
-                        tool=capability,
-                        as_of=metadata.get("data_time"),
-                        retrieved_at=_now_iso(),
-                        elapsed_ms=elapsed_ms,
-                    )],
+                    provenance=[
+                        ProvenanceRecord(
+                            source="java-api",
+                            tool=capability,
+                            as_of=metadata.get("data_time"),
+                            retrieved_at=_now_iso(),
+                            elapsed_ms=elapsed_ms,
+                        )
+                    ],
                 )
         except Exception as exc:
             logger.warning("Java API 调用失败 (capability=%s): %s", capability, exc)
@@ -175,11 +180,13 @@ class HttpJavaDataAdapter:
             status="FAILED",
             data=None,
             data_quality=DataQuality(quality_status="INVALID"),
-            provenance=[ProvenanceRecord(
-                source="java-api",
-                tool=capability,
-                retrieved_at=_now_iso(),
-            )],
+            provenance=[
+                ProvenanceRecord(
+                    source="java-api",
+                    tool=capability,
+                    retrieved_at=_now_iso(),
+                )
+            ],
             error_code="JAVA_UNAVAILABLE",
             error_message=message,
         )
@@ -193,11 +200,13 @@ class HttpJavaDataAdapter:
             status="UNAVAILABLE",
             data=None,
             data_quality=DataQuality(quality_status="INVALID", known_unavailable=[capability]),
-            provenance=[ProvenanceRecord(
-                source="java-api",
-                tool=capability,
-                retrieved_at=_now_iso(),
-            )],
+            provenance=[
+                ProvenanceRecord(
+                    source="java-api",
+                    tool=capability,
+                    retrieved_at=_now_iso(),
+                )
+            ],
             error_code="JAVA_UNAVAILABLE",
             error_message=message,
         )
@@ -212,7 +221,12 @@ _MOCK_POSITIONS = [
 _MOCK_DATA = {
     "portfolio.get_account_snapshot": {"user_id": "unknown", "total_asset": 0.0, "cash": 0.0, "is_mock": True},
     "portfolio.get_transaction_history": {"transactions": [], "is_mock": True},
-    "user.get_risk_profile": {"risk_tolerance": "moderate", "preferred_sectors": [], "forbidden_symbols": [], "is_mock": True},
+    "user.get_risk_profile": {
+        "risk_tolerance": "moderate",
+        "preferred_sectors": [],
+        "forbidden_symbols": [],
+        "is_mock": True,
+    },
 }
 
 
@@ -237,5 +251,6 @@ def create_java_adapter(
 
 
 def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    from datetime import datetime
+
+    return datetime.now(UTC).isoformat()

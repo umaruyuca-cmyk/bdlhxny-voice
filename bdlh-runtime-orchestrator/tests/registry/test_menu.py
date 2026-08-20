@@ -60,8 +60,7 @@ def test_portfolio_requires_skill_entitlement_and_login() -> None:
     """启用 portfolio-health + READ_PORTFOLIO entitlement + 登录 → 持仓进 allowed。"""
     store = build_seeded_store()
     store.skills = [
-        replace(skill, enabled=True) if skill.skill_id == "portfolio-health" else skill
-        for skill in store.skills
+        replace(skill, enabled=True) if skill.skill_id == "portfolio-health" else skill for skill in store.skills
     ]
     store.entitlements = list(store.entitlements) + [
         EntitlementRecord(account_id="*", operation_code="READ_PORTFOLIO"),
@@ -81,8 +80,7 @@ def test_local_capability_enters_eligible_via_skill() -> None:
     """local 能力（build_current_valuation）经 skill 声明进入 eligible。"""
     store = build_seeded_store()
     store.skills = [
-        replace(skill, enabled=True) if skill.skill_id == "portfolio-health" else skill
-        for skill in store.skills
+        replace(skill, enabled=True) if skill.skill_id == "portfolio-health" else skill for skill in store.skills
     ]
     store.entitlements = list(store.entitlements) + [
         EntitlementRecord(account_id="*", operation_code="READ_PORTFOLIO"),

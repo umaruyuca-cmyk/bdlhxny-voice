@@ -7,9 +7,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Iterable
 
 from bdlh_runtime.registry import CapabilityRecord, RegistrySnapshot
 
@@ -60,7 +60,7 @@ class CapabilitySpec:
         }
 
     @classmethod
-    def from_record(cls, record: CapabilityRecord) -> "CapabilitySpec":
+    def from_record(cls, record: CapabilityRecord) -> CapabilitySpec:
         return cls(
             name=record.name,
             description=record.description,
@@ -106,9 +106,7 @@ class CapabilityRegistry:
 
 def registry_from_snapshot(snapshot: RegistrySnapshot) -> CapabilityRegistry:
     """从已通过启动校验的快照构建能力目录。"""
-    return CapabilityRegistry(
-        CapabilitySpec.from_record(record) for record in snapshot.capabilities
-    )
+    return CapabilityRegistry(CapabilitySpec.from_record(record) for record in snapshot.capabilities)
 
 
 def load_capability_registry(snapshot: RegistrySnapshot) -> CapabilityRegistry:

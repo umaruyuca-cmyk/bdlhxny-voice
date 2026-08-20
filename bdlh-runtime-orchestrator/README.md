@@ -2,10 +2,9 @@
 
 BDLH Agent Runtime 的 Python 分析流程服务（LangGraph + Mem0 主版本）。
 
-当前实现完成 Phase 0 / 1 / 2 / 4 的可运行闭环：动态 `WorkflowPlan` 调度、
-Root / Query / Market Data Graph、有界 ReAct 执行矩阵、Mem0 记忆层（首尾读写）、
-ContextBuilder 七块上下文、MCP 双传输接入（SSE + Streamable HTTP）、
-确定性分析引擎（技术指标/风险/组合影响/回测）、Checkpointer 工厂、JWT 隔离的聊天 SSE API。
+当前实现以 Cognitive Orchestrator + Finance Domain 为唯一产品路径：
+Domain Dispatcher、Capability Gateway、Observation、Guardrails、Mem0/Remote Memory、
+MCP 双传输、确定性分析引擎、Checkpointer 工厂、JWT 隔离的聊天 SSE API。
 
 M7 另注册了 `plugin_probe` 实验性第二 Domain，用于验证既有
 `DomainDescriptor / SkillManifest / Dispatcher / DomainBudget / Observation / Guardrail`
@@ -15,16 +14,19 @@ M7 另注册了 `plugin_probe` 实验性第二 Domain，用于验证既有
 
 ```text
 api/                  FastAPI + SSE 事件流（api_prefix 由 Settings 提供）
-runtimes/langgraph/   主版本编排（graphs/agents/nodes/context）
+runtimes/langgraph/   支撑组件（agents/direct_response 等；Root Graph 已退役）
 memory/               Mem0 记忆层（base 抽象 + mem0 实现 + NoOp 降级）
 integrations/mcp/     MCP 接入（SSE + Streamable HTTP 双传输，实测路由）
-tools/                ToolRegistry + 分析能力工具 + Java 数据适配器
+tools/                ToolRegistry + 分析能力工具 + Java 数据适配器 + deep_research
 observations/         Observation 标准化（含服务端吞错识别）
 domain/               确定性计算（零框架依赖）：指标/风险/回测/策略/交易日历
+cognitive/            Cognitive Orchestrator（唯一产品编排入口）
+domains/finance/      Finance Domain Runtime + Skill Manifest
 ```
 
-对话入口统一为 Root Graph：知识问答走一次直接 LLM 调用（非 ReAct、无 Tool），
-复杂市场研究才进入有界 ReAct 子图；标的解析、计算和校验保持确定性节点。
+对话入口统一为 Cognitive Orchestrator（`cognitive_finance`）：经语义路由与
+Domain Dispatcher 进入 Finance Runtime；知识问答可走直接回答，领域研究走 Skill
+与 Capability Gateway。不再装配 Root Graph / 灰度双路径。
 
 ## 当前边界
 
@@ -33,7 +35,7 @@ domain/               确定性计算（零框架依赖）：指标/风险/回�
   Mem0 记忆降级、Java 数据适配（生产禁 mock）、交易日历、确定性分析引擎；
 - 未实现：Letta 对比 Runtime（主版本稳定后启动）、真实下单/撤单、Node Skill 独立部署评估；
 - Mock 数据只用于流程测试（带 is_mock 标记），不能用于任何真实市场结论；
-- 生产环境：需配置 `DEEPSEEK_API_KEY`、`POSTGRES_DSN`/`REDIS_URL`、两个 MCP endpoint。
+- 运行环境：需配置 `JAVA_API_BASE_URL`、`JAVA_DATA_INTERNAL_TOKEN`、`DEEPSEEK_API_KEY` 和两个 MCP endpoint。
 
 ## 本地运行
 
@@ -60,6 +62,6 @@ M6 只启用一种持续任务：用户确认的价格阈值观察。创建请�
 `Idempotency-Key` 和 `confirmed=true`，Scheduler 每次唤醒都会重新进入 Cognitive +
 Finance 获取当前市场事实；`PARTIAL/LIMITED` 数据不会触发通知。
 
-生产启用前先执行 `db/migrations/20260812_financial_tasks.sql`，然后在目标 Worker
+开发环境全量建库时，按根目录 `db/README.md` 的顺序执行数据库脚本，然后在目标 Worker
 实例配置 `BDLH_FINANCIAL_TASK_WORKER_ENABLED=true`。任务 API 为
 `/api/v1/financial-tasks*`，已发送站内通知查询为 `/api/v1/notifications`。

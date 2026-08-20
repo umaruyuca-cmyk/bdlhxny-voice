@@ -11,7 +11,6 @@ LLM 不写。
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -55,7 +54,7 @@ class GoalSpec(BaseModel):
     observation_refs: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def forbid_tool_names(self) -> "GoalSpec":
+    def forbid_tool_names(self) -> GoalSpec:
         # 防御：objective/description 内不得出现 capability 名（由控制器在
         # 回填时以 allowed 集合比对；schema 层先挡住字段级走私）
         return self
@@ -82,7 +81,7 @@ class UnderstandOutput(BaseModel):
     needs_external: bool = False
 
     @model_validator(mode="after")
-    def reject_forbidden_fields(self) -> "UnderstandOutput":
+    def reject_forbidden_fields(self) -> UnderstandOutput:
         # extra=forbid 已在字段级拒绝；此处防御模型用嵌套 payload 走私
         return self
 

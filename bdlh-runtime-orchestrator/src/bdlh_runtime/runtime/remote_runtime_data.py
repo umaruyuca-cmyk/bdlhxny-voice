@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from bdlh_runtime.contracts.history import AnalysisHistoryRecord
 
@@ -90,8 +91,9 @@ class RuntimeDataClient:
             import httpx
 
             with httpx.Client(timeout=10.0) as client:
-                response = client.request(method, f"{self._base_url}{path}", params=query or {}, json=payload,
-                                          headers=headers)
+                response = client.request(
+                    method, f"{self._base_url}{path}", params=query or {}, json=payload, headers=headers
+                )
             response.raise_for_status()
             return response.json()
         except Exception as exc:
@@ -104,14 +106,18 @@ class RemoteChatSessionStore:
 
     def ensure(self, requested_id: str | None, user_id: str | None) -> ChatSession:
         data = self._client.call(
-            "POST", "/internal/v1/runtime/sessions", user_id,
+            "POST",
+            "/internal/v1/runtime/sessions",
+            user_id,
             payload={"requestedSessionId": requested_id},
         )
         return _chat_session(data, user_id)
 
     def list_for_user(self, user_id: str | None, limit: int) -> list[ChatSession]:
         data = self._client.call(
-            "GET", "/internal/v1/runtime/sessions", user_id,
+            "GET",
+            "/internal/v1/runtime/sessions",
+            user_id,
             query={"limit": max(1, limit)},
         )
         if not isinstance(data, list):
@@ -120,7 +126,9 @@ class RemoteChatSessionStore:
 
     def get(self, session_id: str, user_id: str | None) -> ChatSession | None:
         data = self._client.call(
-            "GET", f"/internal/v1/runtime/sessions/{session_id}", user_id,
+            "GET",
+            f"/internal/v1/runtime/sessions/{session_id}",
+            user_id,
             allow_not_found=True,
         )
         return _chat_session(data, user_id) if data is not None else None
@@ -129,13 +137,17 @@ class RemoteChatSessionStore:
         if not str(content or "").strip():
             return
         self._client.call(
-            "POST", f"/internal/v1/runtime/sessions/{session_id}/messages", user_id,
+            "POST",
+            f"/internal/v1/runtime/sessions/{session_id}/messages",
+            user_id,
             payload={"role": role, "content": content},
         )
 
     def prepare_regeneration(self, session_id: str, user_id: str | None) -> None:
         self._client.call(
-            "POST", f"/internal/v1/runtime/sessions/{session_id}/prepare-regeneration", user_id,
+            "POST",
+            f"/internal/v1/runtime/sessions/{session_id}/prepare-regeneration",
+            user_id,
         )
 
     def set_pending(
@@ -149,7 +161,9 @@ class RemoteChatSessionStore:
         runtime_path: str | None = None,
     ) -> None:
         self._client.call(
-            "PUT", f"/internal/v1/runtime/sessions/{session_id}/pending", user_id,
+            "PUT",
+            f"/internal/v1/runtime/sessions/{session_id}/pending",
+            user_id,
             payload={
                 "runId": run_id,
                 "threadId": thread_id,
@@ -159,10 +173,15 @@ class RemoteChatSessionStore:
         )
 
     def delete(self, session_id: str, user_id: str | None) -> bool:
-        return self._client.call(
-            "DELETE", f"/internal/v1/runtime/sessions/{session_id}", user_id,
-            allow_not_found=True,
-        ) is not None
+        return (
+            self._client.call(
+                "DELETE",
+                f"/internal/v1/runtime/sessions/{session_id}",
+                user_id,
+                allow_not_found=True,
+            )
+            is not None
+        )
 
 
 class RemoteRunRegistry:
@@ -171,7 +190,9 @@ class RemoteRunRegistry:
 
     def register(self, location: RunLocation) -> None:
         self._client.call(
-            "PUT", f"/internal/v1/runtime/runs/{location.run_id}", location.user_id,
+            "PUT",
+            f"/internal/v1/runtime/runs/{location.run_id}",
+            location.user_id,
             payload={
                 "threadId": location.thread_id,
                 "checkpointId": location.checkpoint_id,
@@ -181,7 +202,9 @@ class RemoteRunRegistry:
 
     def get(self, run_id: str, user_id: str | None = None) -> RunLocation | None:
         data = self._client.call(
-            "GET", f"/internal/v1/runtime/runs/{run_id}", user_id,
+            "GET",
+            f"/internal/v1/runtime/runs/{run_id}",
+            user_id,
             allow_not_found=True,
         )
         if data is None:
@@ -191,7 +214,7 @@ class RemoteRunRegistry:
             thread_id=str(data["threadId"]),
             user_id=str(user_id),
             checkpoint_id=data.get("checkpointId"),
-            runtime_path=str(data.get("runtimePath") or "legacy_root_graph"),
+            runtime_path=str(data.get("runtimePath") or "cognitive_finance"),
         )
 
 
@@ -201,7 +224,9 @@ class RemoteAnalysisHistoryStore:
 
     def save(self, record: AnalysisHistoryRecord) -> None:
         self._client.call(
-            "PUT", f"/internal/v1/runtime/history/{record.history_id}", record.authenticated_user_id,
+            "PUT",
+            f"/internal/v1/runtime/history/{record.history_id}",
+            record.authenticated_user_id,
             payload={
                 "threadId": record.thread_id,
                 "runId": record.run_id,
@@ -213,14 +238,18 @@ class RemoteAnalysisHistoryStore:
 
     def get(self, history_id: str, user_id: str | None = None) -> AnalysisHistoryRecord | None:
         data = self._client.call(
-            "GET", f"/internal/v1/runtime/history/{history_id}", user_id,
+            "GET",
+            f"/internal/v1/runtime/history/{history_id}",
+            user_id,
             allow_not_found=True,
         )
         return _history_record(data) if data is not None else None
 
     def list_by_thread(self, thread_id: str, user_id: str | None) -> list[AnalysisHistoryRecord]:
         data = self._client.call(
-            "GET", "/internal/v1/runtime/history", user_id,
+            "GET",
+            "/internal/v1/runtime/history",
+            user_id,
             query={"thread_id": thread_id},
         )
         if not isinstance(data, list):
@@ -235,7 +264,7 @@ def create_remote_runtime_stores(
     production: bool,
 ) -> tuple[RemoteAnalysisHistoryStore, RemoteRunRegistry, RemoteChatSessionStore]:
     if not base_url:
-        raise ConfigurationError("BDLH_RUNTIME_DATA_MODE=java 需要 JAVA_API_BASE_URL")
+        raise ConfigurationError("远程 Runtime Store 需要 JAVA_API_BASE_URL")
     if production and not internal_token:
         raise ConfigurationError("生产 Java Runtime Data API 需要 JAVA_DATA_INTERNAL_TOKEN")
     client = RuntimeDataClient(base_url=base_url, internal_token=internal_token)
@@ -255,8 +284,7 @@ def _chat_session(data: dict[str, Any], user_id: str | None) -> ChatSession:
         user_id=user_id,
         title=str(data["title"]),
         messages=[
-            ChatMessage(role=str(item["role"]), content=str(item["content"]))
-            for item in data.get("messages", [])
+            ChatMessage(role=str(item["role"]), content=str(item["content"])) for item in data.get("messages", [])
         ],
         pending_run_id=data.get("pendingRunId"),
         pending_thread_id=data.get("pendingThreadId"),
@@ -268,13 +296,15 @@ def _chat_session(data: dict[str, Any], user_id: str | None) -> ChatSession:
 
 def _history_record(data: dict[str, Any]) -> AnalysisHistoryRecord:
     payload = dict(data.get("payload") or {})
-    payload.update({
-        "history_id": data["historyId"],
-        "thread_id": data["threadId"],
-        "run_id": data["runId"],
-        "status": data["status"],
-        "created_at": data["createdAt"],
-    })
+    payload.update(
+        {
+            "history_id": data["historyId"],
+            "thread_id": data["threadId"],
+            "run_id": data["runId"],
+            "status": data["status"],
+            "created_at": data["createdAt"],
+        }
+    )
     return AnalysisHistoryRecord.model_validate(payload)
 
 

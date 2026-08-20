@@ -6,7 +6,7 @@ domain/momentum.py 的算法与 skill Node 版本输出一致（可复现）。
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from bdlh_runtime.domain.momentum import (
     allocate_inverse_volatility,
@@ -15,28 +15,31 @@ from bdlh_runtime.domain.momentum import (
     rank_momentum_universe,
 )
 
-
 # ── 辅助：生成确定性历史K线（对照 quant.test.js makeHistory）──
 
 
-def _make_history(days: int = 260, daily_return: float = 0.001, start: float = 100.0, volatility: float = 0.0) -> list[dict]:
+def _make_history(
+    days: int = 260, daily_return: float = 0.001, start: float = 100.0, volatility: float = 0.0
+) -> list[dict]:
     """生成确定性合成日K线。
 
     对照 quant.test.js makeHistory（L16-32）：偶数日 +volatility，奇数日 -volatility。
     """
     rows: list[dict] = []
     close = start
-    origin = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    origin = datetime(2024, 1, 1, tzinfo=UTC)
     for i in range(days):
         close *= 1 + daily_return + (volatility if i % 2 == 0 else -volatility)
-        rows.append({
-            "date": (origin + timedelta(days=i)).strftime("%Y-%m-%d"),
-            "open": close,
-            "close": close,
-            "high": close,
-            "low": close,
-            "amount": 1e8,
-        })
+        rows.append(
+            {
+                "date": (origin + timedelta(days=i)).strftime("%Y-%m-%d"),
+                "open": close,
+                "close": close,
+                "high": close,
+                "low": close,
+                "amount": 1e8,
+            }
+        )
     return rows
 
 
@@ -70,10 +73,12 @@ def test_volatility_and_ranking_are_deterministic():
     assert vol_fast is not None and vol_steady is not None
     assert vol_fast > vol_steady
 
-    ranking = rank_momentum_universe([
-        {"code": "A", "history": steady},
-        {"code": "B", "history": fast},
-    ])
+    ranking = rank_momentum_universe(
+        [
+            {"code": "A", "history": steady},
+            {"code": "B", "history": fast},
+        ]
+    )
     assert ranking[0]["code"] == "B"  # 快的动量更高，排第一
 
 
@@ -81,16 +86,21 @@ def test_volatility_and_ranking_are_deterministic():
 
 
 def test_inverse_volatility_respects_cap_and_keeps_cash():
-    ranking = rank_momentum_universe([
-        {"code": "A", "history": _make_history(daily_return=0.001, volatility=0.001)},
-        {"code": "B", "history": _make_history(daily_return=0.0012, volatility=0.002)},
-        {"code": "C", "history": _make_history(daily_return=0.0014, volatility=0.003)},
-    ])
-    allocation = allocate_inverse_volatility(ranking, {
-        "select_count": 3,
-        "max_asset_weight": 0.35,
-        "target_annual_volatility": 0.05,
-    })
+    ranking = rank_momentum_universe(
+        [
+            {"code": "A", "history": _make_history(daily_return=0.001, volatility=0.001)},
+            {"code": "B", "history": _make_history(daily_return=0.0012, volatility=0.002)},
+            {"code": "C", "history": _make_history(daily_return=0.0014, volatility=0.003)},
+        ]
+    )
+    allocation = allocate_inverse_volatility(
+        ranking,
+        {
+            "select_count": 3,
+            "max_asset_weight": 0.35,
+            "target_annual_volatility": 0.05,
+        },
+    )
     # 所有权重不超过 max_asset_weight（带浮点容差）
     for w in allocation["weights"].values():
         assert w <= 0.35 + 1e-7

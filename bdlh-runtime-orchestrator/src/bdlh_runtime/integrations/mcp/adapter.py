@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import UTC
 from typing import Any
 from uuid import uuid4
 
@@ -82,10 +83,15 @@ class McpGatewayAdapter:
                 return result
 
         # 两者都失败：写入 known_unavailable 语义（data_quality）
-        logger.warning("能力 %s 主备均不可用 (primary=%s, fallback=%s)", capability, policy.primary.mcp, policy.fallback.mcp if policy.fallback else "none")
+        logger.warning(
+            "能力 %s 主备均不可用 (primary=%s, fallback=%s)",
+            capability,
+            policy.primary.mcp,
+            policy.fallback.mcp if policy.fallback else "none",
+        )
         return _failed_observation(
             capability,
-            f"主备均不可用: primary={policy.primary.mcp}, fallback={policy.fallback.mcp if policy.fallback else 'none'}",
+            f"主备均不可用: primary={policy.primary.mcp}, fallback={policy.fallback.mcp if policy.fallback else 'none'}",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
             run_id,
             known_unavailable=True,
         )
@@ -114,10 +120,7 @@ class McpGatewayAdapter:
                 )
             return name, result
 
-        fetched = await asyncio.gather(*(
-            fetch(name, policy)
-            for name, policy in FINANCIAL_STATEMENT_ROUTES.items()
-        ))
+        fetched = await asyncio.gather(*(fetch(name, policy) for name, policy in FINANCIAL_STATEMENT_ROUTES.items()))
         statements: dict[str, Any] = {}
         provenance: list[ProvenanceRecord] = []
         missing: list[str] = []
@@ -223,12 +226,13 @@ def _provenance(
 
     raw_reference 只保留原始响应的受控引用（截断），不直接进 AnalysisInput。
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     return ProvenanceRecord(
         source=target.mcp,
         tool=target.tool,
         request_id=run_id or None,
-        retrieved_at=datetime.now(timezone.utc).isoformat(),
+        retrieved_at=datetime.now(UTC).isoformat(),
         elapsed_ms=elapsed_ms,
         fallback_used=fallback,
         raw_reference=raw_text[:200] if raw_text else None,

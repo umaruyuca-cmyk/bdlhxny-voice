@@ -28,11 +28,11 @@ def test_in_memory_registry_round_trip() -> None:
     assert registry.get("missing") is None
 
 
-def test_create_run_registry_returns_in_memory_without_dsn() -> None:
-    registry = create_run_registry(environment="development")
+def test_create_run_registry_returns_in_memory_in_test_environment() -> None:
+    registry = create_run_registry(environment="test")
     assert isinstance(registry, InMemoryRunRegistry)
 
 
-def test_create_run_registry_requires_dsn_in_production() -> None:
-    with pytest.raises(ConfigurationError, match="POSTGRES_DSN"):
-        create_run_registry(environment="production", postgres_dsn=None)
+def test_create_run_registry_refuses_non_test_environment() -> None:
+    with pytest.raises(ConfigurationError, match="仅允许测试环境"):
+        create_run_registry(environment="production")

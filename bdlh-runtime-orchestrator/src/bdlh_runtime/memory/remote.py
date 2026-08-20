@@ -31,10 +31,14 @@ class RemoteMemoryStore:
                     json={"user_id": user_id, "query": query[:2000], "top_k": min(max(limit, 1), 10)},
                 )
             response.raise_for_status()
-            return [MemoryRecord(
-                content=str(item["content"]), score=float(item.get("score", 0.0)),
-                metadata=dict(item.get("metadata") or {}),
-            ) for item in response.json()]
+            return [
+                MemoryRecord(
+                    content=str(item["content"]),
+                    score=float(item.get("score", 0.0)),
+                    metadata=dict(item.get("metadata") or {}),
+                )
+                for item in response.json()
+            ]
         except Exception as exc:
             logger.warning("Memory Service search degraded: %s", type(exc).__name__)
             return []

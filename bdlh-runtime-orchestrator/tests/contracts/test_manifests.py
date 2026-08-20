@@ -7,20 +7,19 @@
 from __future__ import annotations
 
 import pytest
+from tests.helpers_registry import build_default_capability_registry
 
-from bdlh_runtime.domains.contracts import DomainOperation
 from bdlh_runtime.domains.finance.contracts import (
     FinancialDomainOutcome,
     FinancialIntent,
 )
 from bdlh_runtime.domains.finance.manifests import build_finance_descriptor
 from bdlh_runtime.domains.registry import DomainRegistry
-from tests.helpers_registry import build_default_capability_registry
 
 # 重写：manifest 从 Registry（库表派生）现算，模块级常量已删
 _registry = build_default_capability_registry()
 FINANCE_DESCRIPTOR = build_finance_descriptor(_registry)
-[STOCK_RESEARCH_MANIFEST, PORTFOLIO_HEALTH_MANIFEST, SUITABILITY_MANIFEST] =     list(FINANCE_DESCRIPTOR.skills)
+[STOCK_RESEARCH_MANIFEST, PORTFOLIO_HEALTH_MANIFEST, SUITABILITY_MANIFEST] = list(FINANCE_DESCRIPTOR.skills)
 
 
 # ── descriptor 声明现状 ─────────────────────────────────────────────────────
@@ -35,12 +34,14 @@ def test_finance_descriptor_declares_current_reality() -> None:
     # 只有 STOCK_RESEARCH 端到端跑通；其余意图被 runtime 门拦住
     assert descriptor.enabled_intents == frozenset({FinancialIntent.STOCK_RESEARCH})
     # supported_intents 覆盖契约层全部 4 个意图
-    assert descriptor.supported_intents == frozenset({
-        FinancialIntent.STOCK_RESEARCH,
-        FinancialIntent.SUITABILITY,
-        FinancialIntent.PORTFOLIO_IMPACT,
-        FinancialIntent.GOAL_PLANNING,
-    })
+    assert descriptor.supported_intents == frozenset(
+        {
+            FinancialIntent.STOCK_RESEARCH,
+            FinancialIntent.SUITABILITY,
+            FinancialIntent.PORTFOLIO_IMPACT,
+            FinancialIntent.GOAL_PLANNING,
+        }
+    )
     assert descriptor.request_contract == "FinancialDomainRequest"
     assert descriptor.outcome_contract == "FinancialDomainOutcome"
 
@@ -71,9 +72,7 @@ def test_finance_descriptor_has_three_skills_with_correct_status() -> None:
 )
 def test_finance_manifests_are_side_effect_free(manifest) -> None:
     """ADR-010 §3：v1 manifest 必须只读，side_effects 为空。"""
-    assert manifest.side_effects == frozenset(), (
-        f"{manifest.skill_id} 声明了 side_effects，违反 v1 只读硬规则"
-    )
+    assert manifest.side_effects == frozenset(), f"{manifest.skill_id} 声明了 side_effects，违反 v1 只读硬规则"
 
 
 # ── 防双源漂移：manifest 能力 vs 授权映射 ─────────────────────────────────
@@ -85,9 +84,6 @@ def test_finance_manifest_capabilities_match_authorization_map() -> None:
     所有 manifest 的 required+optional capabilities 的并集，应等于
     FINANCE_OPERATION_CAPABILITIES 的并集加上域内派生能力（估值重算）。
     """
-    from bdlh_runtime.domains.finance.snapshot_builder import (
-        PORTFOLIO_VALUATION_CAPABILITY,
-    )
 
     # 重写：能力真源是 Registry（capability_operation 表派生）
     expected = frozenset(spec.name for spec in _registry.list())

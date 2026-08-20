@@ -139,9 +139,7 @@ async def run_case(case: dict[str, Any]) -> CaseResult:
 
     banned = [s.lower() for s in (case.get("summary_must_not_contain") or [])]
     blob = " ".join(
-        [bundle.research_summary]
-        + [s.summary for s in bundle.sources]
-        + [f.statement for f in bundle.findings]
+        [bundle.research_summary] + [s.summary for s in bundle.sources] + [f.statement for f in bundle.findings]
     ).lower()
     for token in banned:
         if token in blob:
@@ -172,9 +170,7 @@ async def run_gold_suite(path: Path | None = None) -> tuple[list[CaseResult], di
         "pass_rate": pass_rate,
         "e2e_usable_rate": usable_rate,
     }
-    expect_usable = [r for r, c in zip(results, cases) if c.get("expect_usable")]
+    expect_usable = [r for r, c in zip(results, cases, strict=False) if c.get("expect_usable")]
     if expect_usable:
-        metrics["e2e_usable_rate_on_positive"] = sum(1 for r in expect_usable if r.usable) / len(
-            expect_usable
-        )
+        metrics["e2e_usable_rate_on_positive"] = sum(1 for r in expect_usable if r.usable) / len(expect_usable)
     return results, metrics

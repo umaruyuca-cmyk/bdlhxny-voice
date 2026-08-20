@@ -16,9 +16,7 @@ from .research_rules import (
 
 
 class DefaultPlanGuardrail:
-    def evaluate_plan(
-        self, plan: CognitiveAction, *, context: GuardrailContext
-    ) -> GuardrailResult[CognitiveAction]:
+    def evaluate_plan(self, plan: CognitiveAction, *, context: GuardrailContext) -> GuardrailResult[CognitiveAction]:
         if not context.read_only:
             return _block(
                 GuardrailStage.PLAN,
@@ -53,7 +51,13 @@ class DefaultPlanGuardrail:
                     "领域调用预算超过本轮允许上限",
                 )
             prohibited = (
-                "下单", "买入", "卖出", "调仓", "transfer", "place order", "execute trade",
+                "下单",
+                "买入",
+                "卖出",
+                "调仓",
+                "transfer",
+                "place order",
+                "execute trade",
             )
             objective = request.objective.lower()
             if any(term in objective for term in prohibited):
@@ -129,9 +133,7 @@ class DefaultActionGuardrail:
 
 
 class DefaultDataQualityGuardrail:
-    def evaluate_data_quality(
-        self, observation: Any, *, context: GuardrailContext
-    ) -> GuardrailResult[Any]:
+    def evaluate_data_quality(self, observation: Any, *, context: GuardrailContext) -> GuardrailResult[Any]:
         del context
         data = observation.model_dump(mode="json") if hasattr(observation, "model_dump") else observation
         if not isinstance(data, dict):
@@ -181,7 +183,13 @@ class DefaultDataQualityGuardrail:
 
 class DefaultResponseGuardrail:
     _TRADING_TERMS = (
-        "立即买入", "立即卖出", "下单", "调仓", "保证收益", "稳赚", "guaranteed return",
+        "立即买入",
+        "立即卖出",
+        "下单",
+        "调仓",
+        "保证收益",
+        "稳赚",
+        "guaranteed return",
     )
     _ACCOUNT_LEAK_TERMS = ("完整账户明细", "其他用户持仓", "其他用户账户")
 
@@ -268,9 +276,7 @@ def _allow(stage: GuardrailStage) -> GuardrailResult[Any]:
     return GuardrailResult(stage=stage, decision=GuardrailDecision.ALLOW)
 
 
-def _block(
-    stage: GuardrailStage, code: str, rule_id: str, reason: str
-) -> GuardrailResult[Any]:
+def _block(stage: GuardrailStage, code: str, rule_id: str, reason: str) -> GuardrailResult[Any]:
     return GuardrailResult(
         stage=stage,
         decision=GuardrailDecision.BLOCK,

@@ -10,7 +10,6 @@ from typing import Protocol, TypeVar, runtime_checkable
 
 from .contracts import GuardrailContext, GuardrailResult
 
-
 PlanT = TypeVar("PlanT", contravariant=True)
 PlanReplacementT = TypeVar("PlanReplacementT")
 ActionT = TypeVar("ActionT", contravariant=True)

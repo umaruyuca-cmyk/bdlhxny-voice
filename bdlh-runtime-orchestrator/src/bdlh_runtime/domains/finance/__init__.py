@@ -8,16 +8,21 @@
 - ``EvidenceFact / Finding / EvidenceConflict``（证据与结论，扩展通用契约）。
 """
 
+from .authorization import (
+    ANALYSIS_CAPABILITY,
+    AuthorizationDecision,
+    FinanceCapabilityAuthorizationPolicy,
+)
 from .contracts import (
     AccountSnapshot,
     ConcentrationConflict,
     ConcentrationThreshold,
     EvidenceConflict,
     EvidenceFact,
-    FinancialDomainOutcome,
-    FinancialDomainRequest,
     FinancialDataMode,
     FinancialDataReference,
+    FinancialDomainOutcome,
+    FinancialDomainRequest,
     FinancialGoal,
     FinancialInstrument,
     FinancialIntent,
@@ -32,9 +37,9 @@ from .contracts import (
     InstrumentResolutionRequest,
     LiquidityImpact,
     LiquiditySnapshot,
-    MarketSnapshot,
     MarketRiskProxy,
     MarketRiskProxyThresholds,
+    MarketSnapshot,
     MoneyFlow,
     NewsEvent,
     PortfolioImpact,
@@ -51,34 +56,13 @@ from .contracts import (
     Technicals,
     Valuation,
 )
-from .authorization import (
-    ANALYSIS_CAPABILITY,
-    AuthorizationDecision,
-    FinanceCapabilityAuthorizationPolicy,
-)
-from .planner import FinancePlan, FinancePlanner
 from .instrument_resolver import (
-    FinanceInstrumentResolver,
     RESOLVE_INSTRUMENT_CAPABILITY,
+    FinanceInstrumentResolver,
 )
+from .manifests import build_finance_descriptor
+from .planner import FinancePlan, FinancePlanner
 from .research_builder import StockResearchResultBuilder
-from .snapshot_builder import (
-    FinancialSnapshotBuilder,
-    FinancialSnapshotError,
-    SnapshotIdentityError,
-    UserFinancialObservationNormalizer,
-)
-from .valuation_builder import (
-    PortfolioValuationBuilder,
-    PortfolioValuationError,
-    PortfolioValuationInput,
-)
-from .suitability_preflight import (
-    PENDING_RULE_IDS,
-    PENDING_RULE_SET_VERSION,
-    SuitabilityPreflight,
-    SuitabilityPreflightError,
-)
 from .runtime import (
     ApplicationFinanceCapabilityExecutor,
     FinanceCapabilityExecutor,
@@ -86,7 +70,23 @@ from .runtime import (
     FinanceRuntime,
     create_finance_runtime,
 )
-from .manifests import build_finance_descriptor
+from .snapshot_builder import (
+    FinancialSnapshotBuilder,
+    FinancialSnapshotError,
+    SnapshotIdentityError,
+    UserFinancialObservationNormalizer,
+)
+from .suitability_preflight import (
+    PENDING_RULE_IDS,
+    PENDING_RULE_SET_VERSION,
+    SuitabilityPreflight,
+    SuitabilityPreflightError,
+)
+from .valuation_builder import (
+    PortfolioValuationBuilder,
+    PortfolioValuationError,
+    PortfolioValuationInput,
+)
 
 __all__ = [
     "AccountSnapshot",

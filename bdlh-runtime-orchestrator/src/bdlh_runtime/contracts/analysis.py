@@ -15,6 +15,7 @@ from .observation import DataQuality, ProvenanceRecord
 
 class InstrumentRef(BaseModel):
     """统一标的标识。"""
+
     symbol: str
     name: str | None = None
     market: str = "CN"
@@ -24,6 +25,7 @@ class InstrumentRef(BaseModel):
 
 class AnalysisInput(BaseModel):
     """纯分析输入；只包含已经标准化和带来源的数据。"""
+
     schema_version: str = "analysis-input.v1"
     analysis_id: str
     instrument: InstrumentRef
@@ -43,6 +45,7 @@ class AnalysisInput(BaseModel):
 
 class AnalysisResult(BaseModel):
     """纯分析输出；必须携带限制、质量和溯源信息。"""
+
     schema_version: str = "analysis-result.v1"
     analysis_id: str
     status: Literal["SUCCESS", "PARTIAL", "LIMITED", "FAILED"]

@@ -36,9 +36,7 @@ def _validate_capabilities(snapshot: RegistrySnapshot) -> None:
             raise ConfigurationError(f"registry: capability {cap.name} has no toolset")
         missing = cap.depends_on - known
         if missing:
-            raise ConfigurationError(
-                f"registry: capability {cap.name} depends_on unknown capability {sorted(missing)}"
-            )
+            raise ConfigurationError(f"registry: capability {cap.name} depends_on unknown capability {sorted(missing)}")
         unknown_ops = cap.operations - {op.code for op in snapshot.operations}
         if unknown_ops:
             raise ConfigurationError(
@@ -86,9 +84,7 @@ def _validate_fastpath(snapshot: RegistrySnapshot) -> None:
     names = {route.name for route in snapshot.fastpath_routes}
     allowed = {"chitchat", "knowledge", "forbidden"}
     if names != allowed:
-        raise ConfigurationError(
-            f"registry: fastpath routes must be exactly {sorted(allowed)}, got {sorted(names)}"
-        )
+        raise ConfigurationError(f"registry: fastpath routes must be exactly {sorted(allowed)}, got {sorted(names)}")
     for route in snapshot.fastpath_routes:
         if not route.utterances:
             raise ConfigurationError(f"registry: fastpath route {route.name} has no utterances")
@@ -107,6 +103,5 @@ def _validate_topic_capabilities(snapshot: RegistrySnapshot) -> None:
             raise ConfigurationError(f"registry: unknown topic {record.topic}")
         if record.capability_name not in known_caps:
             raise ConfigurationError(
-                f"registry: topic {record.topic} references disabled/unknown capability "
-                f"{record.capability_name}"
+                f"registry: topic {record.topic} references disabled/unknown capability {record.capability_name}"
             )

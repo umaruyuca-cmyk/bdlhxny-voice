@@ -41,15 +41,9 @@ class SemanticRouter:
         query_vec = self._encoder.encode([query])[0]
         scores: dict[str, float] = {}
         for route in self._routes:
-            scores[route.name] = max(
-                _dot(query_vec, utterance) for utterance in self._index[route.name]
-            )
+            scores[route.name] = max(_dot(query_vec, utterance) for utterance in self._index[route.name])
         # 2. 只保留过自身阈值的候选；都不过则走 Agent。
-        passing = [
-            route
-            for route in self._routes
-            if scores[route.name] >= route.score_threshold
-        ]
+        passing = [route for route in self._routes if scores[route.name] >= route.score_threshold]
         if not passing:
             return None
         winner = max(passing, key=lambda route: scores[route.name])

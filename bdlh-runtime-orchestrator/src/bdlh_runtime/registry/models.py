@@ -6,7 +6,7 @@ Postgres（生产）或由测试注入 ``InMemoryRegistryStore``。
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -136,8 +136,4 @@ class RegistrySnapshot:
         return None
 
     def topic_capabilities_for(self, topic: str) -> list[str]:
-        return sorted(
-            record.capability_name
-            for record in self.topic_capabilities
-            if record.topic == topic
-        )
+        return sorted(record.capability_name for record in self.topic_capabilities if record.topic == topic)

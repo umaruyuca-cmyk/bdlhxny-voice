@@ -39,9 +39,7 @@ class CompressedUnitNotes:
 class DeepResearchModel(Protocol):
     async def write_brief(self, request: DeepResearchRequest) -> str: ...
 
-    async def plan_units(
-        self, request: DeepResearchRequest, *, brief: str
-    ) -> list[ResearchUnitPlan]: ...
+    async def plan_units(self, request: DeepResearchRequest, *, brief: str) -> list[ResearchUnitPlan]: ...
 
     async def next_researcher_turn(
         self,
@@ -76,17 +74,12 @@ class RuleBasedDeepResearchModel:
             f"Criteria: {', '.join(request.success_criteria) or '(none)'}"
         )
 
-    async def plan_units(
-        self, request: DeepResearchRequest, *, brief: str
-    ) -> list[ResearchUnitPlan]:
+    async def plan_units(self, request: DeepResearchRequest, *, brief: str) -> list[ResearchUnitPlan]:
         del brief  # 规则路径不依赖 brief 文本
         limit = request.budget.max_concurrent_research_units
         topics = [t.strip() for t in request.research_topics if t.strip()]
         if topics:
-            return [
-                ResearchUnitPlan(topic=topic, query=f"{request.question} — {topic}")
-                for topic in topics[:limit]
-            ]
+            return [ResearchUnitPlan(topic=topic, query=f"{request.question} — {topic}") for topic in topics[:limit]]
         criteria = [c.strip() for c in request.success_criteria if c.strip()]
         if len(criteria) >= 2:
             return [
@@ -132,11 +125,7 @@ class RuleBasedDeepResearchModel:
     ) -> CompressedUnitNotes:
         del request
         statements = tuple(s.strip() for s in snippets if s and s.strip())[:8]
-        summary = (
-            f"[{unit_topic}] " + " | ".join(statements[:3])
-            if statements
-            else f"[{unit_topic}] no snippets"
-        )
+        summary = f"[{unit_topic}] " + " | ".join(statements[:3]) if statements else f"[{unit_topic}] no snippets"
         return CompressedUnitNotes(summary=summary, finding_statements=statements)
 
 
@@ -161,9 +150,7 @@ class LangchainDeepResearchModel:
             return text.strip()
         return await self._fallback.write_brief(request)
 
-    async def plan_units(
-        self, request: DeepResearchRequest, *, brief: str
-    ) -> list[ResearchUnitPlan]:
+    async def plan_units(self, request: DeepResearchRequest, *, brief: str) -> list[ResearchUnitPlan]:
         limit = request.budget.max_concurrent_research_units
         prompt = (
             "根据 brief 拆出研究单元。只输出 JSON 数组，元素含 topic,query 字段，"
@@ -240,9 +227,7 @@ class LangchainDeepResearchModel:
         notes = _parse_compress(text)
         if notes is not None:
             return notes
-        return await self._fallback.compress_unit(
-            request, unit_topic=unit_topic, snippets=snippets
-        )
+        return await self._fallback.compress_unit(request, unit_topic=unit_topic, snippets=snippets)
 
     async def _ainvoke_text(self, prompt: str) -> str | None:
         try:

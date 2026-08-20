@@ -55,13 +55,10 @@ class SseMcpClient:
         from mcp.client.session import ClientSession
         from mcp.client.sse import sse_client
 
-        async with sse_client(url=self._endpoint) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), timeout=self._timeout)
-                result = await asyncio.wait_for(
-                    session.call_tool(tool_name, arguments), timeout=self._timeout
-                )
-                return _extract_result(result)
+        async with sse_client(url=self._endpoint) as (read, write), ClientSession(read, write) as session:
+            await asyncio.wait_for(session.initialize(), timeout=self._timeout)
+            result = await asyncio.wait_for(session.call_tool(tool_name, arguments), timeout=self._timeout)
+            return _extract_result(result)
 
 
 class StreamableHttpMcpClient:
@@ -94,16 +91,14 @@ class StreamableHttpMcpClient:
         # 注意：streamable_http_client 返回 2 元组 (read, write)，不是 3 元组
         # 鉴权 headers 必须经自定义 httpx2.AsyncClient 注入（SDK 不直接收 headers）
         timeout = httpx2.Timeout(self._timeout)
-        async with httpx2.AsyncClient(headers=self._headers or None, timeout=timeout) as http_client:
-            async with streamable_http_client(
-                url=self._endpoint, http_client=http_client
-            ) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await asyncio.wait_for(session.initialize(), timeout=self._timeout)
-                    result = await asyncio.wait_for(
-                        session.call_tool(tool_name, arguments), timeout=self._timeout
-                    )
-                    return _extract_result(result)
+        async with (
+            httpx2.AsyncClient(headers=self._headers or None, timeout=timeout) as http_client,
+            streamable_http_client(url=self._endpoint, http_client=http_client) as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await asyncio.wait_for(session.initialize(), timeout=self._timeout)
+            result = await asyncio.wait_for(session.call_tool(tool_name, arguments), timeout=self._timeout)
+            return _extract_result(result)
 
 
 def _extract_result(result: Any) -> dict[str, Any]:

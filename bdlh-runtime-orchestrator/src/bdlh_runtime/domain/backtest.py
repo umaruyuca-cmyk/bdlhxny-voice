@@ -34,8 +34,8 @@ class BacktestResult:
     annualized_return: float | None
     sharpe: float | None
     max_drawdown: float | None
-    win_rate: float | None          # 盈利交易日占比
-    trade_count: int                # 换仓次数
+    win_rate: float | None  # 盈利交易日占比
+    trade_count: int  # 换仓次数
     equity_curve: list[float] = field(default_factory=list)  # 逐日权益
     # 指标参数和版本，供溯源
     params: dict[str, Any] = field(default_factory=dict)
@@ -86,7 +86,6 @@ def run_backtest(
     position = 0.0
     trade_count = 0
     daily_returns: list[float] = []
-    prev_equity = initial_capital
 
     for i in range(len(closes)):
         new_position = float(signals[i])
@@ -96,19 +95,18 @@ def run_backtest(
                 trade_count += 1
             position = new_position
             # 交易成本按换仓金额比例扣除（首日建仓也扣成本）
-            equity *= (1.0 - cost_bps / 10000.0)
+            equity *= 1.0 - cost_bps / 10000.0
 
         # 当日收益 = 持仓比例 × 当日价格变动
         if i > 0:
             price_return = closes[i] / closes[i - 1] - 1.0
             daily_return = position * price_return
-            equity *= (1.0 + daily_return)
+            equity *= 1.0 + daily_return
             daily_returns.append(daily_return)
         else:
             daily_returns.append(0.0)
 
         equity_curve.append(equity)
-        prev_equity = equity
 
     # ── 统计指标 ──
     total_return = equity / initial_capital - 1.0
@@ -156,7 +154,4 @@ def compare_strategies(
     返回 {策略名: to_dict() 结果}。buy_and_hold 作为基准对比。
     """
 
-    return {
-        s.name: run_backtest(closes, s, initial_capital=initial_capital).to_dict()
-        for s in strategies
-    }
+    return {s.name: run_backtest(closes, s, initial_capital=initial_capital).to_dict() for s in strategies}

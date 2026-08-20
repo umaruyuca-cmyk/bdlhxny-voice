@@ -46,9 +46,7 @@ class FinancePlan:
 
     @property
     def capabilities(self) -> tuple[str, ...]:
-        return tuple(item.capability for item in self.data_requirements) + (
-            self.analysis_capability,
-        )
+        return tuple(item.capability for item in self.data_requirements) + (self.analysis_capability,)
 
 
 class FinancePlanner:
@@ -70,21 +68,15 @@ class FinancePlanner:
             for capability in self._topic_capabilities.get(topic, []):
                 if capability not in baseline and capability not in optional:
                     optional.append(capability)
-        if (request.financial_intent == FinancialIntent.SUITABILITY
-                or request.requires_financial_snapshot):
+        if request.financial_intent == FinancialIntent.SUITABILITY or request.requires_financial_snapshot:
             baseline.extend(_SNAPSHOT_CAPABILITIES)
-        if (request.financial_intent == FinancialIntent.SUITABILITY
-                or request.requires_financial_snapshot):
-            names.extend(_SNAPSHOT_CAPABILITIES)
 
         requirements = tuple(
             DataRequirement(
                 requirement_id=f"cap-{index}-{name.replace('.', '-')}",
                 capability=name,
                 required=name in baseline,
-                reason="Finance research panel"
-                if name in baseline
-                else f"Requested topic attachment: {name}",
+                reason="Finance research panel" if name in baseline else f"Requested topic attachment: {name}",
                 arguments=self._arguments(name, request),
             )
             for index, name in enumerate(dict.fromkeys(baseline + optional))
@@ -93,7 +85,7 @@ class FinancePlanner:
 
     @staticmethod
     def _arguments(name: str, request: FinancialDomainRequest) -> dict:
-        if name == _QUOTE_CAPABILITY or name == _RESOLVE_CAPABILITY:
+        if name in (_QUOTE_CAPABILITY, _RESOLVE_CAPABILITY):
             return {"symbol": request.instruments[0].symbol}
         if name == "market.get_historical_prices":
             return {"symbol": request.instruments[0].symbol, "lookback_days": 120}

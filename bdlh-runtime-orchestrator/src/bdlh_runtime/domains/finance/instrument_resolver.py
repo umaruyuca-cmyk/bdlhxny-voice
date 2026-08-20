@@ -22,7 +22,6 @@ from .contracts import (
     InstrumentResolutionRequest,
 )
 
-
 RESOLVE_INSTRUMENT_CAPABILITY = "market.resolve_instrument"
 
 
@@ -44,15 +43,21 @@ class FinanceInstrumentResolver:
         self._authorization = authorization
         self._executor = executor
 
-    async def resolve(
-        self, request: InstrumentResolutionRequest
-    ) -> InstrumentResolutionOutcome:
+    async def resolve(self, request: InstrumentResolutionRequest) -> InstrumentResolutionOutcome:
         if not self._registry.contains(RESOLVE_INSTRUMENT_CAPABILITY):
-            return self._unavailable(request, "RESOLVER_CAPABILITY_UNAVAILABLE", "The controlled instrument resolver is not registered")
+            return self._unavailable(
+                request, "RESOLVER_CAPABILITY_UNAVAILABLE", "The controlled instrument resolver is not registered"
+            )
         if not self._authorization.is_allowed(RESOLVE_INSTRUMENT_CAPABILITY, request.authorized_operations):
-            return self._unavailable(request, "REQUIRED_CAPABILITY_NOT_AUTHORIZED", "Instrument resolution requires READ_MARKET_DATA authorization")
+            return self._unavailable(
+                request,
+                "REQUIRED_CAPABILITY_NOT_AUTHORIZED",
+                "Instrument resolution requires READ_MARKET_DATA authorization",
+            )
         if request.budget.tool_call_limit < 1:
-            return self._unavailable(request, "BUDGET_EXHAUSTED", "Instrument resolution requires one tool-call budget unit")
+            return self._unavailable(
+                request, "BUDGET_EXHAUSTED", "Instrument resolution requires one tool-call budget unit"
+            )
 
         try:
             async with asyncio.timeout(request.budget.runtime_seconds):
@@ -62,16 +67,32 @@ class FinanceInstrumentResolver:
                     request_id=request.request_id,
                 )
         except TimeoutError:
-            return self._unavailable(request, "RUNTIME_BUDGET_EXHAUSTED", "Instrument resolution exceeded its runtime budget", retryable=True)
+            return self._unavailable(
+                request, "RUNTIME_BUDGET_EXHAUSTED", "Instrument resolution exceeded its runtime budget", retryable=True
+            )
         except Exception as exc:
-            return self._unavailable(request, "INSTRUMENT_RESOLUTION_FAILED", f"Instrument resolver failed: {type(exc).__name__}", retryable=True)
+            return self._unavailable(
+                request,
+                "INSTRUMENT_RESOLUTION_FAILED",
+                f"Instrument resolver failed: {type(exc).__name__}",
+                retryable=True,
+            )
 
         if not isinstance(observation, Observation):
-            return self._unavailable(request, "CAPABILITY_CONTRACT_VIOLATION", "Instrument resolver did not return an Observation")
+            return self._unavailable(
+                request, "CAPABILITY_CONTRACT_VIOLATION", "Instrument resolver did not return an Observation"
+            )
         if observation.capability != RESOLVE_INSTRUMENT_CAPABILITY:
-            return self._unavailable(request, "CAPABILITY_CONTRACT_VIOLATION", "Instrument resolver response identity mismatch")
+            return self._unavailable(
+                request, "CAPABILITY_CONTRACT_VIOLATION", "Instrument resolver response identity mismatch"
+            )
         if observation.status in {"FAILED", "UNAVAILABLE"}:
-            return self._unavailable(request, observation.error_code or "RESOLVER_UNAVAILABLE", observation.error_message or "Instrument resolver is unavailable", retryable=True)
+            return self._unavailable(
+                request,
+                observation.error_code or "RESOLVER_UNAVAILABLE",
+                observation.error_message or "Instrument resolver is unavailable",
+                retryable=True,
+            )
         if _is_non_production_observation(observation):
             return self._unavailable(
                 request,
@@ -86,13 +107,19 @@ class FinanceInstrumentResolver:
                 domain="finance",
                 status="WAITING_USER",
                 resolution_status="NOT_FOUND",
-                confidence=ConfidenceAssessment(level="LOW", reasons=["No source-validated instrument matched the mention"], coverage_status="LIMITED"),
+                confidence=ConfidenceAssessment(
+                    level="LOW",
+                    reasons=["No source-validated instrument matched the mention"],
+                    coverage_status="LIMITED",
+                ),
                 limitations=["No source-validated instrument candidate was returned"],
-                required_user_decisions=[RequiredUserDecision(
-                    decision_id="instrument_identity",
-                    question="未能验证该证券标的。请补充公司全称、市场或证券代码。",
-                    reason="研究前必须唯一确定证券身份",
-                )],
+                required_user_decisions=[
+                    RequiredUserDecision(
+                        decision_id="instrument_identity",
+                        question="未能验证该证券标的。请补充公司全称、市场或证券代码。",
+                        reason="研究前必须唯一确定证券身份",
+                    )
+                ],
             )
 
         exact = [item for item in candidates if item.match_type != "FUZZY"]
@@ -104,7 +131,11 @@ class FinanceInstrumentResolver:
                 resolution_status="RESOLVED",
                 selected=candidates[0],
                 candidates=candidates,
-                confidence=ConfidenceAssessment(level="HIGH", reasons=["A single exact candidate was validated by the market resolver"], coverage_status="COMPLETE"),
+                confidence=ConfidenceAssessment(
+                    level="HIGH",
+                    reasons=["A single exact candidate was validated by the market resolver"],
+                    coverage_status="COMPLETE",
+                ),
             )
         return InstrumentResolutionOutcome(
             request_id=request.request_id,
@@ -112,22 +143,29 @@ class FinanceInstrumentResolver:
             status="WAITING_USER",
             resolution_status="AMBIGUOUS",
             candidates=candidates,
-            confidence=ConfidenceAssessment(level="LOW", reasons=["More than one candidate or only fuzzy matches were returned"], coverage_status="PARTIAL"),
+            confidence=ConfidenceAssessment(
+                level="LOW",
+                reasons=["More than one candidate or only fuzzy matches were returned"],
+                coverage_status="PARTIAL",
+            ),
             limitations=["User confirmation is required before research can continue"],
-            required_user_decisions=[RequiredUserDecision(
-                decision_id="instrument_candidate",
-                question="找到多个可能的证券标的，请选择一个：" + "；".join(
-                    f"{item.instrument.name or item.canonical_symbol}（{item.canonical_symbol}，{item.exchange}）"
-                    for item in candidates
-                ),
-                reason="多个候选均可能匹配当前提及",
-                allowed_choices=[
-                    f"{item.canonical_symbol}@{item.exchange}" for item in candidates
-                ],
-            )],
+            required_user_decisions=[
+                RequiredUserDecision(
+                    decision_id="instrument_candidate",
+                    question="找到多个可能的证券标的，请选择一个："
+                    + "；".join(
+                        f"{item.instrument.name or item.canonical_symbol}（{item.canonical_symbol}，{item.exchange}）"
+                        for item in candidates
+                    ),
+                    reason="多个候选均可能匹配当前提及",
+                    allowed_choices=[f"{item.canonical_symbol}@{item.exchange}" for item in candidates],
+                )
+            ],
         )
 
-    def _candidates(self, mention: InstrumentMention, observation: Observation, request: InstrumentResolutionRequest) -> list[InstrumentCandidate]:
+    def _candidates(
+        self, mention: InstrumentMention, observation: Observation, request: InstrumentResolutionRequest
+    ) -> list[InstrumentCandidate]:
         source_refs = [f"{item.source}:{item.tool}" for item in observation.provenance]
         result: list[InstrumentCandidate] = []
         seen: set[tuple[str, str]] = set()
@@ -146,7 +184,9 @@ class FinanceInstrumentResolver:
         return result[: request.max_candidates]
 
     @staticmethod
-    def _unavailable(request: InstrumentResolutionRequest, code: str, message: str, *, retryable: bool = False) -> InstrumentResolutionOutcome:
+    def _unavailable(
+        request: InstrumentResolutionRequest, code: str, message: str, *, retryable: bool = False
+    ) -> InstrumentResolutionOutcome:
         return InstrumentResolutionOutcome(
             request_id=request.request_id,
             domain="finance",
@@ -160,12 +200,8 @@ class FinanceInstrumentResolver:
 
 def _is_non_production_observation(observation: Observation) -> bool:
     markers = {
-        str(observation.data.get("data_mode") or "").upper()
-        if isinstance(observation.data, dict)
-        else "",
-        str(observation.data.get("source_type") or "").upper()
-        if isinstance(observation.data, dict)
-        else "",
+        str(observation.data.get("data_mode") or "").upper() if isinstance(observation.data, dict) else "",
+        str(observation.data.get("source_type") or "").upper() if isinstance(observation.data, dict) else "",
         str(getattr(observation, "data_mode", "") or "").upper(),
     }
     if markers & {"MOCK", "TEST_FIXTURE"}:
@@ -200,7 +236,9 @@ def _infer_cn_exchange(symbol: str) -> str | None:
     return None
 
 
-def _candidate_from_raw(raw: dict[str, Any], mention: InstrumentMention, default_source_refs: list[str]) -> InstrumentCandidate | None:
+def _candidate_from_raw(
+    raw: dict[str, Any], mention: InstrumentMention, default_source_refs: list[str]
+) -> InstrumentCandidate | None:
     symbol = raw.get("canonical_symbol") or raw.get("symbol") or raw.get("code")
     if not isinstance(symbol, str) or not symbol.strip():
         return None
@@ -215,7 +253,9 @@ def _candidate_from_raw(raw: dict[str, Any], mention: InstrumentMention, default
     refs = raw.get("source_refs", default_source_refs)
     if not isinstance(refs, list) or not refs or not all(isinstance(item, str) and item for item in refs):
         return None
-    inferred_match = {"CODE": "EXACT_CODE", "NAME": "EXACT_NAME", "ALIAS": "EXACT_ALIAS", "REFERENCE": "FUZZY"}[mention.mention_type]
+    inferred_match = {"CODE": "EXACT_CODE", "NAME": "EXACT_NAME", "ALIAS": "EXACT_ALIAS", "REFERENCE": "FUZZY"}[
+        mention.mention_type
+    ]
     match_type = raw.get("match_type")
     if match_type not in {"EXACT_CODE", "EXACT_NAME", "EXACT_ALIAS", "FUZZY"}:
         match_type = inferred_match

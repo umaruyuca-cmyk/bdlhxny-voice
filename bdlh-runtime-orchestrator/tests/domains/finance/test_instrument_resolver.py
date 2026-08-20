@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from tests.helpers_registry import build_default_capability_registry
 
 from bdlh_runtime.contracts.observation import DataQuality, Observation, ProvenanceRecord
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation
@@ -12,7 +13,6 @@ from bdlh_runtime.domains.finance.contracts import (
     InstrumentResolutionRequest,
 )
 from bdlh_runtime.domains.finance.instrument_resolver import FinanceInstrumentResolver
-from tests.helpers_registry import build_default_capability_registry
 
 
 class ResolverExecutor:
@@ -29,11 +29,15 @@ class ResolverExecutor:
             status=self.status,  # type: ignore[arg-type]
             data=self.data,
             data_quality=DataQuality(completeness=1.0, quality_status="OK"),
-            provenance=[ProvenanceRecord(source="market-master", tool=capability, retrieved_at="2026-08-11T10:00:00+08:00")],
+            provenance=[
+                ProvenanceRecord(source="market-master", tool=capability, retrieved_at="2026-08-11T10:00:00+08:00")
+            ],
         )
 
 
-def request(*, mention_type: str = "NAME", operations: set[DomainOperation] | None = None) -> InstrumentResolutionRequest:
+def request(
+    *, mention_type: str = "NAME", operations: set[DomainOperation] | None = None
+) -> InstrumentResolutionRequest:
     return InstrumentResolutionRequest(
         request_id="resolution-1",
         authenticated_user_id="user-1",
@@ -59,7 +63,9 @@ def resolver(data: Any, *, status: str = "SUCCESS") -> tuple[FinanceInstrumentRe
 
 @pytest.mark.asyncio
 async def test_resolves_a_single_source_validated_exact_name() -> None:
-    service, executor = resolver({"symbol": "600519", "name": "贵州茅台", "exchange": "SSE", "match_type": "EXACT_NAME"})
+    service, executor = resolver(
+        {"symbol": "600519", "name": "贵州茅台", "exchange": "SSE", "match_type": "EXACT_NAME"}
+    )
 
     outcome = await service.resolve(request())
 
@@ -72,10 +78,14 @@ async def test_resolves_a_single_source_validated_exact_name() -> None:
 
 @pytest.mark.asyncio
 async def test_returns_ambiguous_for_multiple_or_fuzzy_candidates() -> None:
-    service, _ = resolver({"candidates": [
-        {"symbol": "000001", "name": "平安银行", "exchange": "SZSE", "match_type": "EXACT_NAME"},
-        {"symbol": "601318", "name": "中国平安", "exchange": "SSE", "match_type": "EXACT_NAME"},
-    ]})
+    service, _ = resolver(
+        {
+            "candidates": [
+                {"symbol": "000001", "name": "平安银行", "exchange": "SZSE", "match_type": "EXACT_NAME"},
+                {"symbol": "601318", "name": "中国平安", "exchange": "SSE", "match_type": "EXACT_NAME"},
+            ]
+        }
+    )
 
     outcome = await service.resolve(request())
 

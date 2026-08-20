@@ -53,25 +53,15 @@ def backfill_criteria(
         criteria = []
         for criterion in goal.success_criteria:
             if criterion.topic is not None:
-                topic_caps = [
-                    name
-                    for name in snapshot.topic_capabilities_for(criterion.topic)
-                    if name in allowed_set
-                ]
+                topic_caps = [name for name in snapshot.topic_capabilities_for(criterion.topic) if name in allowed_set]
                 candidate = sorted(topic_caps)
             elif goal.needs_account:
-                candidate = sorted(
-                    name for name in allowed_set if name.startswith(_ACCOUNT_PREFIX)
-                )
+                candidate = sorted(name for name in allowed_set if name.startswith(_ACCOUNT_PREFIX))
             elif goal.needs_profile:
-                candidate = sorted(
-                    name for name in allowed_set if name.startswith(_PROFILE_PREFIX)
-                )
+                candidate = sorted(name for name in allowed_set if name.startswith(_PROFILE_PREFIX))
             else:
                 candidate = []
-            criteria.append(
-                criterion.model_copy(update={"candidate_capabilities": candidate})
-            )
+            criteria.append(criterion.model_copy(update={"candidate_capabilities": candidate}))
         updated.append(goal.model_copy(update={"success_criteria": criteria}))
     return updated
 
@@ -90,9 +80,7 @@ def evaluate_goals(
     updated: list[GoalSpec] = []
     for goal in goals:
         status, refs = _evaluate_one(goal, usable, allowed_set, snapshot, rule_based_fallback)
-        updated.append(
-            goal.model_copy(update={"status": status, "observation_refs": refs})
-        )
+        updated.append(goal.model_copy(update={"status": status, "observation_refs": refs}))
     return updated
 
 
@@ -137,11 +125,7 @@ def _evaluate_one(
             all_refs.extend(covered_refs)
         else:
             # 分支 3：无 topic → 需要非纯 resolve 的业务数据 Observation
-            business = [
-                name
-                for name in usable
-                if name not in RESOLVE_CAPABILITIES
-            ]
+            business = [name for name in usable if name not in RESOLVE_CAPABILITIES]
             if business:
                 for name in business:
                     all_refs.extend(usable[name])

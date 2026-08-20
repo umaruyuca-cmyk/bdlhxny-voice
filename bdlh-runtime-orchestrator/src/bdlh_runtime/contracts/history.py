@@ -9,7 +9,7 @@ Analysis History 与 Conversation State / Checkpointer / Long-term Memory 严格
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -32,5 +32,5 @@ class AnalysisHistoryRecord(BaseModel):
     analysis_result: dict[str, Any] | None = None
     source_timestamps: list[str] = Field(default_factory=list)
     status: Literal["SUCCESS", "PARTIAL", "LIMITED", "FAILED", "RUNNING"] = "RUNNING"
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     retention_policy: str = "default"

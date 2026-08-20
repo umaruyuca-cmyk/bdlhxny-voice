@@ -40,10 +40,7 @@ def _finite_rows(history: list[dict]) -> list[dict]:
 
     对照 skill quant.js finiteRows（L49-54）。
     """
-    rows = [
-        row for row in history
-        if row.get("date") and _is_finite_positive(row.get("close"))
-    ]
+    rows = [row for row in history if row.get("date") and _is_finite_positive(row.get("close"))]
     return sorted(rows, key=lambda r: str(r["date"]))
 
 
@@ -61,7 +58,7 @@ def _sample_std(values: list[float]) -> float | None:
         return None
     avg = sum(values) / len(values)
     variance = sum((v - avg) ** 2 for v in values) / (len(values) - 1)
-    return variance ** 0.5
+    return variance**0.5
 
 
 def calculate_momentum(history: list[dict], lookback: int) -> float | None:
@@ -96,10 +93,10 @@ def _annualized_volatility_from_rows(
     """
     if len(rows) <= period:
         return None
-    closes = [r["close"] for r in rows[-(period + 1):]]
+    closes = [r["close"] for r in rows[-(period + 1) :]]
     returns = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))]
     daily_vol = _sample_std(returns)
-    return daily_vol * (annual_trading_days ** 0.5) if daily_vol is not None else None
+    return daily_vol * (annual_trading_days**0.5) if daily_vol is not None else None
 
 
 def _moving_average(values: list[float], period: int) -> list[float | None]:
@@ -109,7 +106,7 @@ def _moving_average(values: list[float], period: int) -> list[float | None]:
         if i + 1 < period:
             result.append(None)
         else:
-            window = values[i + 1 - period: i + 1]
+            window = values[i + 1 - period : i + 1]
             result.append(sum(window) / period)
     return result
 
@@ -150,9 +147,7 @@ def calculate_quant_features(history: list[dict], config: dict | None = None) ->
     trend_ma = trend_ma_list[-1] if trend_ma_list else None
 
     momentum = {lb: calculate_momentum(rows, lb) for lb in settings["lookbacks"]}
-    volatility = _annualized_volatility_from_rows(
-        rows, settings["volatility_period"], settings["annual_trading_days"]
-    )
+    volatility = _annualized_volatility_from_rows(rows, settings["volatility_period"], settings["annual_trading_days"])
 
     complete = (
         latest is not None
@@ -194,10 +189,7 @@ def rank_momentum_universe(assets: list[dict], config: dict | None = None) -> li
         for a in assets
     ]
 
-    z_by_lookback = {
-        lb: _z_scores([e["features"]["momentum"][lb] for e in evaluated])
-        for lb in settings["lookbacks"]
-    }
+    z_by_lookback = {lb: _z_scores([e["features"]["momentum"][lb] for e in evaluated]) for lb in settings["lookbacks"]}
 
     ranked = []
     for i, asset in enumerate(evaluated):
@@ -212,9 +204,7 @@ def rank_momentum_universe(assets: list[dict], config: dict | None = None) -> li
     return ranked
 
 
-def allocate_inverse_volatility(
-    ranked_assets: list[dict], config: dict | None = None
-) -> dict:
+def allocate_inverse_volatility(ranked_assets: list[dict], config: dict | None = None) -> dict:
     """逆波动率配置（带单品种上限和目标波动率缩放）。
 
     对照 quant.js allocateInverseVolatility（L150-189）。
@@ -225,7 +215,8 @@ def allocate_inverse_volatility(
     """
     settings = {**DEFAULT_QUANT_CONFIG, **(config or {})}
     selected = [
-        a for a in ranked_assets
+        a
+        for a in ranked_assets
         if a["features"]["complete"]
         and a["features"]["trend_eligible"]
         and a["score"] is not None
@@ -243,22 +234,16 @@ def allocate_inverse_volatility(
     for _ in range(len(selected)):
         capped = [min(w, settings["max_asset_weight"]) for w in base_weights]
         remaining = 1.0 - sum(capped)
-        uncapped = [base_weights[i] if capped[i] < settings["max_asset_weight"] else 0.0
-                    for i in range(len(selected))]
+        uncapped = [base_weights[i] if capped[i] < settings["max_asset_weight"] else 0.0 for i in range(len(selected))]
         uncapped_sum = sum(uncapped)
         base_weights = [
-            w + remaining * uncapped[i] / uncapped_sum if uncapped_sum > 0 else w
-            for i, w in enumerate(capped)
+            w + remaining * uncapped[i] / uncapped_sum if uncapped_sum > 0 else w for i, w in enumerate(capped)
         ]
 
     estimated_vol = (
-        sum((base_weights[i] * selected[i]["features"]["annualized_volatility"]) ** 2
-            for i in range(len(selected)))
+        sum((base_weights[i] * selected[i]["features"]["annualized_volatility"]) ** 2 for i in range(len(selected)))
     ) ** 0.5
-    exposure_scale = (
-        min(1.0, settings["target_annual_volatility"] / estimated_vol)
-        if estimated_vol > 0 else 0.0
-    )
+    exposure_scale = min(1.0, settings["target_annual_volatility"] / estimated_vol) if estimated_vol > 0 else 0.0
     weights = {selected[i]["code"]: base_weights[i] * exposure_scale for i in range(len(selected))}
     invested = sum(weights.values())
     return {
@@ -283,9 +268,7 @@ def evaluate_market_regime(history: list[dict], config: dict | None = None) -> d
     regime_ma_list = _moving_average(closes, settings["regime_ma_period"])
     regime_ma = regime_ma_list[-1] if regime_ma_list else None
 
-    current_vol = _annualized_volatility_from_rows(
-        rows, settings["volatility_period"], settings["annual_trading_days"]
-    )
+    current_vol = _annualized_volatility_from_rows(rows, settings["volatility_period"], settings["annual_trading_days"])
 
     # 滚动计算历史波动率分位（对照 quant.js L201-216）
     vol_samples = []
@@ -294,9 +277,7 @@ def evaluate_market_regime(history: list[dict], config: dict | None = None) -> d
         len(rows) - settings["regime_volatility_lookback"],
     )
     for end in range(sample_start, len(rows) + 1):
-        v = _annualized_volatility_from_rows(
-            rows[:end], settings["volatility_period"], settings["annual_trading_days"]
-        )
+        v = _annualized_volatility_from_rows(rows[:end], settings["volatility_period"], settings["annual_trading_days"])
         if v is not None:
             vol_samples.append(v)
 
@@ -311,9 +292,7 @@ def evaluate_market_regime(history: list[dict], config: dict | None = None) -> d
         and vol_percentile is not None
     )
     eligible = bool(
-        complete
-        and rows[-1]["close"] > regime_ma
-        and vol_percentile <= settings["regime_max_volatility_percentile"]
+        complete and rows[-1]["close"] > regime_ma and vol_percentile <= settings["regime_max_volatility_percentile"]
     )
 
     return {

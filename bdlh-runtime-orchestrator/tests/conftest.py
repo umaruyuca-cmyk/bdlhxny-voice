@@ -1,14 +1,14 @@
-"""测试共享 fixture：注册表快照（与 seed.sql 行语义一致）。
+"""测试共享 fixture：注册表快照（与种子迁移行语义一致）。
 
-生产目录真源是 Postgres；无 PG 的单测统一注入该快照
-（重写 §6.2：单测用 InMemoryRegistryStore 插入与种子相同的行，
-禁止内存默认兜底进入生产路径）。
+生产目录真源是 Java Data Plane（根目录 `db/postgresql/seed/registry.sql`）；
+无 PG 的单测统一注入该快照（重写 §6.2：单测用 InMemoryRegistryStore
+插入与种子相同的行，禁止内存默认兜底进入生产路径）。
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:

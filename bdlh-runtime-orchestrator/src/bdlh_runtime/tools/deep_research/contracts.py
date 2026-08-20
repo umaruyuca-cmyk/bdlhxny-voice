@@ -6,8 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-DEEP_SEARCH_CAPABILITY = "research.deep_search"
-WEB_SEARCH_CAPABILITY = "research.web_search"
+from bdlh_runtime.contracts.capability_ids import DEEP_SEARCH_CAPABILITY, WEB_SEARCH_CAPABILITY
+
+# 稳定 capability 名的兼容再导出：真源在 contracts.capability_ids。
+__all__ = ["DEEP_SEARCH_CAPABILITY", "WEB_SEARCH_CAPABILITY"]
 
 ResearchBundleStatus = Literal[
     "COMPLETE",

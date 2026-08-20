@@ -17,8 +17,8 @@ from bdlh_runtime.cognitive.contracts import (
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainOutcome
 
 from .contracts import (
-    FinancialDomainRequest,
     FinancialDomainOutcome,
+    FinancialDomainRequest,
     FinancialInstrument,
     FinancialIntent,
     InstrumentCandidate,
@@ -27,18 +27,19 @@ from .contracts import (
     InstrumentResolutionRequest,
 )
 
-
 _CODE_PATTERN = re.compile(r"(?<!\d)(?P<code>\d{6})(?!\d)")
 _REFERENCE_PATTERN = re.compile(r"(?:它|这只|该股|刚才那只|刚才的|上面那只)")
 _KNOWLEDGE_PATTERN = re.compile(r"(?:什么是|解释一下|是什么意思|有何区别|怎么算|如何理解)")
-_RESEARCH_PATTERN = re.compile(
-    r"(?:今天|现在|走势|行情|表现|怎么样|估值|基本面|技术面|分析|研究|跌了|涨了|价格)"
-)
+_RESEARCH_PATTERN = re.compile(r"(?:今天|现在|走势|行情|表现|怎么样|估值|基本面|技术面|分析|研究|跌了|涨了|价格)")
 _FOLLOWUP_PATTERN = re.compile(
     r"^(?:今天|现在|走势|行情|估值|基本面|技术面|表现|价格)?(?:呢|怎么样|如何|跌了多少|涨了多少)$"
 )
 _MARKET_HINTS = {
-    "A股": "CN", "沪市": "CN", "深市": "CN", "港股": "HK", "美股": "US",
+    "A股": "CN",
+    "沪市": "CN",
+    "深市": "CN",
+    "港股": "HK",
+    "美股": "US",
 }
 _EXCHANGE_HINTS = {"上交所": "SSE", "深交所": "SZSE", "港交所": "HKEX"}
 
@@ -95,14 +96,10 @@ class InMemoryVerifiedEntityStore:
             return None
         return entity
 
-    def put_candidates(
-        self, event: InputEvent, candidates: list[InstrumentCandidate]
-    ) -> None:
+    def put_candidates(self, event: InputEvent, candidates: list[InstrumentCandidate]) -> None:
         self._pending[(event.user_id, event.session_id)] = tuple(candidates[:5])
 
-    def select_candidate(
-        self, event: InputEvent, message: str
-    ) -> InstrumentCandidate | None:
+    def select_candidate(self, event: InputEvent, message: str) -> InstrumentCandidate | None:
         pending = self._pending.get((event.user_id, event.session_id), ())
         normalized = message.strip().upper()
         matches = [
@@ -245,9 +242,7 @@ class FinanceCognitiveSelector:
         )
 
     @staticmethod
-    def _research_action(
-        event: InputEvent, candidate: InstrumentCandidate
-    ) -> CognitiveAction:
+    def _research_action(event: InputEvent, candidate: InstrumentCandidate) -> CognitiveAction:
         # SuitabilityEngine 在 M1–M3 未启用；禁止路由到已废弃意图。
         if _is_suitability_only_request(event.message):
             return CognitiveAction(
@@ -313,26 +308,30 @@ class FinanceCognitiveContinuation:
                     next_steps=[item.description for item in required],
                 )
             summary = f"个性化风险匹配筛查结果：{assessment.result}。"
-            sections = [CommunicationSection(
-                section_type="SUMMARY",
-                title="风险匹配筛查",
-                items=[summary],
-            )]
+            sections = [
+                CommunicationSection(
+                    section_type="SUMMARY",
+                    title="风险匹配筛查",
+                    items=[summary],
+                )
+            ]
             if assessment.reasons:
-                sections.append(CommunicationSection(
-                    section_type="FINDINGS",
-                    title="筛查理由",
-                    items=list(assessment.reasons),
-                ))
-            limitations = list(dict.fromkeys(
-                list(outcome.limitations) + list(assessment.limitations)
-            ))
+                sections.append(
+                    CommunicationSection(
+                        section_type="FINDINGS",
+                        title="筛查理由",
+                        items=list(assessment.reasons),
+                    )
+                )
+            limitations = list(dict.fromkeys(list(outcome.limitations) + list(assessment.limitations)))
             if limitations:
-                sections.append(CommunicationSection(
-                    section_type="LIMITATIONS",
-                    title="限制",
-                    items=limitations,
-                ))
+                sections.append(
+                    CommunicationSection(
+                        section_type="LIMITATIONS",
+                        title="限制",
+                        items=limitations,
+                    )
+                )
             return CommunicationPlan(
                 response_kind=("LIMITED" if limitations else "DOMAIN_RESULT"),
                 response_structure="SUITABILITY",
@@ -369,12 +368,12 @@ def _first_hint(message: str, mapping: dict[str, str]) -> str | None:
 
 def _knowledge_answer(message: str) -> str:
     if "市盈率" in message or "PE" in message.upper():
-        return "市盈率（PE）是股价相对每股收益的倍数，常用于比较盈利估值；应结合盈利质量、行业与周期看，不能单凭倍数高低判断贵或便宜。"
+        return "市盈率（PE）是股价相对每股收益的倍数，常用于比较盈利估值；应结合盈利质量、行业与周期看，不能单凭倍数高低判断贵或便宜。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
     if "市净率" in message or "PB" in message.upper():
         return "市净率（PB）是市值相对净资产的倍数，常用于重资产或金融类公司比较；资产质量和盈利能力会显著影响其解释。"
     if "估值" in message:
-        return "估值是用盈利、现金流、资产或可比公司等方法衡量证券价格相对基本面的水平；不同方法依赖不同假设，通常需要交叉验证。"
-    return "这个问题属于稳定金融知识，可从定义、适用条件、局限和常见误区四个方面理解；如需实时标的数据，请同时给出公司名称、简称或证券代码。"
+        return "估值是用盈利、现金流、资产或可比公司等方法衡量证券价格相对基本面的水平；不同方法依赖不同假设，通常需要交叉验证。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
+    return "这个问题属于稳定金融知识，可从定义、适用条件、局限和常见误区四个方面理解；如需实时标的数据，请同时给出公司名称、简称或证券代码。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
 
 
 def _is_suitability_only_request(message: str) -> bool:

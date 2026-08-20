@@ -50,9 +50,7 @@ def _validate_skill(
     """校验单个 SkillManifest 的能力/工具集/只读约束。"""
     # 1. 能力名必须在 Registry 存在（required 与 optional 都查）
     missing_capabilities = sorted(
-        name
-        for name in (skill.required_capabilities | skill.optional_capabilities)
-        if not registry.contains(name)
+        name for name in (skill.required_capabilities | skill.optional_capabilities) if not registry.contains(name)
     )
     if missing_capabilities:
         raise ConfigurationError(
@@ -62,9 +60,7 @@ def _validate_skill(
         )
 
     # 2. required_toolsets 必须是合法 ToolsetName
-    invalid_toolsets = sorted(
-        name for name in skill.required_toolsets if name not in valid_toolsets
-    )
+    invalid_toolsets = sorted(name for name in skill.required_toolsets if name not in valid_toolsets)
     if invalid_toolsets:
         raise ConfigurationError(
             f"Skill {skill.skill_id!r} (domain={domain!r}) declares unknown "
@@ -88,11 +84,7 @@ def _validate_enabled_intents_have_skills(descriptor: DomainDescriptor) -> None:
     for skill in descriptor.skills:
         declared_intents |= skill.accepted_intents
 
-    orphan_intents = sorted(
-        intent
-        for intent in descriptor.enabled_intents
-        if intent not in declared_intents
-    )
+    orphan_intents = sorted(intent for intent in descriptor.enabled_intents if intent not in declared_intents)
     if orphan_intents:
         raise ConfigurationError(
             f"Domain {descriptor.domain!r} 的 enabled_intents "

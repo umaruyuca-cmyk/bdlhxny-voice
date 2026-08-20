@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .base import MemoryRecord, MemoryStore
+from .base import MemoryRecord
 
 logger = logging.getLogger("bdlh_runtime.memory")
 

@@ -25,27 +25,21 @@ def test_empty_catalog_refuses_to_start() -> None:
 
 def test_missing_dependency_refuses_to_start() -> None:
     store = build_seeded_store()
-    store.capabilities = [
-        cap for cap in store.capabilities if cap.name != "market.resolve_instrument"
-    ]
+    store.capabilities = [cap for cap in store.capabilities if cap.name != "market.resolve_instrument"]
     with pytest.raises(ConfigurationError, match="depends_on unknown"):
         load_and_validate(store)
 
 
 def test_fastpath_missing_route_refuses_to_start() -> None:
     store = build_seeded_store()
-    store.fastpath_routes = [
-        route for route in store.fastpath_routes if route.name != "forbidden"
-    ]
+    store.fastpath_routes = [route for route in store.fastpath_routes if route.name != "forbidden"]
     with pytest.raises(ConfigurationError, match="fastpath"):
         load_and_validate(store)
 
 
 def test_empty_topic_mapping_refuses_to_start() -> None:
     store = build_seeded_store()
-    store.topic_capabilities = [
-        record for record in store.topic_capabilities if record.topic != "news"
-    ]
+    store.topic_capabilities = [record for record in store.topic_capabilities if record.topic != "news"]
     with pytest.raises(ConfigurationError, match="topic news"):
         load_and_validate(store)
 
@@ -55,8 +49,7 @@ def test_enabled_writable_capability_refuses_to_start() -> None:
 
     store = build_seeded_store()
     store.capabilities = [
-        replace(cap, read_only=False) if cap.name == "market.get_news" else cap
-        for cap in store.capabilities
+        replace(cap, read_only=False) if cap.name == "market.get_news" else cap for cap in store.capabilities
     ]
     with pytest.raises(ConfigurationError, match="writable"):
         load_and_validate(store)

@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from bdlh_runtime.contracts.observation import DataQuality, Observation
 
@@ -138,7 +139,12 @@ class ObservationNormalizer:
             observation_id=observation.observation_id,
             capability=observation.capability,
             status=status,
-            data={"results": cleaned_results, "errors": errors, "request_id": data.get("requestId"), "provider": data.get("provider")},
+            data={
+                "results": cleaned_results,
+                "errors": errors,
+                "request_id": data.get("requestId"),
+                "provider": data.get("provider"),
+            },
             data_quality=quality,
             provenance=observation.provenance,
         )
@@ -235,15 +241,17 @@ def _parse_historical(raw: str) -> list[dict[str, Any]]:
     for item in parsed:
         if not isinstance(item, dict):
             continue
-        bars.append({
-            "date": item.get("date", item.get("日期")),
-            "open": item.get("open", item.get("开盘")),
-            "high": item.get("high", item.get("最高")),
-            "low": item.get("low", item.get("最低")),
-            "close": item.get("close", item.get("收盘")),
-            "volume": item.get("volume", item.get("成交量")),
-            "turnover": item.get("turnover", item.get("turnover_rate", item.get("换手率"))),
-        })
+        bars.append(
+            {
+                "date": item.get("date", item.get("日期")),
+                "open": item.get("open", item.get("开盘")),
+                "high": item.get("high", item.get("最高")),
+                "low": item.get("low", item.get("最低")),
+                "close": item.get("close", item.get("收盘")),
+                "volume": item.get("volume", item.get("成交量")),
+                "turnover": item.get("turnover", item.get("turnover_rate", item.get("换手率"))),
+            }
+        )
     if not bars:
         raise ValueError("historical prices 解析后为空")
     return bars
@@ -258,8 +266,7 @@ def _parse_financial(raw: str) -> dict[str, Any]:
     """
     parsed = _JSON_LOADER(raw)
     if isinstance(parsed, dict) and any(
-        name in parsed
-        for name in ("balance_sheet", "income_statement", "cash_flow_statement")
+        name in parsed for name in ("balance_sheet", "income_statement", "cash_flow_statement")
     ):
         statements: dict[str, Any] = {}
         for name in ("balance_sheet", "income_statement", "cash_flow_statement"):
@@ -362,9 +369,7 @@ def _parse_instrument(raw: str) -> dict[str, Any]:
         items = nested if nested is not None else [parsed]
     else:
         raise ValueError("instrument 响应为空或格式不支持")
-    candidates = [
-        _normalize_instrument_item(item) for item in items if isinstance(item, dict)
-    ]
+    candidates = [_normalize_instrument_item(item) for item in items if isinstance(item, dict)]
     if not candidates:
         raise ValueError("instrument 响应为空或格式不支持")
     first = candidates[0]

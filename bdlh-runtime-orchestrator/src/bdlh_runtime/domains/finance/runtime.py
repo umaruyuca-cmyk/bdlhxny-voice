@@ -14,7 +14,6 @@ from bdlh_runtime.contracts.observation import DataQuality, Observation
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainError,
-    DomainOperation,
 )
 from bdlh_runtime.observations.normalizer import ObservationNormalizer
 from bdlh_runtime.runtimes.shared import assemble_analysis_input
@@ -33,7 +32,6 @@ from .planner import FinancePlanner
 from .research_builder import StockResearchResultBuilder
 from .snapshot_builder import PORTFOLIO_VALUATION_CAPABILITY, USER_SNAPSHOT_CAPABILITIES
 from .valuation_builder import PortfolioValuationBuilder, PortfolioValuationInput
-
 
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
 
@@ -168,7 +166,11 @@ class FinanceRuntime:
                         reasons=["Finance instrument resolver is not configured"],
                         coverage_status="LIMITED",
                     ),
-                    errors=[DomainError(code="RESOLVER_NOT_CONFIGURED", message="Finance instrument resolver is not configured")],
+                    errors=[
+                        DomainError(
+                            code="RESOLVER_NOT_CONFIGURED", message="Finance instrument resolver is not configured"
+                        )
+                    ],
                     limitations=["Finance instrument resolver is not configured"],
                 )
             return await self._instrument_resolver.resolve(request)
@@ -203,17 +205,13 @@ class FinanceRuntime:
             return self._failed(
                 request,
                 "REQUIRED_CAPABILITY_NOT_AUTHORIZED",
-                "Required capabilities are not authorized: "
-                + ", ".join(sorted(missing_required)),
+                "Required capabilities are not authorized: " + ", ".join(sorted(missing_required)),
             )
 
         state = FinanceRunState(
             request=request,
             requirements=list(plan.data_requirements),
-            limitations=[
-                f"Optional capability not authorized: {name}"
-                for name in decision.skipped_optional
-            ],
+            limitations=[f"Optional capability not authorized: {name}" for name in decision.skipped_optional],
         )
         executable = list(decision.allowed_requirements)
         required_calls = sum(item.required for item in executable) + 1
@@ -233,9 +231,7 @@ class FinanceRuntime:
                 permitted.append(requirement)
                 remaining -= 1
             else:
-                state.limitations.append(
-                    f"Optional capability skipped by budget: {requirement.capability}"
-                )
+                state.limitations.append(f"Optional capability skipped by budget: {requirement.capability}")
 
         try:
             async with asyncio.timeout(request.budget.runtime_seconds):
@@ -265,9 +261,7 @@ class FinanceRuntime:
                     analysis_id=request.request_id,
                     symbol=request.instruments[0].symbol,
                     observations=state.observations,
-                    requested_capabilities=[
-                        item.capability for item in plan.data_requirements
-                    ],
+                    requested_capabilities=[item.capability for item in plan.data_requirements],
                     methodology_version="finance-research.m2",
                 )
                 analyzed = await self._executor.execute(
@@ -316,11 +310,7 @@ class FinanceRuntime:
             errors.append(
                 DomainError(
                     code="ANALYSIS_FAILED",
-                    message=(
-                        result.limitations[0]
-                        if result.limitations
-                        else "analysis.run_analysis returned FAILED"
-                    ),
+                    message=(result.limitations[0] if result.limitations else "analysis.run_analysis returned FAILED"),
                     retryable=False,
                 )
             )
@@ -342,11 +332,7 @@ class FinanceRuntime:
             )
 
         state.stock_research_result = research
-        limitations = list(
-            dict.fromkeys(
-                state.limitations + result.limitations + research.limitations
-            )
-        )
+        limitations = list(dict.fromkeys(state.limitations + result.limitations + research.limitations))
         status = "FAILED" if result.status == "FAILED" else research.coverage
         return FinancialDomainOutcome(
             request_id=state.request.request_id,
@@ -379,12 +365,7 @@ class FinanceRuntime:
                 coverage_status="LIMITED",
             ),
             errors=[DomainError(code=code, message=message, retryable=retryable)],
-            limitations=list(
-                dict.fromkeys(
-                    [message]
-                    + (analysis_result.limitations if analysis_result else [])
-                )
-            ),
+            limitations=list(dict.fromkeys([message] + (analysis_result.limitations if analysis_result else []))),
         )
 
     @staticmethod

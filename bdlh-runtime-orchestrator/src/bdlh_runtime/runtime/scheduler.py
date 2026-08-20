@@ -9,10 +9,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from bdlh_runtime.cognitive.contracts import InputEvent, InputEventType
 from bdlh_runtime.domains.contracts import DomainOutcome, DomainRequest
+
+if TYPE_CHECKING:
+    from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 
 from .tasks import (
     FinancialTask,
@@ -165,9 +168,7 @@ class FinancialTaskWakeupHandler:
         )
         complete_atomically = getattr(self._tasks, "complete_task_and_enqueue_notification", None)
         if callable(complete_atomically):
-            return complete_atomically(
-                task, expected_version=expected_version, notification=notification_request
-            )
+            return complete_atomically(task, expected_version=expected_version, notification=notification_request)
         notification = self._outbox.enqueue(notification_request)
         task.notification_outbox_id = notification.outbox_id
         return self._tasks.update(task, expected_version=expected_version)
@@ -198,9 +199,7 @@ class FinancialTaskScheduler:
         waiting = triggered = failed = 0
         for task, wakeup_key in claims:
             try:
-                result = await self._handler.handle(
-                    task, wakeup_key=wakeup_key, now=timestamp
-                )
+                result = await self._handler.handle(task, wakeup_key=wakeup_key, now=timestamp)
                 if result.status == FinancialTaskStatus.WAITING:
                     waiting += 1
                 elif result.status == FinancialTaskStatus.COMPLETED:

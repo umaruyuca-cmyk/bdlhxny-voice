@@ -21,6 +21,7 @@ Python 不允许绕过 wrapper 直接调用 SearXNG 或搜索引擎。
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -188,12 +189,14 @@ class HttpWebSearchAdapter:
             status=status,
             data=data,
             data_quality=quality,
-            provenance=[ProvenanceRecord(
-                source="bdlh-web-search-adapter",
-                tool=capability,
-                request_id=data.get("requestId"),
-                retrieved_at=_now_iso(),
-            )],
+            provenance=[
+                ProvenanceRecord(
+                    source="bdlh-web-search-adapter",
+                    tool=capability,
+                    request_id=data.get("requestId"),
+                    retrieved_at=_now_iso(),
+                )
+            ],
         )
 
     # ── mock 降级实现（开发环境/测试用，带 is_mock 标记）──
@@ -286,5 +289,6 @@ def create_web_search_adapter(
 
 
 def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    from datetime import datetime
+
+    return datetime.now(UTC).isoformat()

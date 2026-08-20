@@ -59,16 +59,16 @@ class FinanceDispatcher:
                     status="WAITING_USER",
                     resolution_status="AMBIGUOUS",
                     candidates=[_candidate()],
-                    confidence=ConfidenceAssessment(
-                        level="LOW", reasons=["ambiguous"], coverage_status="PARTIAL"
-                    ),
+                    confidence=ConfidenceAssessment(level="LOW", reasons=["ambiguous"], coverage_status="PARTIAL"),
                     limitations=["需要确认候选"],
-                    required_user_decisions=[RequiredUserDecision(
-                        decision_id="instrument_candidate",
-                        question="请选择贵州茅台（600519，SSE）",
-                        reason="候选不唯一",
-                        allowed_choices=["600519@SSE"],
-                    )],
+                    required_user_decisions=[
+                        RequiredUserDecision(
+                            decision_id="instrument_candidate",
+                            question="请选择贵州茅台（600519，SSE）",
+                            reason="候选不唯一",
+                            allowed_choices=["600519@SSE"],
+                        )
+                    ],
                 )
             return InstrumentResolutionOutcome(
                 request_id=request.request_id,
@@ -76,24 +76,22 @@ class FinanceDispatcher:
                 resolution_status="RESOLVED",
                 selected=_candidate(),
                 candidates=[_candidate()],
-                confidence=ConfidenceAssessment(
-                    level="HIGH", reasons=["validated"], coverage_status="COMPLETE"
-                ),
+                confidence=ConfidenceAssessment(level="HIGH", reasons=["validated"], coverage_status="COMPLETE"),
             )
         assert isinstance(request, FinancialDomainRequest)
         return DomainOutcome(
             request_id=request.request_id,
             domain="finance",
             status="COMPLETE",
-            established_facts=[DomainFact(
-                fact_id="quote-1",
-                statement="贵州茅台的受控行情研究已完成",
-                source_refs=["quote:600519"],
-                directness="DIRECT",
-            )],
-            confidence=ConfidenceAssessment(
-                level="HIGH", reasons=["validated"], coverage_status="COMPLETE"
-            ),
+            established_facts=[
+                DomainFact(
+                    fact_id="quote-1",
+                    statement="贵州茅台的受控行情研究已完成",
+                    source_refs=["quote:600519"],
+                    directness="DIRECT",
+                )
+            ],
+            confidence=ConfidenceAssessment(level="HIGH", reasons=["validated"], coverage_status="COMPLETE"),
         )
 
 

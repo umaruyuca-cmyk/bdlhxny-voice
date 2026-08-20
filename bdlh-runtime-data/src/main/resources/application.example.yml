@@ -7,8 +7,6 @@ server:
   port: 8080
 
 spring:
-  flyway:
-    enabled: ${BDLH_FLYWAY_ENABLED:true}
   datasource:
     dynamic:
       primary: pg

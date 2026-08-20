@@ -23,8 +23,8 @@ class RouteTarget:
     的工具不接 source 参数（它内部自己降级）。
     """
 
-    mcp: str               # "cn-financial-mcp" 或 "akshare-one-mcp"
-    tool: str              # 原始工具名，如 get_realtime_quote
+    mcp: str  # "cn-financial-mcp" 或 "akshare-one-mcp"
+    tool: str  # 原始工具名，如 get_realtime_quote
     source: str | None = None  # akshare-one 的数据源选择（xueqiu/sina/eastmoney）
 
 
@@ -125,9 +125,7 @@ def get_route(capability: str) -> RoutePolicy | None:
     return DEFAULT_ROUTES.get(capability)
 
 
-def translate_arguments(
-    capability: str, unified_args: dict[str, Any]
-) -> dict[str, Any]:
+def translate_arguments(capability: str, unified_args: dict[str, Any]) -> dict[str, Any]:
     """把统一能力的参数翻译为目标 MCP 工具的参数。
 
     处理两类差异：

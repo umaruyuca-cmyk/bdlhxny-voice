@@ -11,6 +11,7 @@ from .registry import ToolRegistry
 
 class ToolRuntime:
     """统一执行工具，并把异常转换为结构化 ToolResult。"""
+
     def __init__(self, registry: ToolRegistry) -> None:
         self.registry = registry
 

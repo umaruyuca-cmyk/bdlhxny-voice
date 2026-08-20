@@ -1,10 +1,10 @@
 """应用配置入口。
 
-配置只描述运行边界，不在 Graph 节点内读取环境变量。这样测试、命令行和
+配置只描述运行边界，不在业务编排内读取环境变量。这样测试、命令行和
 未来的容器部署可以注入不同配置，而不会改变业务流程代码。
 
 分组说明：
-- 基础运行：environment / checkpointer / API 前缀，控制服务启停行为。
+- 基础运行：environment / API 前缀，控制服务启停行为。
 - MCP 数据源：两个金融 MCP 的传输方式与端点，传输协议不同必须分别配置。
 - 记忆层：Mem0 内部使用的 LLM 与 Embedding，显式指定避免走默认 OpenAI。
 - 模型凭证：DeepSeek 与 Qwen3 的接入参数，供记忆层和后续 Agent 使用。
@@ -24,8 +24,8 @@ class McpSourceConfig:
     两者客户端解包方式相同（2 元组），但底层握手协议不同，不能假设统一接口。
     """
 
-    transport: str           # "sse" 或 "streamable_http"
-    endpoint: str            # 完整 URL，如 http://host:port/sse
+    transport: str  # "sse" 或 "streamable_http"
+    endpoint: str  # 完整 URL，如 http://host:port/sse
     timeout_seconds: float = 20.0
     token: str | None = None  # 部分部署需要鉴权 token
 
@@ -39,12 +39,12 @@ class Mem0Config:
     NoOpMemoryStore 降级，主流程不受影响（见 memory/noop.py）。
     """
 
-    llm_model: str = "deepseek-chat"          # Mem0 内部抽取/去重用的 LLM
-    llm_api_key: str | None = None            # DeepSeek API Key
+    llm_model: str = "deepseek-chat"  # Mem0 内部抽取/去重用的 LLM
+    llm_api_key: str | None = None  # DeepSeek API Key
     llm_base_url: str = "https://api.deepseek.com"
-    embedder_model: str = "Qwen3-Embedding"   # 向量化模型
-    embedder_api_key: str | None = None       # Qwen3 服务 Key
-    embedder_base_url: str | None = None      # Qwen3 服务地址
+    embedder_model: str = "Qwen3-Embedding"  # 向量化模型
+    embedder_api_key: str | None = None  # Qwen3 服务 Key
+    embedder_base_url: str | None = None  # Qwen3 服务地址
 
 
 @dataclass(frozen=True)
@@ -53,26 +53,14 @@ class Settings:
 
     # ── 基础运行 ──
     environment: str = "development"
-    checkpointer_backend: str = "memory"
     api_prefix: str = "/api/v1"
     max_event_wait_seconds: float = 30.0
     auth_required: bool = False
     jwt_secret: str | None = None
-    # ── M5 Cognitive 灰度（默认关闭；生产启用需通过独立发布门禁）──
-    cognitive_rollout_mode: str = "off"
-    cognitive_rollout_percentage: int = 0
-    cognitive_rollout_internal_user_ids: frozenset[str] = frozenset()
-    cognitive_rollout_approval_ref: str | None = None
-    cognitive_rollout_owner: str | None = None
-    cognitive_rollback_owner: str | None = None
     # ── M6 持续任务 Worker ──
     financial_task_worker_enabled: bool = False
     financial_task_poll_seconds: float = 10.0
-    # 生产 Checkpointer 连接参数（postgres/redis 后端使用）
-    postgres_dsn: str | None = None
-    redis_url: str | None = None
-    # PLATFORM-P2：默认不切换；设为 java 后 Chat/Run/History 仅走 Java Data Plane。
-    runtime_data_mode: str = "legacy"
+    # Chat/Run/History/Task 均由 Java Data Plane 持久化。
     java_api_base_url: str | None = None
     java_data_internal_token: str | None = None
     # PLATFORM-P5：生产只允许 Remote Memory Service；embedded Mem0 仅测试/迁移对照。
@@ -116,7 +104,7 @@ class Settings:
     qwen3_base_url: str | None = None
 
     @classmethod
-    def from_environment(cls) -> "Settings":
+    def from_environment(cls) -> Settings:
         """从环境变量读取配置；生产环境应由部署系统统一注入。
 
         所有可变参数都走环境变量，dataclass 本身 frozen 不可变，
@@ -129,44 +117,16 @@ class Settings:
         if not jwt_secret and environment != "production":
             # 仅用于本地联调，与 Java 开发默认值一致；生产环境禁止使用。
             jwt_secret = "BDLH Agent Runtime-Default-JWT-Key-2026-Must-Override-In-Production!!!"
-        postgres_dsn = os.getenv("POSTGRES_DSN")
-        # 云上联调/部署只要配了 DSN，Checkpointer 默认跟业务 Store 一起走 PG。
-        checkpointer_backend = os.getenv("BDLH_RUNTIME_CHECKPOINTER_BACKEND")
-        if not checkpointer_backend:
-            checkpointer_backend = "postgres" if postgres_dsn else "memory"
         return cls(
             environment=environment,
-            checkpointer_backend=checkpointer_backend,
             api_prefix=os.getenv("BDLH_RUNTIME_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS", "30")),
             auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", auth_required_default).lower()
             in {"1", "true", "yes", "on"},
             jwt_secret=jwt_secret,
-            cognitive_rollout_mode=os.getenv("BDLH_COGNITIVE_ROLLOUT_MODE", "off"),
-            cognitive_rollout_percentage=int(
-                os.getenv("BDLH_COGNITIVE_ROLLOUT_PERCENTAGE", "0")
-            ),
-            cognitive_rollout_internal_user_ids=frozenset(
-                item.strip()
-                for item in os.getenv(
-                    "BDLH_COGNITIVE_ROLLOUT_INTERNAL_USER_IDS", ""
-                ).split(",")
-                if item.strip()
-            ),
-            cognitive_rollout_approval_ref=os.getenv(
-                "BDLH_COGNITIVE_ROLLOUT_APPROVAL_REF"
-            ),
-            cognitive_rollout_owner=os.getenv("BDLH_COGNITIVE_ROLLOUT_OWNER"),
-            cognitive_rollback_owner=os.getenv("BDLH_COGNITIVE_ROLLBACK_OWNER"),
-            financial_task_worker_enabled=os.getenv(
-                "BDLH_FINANCIAL_TASK_WORKER_ENABLED", "false"
-            ).lower() in {"1", "true", "yes", "on"},
-            financial_task_poll_seconds=float(
-                os.getenv("BDLH_FINANCIAL_TASK_POLL_SECONDS", "10")
-            ),
-            postgres_dsn=postgres_dsn,
-            redis_url=os.getenv("REDIS_URL"),
-            runtime_data_mode=os.getenv("BDLH_RUNTIME_DATA_MODE", "legacy").strip().lower(),
+            financial_task_worker_enabled=os.getenv("BDLH_FINANCIAL_TASK_WORKER_ENABLED", "false").lower()
+            in {"1", "true", "yes", "on"},
+            financial_task_poll_seconds=float(os.getenv("BDLH_FINANCIAL_TASK_POLL_SECONDS", "10")),
             java_api_base_url=os.getenv("JAVA_API_BASE_URL"),
             java_data_internal_token=os.getenv("JAVA_DATA_INTERNAL_TOKEN"),
             memory_mode=os.getenv("BDLH_MEMORY_MODE", "noop").strip().lower(),
@@ -200,12 +160,9 @@ class Settings:
             web_search_timeout_seconds=float(os.getenv("WEB_SEARCH_TIMEOUT", "20")),
             deep_research_enabled=os.getenv("BDLH_DEEP_RESEARCH_ENABLED", "false").lower()
             in {"1", "true", "yes", "on"},
-            bailian_web_search_api_key=os.getenv("BDLH_BAILIAN_WEB_SEARCH_API_KEY")
-            or os.getenv("DASHSCOPE_API_KEY"),
+            bailian_web_search_api_key=os.getenv("BDLH_BAILIAN_WEB_SEARCH_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
             bailian_web_search_endpoint=os.getenv("BDLH_BAILIAN_WEB_SEARCH_ENDPOINT"),
-            bailian_web_search_timeout_seconds=float(
-                os.getenv("BDLH_BAILIAN_WEB_SEARCH_TIMEOUT", "20")
-            ),
+            bailian_web_search_timeout_seconds=float(os.getenv("BDLH_BAILIAN_WEB_SEARCH_TIMEOUT", "20")),
             bailian_web_search_rate_limit_per_minute=int(
                 os.getenv("BDLH_BAILIAN_WEB_SEARCH_RATE_LIMIT_PER_MINUTE", "30")
             ),

@@ -19,7 +19,6 @@ import logging
 from typing import Any
 
 from bdlh_runtime.contracts.analysis import AnalysisInput, AnalysisResult
-from bdlh_runtime.contracts.observation import DataQuality
 
 from . import indicators as ind
 from . import risk as risk_metrics
@@ -54,9 +53,7 @@ def analyze(analysis_input: AnalysisInput) -> AnalysisResult:
     risk_flags: list[dict[str, Any]] = []
     limitations: list[str] = []
     if analysis_input.data_quality.known_unavailable:
-        limitations.append(
-            "数据能力不可用: " + ", ".join(analysis_input.data_quality.known_unavailable)
-        )
+        limitations.append("数据能力不可用: " + ", ".join(analysis_input.data_quality.known_unavailable))
 
     # ── 数据状态判断 ──
     has_history = len(prices) >= 20  # 至少够算 20 日窗口的指标
@@ -332,7 +329,9 @@ def _portfolio_analysis(analysis_input: AnalysisInput, limitations: list[str]) -
                 "pnl_amount": _round(pnl, 2) if pnl is not None else None,
             }
             if pnl is not None and pnl < 0:
-                risk_flags.append({"name": "position_unrealized_loss", "severity": "medium", "detail": f"{target_symbol} 浮动亏损"})
+                risk_flags.append(
+                    {"name": "position_unrealized_loss", "severity": "medium", "detail": f"{target_symbol} 浮动亏损"}
+                )
             elif pnl is not None and pnl > 0:
                 signals.append({"name": "position_unrealized_gain", "direction": "bullish", "strength": "low"})
     else:
@@ -340,8 +339,7 @@ def _portfolio_analysis(analysis_input: AnalysisInput, limitations: list[str]) -
 
     # 组合集中度：该标的占组合比例（若持仓里有市值信息）
     total_market_value = sum(
-        (p.get("quantity", 0) or 0) * (p.get("current_price") or 0)
-        for p in positions if p.get("current_price")
+        (p.get("quantity", 0) or 0) * (p.get("current_price") or 0) for p in positions if p.get("current_price")
     )
     if total_market_value > 0 and holdings:
         holding_mv = holdings[0].get("quantity", 0) * (holdings[0].get("current_price") or 0)
@@ -378,16 +376,22 @@ def _build_conclusions(signals: list[dict], risk_flags: list[dict]) -> list[dict
     bearish = [s for s in signals if s.get("direction") == "bearish"]
 
     if bullish and not bearish:
-        conclusions.append({"text": "技术面偏多（" + ",".join(s["name"] for s in bullish) + "）", "confidence": "MEDIUM"})
+        conclusions.append(
+            {"text": "技术面偏多（" + ",".join(s["name"] for s in bullish) + "）", "confidence": "MEDIUM"}
+        )
     elif bearish and not bullish:
-        conclusions.append({"text": "技术面偏空（" + ",".join(s["name"] for s in bearish) + "）", "confidence": "MEDIUM"})
+        conclusions.append(
+            {"text": "技术面偏空（" + ",".join(s["name"] for s in bearish) + "）", "confidence": "MEDIUM"}
+        )
     elif bullish and bearish:
         conclusions.append({"text": "技术信号多空交织，需谨慎", "confidence": "LOW"})
 
     if risk_flags:
         high_risks = [r for r in risk_flags if r.get("severity") == "high"]
         if high_risks:
-            conclusions.append({"text": "存在高风险标记：" + ",".join(r["name"] for r in high_risks), "confidence": "MEDIUM"})
+            conclusions.append(
+                {"text": "存在高风险标记：" + ",".join(r["name"] for r in high_risks), "confidence": "MEDIUM"}
+            )
 
     return conclusions
 
@@ -399,7 +403,7 @@ def _simple_returns(prices: list[float]) -> list[float]:
     """价格序列 → 简单收益率序列（本地实现，避免跨模块依赖）。"""
 
     returns: list[float] = []
-    for prev, cur in zip(prices, prices[1:]):
+    for prev, cur in zip(prices, prices[1:], strict=False):
         if prev != 0:
             returns.append(cur / prev - 1.0)
     return returns

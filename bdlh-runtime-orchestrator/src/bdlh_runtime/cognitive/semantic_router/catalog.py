@@ -16,13 +16,15 @@ def fastpath_routes_from_snapshot(snapshot) -> list[Route]:
     dispositions = {"RESPOND": RouteDisposition.RESPOND, "BLOCK": RouteDisposition.BLOCK}
     routes = []
     for record in sorted(snapshot.fastpath_routes, key=lambda item: item.name):
-        routes.append(Route(
-            name=record.name,
-            score_threshold=record.score_threshold,
-            disposition=dispositions[record.disposition],
-            response=record.response,
-            utterances=record.utterances,
-        ))
+        routes.append(
+            Route(
+                name=record.name,
+                score_threshold=record.score_threshold,
+                disposition=dispositions[record.disposition],
+                response=record.response,
+                utterances=record.utterances,
+            )
+        )
     return routes
 
 

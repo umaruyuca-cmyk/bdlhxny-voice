@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi.testclient import TestClient
@@ -8,12 +8,11 @@ from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
 from tests.helpers_registry import seeded_snapshot
 
-
 SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes"
 
 
 def _token(user_id: int, *, expired: bool = False) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return jwt.encode(
         {
             "sub": str(user_id),
@@ -27,7 +26,7 @@ def _token(user_id: int, *, expired: bool = False) -> str:
 
 def _client():
     application = create_application(
-        Settings(environment="development", auth_required=True, jwt_secret=SECRET),
+        Settings(environment="test", auth_required=True, jwt_secret=SECRET),
         registry_snapshot=seeded_snapshot(),
     )
     return application, TestClient(create_api_app(application))
@@ -78,8 +77,10 @@ def test_users_with_the_same_public_thread_are_isolated_and_cannot_cross_read():
     assert first.json()["thread_id"] == second.json()["thread_id"] == common_thread
     first_location = application.run_registry.get(first.json()["run_id"])
     second_location = application.run_registry.get(second.json()["run_id"])
-    assert first_location.thread_id == f"user:7:thread:{common_thread}"
-    assert second_location.thread_id == f"user:8:thread:{common_thread}"
+    assert first_location.thread_id == common_thread
+    assert second_location.thread_id == common_thread
+    assert first_location.user_id == "7"
+    assert second_location.user_id == "8"
 
     own = client.get(
         f"/api/v1/agent-runs/{first.json()['run_id']}",

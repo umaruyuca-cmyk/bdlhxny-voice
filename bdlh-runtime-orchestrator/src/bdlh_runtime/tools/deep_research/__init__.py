@@ -39,10 +39,6 @@ from bdlh_runtime.tools.deep_research.models import (
     RuleBasedDeepResearchModel,
 )
 from bdlh_runtime.tools.deep_research.orchestration import run_deep_research
-from bdlh_runtime.tools.deep_research.cognitive_bridge import (
-    apply_deep_call_policy_to_action,
-    build_deep_research_arguments,
-)
 
 __all__ = [
     "DEEP_SEARCH_CAPABILITY",
@@ -63,9 +59,7 @@ __all__ = [
     "ResearchFinding",
     "ResearchSource",
     "RuleBasedDeepResearchModel",
-    "apply_deep_call_policy_to_action",
     "assemble_research_bundle",
-    "build_deep_research_arguments",
     "build_deep_research_graph",
     "evaluate_deep_research_trigger",
     "parse_bailian_search_payload",

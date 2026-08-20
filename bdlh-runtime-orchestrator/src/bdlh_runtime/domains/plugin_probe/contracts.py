@@ -14,7 +14,6 @@ from bdlh_runtime.domains.contracts import (
     DomainRequest,
 )
 
-
 PLUGIN_PROBE_INTENT = "CONTRACT_PROBE"
 
 
@@ -27,7 +26,7 @@ class PluginProbeRequest(DomainRequest):
     observed_at: datetime
 
     @model_validator(mode="after")
-    def validate_probe_time(self) -> "PluginProbeRequest":
+    def validate_probe_time(self) -> PluginProbeRequest:
         if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
             raise ValueError("observed_at must include a timezone")
         return self
@@ -59,7 +58,7 @@ class PluginProbeOutcome(DomainOutcome):
     audit_codes: list[Literal["PLUGIN_PROBE_EXECUTED"]] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_authority(self) -> "PluginProbeOutcome":
+    def validate_authority(self) -> PluginProbeOutcome:
         if self.status == "COMPLETE":
             if self.result is None or self.observation is None:
                 raise ValueError("COMPLETE plugin probe requires result and observation")

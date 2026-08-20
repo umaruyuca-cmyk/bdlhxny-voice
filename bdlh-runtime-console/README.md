@@ -16,7 +16,8 @@ npm run dev
 http://127.0.0.1:8082/
 ```
 
-首页的 `/agent` 进入统一金融助手，不再让用户选择 Agent。Root Graph 根据问题动态选择直接回答、单能力或有界 ReAct 研究流程。旧双模式页面只保留在 `/workspace` 供兼容检查。
+首页的 `/agent` 进入统一金融助手，请求由 Python Cognitive Orchestrator
+（`cognitive_finance`）处理。`/workspace` 永久重定向到 `/agent`；旧双模式页面已删除。
 
 Skill 目录从 `public/skills/registry.json` 读取脱敏注册清单，当前展示 Stock Skill 与 Web Search Skill。
 

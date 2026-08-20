@@ -13,7 +13,6 @@ from bdlh_runtime.tools.web_search_adapter import (
     create_web_search_adapter,
 )
 
-
 # ── mock 降级（开发环境，base_url 未配置）──
 
 
@@ -80,31 +79,44 @@ async def test_success_wraps_observation(monkeypatch):
 
     # 模拟 httpx.AsyncClient
     class MockResponse:
-        def raise_for_status(self): pass
+        def raise_for_status(self):
+            pass
+
         def json(self):
             return {
                 "schemaVersion": "1.0",
                 "requestId": "req-123",
                 "provider": "searxng",
                 "results": [
-                    {"title": "茅台最新动态", "url": "https://finance.example.com/maotai",
-                     "domain": "finance.example.com", "snippet": "茅台发布三季报...",
-                     "publishedAt": "2026-08-01T00:00:00Z", "relevanceScore": 0.95},
+                    {
+                        "title": "茅台最新动态",
+                        "url": "https://finance.example.com/maotai",
+                        "domain": "finance.example.com",
+                        "snippet": "茅台发布三季报...",
+                        "publishedAt": "2026-08-01T00:00:00Z",
+                        "relevanceScore": 0.95,
+                    },
                 ],
                 "errors": [],
             }
 
     class MockClient:
-        def __init__(self, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
         async def post(self, url, json=None, headers=None):
             assert "x-agent-id" in headers
             assert "x-search-token" in headers
             return MockResponse()
 
-    import bdlh_runtime.tools.web_search_adapter as mod
     import httpx
+
     monkeypatch.setattr(httpx, "AsyncClient", MockClient)
 
     obs = await adapter.execute("research.web_search", {"query": "茅台"})
@@ -119,7 +131,9 @@ async def test_partial_status_when_errors_present(monkeypatch):
     adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
 
     class MockResponse:
-        def raise_for_status(self): pass
+        def raise_for_status(self):
+            pass
+
         def json(self):
             return {
                 "results": [{"title": "结果1", "url": "https://a.com"}],
@@ -127,12 +141,20 @@ async def test_partial_status_when_errors_present(monkeypatch):
             }
 
     class MockClient:
-        def __init__(self, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, url, json=None, headers=None): return MockResponse()
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json=None, headers=None):
+            return MockResponse()
 
     import httpx
+
     monkeypatch.setattr(httpx, "AsyncClient", MockClient)
 
     obs = await adapter.execute("research.web_search", {"query": "test"})
@@ -147,12 +169,20 @@ async def test_httpx_failure_fallback_to_mock_in_dev(monkeypatch):
     adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
 
     class FailingClient:
-        def __init__(self, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, *args, **kwargs): raise ConnectionError("network down")
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, *args, **kwargs):
+            raise ConnectionError("network down")
 
     import httpx
+
     monkeypatch.setattr(httpx, "AsyncClient", FailingClient)
 
     obs = await adapter.execute("research.web_search", {"query": "test"})
@@ -165,12 +195,20 @@ async def test_httpx_failure_returns_unavailable_in_production(monkeypatch):
     adapter = HttpWebSearchAdapter(base_url="http://example.com", production=True)
 
     class FailingClient:
-        def __init__(self, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, *args, **kwargs): raise ConnectionError("network down")
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, *args, **kwargs):
+            raise ConnectionError("network down")
 
     import httpx
+
     monkeypatch.setattr(httpx, "AsyncClient", FailingClient)
 
     obs = await adapter.execute("research.web_search", {"query": "test"})
@@ -186,7 +224,9 @@ async def test_empty_results_downgraded_to_partial(monkeypatch):
     adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
 
     class MockResponse:
-        def raise_for_status(self): pass
+        def raise_for_status(self):
+            pass
+
         def json(self):
             return {
                 "results": [],
@@ -194,12 +234,20 @@ async def test_empty_results_downgraded_to_partial(monkeypatch):
             }
 
     class MockClient:
-        def __init__(self, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, url, json=None, headers=None): return MockResponse()
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json=None, headers=None):
+            return MockResponse()
 
     import httpx
+
     monkeypatch.setattr(httpx, "AsyncClient", MockClient)
 
     obs = await adapter.execute("research.web_search", {"query": "冷门概念"})
@@ -214,17 +262,27 @@ async def test_blank_success_envelope_also_downgraded(monkeypatch):
     adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
 
     class MockResponse:
-        def raise_for_status(self): pass
+        def raise_for_status(self):
+            pass
+
         def json(self):
             return {"results": [], "errors": []}
 
     class MockClient:
-        def __init__(self, **kwargs): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
-        async def post(self, url, json=None, headers=None): return MockResponse()
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json=None, headers=None):
+            return MockResponse()
 
     import httpx
+
     monkeypatch.setattr(httpx, "AsyncClient", MockClient)
 
     obs = await adapter.execute("research.web_search", {"query": "test"})

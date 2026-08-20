@@ -30,7 +30,9 @@ class Domain:
             request_id=request.request_id,
             domain=request.domain,
             status="COMPLETE",
-            established_facts=[DomainFact(fact_id="fact-1", statement="validated", source_refs=["source-1"], directness="DIRECT")],
+            established_facts=[
+                DomainFact(fact_id="fact-1", statement="validated", source_refs=["source-1"], directness="DIRECT")
+            ],
             confidence=ConfidenceAssessment(level="HIGH", reasons=["validated"], coverage_status="COMPLETE"),
         )
 
@@ -63,7 +65,14 @@ def app(action: CognitiveAction) -> CognitiveOrchestrator:
 
 @pytest.mark.asyncio
 async def test_guarded_domain_pipeline_returns_a_verified_public_response() -> None:
-    result = await app(CognitiveAction(action_type=CognitiveActionType.INVOKE_DOMAIN, reason_code="DOMAIN_READ", reason="Read the requested result", domain_request=domain_request())).run(event())
+    result = await app(
+        CognitiveAction(
+            action_type=CognitiveActionType.INVOKE_DOMAIN,
+            reason_code="DOMAIN_READ",
+            reason="Read the requested result",
+            domain_request=domain_request(),
+        )
+    ).run(event())
 
     assert result.response.response_kind == "DOMAIN_RESULT"
     assert result.response.evidence_refs == ["source-1"]
@@ -74,7 +83,9 @@ async def test_guarded_domain_pipeline_returns_a_verified_public_response() -> N
 
 @pytest.mark.asyncio
 async def test_disabled_action_is_not_silently_downgraded_to_response() -> None:
-    result = await app(CognitiveAction(action_type=CognitiveActionType.NOTIFY, reason_code="NOTIFY", reason="send a notification")).run(event())
+    result = await app(
+        CognitiveAction(action_type=CognitiveActionType.NOTIFY, reason_code="NOTIFY", reason="send a notification")
+    ).run(event())
 
     assert result.response.response_kind == "CAPABILITY_NOT_ENABLED"
     assert result.response.audit_codes == ["ACTION_NOT_ENABLED"]

@@ -12,10 +12,11 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
+from tests.helpers_registry import build_default_capability_registry
 
 from bdlh_runtime.domains.finance.contracts import FinancialIntent
 from bdlh_runtime.domains.finance.manifests import (
@@ -26,15 +27,10 @@ from bdlh_runtime.runtime.errors import ConfigurationError
 from bdlh_runtime.runtime.manifest_validation import (
     validate_descriptor_against_registry,
 )
-from tests.helpers_registry import build_default_capability_registry
 
 STOCK_RESEARCH_MANIFEST = next(
-    s for s in build_finance_descriptor(build_default_capability_registry()).skills
-    if s.skill_id == "stock-research"
+    s for s in build_finance_descriptor(build_default_capability_registry()).skills if s.skill_id == "stock-research"
 )
-from bdlh_runtime.tools.capabilities import (    CapabilityRegistry,
-    CapabilitySpec,
-    ToolsetName,)
 
 SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "bdlh_runtime"
 
@@ -117,10 +113,12 @@ def test_startup_validation_fails_on_enabled_intent_without_skill() -> None:
         domain="finance",
         descriptor_version="bogus",
         status="CURRENT",
-        supported_intents=frozenset({
-            FinancialIntent.STOCK_RESEARCH,
-            FinancialIntent.SUITABILITY,
-        }),
+        supported_intents=frozenset(
+            {
+                FinancialIntent.STOCK_RESEARCH,
+                FinancialIntent.SUITABILITY,
+            }
+        ),
         enabled_intents=frozenset({FinancialIntent.SUITABILITY}),  # 无 Skill 声明
         skills=(STOCK_RESEARCH_MANIFEST,),
         request_contract="FinancialDomainRequest",

@@ -14,11 +14,16 @@ from ..registry.seeded_store import build_seeded_store
 
 SNAPSHOT = load_and_validate(build_seeded_store())
 DEFAULT_ALLOWED = [
-    "market.resolve_instrument", "market.get_realtime_quote",
-    "market.get_historical_prices", "market.get_financial_statements",
-    "market.get_valuation", "market.get_industry_context",
-    "market.get_money_flow", "market.get_news",
-    "research.web_search", "analysis.run_analysis",
+    "market.resolve_instrument",
+    "market.get_realtime_quote",
+    "market.get_historical_prices",
+    "market.get_financial_statements",
+    "market.get_valuation",
+    "market.get_industry_context",
+    "market.get_money_flow",
+    "market.get_news",
+    "research.web_search",
+    "analysis.run_analysis",
 ]
 
 
@@ -43,9 +48,7 @@ def _goal(**kwargs) -> GoalSpec:
 
 def test_topic_or_semantics_one_provider_down_still_covered() -> None:
     """news 主题：get_news 失败但 web_search 成功 → 仍 COVERED，不 BLOCKED。"""
-    goal = _goal(
-        success_criteria=[SuccessCriterion(criterion_id="c1", topic="news", description="新闻")]
-    )
+    goal = _goal(success_criteria=[SuccessCriterion(criterion_id="c1", topic="news", description="新闻")])
     goals = backfill_criteria(SNAPSHOT, [goal], DEFAULT_ALLOWED)
     observations = [
         _obs("market.resolve_instrument", "o-resolve"),
@@ -106,9 +109,7 @@ def test_account_goal_quote_cannot_cover() -> None:
 
 def test_money_flow_topic_quote_does_not_cover() -> None:
     """闭包不进 OR：money_flow 主题下 quote 成功不构成资金流覆盖。"""
-    goal = _goal(
-        success_criteria=[SuccessCriterion(criterion_id="c1", topic="money_flow", description="资金流")]
-    )
+    goal = _goal(success_criteria=[SuccessCriterion(criterion_id="c1", topic="money_flow", description="资金流")])
     goals = backfill_criteria(SNAPSHOT, [goal], DEFAULT_ALLOWED)
     observations = [
         _obs("market.resolve_instrument", "o-resolve"),
@@ -128,9 +129,7 @@ def test_rule_based_fallback_is_isolated() -> None:
     observations = [_obs("market.resolve_instrument", "o-resolve")]
     strict = evaluate_goals(goals, observations, DEFAULT_ALLOWED, SNAPSHOT)
     assert strict[0].status == "PENDING"
-    fallback = evaluate_goals(
-        goals, observations, DEFAULT_ALLOWED, SNAPSHOT, rule_based_fallback=True
-    )
+    fallback = evaluate_goals(goals, observations, DEFAULT_ALLOWED, SNAPSHOT, rule_based_fallback=True)
     assert fallback[0].status == "COVERED"
 
 

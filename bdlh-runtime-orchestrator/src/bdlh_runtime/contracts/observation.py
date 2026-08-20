@@ -22,6 +22,7 @@ class ProvenanceRecord(BaseModel):
     - conflict_detected：是否发生字段冲突（多源对照时）；
     - raw_reference：原始响应引用（受控引用，不直接进 AnalysisInput）。
     """
+
     source: str
     tool: str
     request_id: str | None = None
@@ -35,6 +36,7 @@ class ProvenanceRecord(BaseModel):
 
 class DataQuality(BaseModel):
     """数据完整度、新鲜度和已知不可用维度。"""
+
     completeness: float = 0.0
     freshness: str = "UNKNOWN"
     quality_status: Literal["UNKNOWN", "OK", "PARTIAL", "STALE", "INVALID"] = "UNKNOWN"
@@ -43,6 +45,7 @@ class DataQuality(BaseModel):
 
 class Observation(BaseModel):
     """统一的外部调用结果。"""
+
     observation_id: str
     capability: str
     status: Literal["SUCCESS", "PARTIAL", "FAILED", "UNAVAILABLE"]

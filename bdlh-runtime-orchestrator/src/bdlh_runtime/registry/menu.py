@@ -31,11 +31,7 @@ def effective_operations(
     for skill in enabled_skills(snapshot):
         # declared_operations 已并入 required + optional
         skill_ops |= skill.declared_operations
-    entitled = {
-        item.operation_code
-        for item in snapshot.entitlements
-        if item.account_id in {account_id, "*"}
-    }
+    entitled = {item.operation_code for item in snapshot.entitlements if item.account_id in {account_id, "*"}}
     return snapshot.runtime_allowlist & skill_ops & entitled
 
 
@@ -66,11 +62,7 @@ def allowed_capabilities(
     authenticated: bool,
 ) -> list[CapabilityRecord]:
     """allowed = eligible ∧ 认证状态满足 requires_authenticated_user。"""
-    return [
-        cap
-        for cap in eligible
-        if (not cap.requires_authenticated_user) or authenticated
-    ]
+    return [cap for cap in eligible if (not cap.requires_authenticated_user) or authenticated]
 
 
 #: Feature Flag 门控能力（ADR-016）：Flag 关闭时不得进入本轮 allowed

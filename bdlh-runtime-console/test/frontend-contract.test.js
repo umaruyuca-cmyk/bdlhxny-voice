@@ -81,50 +81,16 @@ test("公共入口与 Skill 目录边界完整", async () => {
 });
 
 /**
- * 验证工作站空白态保持可读的输入宽度，运行追踪默认不遮挡对话区。
+ * 验证 /workspace 已退役为重定向到 /agent，不再作为产品入口。
  */
-test("工作站空白态布局与运行追踪行为完整", async () => {
-  const [html, script, css] = await Promise.all([
-    readFile(new URL("../public/workspace.html", import.meta.url), "utf8"),
-    readFile(new URL("../public/assets/workspace-common.js", import.meta.url), "utf8"),
-    readFile(new URL("../public/assets/workspace-theme.css", import.meta.url), "utf8"),
-  ]);
+test("工作站入口重定向到统一助手", async () => {
+  const server = await readFile(new URL("../dev-server.js", import.meta.url), "utf8");
+  const nginx = await readFile(new URL("../nginx.conf", import.meta.url), "utf8");
 
-  assert.match(html, /id="composerWrap"/);
-  assert.match(css, /width:min\(768px,calc\(100% - 48px\)\)/);
-  assert.match(css, /\.main\.runs-open \.chat-panel\{padding-right:0\}/);
-  assert.match(script, /classList\.add\("runs-open"\)/);
-  assert.doesNotMatch(script, /\n\s*showRunPanel\(\);\s*$/m);
-  assert.match(html, /class="brand-wordmark">GRID</);
-  assert.match(html, /class="market-launch"/);
-  assert.match(html, /id="marketOverview"/);
-  assert.doesNotMatch(html, /class="brand-logo"/);
-  assert.match(css, /\.brand-wordmark\{/);
-  assert.match(css, /body\[data-mode="stock"\]\.idle \.market-launch\{display:block\}/);
-  assert.match(script, /label:"智能问答"/);
-  assert.match(script, /label:"股市分析"/);
-  assert.match(script, /const AGENT_GROUPS/);
-  assert.match(script, /group:"core"/);
-  assert.match(script, /marketOverview/);
-  assert.match(script, /history\.replaceState\(null,"",nextUrl\.toString\(\)\)/);
-  assert.doesNotMatch(script, /location\.href="\/agent\?name="\+target/);
-  assert.match(script, /function renderStructuredSkillResult/);
-  assert.match(script, /function buildStockDashboard/);
-  assert.match(script, /function buildSectorDashboard/);
-  assert.match(script, /function buildQuantDashboard/);
-  assert.match(script, /function buildPortfolioDashboard/);
-  assert.match(script, /function renderStoredSkillResult/);
-  assert.match(script, /function addSkillResultButton/);
-  assert.match(script, /function openSkillResultModal/);
-  assert.match(script, /skillResultAvailable/);
-  assert.match(script, /agent-runs\/"\+encodeURIComponent\(runId\)\+"\/skill-results/);
-  assert.match(script, /api\/v1\/conversations\?mode=/);
-  assert.match(script, /api\/v1\/conversations\/"\+encodeURIComponent\(session\.id\)/);
-  assert.match(script, /conversationId/);
-  assert.match(script, /function adoptServerSessionId/);
-  assert.doesNotMatch(script, /await simulateReply\(value,bubble,phase\)/);
-  assert.match(html, /id="modalSkillResult"/);
-  assert.match(css, /\.skill-dashboard\{/);
-  assert.match(script, /function defaultSessionTitle/);
-  assert.doesNotMatch(script, /sessionId\.slice\(/);
+  assert.match(server, /requestPath === "\/workspace" \|\| requestPath === "\/workspace\/"/);
+  assert.match(server, /Location: "\/agent"/);
+  assert.match(server, /writeHead\(301/);
+  assert.doesNotMatch(server, /target = "\/workspace\.html"/);
+  assert.match(nginx, /return 301 \/agent;/);
+  assert.doesNotMatch(nginx, /try_files \/workspace\.html/);
 });

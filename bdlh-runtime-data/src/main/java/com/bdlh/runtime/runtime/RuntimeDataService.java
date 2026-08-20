@@ -6,7 +6,10 @@ import com.bdlh.runtime.runtime.RuntimeDataDtos.ChatMessageResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.ChatSessionResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.PendingRunRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.RunLocationResponse;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.RunEventResponse;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.RunProjectionResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveHistoryRequest;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveRunProjectionRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.UpsertRunRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -163,6 +166,46 @@ public class RuntimeDataService {
     }
 
     @Transactional
+    public RunProjectionResponse saveRunProjection(
+            long userId,
+            String runId,
+            SaveRunProjectionRequest request) {
+        String id = requiredValue(runId, "run_id");
+        String threadId = requiredValue(request.threadId(), "thread_id");
+        String status = requiredValue(request.status(), "status");
+        JsonNode interrupts = request.interrupts() == null ? objectMapper.createArrayNode() : request.interrupts();
+        jdbcTemplate.update(
+                "INSERT INTO runtime.run_projection(run_id, user_id, thread_id, status, next_stage, final_response, interrupts) "
+                        + "VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb) ON CONFLICT (run_id) DO UPDATE SET "
+                        + "user_id = EXCLUDED.user_id, thread_id = EXCLUDED.thread_id, status = EXCLUDED.status, "
+                        + "next_stage = EXCLUDED.next_stage, final_response = EXCLUDED.final_response, "
+                        + "interrupts = EXCLUDED.interrupts, updated_at = CURRENT_TIMESTAMP",
+                id,
+                userId,
+                threadId,
+                status,
+                normalizedNullable(request.nextStage()),
+                request.finalResponse() == null ? null : writeJson(request.finalResponse()),
+                writeJson(interrupts));
+        jdbcTemplate.update("DELETE FROM runtime.run_event WHERE run_id = ?", id);
+        List<RuntimeDataDtos.RunEventRequest> events = request.events() == null ? List.of() : request.events();
+        for (int index = 0; index < events.size(); index++) {
+            RuntimeDataDtos.RunEventRequest event = events.get(index);
+            jdbcTemplate.update(
+                    "INSERT INTO runtime.run_event(run_id, sequence_no, event_type, payload) VALUES (?, ?, ?, ?::jsonb)",
+                    id,
+                    index,
+                    requiredValue(event.eventType(), "event_type"),
+                    writeJson(event.payload() == null ? objectMapper.createObjectNode() : event.payload()));
+        }
+        return requireRunProjection(userId, id);
+    }
+
+    public RunProjectionResponse getRunProjection(long userId, String runId) {
+        return requireRunProjection(userId, requiredValue(runId, "run_id"));
+    }
+
+    @Transactional
     public AnalysisHistoryResponse saveHistory(
             long userId,
             String historyId,
@@ -275,6 +318,42 @@ public class RuntimeDataService {
         return results.get(0);
     }
 
+    private RunProjectionResponse requireRunProjection(long userId, String runId) {
+        List<RunProjectionResponse> results = jdbcTemplate.query(
+                "SELECT run_id, thread_id, status, next_stage, final_response, interrupts, updated_at "
+                        + "FROM runtime.run_projection WHERE user_id = ? AND run_id = ?",
+                (rs, rowNum) -> new ProjectionRow(
+                        rs.getString("run_id"),
+                        rs.getString("thread_id"),
+                        rs.getString("status"),
+                        rs.getString("next_stage"),
+                        readJson(rs.getString("final_response")),
+                        readJson(rs.getString("interrupts")),
+                        rs.getObject("updated_at", OffsetDateTime.class)),
+                userId,
+                runId).stream().map(row -> new RunProjectionResponse(
+                        row.runId(),
+                        row.threadId(),
+                        row.status(),
+                        row.nextStage(),
+                        row.finalResponse(),
+                        row.interrupts(),
+                        jdbcTemplate.query(
+                                "SELECT sequence_no, event_type, payload, created_at FROM runtime.run_event "
+                                        + "WHERE run_id = ? ORDER BY sequence_no ASC",
+                                (eventRs, eventRowNum) -> new RunEventResponse(
+                                        eventRs.getInt("sequence_no"),
+                                        eventRs.getString("event_type"),
+                                        readJson(eventRs.getString("payload")),
+                                        eventRs.getObject("created_at", OffsetDateTime.class)),
+                                row.runId()),
+                        row.updatedAt())).toList();
+        if (results.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "运行投影不存在或无权访问");
+        }
+        return results.get(0);
+    }
+
     private AnalysisHistoryResponse requireHistory(long userId, String historyId) {
         List<AnalysisHistoryResponse> results = jdbcTemplate.query(
                 "SELECT history_id, thread_id, run_id, status, payload, created_at "
@@ -286,6 +365,16 @@ public class RuntimeDataService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "分析历史不存在或无权访问");
         }
         return results.get(0);
+    }
+
+    private record ProjectionRow(
+            String runId,
+            String threadId,
+            String status,
+            String nextStage,
+            JsonNode finalResponse,
+            JsonNode interrupts,
+            OffsetDateTime updatedAt) {
     }
 
     private AnalysisHistoryResponse mapHistory(ResultSet rs, int rowNum) throws SQLException {

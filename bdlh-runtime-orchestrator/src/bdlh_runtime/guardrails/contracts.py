@@ -67,7 +67,7 @@ class GuardrailResult(BaseModel, Generic[ReplacementT]):
     rule_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_decision_payload(self) -> "GuardrailResult[ReplacementT]":
+    def validate_decision_payload(self) -> GuardrailResult[ReplacementT]:
         if self.decision == GuardrailDecision.MODIFY and self.replacement is None:
             raise ValueError("modify decisions require a replacement")
         if self.decision != GuardrailDecision.MODIFY and self.replacement is not None:

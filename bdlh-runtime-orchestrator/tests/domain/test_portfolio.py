@@ -154,13 +154,15 @@ async def test_java_adapter_consumes_snake_case_contract(monkeypatch):
                     "confirmation_ref": "confirm-positions-1",
                     "missing_fields": [],
                 },
-                "positions": [{
-                    "symbol": "600519",
-                    "exchange": "SSE",
-                    "currency": "CNY",
-                    "quantity": 100,
-                    "cost_price": 1500,
-                }],
+                "positions": [
+                    {
+                        "symbol": "600519",
+                        "exchange": "SSE",
+                        "currency": "CNY",
+                        "quantity": 100,
+                        "cost_price": 1500,
+                    }
+                ],
             }
 
     class FakeClient:

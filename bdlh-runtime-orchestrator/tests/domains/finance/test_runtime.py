@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import pytest
+from tests.helpers_registry import seeded_snapshot
 
 from bdlh_runtime.contracts.analysis import AnalysisInput, AnalysisResult
 from bdlh_runtime.contracts.observation import (
@@ -25,7 +26,6 @@ from bdlh_runtime.domains.finance.contracts import (
 from bdlh_runtime.domains.finance.planner import FinancePlanner
 from bdlh_runtime.domains.finance.runtime import FinanceRuntime
 from bdlh_runtime.tools.capabilities import load_capability_registry
-from tests.helpers_registry import seeded_snapshot
 
 
 class FakeFinanceExecutor:
@@ -117,8 +117,7 @@ def build_runtime(executor: FakeFinanceExecutor) -> FinanceRuntime:
 def _topic_map() -> dict[str, list[str]]:
     snapshot = seeded_snapshot()
     return {
-        topic: snapshot.topic_capabilities_for(topic)
-        for topic in ("news", "money_flow", "industry", "web_research")
+        topic: snapshot.topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")
     }
 
 
@@ -160,7 +159,8 @@ def request_for(
         financial_intent=intent,
         requested_topics=requested_topics or set(),
         instruments=[FinancialInstrument(symbol="600519", name="贵州茅台")],
-        authorized_operations=operations or {
+        authorized_operations=operations
+        or {
             DomainOperation.READ_MARKET_DATA,
             DomainOperation.READ_PUBLIC_RESEARCH,
             DomainOperation.RUN_ANALYSIS,
@@ -177,9 +177,7 @@ def request_for(
 async def test_explicit_topics_attach_to_any_research_request() -> None:
     """重写语义：topic 附加无类型门槛（类型白名单已删），随时可请求。"""
     executor = FakeFinanceExecutor()
-    outcome = await build_runtime(executor).run(
-        request_for(requested_topics={"news", "money_flow"})
-    )
+    outcome = await build_runtime(executor).run(request_for(requested_topics={"news", "money_flow"}))
     assert outcome.status in {"COMPLETE", "PARTIAL"}
     assert "market.get_news" in executor.calls
     assert "market.get_money_flow" in executor.calls
@@ -201,9 +199,7 @@ async def test_topics_attach_their_topic_capabilities(
 ) -> None:
     executor = FakeFinanceExecutor()
 
-    outcome = await build_runtime(executor).run(
-        request_for(requested_topics={topic})
-    )
+    outcome = await build_runtime(executor).run(request_for(requested_topics={topic}))
 
     assert outcome.status in {"COMPLETE", "PARTIAL", "LIMITED"}
     assert capability in executor.calls
@@ -322,9 +318,7 @@ async def test_builder_failure_returns_stable_error_and_preserves_analysis_resul
 @pytest.mark.asyncio
 async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> None:
     disabled_executor = FakeFinanceExecutor()
-    disabled = await build_runtime(disabled_executor).run(
-        request_for(intent=intent)
-    )
+    disabled = await build_runtime(disabled_executor).run(request_for(intent=intent))
     assert disabled.status == "FAILED"
     assert disabled.errors[0].code == "ACTION_NOT_ENABLED"
     assert disabled_executor.calls == []
@@ -333,9 +327,7 @@ async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> N
 @pytest.mark.asyncio
 async def test_insufficient_budget_has_stable_error() -> None:
     budget_executor = FakeFinanceExecutor()
-    limited = await build_runtime(budget_executor).run(
-        request_for(tool_call_limit=1)
-    )
+    limited = await build_runtime(budget_executor).run(request_for(tool_call_limit=1))
     assert limited.status == "LIMITED"
     assert limited.errors[0].code == "BUDGET_EXHAUSTED"
     assert budget_executor.calls == []

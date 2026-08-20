@@ -6,7 +6,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 TaskStatus = Literal["PENDING", "RUNNING", "COMPLETED", "SKIPPED", "FAILED"]
 
 
@@ -40,12 +39,7 @@ class WorkflowPlan(BaseModel):
                 return task
         return None
 
-    def mark(self, task_id: str, status: TaskStatus) -> "WorkflowPlan":
+    def mark(self, task_id: str, status: TaskStatus) -> WorkflowPlan:
         """以不可变方式更新任务状态，避免并行节点修改共享对象。"""
-        tasks = [
-            task.model_copy(update={"status": status}) if task.task_id == task_id else task
-            for task in self.tasks
-        ]
-        return self.model_copy(
-            update={"tasks": tasks, "current_task_id": task_id, "revision": self.revision + 1}
-        )
+        tasks = [task.model_copy(update={"status": status}) if task.task_id == task_id else task for task in self.tasks]
+        return self.model_copy(update={"tasks": tasks, "current_task_id": task_id, "revision": self.revision + 1})

@@ -1,7 +1,6 @@
 """分析历史存储测试（v2.1 §9.3）。
 
-覆盖：存储 save/get/list_by_thread、权限隔离（仅本人可查）、
-make_persist_history_node 节点把运行快照写入历史。
+覆盖：存储 save/get/list_by_thread、权限隔离（仅本人可查）。
 """
 
 from __future__ import annotations
@@ -10,7 +9,6 @@ import pytest
 
 from bdlh_runtime.contracts.history import AnalysisHistoryRecord
 from bdlh_runtime.runtime.history import InMemoryAnalysisHistoryStore, create_history_store
-from bdlh_runtime.runtimes.langgraph.nodes.nodes import make_persist_history_node
 
 
 def _record(**overrides) -> AnalysisHistoryRecord:
@@ -47,50 +45,13 @@ def test_list_by_thread_permission_isolation():
     assert store.list_by_thread("t1", None) == []
 
 
-def test_create_history_store_returns_in_memory_without_dsn():
-    store = create_history_store(environment="development")
+def test_create_history_store_returns_in_memory_in_test_environment():
+    store = create_history_store(environment="test")
     assert isinstance(store, InMemoryAnalysisHistoryStore)
 
 
-def test_create_history_store_requires_dsn_in_production():
+def test_create_history_store_refuses_non_test_environment():
     from bdlh_runtime.runtime.errors import ConfigurationError
 
-    with pytest.raises(ConfigurationError, match="POSTGRES_DSN"):
-        create_history_store(environment="production", postgres_dsn=None)
-
-
-@pytest.mark.asyncio
-async def test_persist_history_node_writes_record():
-    """make_persist_history_node 把运行快照写入历史存储。"""
-    store = InMemoryAnalysisHistoryStore()
-    node = make_persist_history_node(store)
-    state = {
-        "run_id": "r1",
-        "thread_id": "t1",
-        "user_id": "u1",
-        "request": {"message": "分析 600519"},
-        "understand": {"entities": {"instruments": ["600519"]}},
-        "observations": [{"capability": "market.get_realtime_quote", "status": "SUCCESS"}],
-        "analysis_result": {"status": "SUCCESS", "conclusions": []},
-        "status": "SUCCESS",
-    }
-    result = await node(state)
-    assert any(e["event_type"] == "history.saved" for e in result["events"])
-    records = store.list_by_thread("t1", "u1")
-    assert len(records) == 1
-    assert records[0].run_id == "r1"
-    assert records[0].authenticated_user_id == "u1"
-    assert records[0].status == "SUCCESS"
-    assert records[0].intent_snapshot["entities"]["instruments"] == ["600519"]
-
-
-@pytest.mark.asyncio
-async def test_persist_history_node_failure_non_blocking():
-    """历史写入失败不阻塞主流程（仅记事件）。"""
-    class FailingStore:
-        def save(self, record):
-            raise RuntimeError("db down")
-
-    node = make_persist_history_node(FailingStore())
-    result = await node({"run_id": "r1", "thread_id": "t1"})
-    assert any(e["event_type"] == "history.save_failed" for e in result["events"])
+    with pytest.raises(ConfigurationError, match="仅允许测试环境"):
+        create_history_store(environment="production")

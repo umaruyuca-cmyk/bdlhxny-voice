@@ -1,9 +1,10 @@
 # BDLH Agent Runtime 生产开发实施 Prompt
 
 > **文档状态：唯一有效的生产开发执行 Prompt**  
-> **Prompt 版本：v1.19**
-> **生效日期：2026-08-15**
-> **修订记录：总账见 §25；M1 §8.6；M2 §9.6；M3 §10.7/§10.8/§10.9；M4 §11.8；定位升级 §1、§5.2、§11.3；v1.14 吸收 ADR-014/015；v1.15–v1.18 Deep Research（§6.5）；v1.19 Data Plane/RocketMQ/Memory Service 专项（§26）**
+> **Prompt 版本：v1.20**
+> **生效日期：2026-08-16**
+> **路径收敛（高于下文历史迁移段落）：默认产品编排已是 Cognitive + Finance；旧 Root Graph、M5 灰度双路径、cognitive→legacy 回退已从代码删除。下文仍保留 M0–M6 / PLATFORM 切片叙述供历史对照与未完成门禁（如 M0 持久化）使用，但凡要求“保留旧 Root Graph / 默认走旧路径 / 自动回退旧图”的条款一律作废，以当前代码与统一生产架构 v1.9+ 为准。**
+> **修订记录：总账见 §25；v1.20 路径收敛声明**
 > **阶段说明：M7 为可选的插件契约验证阶段，排在 M6 之后，不得抢占 M0–M6**
 > **上位架构：[00-BDLH-Agent-Runtime统一生产架构.md](../architecture/00-BDLH-Agent-Runtime统一生产架构.md)**  
 > **适用项目：`bdlh-runtime-orchestrator`、必要的 Java 用户数据接口、Nginx 与生产部署配置**  

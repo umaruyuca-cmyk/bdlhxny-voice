@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
@@ -13,8 +13,7 @@ from bdlh_runtime.runtime.tasks import (
     PriceThresholdCondition,
 )
 
-
-NOW = datetime(2026, 8, 16, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 16, tzinfo=UTC)
 
 
 class Response:
@@ -35,9 +34,7 @@ def task() -> FinancialTask:
         task_id="task-1",
         authenticated_user_id="7",
         status=FinancialTaskStatus.COMPLETED,
-        condition=PriceThresholdCondition(
-            symbol="600519", direction=PriceConditionDirection.AT_OR_ABOVE, threshold=10
-        ),
+        condition=PriceThresholdCondition(symbol="600519", direction=PriceConditionDirection.AT_OR_ABOVE, threshold=10),
         confirmation_ref="confirmation-1",
         creation_fingerprint="a" * 64,
         cadence_seconds=300,
@@ -56,9 +53,7 @@ def test_completion_is_one_java_use_case_call_with_stable_idempotency_key() -> N
         calls.append(kwargs)
         return Response({"eventId": "33333333-3333-3333-3333-333333333333", "status": "PENDING"})
 
-    store = RemoteTaskStore(RuntimeDataClient(
-        base_url="http://java-data", internal_token="token", request=request
-    ))
+    store = RemoteTaskStore(RuntimeDataClient(base_url="http://java-data", internal_token="token", request=request))
     item = task()
     message = NotificationOutboxMessage(
         outbox_id="33333333-3333-3333-3333-333333333333",
@@ -73,9 +68,7 @@ def test_completion_is_one_java_use_case_call_with_stable_idempotency_key() -> N
         created_at=NOW,
     )
 
-    completed = store.complete_task_and_enqueue_notification(
-        item, expected_version=3, notification=message
-    )
+    completed = store.complete_task_and_enqueue_notification(item, expected_version=3, notification=message)
 
     assert completed.version == 4
     assert len(calls) == 1

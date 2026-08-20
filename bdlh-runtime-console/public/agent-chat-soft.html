@@ -609,8 +609,8 @@
     <div class="topbar-left">
       <a class="brand" href="/"><span class="logo">研</span><span>グリッドユニバース研究所</span></a>
       <div class="mode-switch" role="navigation" aria-label="Agent 入口">
-        <a class="mode-button" id="modeGeneral" data-mode="general" href="/workspace?mode=general"><span class="mode-dot"></span>普通问答</a>
-        <a class="mode-button active" id="modeStock" data-mode="stock" href="/workspace?mode=stock"><span class="mode-dot"></span>Stock Agent</a>
+        <a class="mode-button" id="modeGeneral" data-mode="general" href="/agent"><span class="mode-dot"></span>普通问答</a>
+        <a class="mode-button active" id="modeStock" data-mode="stock" href="/agent"><span class="mode-dot"></span>Stock Agent</a>
       </div>
     </div>
     <div class="top-actions">
@@ -997,7 +997,7 @@
       finalizeBubble(bubble);
       addActionCard(bubble,"请选择分析标的",data.prompt||"这项分析需要一个具体标的。请选择股票、ETF 或基金后继续。",[
         {label:"选择标的",cls:"primary",action:()=>openInstrumentModal()},
-        {label:"前往普通问答",cls:"secondary",action:()=>location.href="/workspace?mode=general"}
+        {label:"前往普通问答",cls:"secondary",action:()=>location.href="/agent"}
       ]);
     }else if(type==="clarification"){
       const options=(data.options||[]).filter(option=>option.label&&option.message);
@@ -1074,13 +1074,13 @@
     if(ST.mode==="general"){
       messages.innerHTML='<div class="welcome"><div class="welcome-mark">问</div><h1>'+escHtml(title||"有什么想一起弄清楚的？")+'</h1><p>'+escHtml(description||"普通问答与股票分析完全隔离。DeepSeek 会直接回答；需要时再通过 ReAct 调用搜索工具。")+'</p>'+
         '<div class="start-paths"><div class="start-card primary-path"><strong>直接开始问答</strong><p>适合知识解释、方案讨论、系统使用和需要搜索核验的问题。</p><button class="ac-btn primary" type="button" data-focus-input>开始提问</button></div>'+
-        '<div class="start-card"><strong>需要分析股票？</strong><p>前往 Stock Agent，选定股票、ETF 或基金后开始分析。</p><a class="ghost" href="/workspace?mode=stock" style="width:100%;justify-content:center">前往 Stock Agent</a></div></div></div>';
+        '<div class="start-card"><strong>需要分析股票？</strong><p>前往统一助手，选定股票、ETF 或基金后开始分析。</p><a class="ghost" href="/agent" style="width:100%;justify-content:center">前往助手</a></div></div></div>';
       messages.querySelector("[data-focus-input]").addEventListener("click",()=>input.focus());
       return;
     }
     messages.innerHTML='<div class="welcome"><div class="welcome-mark">研</div><h1>'+escHtml(title||"先选标的，再开始分析")+'</h1><p>'+escHtml(description||"Stock Agent 不猜测标的。选择股票、ETF 或基金后，分析 Route 始终以该标的为准。")+'</p>'+
       '<div class="start-paths"><div class="start-card primary-path"><strong>选择分析标的</strong><p>明确代码、市场和资产类型，后续问题自动携带当前标的。</p><button class="ac-btn primary" type="button" data-open-instrument>选择标的</button></div>'+
-      '<div class="start-card"><strong>只想普通聊天？</strong><p>普通问答使用独立会话，不会污染 Stock Agent 的分析上下文。</p><a class="ghost" href="/workspace?mode=general" style="width:100%;justify-content:center">前往普通问答</a></div></div></div>';
+      '<div class="start-card"><strong>只想普通聊天？</strong><p>普通问答使用统一助手会话。</p><a class="ghost" href="/agent" style="width:100%;justify-content:center">前往助手</a></div></div></div>';
     messages.querySelector("[data-open-instrument]").addEventListener("click",openInstrumentModal);
   }
 

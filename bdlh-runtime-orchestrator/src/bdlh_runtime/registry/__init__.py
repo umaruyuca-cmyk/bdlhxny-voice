@@ -6,8 +6,8 @@
 
 from .loader import load_and_validate
 from .menu import (
-    FLAT_WINDOW_LIMIT,
     FEATURE_GATED_CAPABILITIES,
+    FLAT_WINDOW_LIMIT,
     ToolWindow,
     allowed_capabilities,
     apply_feature_gates,
@@ -29,11 +29,10 @@ from .models import (
     ToolsetRecord,
     TopicCapabilityRecord,
 )
+from .remote_store import RemoteRegistryStore, create_remote_registry_store
 from .store import (
     InMemoryRegistryStore,
-    PostgresRegistryStore,
     RegistryStore,
-    create_registry_store,
 )
 
 __all__ = [
@@ -45,7 +44,7 @@ __all__ = [
     "FastpathRouteRecord",
     "InMemoryRegistryStore",
     "OperationRecord",
-    "PostgresRegistryStore",
+    "RemoteRegistryStore",
     "RegistrySnapshot",
     "RegistryStore",
     "SkillRecord",
@@ -56,7 +55,7 @@ __all__ = [
     "allowed_capabilities",
     "apply_feature_gates",
     "build_window",
-    "create_registry_store",
+    "create_remote_registry_store",
     "dependency_closure",
     "effective_operations",
     "eligible_capabilities",

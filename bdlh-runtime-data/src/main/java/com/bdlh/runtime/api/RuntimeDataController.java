@@ -6,7 +6,9 @@ import com.bdlh.runtime.runtime.RuntimeDataDtos.ChatSessionResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.EnsureSessionRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.PendingRunRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.RunLocationResponse;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.RunProjectionResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveHistoryRequest;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveRunProjectionRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.UpsertRunRequest;
 import com.bdlh.runtime.runtime.RuntimeDataService;
 import com.bdlh.runtime.security.JavaDataAccessGuard;
@@ -108,6 +110,22 @@ public class RuntimeDataController {
             @RequestParam(name = "user_id", required = false) Long requestedUserId,
             @PathVariable String runId) {
         return runtimeDataService.getRun(accessGuard.resolveUserId(requestedUserId), runId);
+    }
+
+    @PutMapping("/runs/{runId}/projection")
+    public RunProjectionResponse saveRunProjection(
+            @RequestParam(name = "user_id", required = false) Long requestedUserId,
+            @PathVariable String runId,
+            @RequestBody SaveRunProjectionRequest request) {
+        return runtimeDataService.saveRunProjection(
+                accessGuard.resolveUserId(requestedUserId), runId, request);
+    }
+
+    @GetMapping("/runs/{runId}/projection")
+    public RunProjectionResponse getRunProjection(
+            @RequestParam(name = "user_id", required = false) Long requestedUserId,
+            @PathVariable String runId) {
+        return runtimeDataService.getRunProjection(accessGuard.resolveUserId(requestedUserId), runId);
     }
 
     @PutMapping("/history/{historyId}")

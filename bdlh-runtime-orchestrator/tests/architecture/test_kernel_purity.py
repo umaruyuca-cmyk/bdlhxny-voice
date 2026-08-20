@@ -54,10 +54,9 @@ def _imported_modules(tree: ast.AST) -> set[str]:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 modules.add(alias.name)
-        elif isinstance(node, ast.ImportFrom):
+        elif isinstance(node, ast.ImportFrom) and node.module:
             # level > 0 是包内相对 import；这里只需判断显式写出的模块名
-            if node.module:
-                modules.add(node.module)
+            modules.add(node.module)
     return modules
 
 
@@ -102,11 +101,8 @@ def test_cognitive_only_depends_on_generic_domain_contracts():
     for file_path in cognitive_files:
         tree = ast.parse(file_path.read_text(encoding="utf-8"))
         imported = _imported_modules(tree) | _relative_import_targets(tree, file_path)
-        domain_imports |= {
-            module for module in imported if module.startswith("bdlh_runtime.domains")
-        }
+        domain_imports |= {module for module in imported if module.startswith("bdlh_runtime.domains")}
 
     assert domain_imports == {"bdlh_runtime.domains.contracts"}, (
-        "认知层只允许依赖 bdlh_runtime.domains.contracts，实际为 "
-        f"{sorted(domain_imports)}"
+        f"认知层只允许依赖 bdlh_runtime.domains.contracts，实际为 {sorted(domain_imports)}"
     )

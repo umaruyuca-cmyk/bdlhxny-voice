@@ -11,8 +11,8 @@ from .contracts import (
     ConfidenceAssessment,
     ContextRef,
     DomainBudget,
-    DomainConstraint,
     DomainConflict,
+    DomainConstraint,
     DomainContractModel,
     DomainError,
     DomainFact,
@@ -25,8 +25,8 @@ from .contracts import (
     RequiredUserDecision,
     SuggestedFollowup,
 )
-from .registry import DomainRegistry
 from .dispatcher import DomainDispatcher, DomainRuntime
+from .registry import DomainRegistry
 
 __all__ = [
     "ConfidenceAssessment",

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from bdlh_runtime.tools.deep_research.contracts import DEEP_SEARCH_CAPABILITY, WEB_SEARCH_CAPABILITY
+from bdlh_runtime.contracts.capability_ids import (
+    DEEP_SEARCH_CAPABILITY,
+    WEB_SEARCH_CAPABILITY,
+)
 
 DEEP_TRIGGER_TERMS = (
     "深度调研",
@@ -49,9 +52,7 @@ def looks_like_research_bundle(payload: Any) -> bool:
     if payload.get("capability") == DEEP_SEARCH_CAPABILITY:
         return True
     data = payload.get("data")
-    if isinstance(data, dict) and data.get("schema_version") == "research-bundle.v1":
-        return True
-    return False
+    return bool(isinstance(data, dict) and data.get("schema_version") == "research-bundle.v1")
 
 
 def extract_research_bundle(payload: Any) -> dict[str, Any] | None:
@@ -143,11 +144,7 @@ def evaluate_research_observation(payload: Any) -> tuple[str, str, str] | None:
             "Provider 失败时不得升格为 COMPLETE",
         )
 
-    source_ids = {
-        str(item.get("source_id"))
-        for item in sources
-        if isinstance(item, dict) and item.get("source_id")
-    }
+    source_ids = {str(item.get("source_id")) for item in sources if isinstance(item, dict) and item.get("source_id")}
     for finding in findings:
         if not isinstance(finding, dict):
             continue

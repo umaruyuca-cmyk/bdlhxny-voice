@@ -6,7 +6,7 @@ Compose 不映射任何 RocketMQ 端口到主机：NameServer、Broker 与 Proxy
 
 ## 正常启用
 
-1. 设置 `BDLH_RUNTIME_DATA_MODE=java`、随机 `JAVA_DATA_INTERNAL_TOKEN`，并将 `ROCKETMQ_ENABLED=true`。
+1. 设置 `JAVA_API_BASE_URL`、随机 `JAVA_DATA_INTERNAL_TOKEN`，并将 `ROCKETMQ_ENABLED=true`。
 2. 启动 Compose。`rmq-init` 成功结束后，Data Plane 才会启动。
 3. 通过服务凭证调用 `GET /internal/v1/ops/outbox` 观察 `pending`、`publishing`、`failed` 和最老待投递事件年龄。
 

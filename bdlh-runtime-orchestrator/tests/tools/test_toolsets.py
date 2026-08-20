@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import pytest
-from tests.helpers_registry import seeded_snapshot
+from tests.helpers_registry import build_default_capability_registry, seeded_snapshot
 
-from tests.helpers_registry import build_default_capability_registry
-from bdlh_runtime.tools.capabilities import (    CapabilityRegistry,
+from bdlh_runtime.tools.capabilities import (
+    CapabilityRegistry,
     CapabilitySpec,
-    ToolsetName,)
-from bdlh_runtime.tools.toolsets import load_toolset_registry, toolset_registry_from_snapshot
-from bdlh_runtime.tools.toolsets import (    ToolsetRegistry,)
+    ToolsetName,
+)
+from bdlh_runtime.tools.toolsets import (
+    ToolsetRegistry,
+    toolset_registry_from_snapshot,
+)
 
 
 def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None:
@@ -20,7 +23,7 @@ def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None
     grouped = [spec for toolset in toolsets.list() for spec in toolset.capabilities]
 
     # 重写：目录与视图均来自同一 RegistrySnapshot（名字级一致即同源）
-    assert sorted(c.name for c in toolsets.capability_registry.list()) ==         sorted(c.name for c in capabilities.list())
+    assert sorted(c.name for c in toolsets.capability_registry.list()) == sorted(c.name for c in capabilities.list())
     assert len(toolsets.list()) == 7
     # 种子含 17 项能力（含 ADR-016 research.deep_search；M7 探针来自库表种子）。
     assert len(grouped) == 17
@@ -30,10 +33,7 @@ def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None
 def test_default_toolset_membership_is_stable_and_business_facing() -> None:
     toolsets = toolset_registry_from_snapshot(seeded_snapshot())
 
-    assert {
-        toolset.name: len(toolset.capabilities)
-        for toolset in toolsets.list()
-    } == {
+    assert {toolset.name: len(toolset.capabilities) for toolset in toolsets.list()} == {
         ToolsetName.MARKET_READ: 4,
         ToolsetName.FUNDAMENTAL_READ: 3,
         ToolsetName.NEWS_READ: 3,
@@ -84,10 +84,7 @@ def test_suitability_toolsets_expose_minimum_user_reads_and_local_valuation() ->
         "portfolio.build_current_valuation",
     }
     assert {item["name"] for item in profile} == {"user.get_risk_profile"}
-    valuation = next(
-        item for item in portfolio
-        if item["name"] == "portfolio.build_current_valuation"
-    )
+    valuation = next(item for item in portfolio if item["name"] == "portfolio.build_current_valuation")
     assert "authenticated_user_id" not in valuation["required_arguments"]
 
 
@@ -106,9 +103,7 @@ def test_toolset_view_is_dynamic_over_the_single_capability_registry() -> None:
     descriptions = {name.value: name.value for name in ToolsetName}
     toolsets = ToolsetRegistry(capabilities, descriptions)
 
-    assert [item.name for item in toolsets.get("market_read").capabilities] == [
-        "market.example_read"
-    ]
+    assert [item.name for item in toolsets.get("market_read").capabilities] == ["market.example_read"]
 
 
 def test_toolset_registry_rejects_capabilities_without_group_membership() -> None:

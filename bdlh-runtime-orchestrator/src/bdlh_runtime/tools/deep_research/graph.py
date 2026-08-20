@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -44,9 +44,8 @@ def build_deep_research_graph(
         request = DeepResearchRequest.model_validate(state["request"])
         brief = await model.write_brief(request)
         limitations = list(state.get("limitations") or [])
-        if isinstance(model, RuleBasedDeepResearchModel):
-            if "rule_based_orchestration" not in limitations:
-                limitations.append("rule_based_orchestration")
+        if isinstance(model, RuleBasedDeepResearchModel) and "rule_based_orchestration" not in limitations:
+            limitations.append("rule_based_orchestration")
         return {
             "brief": brief,
             "model_calls": int(state.get("model_calls") or 0) + 1,
@@ -94,7 +93,7 @@ def build_deep_research_graph(
         provider_failed = bool(state.get("provider_failed"))
         budget_exhausted = bool(state.get("budget_exhausted"))
         started = float(state.get("started_perf") or perf_counter())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         progressed = False
 
         if (perf_counter() - started) >= budget.runtime_seconds:
@@ -152,9 +151,7 @@ def build_deep_research_graph(
             unit["query"] = turn.next_query
             batch = await atomic_search.search(
                 AtomicSearchRequest(
-                    request_id=(
-                        f"{request.request_id}:{unit['topic']}:{supervisor_round}"
-                    ),
+                    request_id=(f"{request.request_id}:{unit['topic']}:{supervisor_round}"),
                     queries=[str(unit["query"])],
                     include_domains=list(request.include_domains),
                     exclude_domains=list(request.exclude_domains),
@@ -218,9 +215,8 @@ def build_deep_research_graph(
             ):
                 unit["done"] = True
 
-        if not progressed and all(bool(u.get("done")) for u in units):
-            if "no_new_url_hard_stop" not in limitations:
-                limitations.append("no_new_url_hard_stop")
+        if not progressed and all(bool(u.get("done")) for u in units) and "no_new_url_hard_stop" not in limitations:
+            limitations.append("no_new_url_hard_stop")
 
         return {
             "units": units,
@@ -286,12 +282,8 @@ def build_deep_research_graph(
             duration_ms=duration_ms,
             budget_exhausted=bool(state.get("budget_exhausted")),
         )
-        findings = [
-            ResearchFinding.model_validate(item) for item in (state.get("findings") or [])
-        ]
-        sources = [
-            ResearchSource.model_validate(item) for item in (state.get("sources") or [])
-        ]
+        findings = [ResearchFinding.model_validate(item) for item in (state.get("findings") or [])]
+        sources = [ResearchSource.model_validate(item) for item in (state.get("sources") or [])]
         bundle = assemble_research_bundle(
             request,
             research_brief=brief,
@@ -308,8 +300,7 @@ def build_deep_research_graph(
             bundle = bundle.model_copy(
                 update={
                     "status": "PARTIAL",
-                    "limitations": list(bundle.limitations)
-                    + ["complete_gated_until_llm_eval"],
+                    "limitations": list(bundle.limitations) + ["complete_gated_until_llm_eval"],
                 }
             )
         return {"bundle": bundle.model_dump(), "phase": "assembled"}

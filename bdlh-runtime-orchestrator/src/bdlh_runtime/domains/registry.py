@@ -48,13 +48,10 @@ class DomainRegistry:
         那是 ``runtime/manifest_validation.py`` 的启动职责（保持本模块纯净）。
         """
         if not self.contains(domain):
-            raise ValueError(
-                f"Cannot register descriptor for unregistered domain: {domain}"
-            )
+            raise ValueError(f"Cannot register descriptor for unregistered domain: {domain}")
         if descriptor.domain != domain:
             raise ValueError(
-                f"Descriptor domain mismatch: descriptor.domain="
-                f"{descriptor.domain!r} but registered under {domain!r}"
+                f"Descriptor domain mismatch: descriptor.domain={descriptor.domain!r} but registered under {domain!r}"
             )
         if domain in self._descriptors:
             raise ValueError(f"Descriptor already registered for domain: {domain}")

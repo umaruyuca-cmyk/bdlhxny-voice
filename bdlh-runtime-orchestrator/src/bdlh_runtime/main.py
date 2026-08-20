@@ -6,66 +6,20 @@
 
 from __future__ import annotations
 
-import asyncio
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.errors import ConfigurationError
 from bdlh_runtime.runtime.application import create_application
 
 _settings = Settings.from_environment()
 
 
 def _create_app() -> FastAPI:
-    """生产 PostgreSQL 使用异步 Saver；开发环境保持轻量同步装配。"""
+    """创建仅依赖 Java Data Plane 的 ASGI 应用。"""
 
-    if _settings.environment != "production" or _settings.checkpointer_backend != "postgres":
-        application = create_application(_settings)
-        return create_api_app(application, api_prefix=_settings.api_prefix)
-
-    if not _settings.postgres_dsn:
-        raise ConfigurationError("生产 PostgreSQL Checkpointer 需要 POSTGRES_DSN")
-
-    @asynccontextmanager
-    async def lifespan(shell: FastAPI):
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-        from bdlh_runtime.runtime.scheduler import run_worker_loop
-
-        async with AsyncPostgresSaver.from_conn_string(_settings.postgres_dsn) as checkpointer:
-            await checkpointer.setup()
-            application = create_application(
-                _settings,
-                checkpointer_override=checkpointer,
-            )
-            inner = create_api_app(application, api_prefix=_settings.api_prefix)
-            shell.mount("/", inner)
-            stop_event = asyncio.Event()
-            worker_task: asyncio.Task[None] | None = None
-            if _settings.financial_task_worker_enabled:
-                worker_task = asyncio.create_task(
-                    run_worker_loop(
-                        scheduler=application.task_scheduler,
-                        outbox_worker=application.notification_outbox_worker,
-                        poll_seconds=_settings.financial_task_poll_seconds,
-                        stop_event=stop_event,
-                    ),
-                    name="bdlh-financial-task-worker",
-                )
-            try:
-                yield
-            finally:
-                stop_event.set()
-                if worker_task is not None:
-                    await worker_task
-
-    return FastAPI(
-        title="BDLH Agent Runtime Analysis Workflow",
-        version="0.1.0",
-        lifespan=lifespan,
-    )
+    application = create_application(_settings)
+    return create_api_app(application, api_prefix=_settings.api_prefix)
 
 
 app = _create_app()

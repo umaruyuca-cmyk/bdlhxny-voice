@@ -1,4 +1,0 @@
-interface:
-  display_name: "StockWise 股票分析"
-  short_description: "可审计的 A股、ETF、基金与持仓分析 Skill"
-  default_prompt: "使用 $stock-analysis-skill 获取并核验行情，输出结构化投资分析。"

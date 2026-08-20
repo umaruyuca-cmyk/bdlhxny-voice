@@ -49,6 +49,36 @@ public final class RuntimeDataDtos {
             OffsetDateTime updatedAt) {
     }
 
+    public record RunEventRequest(String eventType, JsonNode payload) {
+    }
+
+    public record SaveRunProjectionRequest(
+            String threadId,
+            String status,
+            String nextStage,
+            JsonNode finalResponse,
+            JsonNode interrupts,
+            List<RunEventRequest> events) {
+    }
+
+    public record RunEventResponse(
+            int sequenceNo,
+            String eventType,
+            JsonNode payload,
+            OffsetDateTime createdAt) {
+    }
+
+    public record RunProjectionResponse(
+            String runId,
+            String threadId,
+            String status,
+            String nextStage,
+            JsonNode finalResponse,
+            JsonNode interrupts,
+            List<RunEventResponse> events,
+            OffsetDateTime updatedAt) {
+    }
+
     public record SaveHistoryRequest(
             String threadId,
             String runId,

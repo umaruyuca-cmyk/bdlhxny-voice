@@ -19,7 +19,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from bdlh_runtime.domains.contracts import DomainOutcome, DomainRequest
+from bdlh_runtime.domains.contracts import DomainRequest
 
 #: 未启用行动的稳定审计码（§7.2）：不能静默降级为 RESPOND。
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
@@ -73,7 +73,7 @@ class CognitiveAction(BaseModel):
     task_spec_ref: str | None = None
 
     @model_validator(mode="after")
-    def validate_payload(self) -> "CognitiveAction":
+    def validate_payload(self) -> CognitiveAction:
         if self.action_type == CognitiveActionType.INVOKE_DOMAIN and self.domain_request is None:
             raise ValueError("INVOKE_DOMAIN requires a domain_request payload")
         if self.action_type != CognitiveActionType.INVOKE_DOMAIN and self.domain_request is not None:
@@ -95,7 +95,7 @@ class InputEvent(BaseModel):
     task_id: str | None = None
 
     @model_validator(mode="after")
-    def validate_event_source(self) -> "InputEvent":
+    def validate_event_source(self) -> InputEvent:
         if self.event_type == InputEventType.SCHEDULED_WAKEUP and not self.task_id:
             raise ValueError("SCHEDULED_WAKEUP requires task_id")
         if self.event_type != InputEventType.SCHEDULED_WAKEUP and self.task_id is not None:
@@ -111,14 +111,14 @@ class CognitiveState(BaseModel):
     event: InputEvent
     situation_summary: str | None = None
     uncertainty_codes: list[str] = Field(default_factory=list)
-    action: "CognitiveActionSummary | None" = None
-    action_history: list["CognitiveActionSummary"] = Field(default_factory=list)
+    action: CognitiveActionSummary | None = None
+    action_history: list[CognitiveActionSummary] = Field(default_factory=list)
     domain_request_refs: list[str] = Field(default_factory=list)
     domain_outcome_refs: list[str] = Field(default_factory=list)
     domain_calls_used: int = Field(default=0, ge=0)
     requested_tool_calls: int = Field(default=0, ge=0)
     requested_runtime_seconds: int = Field(default=0, ge=0)
-    communication_plan: "CommunicationPlan | None" = None
+    communication_plan: CommunicationPlan | None = None
     public_events: list[str] = Field(default_factory=list)
     error_codes: list[str] = Field(default_factory=list)
 
@@ -134,14 +134,12 @@ class CognitiveActionSummary(BaseModel):
     domain_request_ref: str | None = None
 
     @classmethod
-    def from_action(cls, action: CognitiveAction) -> "CognitiveActionSummary":
+    def from_action(cls, action: CognitiveAction) -> CognitiveActionSummary:
         return cls(
             action_type=action.action_type,
             reason_code=action.reason_code,
             related_goal_ids=list(action.related_goal_ids),
-            domain_request_ref=(
-                action.domain_request.request_id if action.domain_request else None
-            ),
+            domain_request_ref=(action.domain_request.request_id if action.domain_request else None),
         )
 
 
@@ -151,7 +149,11 @@ class CommunicationPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     response_kind: Literal[
-        "ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED",
+        "ANSWER",
+        "ASK_USER",
+        "DOMAIN_RESULT",
+        "LIMITED",
+        "BLOCKED",
         "CAPABILITY_NOT_ENABLED",
     ]
     response_structure: Literal[
@@ -163,7 +165,7 @@ class CommunicationPlan(BaseModel):
         "SAFETY_BLOCK",
     ] = "KNOWLEDGE"
     summary: str = Field(min_length=1)
-    sections: list["CommunicationSection"] = Field(default_factory=list)
+    sections: list[CommunicationSection] = Field(default_factory=list)
     required_fields: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     data_times: list[str] = Field(default_factory=list)
@@ -178,7 +180,11 @@ class PublicResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     response_kind: Literal[
-        "ANSWER", "ASK_USER", "DOMAIN_RESULT", "LIMITED", "BLOCKED",
+        "ANSWER",
+        "ASK_USER",
+        "DOMAIN_RESULT",
+        "LIMITED",
+        "BLOCKED",
         "CAPABILITY_NOT_ENABLED",
     ]
     response_structure: Literal[
@@ -190,7 +196,7 @@ class PublicResponse(BaseModel):
         "SAFETY_BLOCK",
     ] = "KNOWLEDGE"
     message: str = Field(min_length=1)
-    sections: list["CommunicationSection"] = Field(default_factory=list)
+    sections: list[CommunicationSection] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     data_times: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
@@ -204,9 +210,7 @@ class CommunicationSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    section_type: Literal[
-        "SUMMARY", "FACTS", "FINDINGS", "RISKS", "LIMITATIONS", "NEXT_STEPS"
-    ]
+    section_type: Literal["SUMMARY", "FACTS", "FINDINGS", "RISKS", "LIMITATIONS", "NEXT_STEPS"]
     title: str = Field(min_length=1)
     items: list[str] = Field(min_length=1)
 

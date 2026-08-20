@@ -9,7 +9,7 @@ def simple_returns(prices: Sequence[float]) -> list[float]:
     """根据相邻价格计算简单收益率；零价格不产生收益率。"""
 
     returns: list[float] = []
-    for previous, current in zip(prices, prices[1:]):
+    for previous, current in zip(prices, prices[1:], strict=False):
         if previous != 0:
             returns.append(current / previous - 1.0)
     return returns

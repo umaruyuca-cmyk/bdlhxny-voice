@@ -34,7 +34,6 @@ from bdlh_runtime.domains.contracts import (
     DomainRisk,
 )
 
-
 # ── 请求边界 ───────────────────────────────────────────────────────────────
 
 
@@ -98,7 +97,7 @@ class InstrumentResolutionOutcome(DomainOutcome):
     candidates: list[InstrumentCandidate] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_resolution(self) -> "InstrumentResolutionOutcome":
+    def validate_resolution(self) -> InstrumentResolutionOutcome:
         if self.resolution_status == "RESOLVED" and self.selected is None:
             raise ValueError("RESOLVED requires a selected candidate")
         if self.resolution_status != "RESOLVED" and self.selected is not None:
@@ -113,20 +112,25 @@ class FinancialDomainRequest(DomainRequest):
 
     domain: Literal["finance"] = "finance"
     financial_intent: FinancialIntent = FinancialIntent.STOCK_RESEARCH
-    requested_topics: set[Literal[
-        "news",
-        "money_flow",
-        "industry",
-        "web_research",
-    ]] = Field(default_factory=set)
+    requested_topics: set[
+        Literal[
+            "news",
+            "money_flow",
+            "industry",
+            "web_research",
+        ]
+    ] = Field(default_factory=set)
     instruments: list[FinancialInstrument] = Field(default_factory=list)
     requires_financial_snapshot: bool = False
 
     @model_validator(mode="after")
-    def validate_finance_request(self) -> "FinancialDomainRequest":
+    def validate_finance_request(self) -> FinancialDomainRequest:
         # 重写 §6.2：允许多标的对比（instruments >= 1）；每个涉及标的的 Goal
         # 必须最终有已解析 instrument（运行时由 resolve 闭包保证）。
-        if self.financial_intent in {FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY} and not self.instruments:
+        if (
+            self.financial_intent in {FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY}
+            and not self.instruments
+        ):
             raise ValueError(f"{self.financial_intent} requires at least one instrument")
         return self
 
@@ -178,7 +182,7 @@ class FinancialDataReference(DomainContractModel):
         "user.get_risk_profile",
     ]
     observation_id: str = Field(min_length=1)
-    data_mode: "FinancialDataMode"
+    data_mode: FinancialDataMode
     source_type: str | None = None
     data_time: datetime | None = None
     queried_at: datetime | None = None
@@ -186,12 +190,9 @@ class FinancialDataReference(DomainContractModel):
     profile_version: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def validate_controlled_confirmation(self) -> "FinancialDataReference":
-        if self.data_mode == FinancialDataMode.USER_CONFIRMED:
-            if not self.confirmation_ref or self.data_time is None:
-                raise ValueError(
-                    "USER_CONFIRMED data references require confirmation_ref and data_time"
-                )
+    def validate_controlled_confirmation(self) -> FinancialDataReference:
+        if self.data_mode == FinancialDataMode.USER_CONFIRMED and (not self.confirmation_ref or self.data_time is None):
+            raise ValueError("USER_CONFIRMED data references require confirmation_ref and data_time")
         return self
 
 
@@ -250,7 +251,7 @@ class FinancialSnapshot(DomainContractModel):
     limitations: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_data_mode(self) -> "FinancialSnapshot":
+    def validate_data_mode(self) -> FinancialSnapshot:
         if self.data_mode == FinancialDataMode.MOCK and not self.is_mock:
             raise ValueError("MOCK financial snapshots must set is_mock=true")
         if self.is_mock and self.data_mode != FinancialDataMode.MOCK:
@@ -260,14 +261,11 @@ class FinancialSnapshot(DomainContractModel):
         capabilities = [item.capability for item in self.data_references]
         if len(capabilities) != len(set(capabilities)):
             raise ValueError("FinancialSnapshot data_references must be unique by capability")
-        if self.data_mode == FinancialDataMode.USER_CONFIRMED:
-            if not self.data_references or any(
-                item.data_mode != FinancialDataMode.USER_CONFIRMED
-                for item in self.data_references
-            ):
-                raise ValueError(
-                    "USER_CONFIRMED snapshots require controlled references for every data block"
-                )
+        if self.data_mode == FinancialDataMode.USER_CONFIRMED and (
+            not self.data_references
+            or any(item.data_mode != FinancialDataMode.USER_CONFIRMED for item in self.data_references)
+        ):
+            raise ValueError("USER_CONFIRMED snapshots require controlled references for every data block")
         return self
 
 
@@ -405,9 +403,7 @@ class MarketRiskProxy(DomainContractModel):
     band: Literal["LOW", "MEDIUM", "HIGH", "UNKNOWN"] = "UNKNOWN"
     max_drawdown_pct: float | None = Field(default=None, ge=0, le=100)
     annualized_volatility_pct: float | None = Field(default=None, ge=0)
-    highest_research_risk_severity: Literal[
-        "LOW", "MEDIUM", "HIGH", "CRITICAL"
-    ] | None = None
+    highest_research_risk_severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] | None = None
     lookback_start: datetime | None = None
     lookback_end: datetime | None = None
     observation_count: int | None = Field(default=None, ge=0)
@@ -417,7 +413,7 @@ class MarketRiskProxy(DomainContractModel):
     limitations: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_proxy_traceability(self) -> "MarketRiskProxy":
+    def validate_proxy_traceability(self) -> MarketRiskProxy:
         has_objective_input = any(
             value is not None
             for value in (
@@ -428,9 +424,8 @@ class MarketRiskProxy(DomainContractModel):
         )
         if self.band != "UNKNOWN" and not has_objective_input:
             raise ValueError("Known market risk proxy bands require objective inputs")
-        if self.lookback_start and self.lookback_end:
-            if self.lookback_start > self.lookback_end:
-                raise ValueError("lookback_start must not be after lookback_end")
+        if self.lookback_start and self.lookback_end and self.lookback_start > self.lookback_end:
+            raise ValueError("lookback_start must not be after lookback_end")
         return self
 
 
@@ -456,7 +451,7 @@ class SuitabilityRuleEvaluation(DomainContractModel):
     limitations: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_evidence_refs(self) -> "SuitabilityRuleEvaluation":
+    def validate_evidence_refs(self) -> SuitabilityRuleEvaluation:
         if len(self.evidence_refs) != len(set(self.evidence_refs)):
             raise ValueError("Rule evidence_refs must contain stable unique references")
         if self.outcome != "UNKNOWN" and not self.evidence_refs:
@@ -471,7 +466,7 @@ class ConcentrationThreshold(DomainContractModel):
     block_above_pct: float = Field(ge=0, le=100)
 
     @model_validator(mode="after")
-    def validate_order(self) -> "ConcentrationThreshold":
+    def validate_order(self) -> ConcentrationThreshold:
         if self.conditional_above_pct >= self.block_above_pct:
             raise ValueError("Conditional concentration threshold must be below block")
         return self
@@ -489,13 +484,10 @@ class MarketRiskProxyThresholds(DomainContractModel):
     price_adjustment: Literal["FORWARD", "BACKWARD", "NONE"]
 
     @model_validator(mode="after")
-    def validate_band_order(self) -> "MarketRiskProxyThresholds":
+    def validate_band_order(self) -> MarketRiskProxyThresholds:
         if self.medium_max_drawdown_pct >= self.high_max_drawdown_pct:
             raise ValueError("Medium drawdown threshold must be below high")
-        if (
-            self.medium_annualized_volatility_pct
-            >= self.high_annualized_volatility_pct
-        ):
+        if self.medium_annualized_volatility_pct >= self.high_annualized_volatility_pct:
             raise ValueError("Medium volatility threshold must be below high")
         return self
 
@@ -510,9 +502,7 @@ class SuitabilityV0RuleSet(DomainContractModel):
     version: str = Field(min_length=1)
     status: Literal["DRAFT", "REVIEW_CHANGES_REQUIRED", "APPROVED"]
     applicable_market: Literal["CN_A_SHARE_CASH"] = "CN_A_SHARE_CASH"
-    supported_asset_types: set[Literal["STOCK"]] = Field(
-        default_factory=lambda: {"STOCK"}
-    )
+    supported_asset_types: set[Literal["STOCK"]] = Field(default_factory=lambda: {"STOCK"})
     rule_ids: list[str] = Field(min_length=7, max_length=7)
     critical_rule_ids: set[str]
     market_risk_proxy_thresholds: MarketRiskProxyThresholds
@@ -532,7 +522,7 @@ class SuitabilityV0RuleSet(DomainContractModel):
     approved_at: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_approval_and_completeness(self) -> "SuitabilityV0RuleSet":
+    def validate_approval_and_completeness(self) -> SuitabilityV0RuleSet:
         expected_profiles = {"CONSERVATIVE", "BALANCED", "AGGRESSIVE"}
         for field_name in ("single_position_thresholds", "industry_thresholds"):
             if set(getattr(self, field_name)) != expected_profiles:
@@ -557,14 +547,12 @@ class PortfolioImpact(DomainContractModel):
     rule_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_exposure_percentages(self) -> "PortfolioImpact":
+    def validate_exposure_percentages(self) -> PortfolioImpact:
         for field_name in ("current_exposure", "projected_exposure"):
             values = getattr(self, field_name)
             invalid = [name for name, value in values.items() if not 0 <= value <= 100]
             if invalid:
-                raise ValueError(
-                    f"{field_name} values must use percentage points in 0..100"
-                )
+                raise ValueError(f"{field_name} values must use percentage points in 0..100")
         return self
 
 
@@ -602,9 +590,7 @@ class SuitabilityCondition(DomainContractModel):
 class SuitabilityAssessment(DomainContractModel):
     """个性化风险匹配筛查结果，不是买卖建议或完整法定适当性结论。"""
 
-    assessment_kind: Literal["PERSONALIZED_RISK_MATCHING_SCREEN"] = (
-        "PERSONALIZED_RISK_MATCHING_SCREEN"
-    )
+    assessment_kind: Literal["PERSONALIZED_RISK_MATCHING_SCREEN"] = "PERSONALIZED_RISK_MATCHING_SCREEN"
     rule_set_version: str = Field(min_length=1)
     rule_ids: list[str] = Field(min_length=1)
     evidence_refs: list[str] = Field(min_length=1)
@@ -627,7 +613,7 @@ class SuitabilityAssessment(DomainContractModel):
     limitations: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_rule_references(self) -> "SuitabilityAssessment":
+    def validate_rule_references(self) -> SuitabilityAssessment:
         for field_name in ("rule_ids", "evidence_refs"):
             values = getattr(self, field_name)
             if len(values) != len(dict.fromkeys(values)):
@@ -638,9 +624,7 @@ class SuitabilityAssessment(DomainContractModel):
         if any(rule_id not in self.rule_ids for rule_id in evaluated_rule_ids):
             raise ValueError("Every evaluated rule must be declared in rule_ids")
         if self.result == "SUITABLE" and not self.proposed_allocation_confirmed:
-            raise ValueError(
-                "SUITABLE requires a controlled proposed allocation confirmation"
-            )
+            raise ValueError("SUITABLE requires a controlled proposed allocation confirmation")
         return self
 
 

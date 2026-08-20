@@ -47,11 +47,7 @@ class ToolsetRegistry:
         return self._capability_registry
 
     def _validate_grouping(self) -> None:
-        ungrouped = [
-            spec.name
-            for spec in self._capability_registry.list()
-            if not spec.toolsets
-        ]
+        ungrouped = [spec.name for spec in self._capability_registry.list() if not spec.toolsets]
         if ungrouped:
             joined = ", ".join(ungrouped)
             raise ValueError(f"Capabilities missing toolset membership: {joined}")
@@ -60,11 +56,7 @@ class ToolsetRegistry:
         self._validate_grouping()
         if name not in self._descriptions:
             raise KeyError(f"Toolset is not registered: {name}")
-        capabilities = tuple(
-            spec
-            for spec in self._capability_registry.list()
-            if name in spec.toolsets
-        )
+        capabilities = tuple(spec for spec in self._capability_registry.list() if name in spec.toolsets)
         return ToolsetSpec(
             name=name,
             description=self._descriptions[name],

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from tests.registry.seeded_store import build_seeded_store
 
 from bdlh_runtime.registry import (
     allowed_capabilities,
@@ -14,8 +15,8 @@ from bdlh_runtime.registry import (
 )
 from bdlh_runtime.registry.loader import load_and_validate
 from bdlh_runtime.tools.deep_research import (
-    BailianWebSearchProvider,
     DEEP_SEARCH_CAPABILITY,
+    BailianWebSearchProvider,
     DeepResearchRequest,
     DeepResearchToolExecutor,
     FakeAtomicSearchPort,
@@ -28,7 +29,6 @@ from bdlh_runtime.tools.deep_research import (
 from bdlh_runtime.tools.deep_research.atomic_search import AtomicSearchRequest
 from bdlh_runtime.tools.deep_research.bailian_provider import ProcessRateLimiter
 from bdlh_runtime.tools.deep_research.contracts import ResearchFinding, ResearchSource
-from tests.registry.seeded_store import build_seeded_store
 
 
 def _request(**kwargs) -> DeepResearchRequest:
@@ -202,9 +202,7 @@ async def test_bailian_uses_injected_mcp_client():
         mcp_client=fake,
         rate_limiter=ProcessRateLimiter(max_per_minute=100),
     )
-    batch = await provider.search(
-        AtomicSearchRequest(request_id="r1", queries=["茅台 舆情"], max_results=3)
-    )
+    batch = await provider.search(AtomicSearchRequest(request_id="r1", queries=["茅台 舆情"], max_results=3))
     assert batch.status == "SUCCESS"
     assert len(batch.hits) == 1
     assert fake.calls[0][0] == "bailian_web_search"
@@ -217,16 +215,12 @@ async def test_bailian_rate_limit_soft_cap():
     class AlwaysOk:
         async def call_tool(self, tool_name: str, arguments: dict):
             return {
-                "text": json.dumps(
-                    {"status": 0, "pages": [{"title": "t", "url": "https://e.com/x", "snippet": "s"}]}
-                ),
+                "text": json.dumps({"status": 0, "pages": [{"title": "t", "url": "https://e.com/x", "snippet": "s"}]}),
                 "is_error": False,
             }
 
     limiter = ProcessRateLimiter(max_per_minute=1)
-    provider = BailianWebSearchProvider(
-        api_key="sk-test", mcp_client=AlwaysOk(), rate_limiter=limiter
-    )
+    provider = BailianWebSearchProvider(api_key="sk-test", mcp_client=AlwaysOk(), rate_limiter=limiter)
     first = await provider.search(AtomicSearchRequest(request_id="a", queries=["q1"]))
     second = await provider.search(AtomicSearchRequest(request_id="b", queries=["q2"]))
     assert first.status == "SUCCESS"

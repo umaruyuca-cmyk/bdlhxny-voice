@@ -8,7 +8,6 @@ from bdlh_runtime.contracts.analysis import AnalysisInput, InstrumentRef
 from bdlh_runtime.contracts.observation import DataQuality, Observation
 from bdlh_runtime.tools.coverage import evaluate_coverage
 
-
 CAPABILITY_TO_ANALYSIS_FIELD: dict[str, str] = {
     "market.resolve_instrument": "instrument",
     "market.get_realtime_quote": "realtime_quote",
@@ -72,8 +71,7 @@ def assemble_analysis_input(
     fulfilled = {
         item.capability
         for item in observations
-        if item.status in {"SUCCESS", "PARTIAL"}
-        and item.capability in CAPABILITY_TO_ANALYSIS_FIELD
+        if item.status in {"SUCCESS", "PARTIAL"} and item.capability in CAPABILITY_TO_ANALYSIS_FIELD
     }
     completeness = len(selected & fulfilled) / len(selected) if selected else 0.0
     if coverage.status == "LIMITED":

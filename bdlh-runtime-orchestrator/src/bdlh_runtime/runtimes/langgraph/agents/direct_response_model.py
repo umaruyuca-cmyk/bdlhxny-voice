@@ -22,10 +22,10 @@ class DeterministicDirectResponseModel:
     """无模型环境的可测试降级实现。"""
 
     _ANSWERS = {
-        "市盈率": "市盈率（PE）是股票价格与每股收益的比值，常用于衡量市场为企业盈利支付的估值倍数。比较时应结合行业、盈利稳定性和增长预期，不能只看数值高低。",
-        "pe": "市盈率（PE）是股票价格与每股收益的比值，常用于衡量市场为企业盈利支付的估值倍数。比较时应结合行业、盈利稳定性和增长预期，不能只看数值高低。",
-        "市净率": "市净率（PB）是股票价格与每股净资产的比值，常用于观察市场相对账面净资产给出的估值。它更适合与同行业公司及企业自身历史区间比较。",
-        "pb": "市净率（PB）是股票价格与每股净资产的比值，常用于观察市场相对账面净资产给出的估值。它更适合与同行业公司及企业自身历史区间比较。",
+        "市盈率": "市盈率（PE）是股票价格与每股收益的比值，常用于衡量市场为企业盈利支付的估值倍数。比较时应结合行业、盈利稳定性和增长预期，不能只看数值高低。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
+        "pe": "市盈率（PE）是股票价格与每股收益的比值，常用于衡量市场为企业盈利支付的估值倍数。比较时应结合行业、盈利稳定性和增长预期，不能只看数值高低。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
+        "市净率": "市净率（PB）是股票价格与每股净资产的比值，常用于观察市场相对账面净资产给出的估值。它更适合与同行业公司及企业自身历史区间比较。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
+        "pb": "市净率（PB）是股票价格与每股净资产的比值，常用于观察市场相对账面净资产给出的估值。它更适合与同行业公司及企业自身历史区间比较。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
     }
 
     def answer(self, message: str) -> str:
@@ -33,7 +33,7 @@ class DeterministicDirectResponseModel:
         for keyword, answer in self._ANSWERS.items():
             if keyword in normalized:
                 return answer
-        return f"关于“{message.strip()}”：这是一个不需要实时行情的金融知识问题。当前未配置可用的大模型，暂时只能提供基础解释。"
+        return f"关于“{message.strip()}”：这是一个不需要实时行情的金融知识问题。当前未配置可用的大模型，暂时只能提供基础解释。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
 
 
 _SYSTEM_PROMPT = (
@@ -53,10 +53,12 @@ class LlmDirectResponseModel:
 
     def answer(self, message: str) -> str:
         try:
-            response = self._llm.invoke([
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": message},
-            ])
+            response = self._llm.invoke(
+                [
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": message},
+                ]
+            )
             content = response.content if hasattr(response, "content") else str(response)
             normalized = str(content).strip()
             return normalized or self._fallback.answer(message)

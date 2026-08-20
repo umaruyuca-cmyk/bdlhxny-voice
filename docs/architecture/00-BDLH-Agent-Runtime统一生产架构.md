@@ -1,10 +1,10 @@
 # BDLH Agent Runtime 统一生产架构
 
 > **文档状态：生产架构唯一权威基线**  
-> **架构版本：v1.8**
-> **生效日期：2026-08-15**
+> **架构版本：v1.9**
+> **生效日期：2026-08-16**
 > **适用范围：`bdlh-runtime-orchestrator`、Java 用户数据服务、前端/API Gateway、外部数据服务及生产基础设施**  
-> **当前实施状态：目标架构已冻结；M1 已完成独立开发，M0 门禁未关闭，尚未进入生产路径切换；ADR-014/015/017 已批准，Data Plane、单节点 RocketMQ 与独立 Memory Service 按专项迁移切片落地**
+> **当前实施状态：默认产品路径已收敛为 Cognitive Orchestrator（`cognitive_finance`）+ Finance Domain；旧 Root Graph / M5 灰度双路径 / cognitive→legacy 回退已从代码删除。M0 持久化与 PLATFORM（Data Plane / RocketMQ / Memory Service）门禁仍可能阻塞完整生产放行，但不恢复旧编排路径。**
 > **配套架构图：[00-BDLH-Agent-Runtime生产架构.drawio](./00-BDLH-Agent-Runtime生产架构.drawio)**
 
 ## 产品身份（定位声明，不编号）
@@ -77,7 +77,7 @@ BDLH Agent Runtime 的产品身份是**通用 Agent Runtime / 编排内核**：�
 | v1.5 | 2026-08-11 | 修正实施状态残留：统一 ADR-010 已落地、PortfolioValuationBuilder 已完成但尚未发布的表述；同步 M3、§20、§23.1 与 01 号说明的术语和 Skill 状态 |
 | v1.6 | 2026-08-11 | 收口文档治理与状态语义：更新 §0.1 的历史文档称呼；补充基础设施级 `CURRENT` 不等于默认切流的说明；§19.1 登记 manifest/descriptor 启动校验测试 |
 | v1.7 | 2026-08-11 | 合成桌面 Resume/记忆草案与现网契约：§2.1/§8/§9/§12 吸收 [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)（系统/用户截断同构、Turn Router）与 [ADR-015](./ADR-015-Context组装服务与压缩策略.md)（Context 组装挂靠 ADR-011，禁止第二套 L 编号）；§23.1 登记两份 ADR |
-| v1.8 | 2026-08-15 | 吸收 [ADR-017](./ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md)：结构化数据与事务统一收敛到现有 Java Data Plane 模块化单体；Mem0 抽离为独立 Python Memory Service；单实例 PostgreSQL 按 schema/Role 隔离；部署单节点 RocketMQ，数据库事件统一经 Transactional Outbox；LangGraph Checkpointer 保留专属直连例外；新增正交的 PLATFORM-P0～P7 专项迁移轨道 |
+| v1.9 | 2026-08-16 | 默认路径收敛：旧 Root Graph / M5 灰度双路径 / cognitive→legacy 回退删除；Cognitive + Finance 为唯一产品编排入口；§3/§4.1/§13.4 对齐代码事实 |
 
 版本号只反映本文的表述与登记变化；阶段范围、契约字段语义与发布门禁的任何调整必须另有 ADR。
 
@@ -115,7 +115,7 @@ Nginx / API Gateway                                  [内核]
 9. **系统对外保持只读**。不下单、不调仓、不转账、不修改账户或持仓。
 10. **生产环境禁止 mock 数据静默降级**。不可用必须返回 `PARTIAL / LIMITED / FAILED`。
 11. **状态、会话、运行索引、历史和任务必须持久化**，生产实例不得依赖进程内存保存关键状态。
-12. **新旧路径渐进切换**。新路径未通过安全、故障注入和灰度门禁前，旧路径继续保留。
+12. **单一产品编排路径**。默认流量只走 Cognitive + Finance；旧 Root Graph 与双路径回退已退役，不得恢复。
 13. **内核与领域分离**。Cognitive Orchestrator 与 Domain Dispatcher 是领域无关内核，不得依赖任何具体领域的枚举、契约或计算模块；领域语义（如 `FinancialIntent`）只存在于对应 Domain 的私有契约中。新增 Skill 或 Domain 只允许注册，不允许复制 Capability Registry、Observation、Guardrail、预算或审计链。
 14. **数据平面、消息和语义记忆分离**。结构化数据、事务与 Outbox 由 Java Data Plane 管理；Mem0 由独立 Python Memory Service 管理；RocketMQ 只传播异步事件；当前 PostgreSQL 保持单实例并按 schema/Role 隔离；LangGraph Checkpointer 是 Orchestrator 唯一允许保留的数据库直连例外（见 ADR-017）。
 
@@ -200,29 +200,29 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 
 | 能力 | 状态 | 当前事实 | 生产目标 |
 |---|---|---|---|
-| FastAPI / SSE / Agent Run API | `CURRENT` | 已有 `/api/v1` 路由 | 保持兼容并统一错误与事件契约 |
+| FastAPI / SSE / Agent Run API | `CURRENT` | `/api/v1/chat/*`、`agent-runs*` 只走 Cognitive | 保持兼容并统一错误与事件契约 |
 | JWT 身份绑定 | `CURRENT` | Python 验签，Java 提供用户数据 | 生产强制开启，禁止信任请求体 `user_id` |
-| 旧 Root Graph | `CURRENT` | 默认执行路径 | 迁移期保留，最终由 Cognitive Graph 替代 |
-| CognitiveAction | `FOUNDATION` | 九种行动契约已存在 | 第一阶段启用 RESPOND、ASK_USER、INVOKE_DOMAIN |
-| Cognitive Graph | `TARGET` | 尚未进入运行路径 | 成为唯一顶层业务编排入口 |
-| DomainRequest / Outcome | `FOUNDATION` | 严格契约已存在 | 作为 Cognitive 与 Finance 的唯一跨层接口 |
+| 旧 Root Graph | `RETIRED` | 代码与默认流量均已删除；不得恢复 | 仅作历史档案，禁止再接线 |
+| CognitiveAction | `CURRENT` | 已进入默认 Cognitive 执行路径 | 继续收敛行动集合与审计字段 |
+| Cognitive Orchestrator | `CURRENT` | 唯一顶层业务编排入口（`cognitive_finance`） | 保持为唯一默认路径 |
+| DomainRequest / Outcome | `CURRENT` | Cognitive ↔ Finance 跨层接口 | 继续作为唯一跨层契约 |
 | Domain Dispatcher | `CURRENT` | `DomainRegistry` 已提供 domain→runtime 唯一映射、拒绝重复注册，并携带 `DomainDescriptor` 支持 intent 启用查询 | 继续作为路由与拒绝的唯一入口；新增 Domain 只需注册 |
 | SkillManifest / DomainDescriptor | `CURRENT` | 已落地（ADR-010 §6.1）：通用模型 `domains/manifests.py` + finance 一份 descriptor + 三份 manifest 声明现状；启动时对 Capability Registry 逐项校验，不一致则 fail-fast | 继续作为 Skill 自描述的唯一契约真源 |
 | 内核纯净度门禁 | `CURRENT` | `tests/architecture/test_kernel_purity.py` 静态断言内核不依赖领域实现 | 保持常绿，随内核目录变化同步更新 |
-| Finance Runtime | `TRANSITION` | M1 薄运行时已独立装配，未接默认流量且无 Checkpointer | 领域子图/应用服务，隔离金融业务逻辑 |
-| StockResearchResult | `DEVELOPMENT_COMPLETE` / `RELEASE_BLOCKED` | M2 Builder 已在非默认 Finance Runtime 接线并完成回归；尚未因发布门禁进入默认流量 | 客观股票研究唯一输出契约 |
+| Finance Runtime | `CURRENT` | 由 Cognitive Dispatcher 调用的唯一默认 Domain | 继续隔离金融业务逻辑；不恢复旧 Root Graph |
+| StockResearchResult | `CURRENT` | Finance Runtime 客观研究输出契约已接线 | 继续强化字段来源与 provenance |
 | Financial User Facts v2 | `FOUNDATION` | Java 已提供鉴权确认入口、版本与幂等控制、审计记录及只读查询元数据；Python 已按事实来源归一化 | 作为账户、持仓与风险事实的唯一权威来源，禁止旧记录被推断为实时数据 |
 | PortfolioValuationBuilder | `DEVELOPMENT_COMPLETE` / `RELEASE_BLOCKED` | M3 切片已完成：以 `quantity × price` 重算市值/权重，sha256 内容寻址，fail-closed 校验；能力 `portfolio.build_current_valuation` 已注册；尚未因发布门禁进入默认流量 | 使用权威持仓和受预算约束的市场报价生成可追溯估值快照 |
 | SuitabilityEngine | `TARGET` | Schema 已存在，规则未实现 | 确定性个性化适配评估 |
 | Capability Registry | `CURRENT` | 15 个统一只读能力（含 M3 `portfolio.build_current_valuation` 确定性重算） | 继续作为唯一能力真源 |
-| Toolset Registry | `TRANSITION` | 六个 finance 域派生分组已存在并接入 M1 Finance Planner；PORTFOLIO_READ 含估值重算能力 | 继续分层暴露能力并服务后续 Research/Suitability |
+| Toolset Registry | `CURRENT` | 六个 finance 域派生分组已存在并接入 Finance Planner；PORTFOLIO_READ 含估值重算能力 | 继续分层暴露能力并服务后续 Research/Suitability |
 | 四时点 Guardrails | `FOUNDATION` | 只有契约和 Protocol | 切换前必须全部实现并接线 |
 | Observation / Coverage | `CURRENT` | 已有标准化与覆盖判断 | 进入所有外部数据路径 |
 | Java Data Plane | `TARGET` | 现有 Java 已承载认证和 L4 用户金融事实；Python 仍直接持久化部分 Runtime 数据 | 现有单 JVM 演进为模块化数据平面，接管除 Checkpoint、L3 Memory 外的结构化数据、事务、Registry、Outbox 和消息适配 |
 | Memory Service / Mem0 | `TARGET` | Mem0 仍以 Python 进程内 SDK 装配，可用时增强、失败降级 NoOp | 抽离为独立 Python 服务；同步 search、异步候选写入；不存权威业务事实，读写收敛见 ADR-015/017 |
 | RocketMQ | `TARGET` | 尚未接入 | 单 NameServer + 单 Broker/Proxy 起步；数据库事件只经 Transactional Outbox 发布，消费按至少一次与 Inbox 幂等设计 |
-| Context 组装 | `CURRENT` / `TARGET` | `ContextBuilder` 七块组装已存在 | 对齐 ADR-015：purpose/budget、窗口主路径、dropped 可观测；不另起第二套组装语义 |
-| 系统 interrupt + pending resume | `CURRENT` | Chat 路径写 `pending_*` 并可 `Command(resume)` | 保留；必须叠加 ADR-014 Turn Router，禁止有 pending 默认盲目 resume |
+| Context 组装 | `CURRENT` / `TARGET` | Cognitive / Finance 路径组装上下文；旧 Root Graph `ContextBuilder` 已删除 | 对齐 ADR-015：purpose/budget、窗口主路径、dropped 可观测；不另起第二套组装语义 |
+| 系统 ASK_USER + pending resume | `CURRENT` | Chat/Cognitive 路径写 `pending_*` 并在同会话恢复 | 必须叠加 ADR-014 Turn Router，禁止有 pending 默认盲目 resume |
 | 用户 Pause（Esc） | `TARGET` | 尚无 `/pause` 与协作式停止 | ADR-014：Pause API + 安全点停 + `PAUSED_BY_USER` |
 | Turn Router | `TARGET` | 有 pending 时倾向直接 resume | ADR-014：`resume` / `new_turn` / `ask_which` |
 | Checkpointer | `CURRENT` | 生产可使用 PostgreSQL | 必须持久化并隔离命名空间 |
@@ -231,7 +231,7 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 | Analysis History | `FOUNDATION` | 当前只有内存实现 | 上线前迁移 PostgreSQL并保证幂等 |
 | Task / Scheduler | `TARGET` | 尚未实现 | 第二阶段只落地一个观察任务垂直切片 |
 | Letta | `EXPERIMENTAL` | 无生产实现 | 仅隔离研究，不进入部署拓扑 |
-| Node Stock Skill / Wrapper | `RETIRED` | 服务与仓库目录已退出；勿配置 `STOCK_WRAPPER_*`；遗留 Java Gateway 仅在 `LEGACY_JAVA_AGENT_RUNTIME_ENABLED=true` 时才有意义 | 保持关闭旧链路；Python 新路径禁止依赖 |
+| Node Stock Skill / Wrapper | `RETIRED` | `skills/stock-analysis-skill` 与 stock-wrapper 均已退出仓库；勿配置 `STOCK_WRAPPER_*` / `LEGACY_JAVA_*` | 禁止恢复旧 CLI Skill 或旧 Java Agent 链路 |
 
 ## 4. 系统上下文与生产拓扑
 
@@ -277,7 +277,7 @@ flowchart TB
 
 | 路径 | 归属 |
 |---|---|
-| `/`、`/workspace`、`/agent` | Frontend |
+| `/`、`/agent`；`/workspace` → 301 `/agent` | Frontend |
 | `/api/v1/chat/*` | Python Analysis |
 | `/api/v1/conversations*` | Python Analysis |
 | `/api/v1/agent-runs*` | Python Analysis |
@@ -918,14 +918,7 @@ run.failed
 - `task_id + wakeup_at`；
 - Notification Outbox ID。
 
-新 Cognitive 路径只允许在以下条件全部满足时回退旧 Root Graph：
-
-1. 尚未执行任何 Domain Request；
-2. 尚未调用外部 Capability；
-3. 尚未写入 Checkpoint、History、Task 或 Notification；
-4. 已记录 fallback 审计事件。
-
-发生内部写入或外部调用后禁止自动重跑旧路径，必须结构化失败并通过原路径恢复。
+旧 Root Graph 与 cognitive→legacy 自动回退已删除。Cognitive 执行失败时返回结构化错误，不得再切换到第二套编排路径重跑。
 
 ## 14. 安全与隐私
 
@@ -1059,11 +1052,12 @@ RocketMQ readiness 影响异步发布/消费但不否定已提交的同步数据
 ```text
 BDLH_RUNTIME_ENV=production
 BDLH_RUNTIME_AUTH_REQUIRED=true
-BDLH_RUNTIME_CHECKPOINTER_BACKEND=postgres
-POSTGRES_DSN=...
 JWT_SECRET=...
 JAVA_API_BASE_URL=http://127.0.0.1:8081
 JAVA_DATA_INTERNAL_TOKEN=...
+PG_URL=jdbc:postgresql://127.0.0.1:5432/bdlhRuntime
+PG_USER=...
+PG_PASSWORD=...
 MEMORY_SERVICE_BASE_URL=http://127.0.0.1:8091
 MEMORY_SERVICE_INTERNAL_TOKEN=...
 ROCKETMQ_ENDPOINTS=127.0.0.1:8080
@@ -1085,6 +1079,8 @@ WEB_SEARCH_TOKEN=...
 - Secret 不出现在日志、异常或 `/health` 响应中。
 
 ## 18. 迁移计划
+
+> **2026-08-16 路径收敛：** 默认编排已切换为 Cognitive + Finance，旧 Root Graph 与灰度双路径代码已删除。本节 M1–M5 中“保留旧路径 / 影子对照 / 灰度回退旧图”等表述仅作历史计划存档；当前不得恢复第二套编排路径。仍有效的是 M0 持久化/readiness、Suitability 规则批准、PLATFORM 轨道与运维证据等未关闭门禁。
 
 每个阶段独立开发、测试、发布和回滚。除纯契约阶段外，不合并跨阶段实施。
 
@@ -1153,8 +1149,7 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 
 - 按内部用户、小比例、全量逐步灰度；
 - 观察错误率、LIMITED 比例、数据覆盖、响应时间和 Guardrail 命中；
-- 保留一键停止新流量能力；
-- 稳定期内不删除旧路径。
+- 保留一键停止新流量能力（历史；现已无第二路径可回切）。
 
 退出门槛：达到 SLO，完成回滚演练，owner 批准默认路径切换。
 
@@ -1183,7 +1178,7 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 详细实施指令和逐阶段验收见生产开发实施 Prompt §26，决策真源为 ADR-017：
 
 1. `PLATFORM-P0`：事实审计、契约与迁移基线；
-2. `PLATFORM-P1`：单 PostgreSQL schema/Role、Flyway 与连接池；
+2. `PLATFORM-P1`：单 PostgreSQL schema/Role、手工全量建库脚本与连接池；
 3. `PLATFORM-P2`：Java Runtime Data 模块与用例级内部 API；
 4. `PLATFORM-P3`：Task + Transactional Outbox 原子事务、Inbox 幂等；
 5. `PLATFORM-P4`：单节点 RocketMQ、Relay、Retry/DLQ 与故障注入；
@@ -1261,10 +1256,10 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 10. 最终回答引用证据并披露限制；
 11. 身份、用户隔离和只读边界通过安全测试；
 12. Checkpoint、会话、运行索引和历史全部持久化；
-13. 新旧路径对照、故障注入、灰度和回滚演练完成；
+13. 故障注入、灰度/回滚演练与生产证据完成（不再要求新旧编排路径对照）；
 14. API/SSE 保持兼容；
 15. SLO、日志、指标和告警已上线；
-16. 旧 Root Graph 尚未删除，但已不再承接默认流量；
+16. 旧 Root Graph 已删除且默认流量只走 Cognitive；
 17. Letta 和 Node Stock Skill 不在生产关键路径；
 18. 运维手册、数据迁移、回滚步骤和 owner 已记录。
 

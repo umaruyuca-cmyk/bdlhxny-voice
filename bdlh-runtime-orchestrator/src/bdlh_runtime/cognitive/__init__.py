@@ -9,8 +9,8 @@ from .contracts import (
     CognitiveActionSummary,
     CognitiveActionType,
     CognitiveState,
-    CommunicationSection,
     CommunicationPlan,
+    CommunicationSection,
     InputEvent,
     InputEventType,
     PublicResponse,
@@ -20,8 +20,8 @@ from .semantic_router import (
     LexicalEncoder,
     Route,
     RouteChoice,
-    SemanticRouteSelector,
     SemanticRouter,
+    SemanticRouteSelector,
     build_kernel_router,
 )
 

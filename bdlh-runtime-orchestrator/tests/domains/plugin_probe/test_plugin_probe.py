@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
+from tests.helpers_registry import build_default_capability_registry
 
+from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType
 from bdlh_runtime.contracts.observation import Observation
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainRequest
 from bdlh_runtime.domains.dispatcher import DomainDispatcher
@@ -16,12 +18,9 @@ from bdlh_runtime.domains.plugin_probe import (
 from bdlh_runtime.domains.registry import DomainRegistry
 from bdlh_runtime.guardrails.contracts import GuardrailContext, GuardrailDecision
 from bdlh_runtime.guardrails.policies import DefaultActionGuardrail, DefaultPlanGuardrail
-from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType
 from bdlh_runtime.runtime.manifest_validation import validate_descriptor_against_registry
-from tests.helpers_registry import build_default_capability_registry
 
-
-NOW = datetime(2026, 8, 12, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 12, 12, 0, tzinfo=UTC)
 
 
 def request(
@@ -107,9 +106,7 @@ def test_probe_manifest_validates_against_the_single_capability_registry() -> No
     assert registry.contains("plugin_probe.run_contract_check")
     assert PLUGIN_PROBE_DESCRIPTOR.status == "EXPERIMENTAL"
     assert PLUGIN_PROBE_DESCRIPTOR.enabled_intents == frozenset({"CONTRACT_PROBE"})
-    assert PLUGIN_PROBE_DESCRIPTOR.skills[0].required_capabilities == frozenset(
-        {"plugin_probe.run_contract_check"}
-    )
+    assert PLUGIN_PROBE_DESCRIPTOR.skills[0].required_capabilities == frozenset({"plugin_probe.run_contract_check"})
     assert PLUGIN_PROBE_DESCRIPTOR.skills[0].side_effects == frozenset()
 
 
@@ -133,9 +130,7 @@ def test_probe_request_uses_the_existing_plan_and_action_guardrails() -> None:
     assert DefaultPlanGuardrail().evaluate_plan(action, context=context).decision == GuardrailDecision.ALLOW
     assert DefaultActionGuardrail().evaluate_action(action, context=context).decision == GuardrailDecision.ALLOW
 
-    denied = context.model_copy(
-        update={"enabled_domains": frozenset({"finance"})}
-    )
+    denied = context.model_copy(update={"enabled_domains": frozenset({"finance"})})
     result = DefaultPlanGuardrail().evaluate_plan(action, context=denied)
     assert result.decision == GuardrailDecision.BLOCK
     assert result.audit_code == "DOMAIN_NOT_ENABLED"

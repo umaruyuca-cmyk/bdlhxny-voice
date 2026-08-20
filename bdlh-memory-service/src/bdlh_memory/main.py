@@ -9,18 +9,24 @@ from .config import Settings
 from .domain import MemoryCandidate, SearchRequest
 from .mem0_gateway import UnavailableMem0Gateway, create_gateway
 from .persistence import InMemoryInboxRepository, PostgresInboxRepository
+from .pool import build_pool
 from .rocketmq_consumer import RocketMqMemoryConsumer
 from .service import MemoryApplication
 
 
 def create_app(settings: Settings | None = None, application: MemoryApplication | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
+    pool = None
     if application is None:
         try:
             gateway = create_gateway(settings)
         except Exception:
             gateway = UnavailableMem0Gateway()
-        inbox = PostgresInboxRepository(settings.postgres_dsn) if settings.postgres_dsn else InMemoryInboxRepository()
+        if settings.postgres_dsn:
+            pool = build_pool(settings.postgres_dsn)
+            inbox = PostgresInboxRepository(pool)
+        else:
+            inbox = InMemoryInboxRepository()
         application = MemoryApplication(gateway, inbox)
 
     def require_internal_token(token: Annotated[str | None, Header(alias="X-Internal-Token")] = None) -> None:
@@ -47,6 +53,8 @@ def create_app(settings: Settings | None = None, application: MemoryApplication 
         finally:
             if consumer is not None:
                 consumer.shutdown()
+            if pool is not None:
+                pool.close()
 
     app = FastAPI(title="BDLH Memory Service", version="0.1.0", lifespan=lifespan)
 

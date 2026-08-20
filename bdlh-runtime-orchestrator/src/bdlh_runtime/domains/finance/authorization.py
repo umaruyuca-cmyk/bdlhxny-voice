@@ -14,7 +14,6 @@ from bdlh_runtime.contracts.data_requirements import DataRequirement
 from bdlh_runtime.domains.contracts import DomainOperation
 from bdlh_runtime.tools.capabilities import CapabilityRegistry
 
-
 ANALYSIS_CAPABILITY = "analysis.run_analysis"
 
 

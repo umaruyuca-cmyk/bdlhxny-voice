@@ -13,8 +13,8 @@ from bdlh_runtime.contracts.observation import Observation
 
 from .contracts import (
     AccountSnapshot,
-    FinancialDataReference,
     FinancialDataMode,
+    FinancialDataReference,
     FinancialDomainRequest,
     FinancialGoal,
     FinancialIntent,
@@ -24,15 +24,16 @@ from .contracts import (
     RiskProfile,
 )
 
-
 POSITIONS_CAPABILITY = "portfolio.get_current_positions"
 ACCOUNT_CAPABILITY = "portfolio.get_account_snapshot"
 RISK_PROFILE_CAPABILITY = "user.get_risk_profile"
-USER_SNAPSHOT_CAPABILITIES = frozenset({
-    POSITIONS_CAPABILITY,
-    ACCOUNT_CAPABILITY,
-    RISK_PROFILE_CAPABILITY,
-})
+USER_SNAPSHOT_CAPABILITIES = frozenset(
+    {
+        POSITIONS_CAPABILITY,
+        ACCOUNT_CAPABILITY,
+        RISK_PROFILE_CAPABILITY,
+    }
+)
 NORMALIZED_USER_DATA_SCHEMA = "financial-user-observation.v1"
 PORTFOLIO_VALUATION_CAPABILITY = "portfolio.build_current_valuation"
 PORTFOLIO_VALUATION_SCHEMA = "portfolio-valuation.v1"
@@ -62,15 +63,11 @@ class UserFinancialObservationNormalizer:
         authenticated_user_id: str,
     ) -> Observation:
         if observation.capability not in USER_SNAPSHOT_CAPABILITIES:
-            raise FinancialSnapshotError(
-                f"Unsupported financial snapshot capability: {observation.capability}"
-            )
+            raise FinancialSnapshotError(f"Unsupported financial snapshot capability: {observation.capability}")
         if observation.status in {"FAILED", "UNAVAILABLE"}:
             return observation.model_copy(deep=True)
         if not isinstance(observation.data, dict):
-            raise FinancialSnapshotError(
-                f"{observation.capability} must return an object payload"
-            )
+            raise FinancialSnapshotError(f"{observation.capability} must return an object payload")
 
         raw = observation.data
         metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
@@ -78,21 +75,14 @@ class UserFinancialObservationNormalizer:
         expected = self._canonical_user_id(authenticated_user_id)
         actual = self._canonical_user_id(raw_user_id)
         if not actual or actual != expected:
-            raise SnapshotIdentityError(
-                f"Snapshot user identity mismatch for {observation.capability}"
-            )
+            raise SnapshotIdentityError(f"Snapshot user identity mismatch for {observation.capability}")
 
         data_mode = self._data_mode(observation)
         confirmation_ref = metadata.get("confirmation_ref", raw.get("confirmation_ref"))
-        if data_mode == FinancialDataMode.USER_CONFIRMED:
-            if (
-                not observation.provenance
-                or not confirmation_ref
-                or not metadata.get("data_time")
-            ):
-                raise FinancialSnapshotError(
-                    "USER_CONFIRMED data requires controlled confirmation provenance"
-                )
+        if data_mode == FinancialDataMode.USER_CONFIRMED and (
+            not observation.provenance or not confirmation_ref or not metadata.get("data_time")
+        ):
+            raise FinancialSnapshotError("USER_CONFIRMED data requires controlled confirmation provenance")
 
         common: dict[str, Any] = {
             "schema_version": NORMALIZED_USER_DATA_SCHEMA,
@@ -126,17 +116,13 @@ class UserFinancialObservationNormalizer:
             common["liquidity"] = {
                 "liquid_assets": raw.get("liquid_assets"),
                 "near_term_cash_needs": raw.get("near_term_cash_needs"),
-                "near_term_cash_needs_horizon_days": raw.get(
-                    "near_term_cash_needs_horizon_days"
-                ),
+                "near_term_cash_needs_horizon_days": raw.get("near_term_cash_needs_horizon_days"),
                 "currency": raw.get("currency"),
                 "source": observation.observation_id,
             }
         else:
             common["risk_profile"] = {
-                "risk_level": self._risk_level(
-                    raw.get("risk_level", raw.get("risk_tolerance"))
-                ),
+                "risk_level": self._risk_level(raw.get("risk_level", raw.get("risk_tolerance"))),
                 "max_loss_tolerance_pct": raw.get("max_loss_tolerance_pct"),
                 "source": observation.observation_id,
             }
@@ -206,9 +192,7 @@ class FinancialSnapshotBuilder:
         execution_environment: ExecutionEnvironment,
     ) -> FinancialSnapshot:
         if request.financial_intent != FinancialIntent.SUITABILITY:
-            raise FinancialSnapshotError(
-                "FinancialSnapshotBuilder only accepts SUITABILITY requests"
-            )
+            raise FinancialSnapshotError("FinancialSnapshotBuilder only accepts SUITABILITY requests")
         if execution_environment not in {"production", "development", "test"}:
             raise FinancialSnapshotError("Unsupported execution environment")
 
@@ -223,9 +207,7 @@ class FinancialSnapshotBuilder:
             if observation.capability not in USER_SNAPSHOT_CAPABILITIES:
                 continue
             if observation.capability in by_capability:
-                raise FinancialSnapshotError(
-                    f"Duplicate snapshot capability: {observation.capability}"
-                )
+                raise FinancialSnapshotError(f"Duplicate snapshot capability: {observation.capability}")
             by_capability[observation.capability] = observation
 
         captured_at = self._captured_at(observations)
@@ -240,14 +222,9 @@ class FinancialSnapshotBuilder:
         }
         for observation in usable.values():
             if str(observation.data.get("user_id", "")).strip() != request.authenticated_user_id.strip():
-                raise SnapshotIdentityError(
-                    f"Normalized snapshot identity mismatch for {observation.capability}"
-                )
+                raise SnapshotIdentityError(f"Normalized snapshot identity mismatch for {observation.capability}")
 
-        modes = {
-            FinancialDataMode(str(item.data["data_mode"]))
-            for item in usable.values()
-        }
+        modes = {FinancialDataMode(str(item.data["data_mode"])) for item in usable.values()}
         data_mode = self._combined_mode(modes, has_usable=bool(usable))
         data_references = [
             FinancialDataReference(
@@ -264,26 +241,23 @@ class FinancialSnapshotBuilder:
         ]
         limitations: list[str] = []
         missing_capabilities = sorted(USER_SNAPSHOT_CAPABILITIES - set(usable))
+        limitations.extend(f"Required user capability unavailable: {name}" for name in missing_capabilities)
         limitations.extend(
-            f"Required user capability unavailable: {name}"
-            for name in missing_capabilities
-        )
-        limitations.extend(
-            f"Partial user capability: {item.capability}"
-            for item in usable.values()
-            if item.status == "PARTIAL"
+            f"Partial user capability: {item.capability}" for item in usable.values() if item.status == "PARTIAL"
         )
 
         positions: list[PortfolioPosition] = []
         positions_observation = usable.get(POSITIONS_CAPABILITY)
         if positions_observation is not None:
             positions = [
-                PortfolioPosition.model_validate({
-                    **item,
-                    # 只能由本地估值器写入当前市值与权重；用户事实中的旧字段不可信。
-                    "market_value": None,
-                    "weight_pct": None,
-                })
+                PortfolioPosition.model_validate(
+                    {
+                        **item,
+                        # 只能由本地估值器写入当前市值与权重；用户事实中的旧字段不可信。
+                        "market_value": None,
+                        "weight_pct": None,
+                    }
+                )
                 for item in positions_observation.data.get("positions", [])
             ]
 
@@ -310,9 +284,7 @@ class FinancialSnapshotBuilder:
                 ),
                 liquid_assets=liquidity_data.get("liquid_assets"),
                 near_term_cash_needs=liquidity_data.get("near_term_cash_needs"),
-                near_term_cash_needs_horizon_days=liquidity_data.get(
-                    "near_term_cash_needs_horizon_days"
-                ),
+                near_term_cash_needs_horizon_days=liquidity_data.get("near_term_cash_needs_horizon_days"),
                 currency=liquidity_data.get("currency"),
                 source=liquidity_data.get("source"),
             )
@@ -331,18 +303,14 @@ class FinancialSnapshotBuilder:
         )
         if valuation is None:
             if positions_observation is not None and account_observation is not None:
-                limitations.append(
-                    "Current portfolio valuation unavailable; concentration unavailable"
-                )
+                limitations.append("Current portfolio valuation unavailable; concentration unavailable")
                 limitations.append("Current portfolio valuation unavailable; account total_assets unavailable")
         else:
             valuation_positions = valuation["positions"]
             positions = [
-                PortfolioPosition.model_validate({
-                    key: value
-                    for key, value in item.items()
-                    if key != "quote_observation_id"
-                })
+                PortfolioPosition.model_validate(
+                    {key: value for key, value in item.items() if key != "quote_observation_id"}
+                )
                 for item in valuation_positions
             ]
             account = AccountSnapshot.model_validate(valuation["account"])
@@ -350,9 +318,7 @@ class FinancialSnapshotBuilder:
         risk_profile = None
         risk_observation = usable.get(RISK_PROFILE_CAPABILITY)
         if risk_observation is not None:
-            risk_profile = RiskProfile.model_validate(
-                risk_observation.data.get("risk_profile", {})
-            )
+            risk_profile = RiskProfile.model_validate(risk_observation.data.get("risk_profile", {}))
             if risk_profile.risk_level is None:
                 limitations.append("Risk profile risk_level missing")
             if risk_profile.max_loss_tolerance_pct is None:
@@ -361,8 +327,7 @@ class FinancialSnapshotBuilder:
         profile_versions = {
             item.profile_version
             for item in data_references
-            if item.capability in {ACCOUNT_CAPABILITY, RISK_PROFILE_CAPABILITY}
-            and item.profile_version is not None
+            if item.capability in {ACCOUNT_CAPABILITY, RISK_PROFILE_CAPABILITY} and item.profile_version is not None
         }
         if len(profile_versions) > 1:
             limitations.append("Account and risk profile versions are inconsistent")
@@ -385,16 +350,11 @@ class FinancialSnapshotBuilder:
                     )
                 )
             else:
-                limitations.append(
-                    f"Unconfirmed goal excluded from suitability rules: {item.goal_id}"
-                )
+                limitations.append(f"Unconfirmed goal excluded from suitability rules: {item.goal_id}")
 
         if data_mode == FinancialDataMode.MOCK:
             limitations.append("MOCK user data cannot support personalization")
-        if (
-            data_mode == FinancialDataMode.TEST_FIXTURE
-            and execution_environment == "production"
-        ):
+        if data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment == "production":
             limitations.append("TEST_FIXTURE user data is forbidden in production")
 
         critical_missing = bool(limitations)
@@ -405,8 +365,7 @@ class FinancialSnapshotBuilder:
         else:
             completeness = "COMPLETE"
         if data_mode in {FinancialDataMode.MOCK, FinancialDataMode.UNAVAILABLE} or (
-            data_mode == FinancialDataMode.TEST_FIXTURE
-            and execution_environment == "production"
+            data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment == "production"
         ):
             completeness = "LIMITED"
 
@@ -418,8 +377,7 @@ class FinancialSnapshotBuilder:
             provenance=[
                 item.observation_id
                 for item in sorted(observations, key=lambda value: value.observation_id)
-                if item.capability in USER_SNAPSHOT_CAPABILITIES
-                or item.capability == PORTFOLIO_VALUATION_CAPABILITY
+                if item.capability in USER_SNAPSHOT_CAPABILITIES or item.capability == PORTFOLIO_VALUATION_CAPABILITY
             ],
             data_references=data_references,
             positions=positions,
@@ -439,16 +397,12 @@ class FinancialSnapshotBuilder:
                 continue
             for provenance in observation.provenance:
                 try:
-                    parsed = datetime.fromisoformat(
-                        provenance.retrieved_at.replace("Z", "+00:00")
-                    )
+                    parsed = datetime.fromisoformat(provenance.retrieved_at.replace("Z", "+00:00"))
                 except ValueError:
                     continue
                 values.append(parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC))
         if not values:
-            raise FinancialSnapshotError(
-                "Snapshot observations require verifiable retrieved_at provenance"
-            )
+            raise FinancialSnapshotError("Snapshot observations require verifiable retrieved_at provenance")
         return max(values)
 
     @staticmethod

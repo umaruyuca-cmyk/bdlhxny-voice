@@ -10,12 +10,13 @@ import html
 import json
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 from bdlh_runtime.contracts.analysis import AnalysisResult
 from bdlh_runtime.contracts.data_requirements import DataRequirement
-from bdlh_runtime.contracts.observation import Observation, ProvenanceRecord
+from bdlh_runtime.contracts.observation import Observation
 from bdlh_runtime.domains.contracts import ConfidenceAssessment
 from bdlh_runtime.tools.coverage import evaluate_coverage
 
@@ -23,8 +24,8 @@ from .contracts import (
     EvidenceConflict,
     EvidenceFact,
     FinancialDomainRequest,
-    Fundamentals,
     Finding,
+    Fundamentals,
     IndustryContext,
     MarketSnapshot,
     MoneyFlow,
@@ -34,7 +35,6 @@ from .contracts import (
     Technicals,
     Valuation,
 )
-
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _HTML_TAG = re.compile(r"<[^>]+>")
@@ -70,36 +70,25 @@ class StockResearchResultBuilder:
             (item for item in observations if item.capability in planned),
             key=lambda item: (item.capability, item.observation_id),
         )
-        usable = [
-            item
-            for item in selected
-            if item.status in {"SUCCESS", "PARTIAL"} and item.data is not None
-        ]
+        usable = [item for item in selected if item.status in {"SUCCESS", "PARTIAL"} and item.data is not None]
 
         evidence = [self._evidence(item) for item in usable]
         evidence_by_observation = {
-            item.observation_id: fact.fact_id
-            for item, fact in zip(usable, evidence, strict=True)
+            item.observation_id: fact.fact_id for item, fact in zip(usable, evidence, strict=True)
         }
         conflicts = self._conflicts(usable, evidence_by_observation)
         conflicting_observations = {
-            ref.removeprefix("evidence:")
-            for conflict in conflicts
-            for ref in conflict.evidence_refs
+            ref.removeprefix("evidence:") for conflict in conflicts for ref in conflict.evidence_refs
         }
 
         limitations = list(runtime_limitations) + list(analysis_result.limitations)
         for requirement in requirements:
             candidates = [item for item in usable if item.capability == requirement.capability]
             if not candidates:
-                limitations.append(
-                    f"Planned capability unavailable: {requirement.capability}"
-                )
+                limitations.append(f"Planned capability unavailable: {requirement.capability}")
         for item in usable:
             if not item.provenance:
-                limitations.append(
-                    f"Evidence provenance missing: {item.capability}/{item.observation_id}"
-                )
+                limitations.append(f"Evidence provenance missing: {item.capability}/{item.observation_id}")
 
         base_coverage = evaluate_coverage(
             [item.model_dump() for item in requirements],
@@ -136,9 +125,7 @@ class StockResearchResultBuilder:
                 name=request.instruments[0].name,
                 price=self._number(data, "price", "close", "最新价"),
                 currency=str(data.get("currency") or "CNY"),
-                trade_date=self._datetime(
-                    data.get("trade_date", data.get("date", data.get("as_of")))
-                ),
+                trade_date=self._datetime(data.get("trade_date", data.get("date", data.get("as_of")))),
                 source_time=self._source_time(quote),
                 quality=self._section_quality(quote, conflicting_observations),
             )
@@ -155,19 +142,11 @@ class StockResearchResultBuilder:
                     "营业总收入",
                     "营业总收入(亿)",
                 ),
-                net_profit=self._number_deep(
-                    item.data, "net_profit", "净利润", "净利润(亿)"
-                ),
-                revenue_yoy=self._number_deep(
-                    item.data, "revenue_yoy", "revenue_growth", "营收同比", "营业总收入同比"
-                ),
-                net_profit_yoy=self._number_deep(
-                    item.data, "net_profit_yoy", "profit_growth", "净利润同比"
-                ),
+                net_profit=self._number_deep(item.data, "net_profit", "净利润", "净利润(亿)"),
+                revenue_yoy=self._number_deep(item.data, "revenue_yoy", "revenue_growth", "营收同比", "营业总收入同比"),
+                net_profit_yoy=self._number_deep(item.data, "net_profit_yoy", "profit_growth", "净利润同比"),
                 roe=self._number_deep(item.data, "roe", "ROE", "净资产收益率"),
-                debt_ratio=self._number_deep(
-                    item.data, "debt_ratio", "asset_liability_ratio", "资产负债率"
-                ),
+                debt_ratio=self._number_deep(item.data, "debt_ratio", "asset_liability_ratio", "资产负债率"),
                 quality=self._section_quality(item, conflicting_observations),
             )
 
@@ -204,9 +183,7 @@ class StockResearchResultBuilder:
         if _MONEY_FLOW in planned and by_capability[_MONEY_FLOW]:
             item = by_capability[_MONEY_FLOW][0]
             money_flow = MoneyFlow(
-                net_inflow=self._number_deep(
-                    item.data, "net_inflow", "main_net_inflow", "主力净流入"
-                ),
+                net_inflow=self._number_deep(item.data, "net_inflow", "main_net_inflow", "主力净流入"),
                 quality=self._section_quality(item, conflicting_observations),
             )
 
@@ -305,20 +282,12 @@ class StockResearchResultBuilder:
                 right_ref = evidence_by_observation[candidate.observation_id]
                 conflicts.append(
                     EvidenceConflict(
-                        conflict_id=(
-                            f"conflict:{capability}:{baseline.observation_id}:"
-                            f"{candidate.observation_id}"
-                        ),
-                        description=(
-                            f"Conflicting {capability} semantic fields: "
-                            + ", ".join(differing)
-                        ),
+                        conflict_id=(f"conflict:{capability}:{baseline.observation_id}:{candidate.observation_id}"),
+                        description=(f"Conflicting {capability} semantic fields: " + ", ".join(differing)),
                         left_refs=[left_ref],
                         right_refs=[right_ref],
                         materiality=(
-                            "HIGH"
-                            if capability in {_QUOTE, _FINANCIALS, _VALUATION, _MONEY_FLOW}
-                            else "MEDIUM"
+                            "HIGH" if capability in {_QUOTE, _FINANCIALS, _VALUATION, _MONEY_FLOW} else "MEDIUM"
                         ),
                         evidence_refs=[left_ref, right_ref],
                     )
@@ -363,11 +332,7 @@ class StockResearchResultBuilder:
         evidence: list[EvidenceFact],
         has_conflicts: bool,
     ) -> Coverage:
-        if (
-            analysis_status in {"FAILED", "LIMITED"}
-            or base_coverage == "LIMITED"
-            or not evidence
-        ):
+        if analysis_status in {"FAILED", "LIMITED"} or base_coverage == "LIMITED" or not evidence:
             return "LIMITED"
         modes = {self._data_mode(item) for item in observations}
         if "UNAVAILABLE" in modes or "MOCK" in modes:
@@ -390,9 +355,12 @@ class StockResearchResultBuilder:
         conflicts: list[EvidenceConflict],
         evidence: list[EvidenceFact],
     ) -> ConfidenceAssessment:
-        if analysis_status in {"FAILED", "LIMITED"} or coverage == "LIMITED":
-            level = "LOW"
-        elif conflicts or any(item.quality in {"LOW", "INVALID"} for item in evidence):
+        if (
+            analysis_status in {"FAILED", "LIMITED"}
+            or coverage == "LIMITED"
+            or conflicts
+            or any(item.quality in {"LOW", "INVALID"} for item in evidence)
+        ):
             level = "LOW"
         elif coverage == "PARTIAL" or analysis_status == "PARTIAL":
             level = "MEDIUM"
@@ -445,9 +413,7 @@ class StockResearchResultBuilder:
                     evidence_ids=list(evidence_ids),
                     calculation_ids=list(calculation_ids),
                     confidence=confidence,
-                    invalidation_conditions=[
-                        "Newer observations or corrected calculation inputs"
-                    ],
+                    invalidation_conditions=["Newer observations or corrected calculation inputs"],
                 )
             )
         return findings
@@ -476,16 +442,14 @@ class StockResearchResultBuilder:
                     description=detail,
                     severity=severity,
                     evidence_ids=list(evidence_ids),
-                    invalidation_conditions=[
-                        "Newer observations or corrected calculation inputs"
-                    ],
+                    invalidation_conditions=["Newer observations or corrected calculation inputs"],
                 )
             )
         return risks
 
     def _events(self, observation: Observation) -> list[NewsEvent]:
         data = observation.data
-        if isinstance(data, dict):
+        if isinstance(data, dict):  # noqa: SIM108 —— 展开成三元表达式反而不可读
             raw_items = data.get("items", data.get("results", data.get("data", [])))
         else:
             raw_items = data
@@ -493,11 +457,7 @@ class StockResearchResultBuilder:
             raw_items = [raw_items]
         if not isinstance(raw_items, list):
             return []
-        provenance_source = (
-            observation.provenance[0].source
-            if observation.provenance
-            else observation.capability
-        )
+        provenance_source = observation.provenance[0].source if observation.provenance else observation.capability
         events: list[NewsEvent] = []
         for index, item in enumerate(raw_items):
             if not isinstance(item, dict):
@@ -513,9 +473,7 @@ class StockResearchResultBuilder:
                     event_id=f"event:{observation.observation_id}:{index}",
                     headline=headline,
                     source=str(item.get("source") or item.get("domain") or provenance_source),
-                    published_at=self._datetime(
-                        item.get("published_at", item.get("publishedAt"))
-                    ),
+                    published_at=self._datetime(item.get("published_at", item.get("publishedAt"))),
                     sentiment=sentiment,
                 )
             )
@@ -526,7 +484,7 @@ class StockResearchResultBuilder:
         if observation.capability not in {_NEWS, _WEB}:
             return self._json_value(observation.data)
         data = observation.data
-        if isinstance(data, dict):
+        if isinstance(data, dict):  # noqa: SIM108 —— 展开成三元表达式反而不可读
             raw_items = data.get("items", data.get("results", data.get("data", [])))
         else:
             raw_items = data

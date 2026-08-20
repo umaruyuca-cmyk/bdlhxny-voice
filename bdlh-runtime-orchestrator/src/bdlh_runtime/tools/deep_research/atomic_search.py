@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -67,7 +67,7 @@ class FakeAtomicSearchPort:
                 error_code="ATOMIC_SEARCH_UNAVAILABLE",
                 error_message="fake atomic search provider unavailable",
             )
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         if self.canned_hits:
             return AtomicSearchBatch(request_id=request.request_id, status="SUCCESS", hits=list(self.canned_hits))
         hits: list[AtomicSearchHit] = []

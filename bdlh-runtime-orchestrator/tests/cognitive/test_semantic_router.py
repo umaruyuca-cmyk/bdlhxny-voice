@@ -5,14 +5,14 @@ from __future__ import annotations
 import pytest
 
 from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType, InputEvent
-from tests.helpers_registry import seeded_snapshot
 from bdlh_runtime.cognitive.semantic_router import (
     Route,
     RouteDisposition,
-    SemanticRouteSelector,
     SemanticRouter,
+    SemanticRouteSelector,
     build_kernel_router,
 )
+from tests.helpers_registry import seeded_snapshot
 
 
 def test_chitchat_hits_fast_path() -> None:

@@ -46,9 +46,7 @@ def sma_series(values: Sequence[float], window: int) -> list[float | None]:
     return result
 
 
-def exponential_moving_average_series(
-    values: Sequence[float], span: int
-) -> list[float]:
+def exponential_moving_average_series(values: Sequence[float], span: int) -> list[float]:
     """滚动 EMA 序列（平滑系数 2/(span+1)）。
 
     EMA[0] = values[0]（种子），之后 EMA[i] = α*values[i] + (1-α)*EMA[i-1]。

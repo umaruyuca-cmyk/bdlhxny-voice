@@ -29,7 +29,7 @@
 | `bdlh-runtime-console/` | 代码 | `ACTIVE` | 独立 Nginx 静态前端与契约测试 |
 | `bdlh-web-search-adapter/` | 代码 | `ACTIVE` | 公开资料检索封装，经 Capability Gateway 调用 |
 | `stock-wrapper/` | — | `RETIRED`（已移出仓库） | 旧 Node HTTP 包装层；勿恢复目录，勿配置 `STOCK_WRAPPER_*` |
-| `skills/stock-analysis-skill/` | 代码 | `RETIRED` | 历史 CLI Skill，不承担生产编排或在线补数；非当前可插拔 Skill 宿主 |
+| `skills/` | — | `RETIRED`（目录已清空） | 历史 CLI Skill 宿主已删除；当前可插拔 Skill 在 `bdlh-runtime-orchestrator/domains/finance/` |
 | `db/` | 运维 | `ACTIVE` | schema 与迁移脚本 |
 | `deploy/` | 运维 | `ACTIVE` | Compose、Nginx 与部署手册 |
 
@@ -109,7 +109,7 @@ bdlh-runtime-orchestrator/
 │   ├── guardrails/     四时点治理（内核）
 │   ├── contracts/      跨层 Pydantic 契约
 │   ├── memory/         Memory 抽象 + mem0 实现 + noop 降级
-│   └── runtimes/       LangGraph 装配与旧 Root Graph（含 letta 空占位）
+│   └── runtimes/       LangGraph 支撑组件（direct_response 等）；旧 Root Graph / query / market_data 子图已删除
 └── tests/              按上述模块镜像分目录，另有 tests/architecture（内核纯净度门禁 + manifest 启动校验门禁）
 ```
 
@@ -140,7 +140,7 @@ Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用�
 
 | 路径 | 状态 | 说明 |
 |---|---|---|
-| `public/` | `ACTIVE` | 实际发布的静态站点 |
+| `public/` | `ACTIVE` | 实际发布的静态站点；正式入口 `/agent`；`/workspace` 301 重定向，旧 workspace 页面已删除 |
 | `test/` | `ACTIVE` | 前端契约测试 |
 | `prototypes/` | `HISTORICAL` | 原型稿，不参与发布 |
 | `legacy/` | `RETIRED` | 旧页面存档 |
@@ -149,7 +149,7 @@ Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用�
 
 | 路径 | 状态 | 说明 |
 |---|---|---|
-| `db/schema.sql`、`db/migrations/` | `ACTIVE` | PostgreSQL 主 schema 与按日期命名的迁移 |
+| `db/postgresql/`、`db/mysql/` | `ACTIVE` | 数据库管理员手工执行的当前 Schema 与全量种子 |
 | `db/mysql-schema.sql` | `HISTORICAL` | 早期 MySQL 阶段产物 |
 | `deploy/docker-compose*.yml` | `ACTIVE` | 本地、云端与前端三套编排 |
 | `deploy/.env.example` | `ACTIVE` | 唯一环境变量模板；复制为 `deploy/.env`，不要入库 |
@@ -190,7 +190,7 @@ Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用�
 | `ADR-0NN-` | 单点架构决策，必须带状态字段 |
 | `历史版本-0N-` | 已被取代的架构档案 |
 | `NN-M{阶段}-` | 阶段相关报告，如 `02-M2股票研究下沉-...` |
-| 日期前缀 `YYYYMMDD_` | 仅用于 `db/migrations/` |
+| 三位数字前缀 `001_` | 用于同一目录内的手工执行顺序 |
 
 ## 7. 已知混乱点与处置状态
 

@@ -90,7 +90,7 @@ messaging
 - Run Registry、Analysis History、Capability Audit；
 - Financial Task、Notification Outbox 和消费幂等 Inbox；
 - Capability / Skill / Policy Registry 的持久化与快照查询；
-- 所有上述数据的 Flyway migration；
+- 所有上述数据的手工全量建库脚本；
 - Outbox Relay 和 RocketMQ Java Producer/Consumer 适配。
 
 现有身份数据若仍在 MySQL，继续由该服务封装；本 ADR 不授权无迁移方案地强行合并 MySQL。PostgreSQL 单实例约束适用于 runtime、finance、checkpoint、memory 和 registry 数据。
@@ -282,8 +282,8 @@ Memory Service 不可用时，读取返回空语义记忆并标记 degraded；�
 | Data Plane | Java 17+ / Spring Boot 3 / Spring Transaction |
 | 普通 CRUD | 现有 MyBatis-Plus |
 | 复杂 SQL、锁与 Outbox | MyBatis SQL 或 Spring JDBC/JdbcClient，显式 SQL |
-| Migration | SQL + Flyway；禁止运行时 DDL |
-| 连接池 | Java HikariCP；Python Checkpointer 使用受控连接池 |
+| 数据库建库 | 根目录 `db/` 的 SQL 全量建库脚本；禁止运行时 DDL |
+| 连接池 | Java HikariCP；Python Memory Service 使用受控连接池 |
 | Memory Service | Python / FastAPI / Mem0 |
 | 语义存储 | 同一 PostgreSQL 实例的 `memory` schema + pgvector |
 | 消息 | RocketMQ 5.x 客户端协议；Java 优先使用 Apache 官方客户端/Spring 集成 |
@@ -293,16 +293,14 @@ Memory Service 不可用时，读取返回空语义记忆并标记 degraded；�
 
 ## 10. 迁移原则
 
-迁移必须按独立、可回滚垂直切片执行：
+开发环境按新项目全量建库执行，不保留增量迁移或兼容切换：
 
-1. 先建立 schema、Role、Flyway、契约和测试；
-2. 再迁移 Chat / Run / History 等结构化 Store；
-3. 再合并 Task 状态更新与 Outbox 本地事务；
-4. 再部署单节点 RocketMQ 和 Outbox Relay；
-5. 再抽离 Memory Service，保持 NoOp 降级；
-6. 最后切断 Orchestrator 对非 Checkpoint PostgreSQL 表的直接访问；
-7. 每个切片只允许一个写入真源，禁止长期双写；
-8. 允许短期 shadow read 对比，但不得让对比结果改变用户响应；
+1. 清空并重建开发数据库；
+2. 手工执行 `db/postgresql/bootstrap.sql`；
+3. 手工执行 `db/postgresql/schema/` 下当前领域的全量建表脚本；
+4. 手工执行 `db/postgresql/seed/registry.sql`；
+5. 启动服务后仅允许业务读写，不允许服务自行建表、补表或写入种子；
+6. 每个数据集只允许一个写入真源，禁止双写和影子读取。
 9. 未通过故障注入、幂等、恢复和回滚测试，不得删除旧读路径。
 
 详细执行阶段和验收门禁见生产实施 Prompt 的 `PLATFORM-P0`～`PLATFORM-P7`。

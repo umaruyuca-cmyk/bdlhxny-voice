@@ -26,9 +26,7 @@ from bdlh_runtime.guardrails import (
 
 
 def _event() -> InputEvent:
-    return InputEvent(
-        event_id="event-1", user_id="user-1", session_id="session-1", message="test"
-    )
+    return InputEvent(event_id="event-1", user_id="user-1", session_id="session-1", message="test")
 
 
 def _request(request_id: str = "request-1", *, tool_calls: int = 1) -> DomainRequest:
@@ -65,15 +63,15 @@ class Dispatcher:
             request_id=request.request_id,
             domain=request.domain,
             status="COMPLETE",
-            established_facts=[DomainFact(
-                fact_id="fact-1",
-                statement="validated",
-                source_refs=["source-1"],
-                directness="DIRECT",
-            )],
-            confidence=ConfidenceAssessment(
-                level="HIGH", reasons=["validated"], coverage_status="COMPLETE"
-            ),
+            established_facts=[
+                DomainFact(
+                    fact_id="fact-1",
+                    statement="validated",
+                    source_refs=["source-1"],
+                    directness="DIRECT",
+                )
+            ],
+            confidence=ConfidenceAssessment(level="HIGH", reasons=["validated"], coverage_status="COMPLETE"),
         )
 
 

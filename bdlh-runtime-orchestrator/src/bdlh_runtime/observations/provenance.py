@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from bdlh_runtime.contracts.observation import ProvenanceRecord
 
 
-def provenance(source: str, tool: str, *, request_id: str | None = None, fallback_used: bool = False) -> ProvenanceRecord:
+def provenance(
+    source: str, tool: str, *, request_id: str | None = None, fallback_used: bool = False
+) -> ProvenanceRecord:
     """创建统一 UTC 溯源记录。"""
 
     return ProvenanceRecord(
         source=source,
         tool=tool,
         request_id=request_id,
-        retrieved_at=datetime.now(timezone.utc).isoformat(),
+        retrieved_at=datetime.now(UTC).isoformat(),
         fallback_used=fallback_used,
     )

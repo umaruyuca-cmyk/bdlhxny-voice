@@ -45,10 +45,12 @@ def test_quote_cn_financial_form_parsed():
 
 def test_historical_prices_parsed_to_bars():
     """历史K线 → 标准化 bar 列表（中文 key 兼容）。"""
-    raw = json.dumps([
-        {"日期": "2026-07-01", "开盘": 1180.1, "收盘": 1193.01, "最高": 1196.8, "最低": 1166.33, "成交量": 4247400},
-        {"日期": "2026-07-02", "开盘": 1193.0, "收盘": 1201.5, "最高": 1205.0, "最低": 1188.0, "成交量": 5000000},
-    ])
+    raw = json.dumps(
+        [
+            {"日期": "2026-07-01", "开盘": 1180.1, "收盘": 1193.01, "最高": 1196.8, "最低": 1166.33, "成交量": 4247400},
+            {"日期": "2026-07-02", "开盘": 1193.0, "收盘": 1201.5, "最高": 1205.0, "最低": 1188.0, "成交量": 5000000},
+        ]
+    )
     result = ObservationNormalizer().normalize(_obs("market.get_historical_prices", raw))
     assert result.status == "SUCCESS"
     bars = result.data

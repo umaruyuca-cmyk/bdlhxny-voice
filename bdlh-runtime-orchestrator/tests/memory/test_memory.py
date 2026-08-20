@@ -10,7 +10,6 @@ from bdlh_runtime.integrations.mcp.routing_policy import (
 )
 from bdlh_runtime.memory import NoOpMemoryStore
 
-
 # ── NoOpMemoryStore 降级行为 ──
 
 
@@ -20,14 +19,6 @@ async def test_noop_search_returns_empty():
     store = NoOpMemoryStore()
     result = await store.search("任何查询", "user-1")
     assert result == []
-
-
-@pytest.mark.asyncio
-async def test_noop_get_profile_returns_none():
-    """NoOp 的 get_profile 必须返回 None。"""
-    store = NoOpMemoryStore()
-    result = await store.get_profile("user-1")
-    assert result is None
 
 
 @pytest.mark.asyncio

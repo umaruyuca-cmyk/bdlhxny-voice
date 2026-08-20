@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from tests.tools.deep_research_eval.harness import run_gold_suite
 
 from bdlh_runtime.tools.deep_research import (
     DeepResearchRequest,
@@ -11,7 +12,6 @@ from bdlh_runtime.tools.deep_research import (
     run_deep_research,
 )
 from bdlh_runtime.tools.deep_research.graph import build_deep_research_graph
-from tests.tools.deep_research_eval.harness import run_gold_suite
 
 
 @pytest.mark.asyncio

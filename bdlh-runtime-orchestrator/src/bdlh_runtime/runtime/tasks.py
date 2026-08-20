@@ -8,7 +8,7 @@ Finance Runtime 获取最新数据。
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from threading import RLock
 from typing import Literal, Protocol
@@ -20,13 +20,13 @@ from bdlh_runtime.runtime.errors import ConfigurationError
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _aware(value: datetime, field_name: str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must include a timezone")
-    return value.astimezone(timezone.utc)
+    return value.astimezone(UTC)
 
 
 class FinancialTaskStatus(StrEnum):
@@ -63,9 +63,7 @@ TERMINAL_TASK_STATUSES = frozenset(
 )
 
 _TRANSITIONS: dict[FinancialTaskStatus, frozenset[FinancialTaskStatus]] = {
-    FinancialTaskStatus.DRAFT: frozenset(
-        {FinancialTaskStatus.SCHEDULED, FinancialTaskStatus.CANCELLED}
-    ),
+    FinancialTaskStatus.DRAFT: frozenset({FinancialTaskStatus.SCHEDULED, FinancialTaskStatus.CANCELLED}),
     FinancialTaskStatus.SCHEDULED: frozenset(
         {FinancialTaskStatus.RUNNING, FinancialTaskStatus.CANCELLED, FinancialTaskStatus.EXPIRED}
     ),
@@ -81,9 +79,7 @@ _TRANSITIONS: dict[FinancialTaskStatus, frozenset[FinancialTaskStatus]] = {
             FinancialTaskStatus.EXPIRED,
         }
     ),
-    FinancialTaskStatus.TRIGGERED: frozenset(
-        {FinancialTaskStatus.COMPLETED, FinancialTaskStatus.FAILED}
-    ),
+    FinancialTaskStatus.TRIGGERED: frozenset({FinancialTaskStatus.COMPLETED, FinancialTaskStatus.FAILED}),
     FinancialTaskStatus.COMPLETED: frozenset(),
     FinancialTaskStatus.FAILED: frozenset(),
     FinancialTaskStatus.CANCELLED: frozenset(),
@@ -101,7 +97,7 @@ class TaskAuditEvent(BaseModel):
     details: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_time(self) -> "TaskAuditEvent":
+    def validate_time(self) -> TaskAuditEvent:
         _aware(self.occurred_at, "occurred_at")
         return self
 
@@ -117,7 +113,7 @@ class PriceThresholdCondition(BaseModel):
     currency: Literal["CNY"] = "CNY"
 
     @model_validator(mode="after")
-    def normalize_identity(self) -> "PriceThresholdCondition":
+    def normalize_identity(self) -> PriceThresholdCondition:
         if not self.symbol.strip():
             raise ValueError("symbol must not be blank")
         return self
@@ -149,7 +145,7 @@ class FinancialTask(BaseModel):
     audit_events: list[TaskAuditEvent] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_task(self) -> "FinancialTask":
+    def validate_task(self) -> FinancialTask:
         for name in ("next_wakeup_at", "expires_at", "created_at", "updated_at"):
             _aware(getattr(self, name), name)
         for name in ("last_wakeup_at", "last_observation_time"):
@@ -209,7 +205,7 @@ class NotificationOutboxMessage(BaseModel):
     last_error: str | None = None
 
     @model_validator(mode="after")
-    def validate_times(self) -> "NotificationOutboxMessage":
+    def validate_times(self) -> NotificationOutboxMessage:
         _aware(self.observation_time, "observation_time")
         _aware(self.created_at, "created_at")
         if self.sent_at is not None:
@@ -221,9 +217,7 @@ class TaskStore(Protocol):
     def create(self, task: FinancialTask) -> FinancialTask: ...
     def update(self, task: FinancialTask, *, expected_version: int) -> FinancialTask: ...
     def get(self, task_id: str, authenticated_user_id: str) -> FinancialTask | None: ...
-    def list_for_user(
-        self, authenticated_user_id: str, *, limit: int = 100
-    ) -> list[FinancialTask]: ...
+    def list_for_user(self, authenticated_user_id: str, *, limit: int = 100) -> list[FinancialTask]: ...
     def claim_due(self, *, now: datetime, limit: int) -> list[tuple[FinancialTask, str]]: ...
     def expire_due(self, *, now: datetime) -> int: ...
     def recover_stale(self, *, now: datetime, stale_before: datetime) -> int: ...
@@ -234,9 +228,7 @@ class NotificationOutbox(Protocol):
     def claim_pending(self, *, limit: int) -> list[NotificationOutboxMessage]: ...
     def mark_sent(self, outbox_id: str, *, sent_at: datetime) -> NotificationOutboxMessage: ...
     def mark_failed(self, outbox_id: str, *, error: str) -> NotificationOutboxMessage: ...
-    def list_for_user(
-        self, authenticated_user_id: str, *, limit: int = 100
-    ) -> list[NotificationOutboxMessage]: ...
+    def list_for_user(self, authenticated_user_id: str, *, limit: int = 100) -> list[NotificationOutboxMessage]: ...
 
 
 def _copy_task(task: FinancialTask) -> FinancialTask:
@@ -281,14 +273,10 @@ class InMemoryTaskStore:
                 return None
             return _copy_task(task)
 
-    def list_for_user(
-        self, authenticated_user_id: str, *, limit: int = 100
-    ) -> list[FinancialTask]:
+    def list_for_user(self, authenticated_user_id: str, *, limit: int = 100) -> list[FinancialTask]:
         with self._lock:
             tasks = [
-                _copy_task(task)
-                for task in self._tasks.values()
-                if task.authenticated_user_id == authenticated_user_id
+                _copy_task(task) for task in self._tasks.values() if task.authenticated_user_id == authenticated_user_id
             ]
         return sorted(tasks, key=lambda item: item.updated_at, reverse=True)[: max(1, limit)]
 
@@ -298,14 +286,15 @@ class InMemoryTaskStore:
         with self._lock:
             due = sorted(
                 (
-                    task for task in self._tasks.values()
+                    task
+                    for task in self._tasks.values()
                     if task.status in {FinancialTaskStatus.SCHEDULED, FinancialTaskStatus.WAITING}
                     and task.next_wakeup_at <= timestamp < task.expires_at
                 ),
                 key=lambda item: item.next_wakeup_at,
             )
             for current in due[: max(1, limit)]:
-                scheduled_for = current.next_wakeup_at.astimezone(timezone.utc).isoformat()
+                scheduled_for = current.next_wakeup_at.astimezone(UTC).isoformat()
                 wakeup_key = f"{current.task_id}:{scheduled_for}"
                 if wakeup_key in self._claimed_wakeups:
                     continue
@@ -352,10 +341,7 @@ class InMemoryTaskStore:
             for current in list(self._tasks.values()):
                 if current.status == FinancialTaskStatus.RUNNING and current.updated_at <= cutoff:
                     task = _copy_task(current)
-                    wakeup_key = (
-                        f"{task.task_id}:"
-                        f"{task.next_wakeup_at.astimezone(timezone.utc).isoformat()}"
-                    )
+                    wakeup_key = f"{task.task_id}:{task.next_wakeup_at.astimezone(UTC).isoformat()}"
                     self._claimed_wakeups.discard(wakeup_key)
                     task.transition(
                         FinancialTaskStatus.WAITING,
@@ -419,19 +405,14 @@ class InMemoryNotificationOutbox:
             self._messages[outbox_id] = _copy_message(message)
             return message
 
-    def list_for_user(
-        self, authenticated_user_id: str, *, limit: int = 100
-    ) -> list[NotificationOutboxMessage]:
+    def list_for_user(self, authenticated_user_id: str, *, limit: int = 100) -> list[NotificationOutboxMessage]:
         with self._lock:
             messages = [
                 _copy_message(message)
                 for message in self._messages.values()
-                if message.authenticated_user_id == authenticated_user_id
-                and message.status == NotificationStatus.SENT
+                if message.authenticated_user_id == authenticated_user_id and message.status == NotificationStatus.SENT
             ]
-        return sorted(messages, key=lambda item: item.sent_at or item.created_at, reverse=True)[
-            : max(1, limit)
-        ]
+        return sorted(messages, key=lambda item: item.sent_at or item.created_at, reverse=True)[: max(1, limit)]
 
 
 class PostgresTaskStore:
@@ -457,15 +438,11 @@ class PostgresTaskStore:
     def _validate_schema(self, table_name: str) -> None:
         try:
             with self._connect() as connection:
-                row = connection.execute(
-                    "SELECT to_regclass(%s)", (f"public.{table_name}",)
-                ).fetchone()
+                row = connection.execute("SELECT to_regclass(%s)", (f"public.{table_name}",)).fetchone()
         except Exception as exc:
             raise ConfigurationError(f"PostgreSQL M6 Store 初始化失败: {exc}") from exc
         if row is None or row[0] is None:
-            raise ConfigurationError(
-                "缺少 M6 PostgreSQL migration: 20260812_financial_tasks.sql"
-            )
+            raise ConfigurationError("缺少 M6 PostgreSQL migration: 20260812_financial_tasks.sql")
 
     @staticmethod
     def _decode(payload: object) -> FinancialTask:
@@ -541,9 +518,7 @@ class PostgresTaskStore:
             ).fetchone()
             return self._decode(row[0]) if row else None
 
-    def list_for_user(
-        self, authenticated_user_id: str, *, limit: int = 100
-    ) -> list[FinancialTask]:
+    def list_for_user(self, authenticated_user_id: str, *, limit: int = 100) -> list[FinancialTask]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -570,7 +545,7 @@ class PostgresTaskStore:
             ).fetchall()
             for task_id, payload in rows:
                 task = self._decode(payload)
-                scheduled_for = task.next_wakeup_at.astimezone(timezone.utc).isoformat()
+                scheduled_for = task.next_wakeup_at.astimezone(UTC).isoformat()
                 wakeup_key = f"{task.task_id}:{scheduled_for}"
                 inserted = connection.execute(
                     """
@@ -615,10 +590,7 @@ class PostgresTaskStore:
             ).fetchall()
             for task_id, payload in rows:
                 task = self._decode(payload)
-                wakeup_key = (
-                    f"{task.task_id}:"
-                    f"{task.next_wakeup_at.astimezone(timezone.utc).isoformat()}"
-                )
+                wakeup_key = f"{task.task_id}:{task.next_wakeup_at.astimezone(UTC).isoformat()}"
                 connection.execute(
                     "DELETE FROM bdlh_runtime_task_wakeup WHERE wakeup_key = %s",
                     (wakeup_key,),
@@ -655,10 +627,7 @@ class PostgresTaskStore:
             ).fetchall()
             for task_id, payload in rows:
                 task = self._decode(payload)
-                wakeup_key = (
-                    f"{task.task_id}:"
-                    f"{task.next_wakeup_at.astimezone(timezone.utc).isoformat()}"
-                )
+                wakeup_key = f"{task.task_id}:{task.next_wakeup_at.astimezone(UTC).isoformat()}"
                 # 与 InMemoryTaskStore 对齐：释放幂等槽位，便于陈旧恢复后
                 # claim_due 能重新插入同一 wakeup_key。
                 connection.execute(
@@ -697,15 +666,11 @@ class PostgresNotificationOutbox:
     def _validate_schema(self) -> None:
         try:
             with self._connect() as connection:
-                row = connection.execute(
-                    "SELECT to_regclass('public.bdlh_runtime_notification_outbox')"
-                ).fetchone()
+                row = connection.execute("SELECT to_regclass('public.bdlh_runtime_notification_outbox')").fetchone()
         except Exception as exc:
             raise ConfigurationError(f"PostgreSQL Notification Outbox 初始化失败: {exc}") from exc
         if row is None or row[0] is None:
-            raise ConfigurationError(
-                "缺少 M6 PostgreSQL migration: 20260812_financial_tasks.sql"
-            )
+            raise ConfigurationError("缺少 M6 PostgreSQL migration: 20260812_financial_tasks.sql")
 
     @staticmethod
     def _decode(payload: object) -> NotificationOutboxMessage:
@@ -822,9 +787,7 @@ class PostgresNotificationOutbox:
             )
             return message
 
-    def list_for_user(
-        self, authenticated_user_id: str, *, limit: int = 100
-    ) -> list[NotificationOutboxMessage]:
+    def list_for_user(self, authenticated_user_id: str, *, limit: int = 100) -> list[NotificationOutboxMessage]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -837,33 +800,19 @@ class PostgresNotificationOutbox:
             return [self._decode(row[0]) for row in rows]
 
 
-def create_task_store(*, environment: str, postgres_dsn: str | None) -> TaskStore:
-    """创建金融任务存储。
+def create_task_store(*, environment: str = "test") -> TaskStore:
+    """创建测试用内存任务存储；运行时数据必须经 Java Data Plane。"""
 
-    有 ``POSTGRES_DSN`` 时（任意环境）一律使用 PostgreSQL；
-    仅本地单测未配置 DSN 时退回内存。生产缺少 DSN 时 fail-closed。
-    """
-
-    if postgres_dsn:
-        return PostgresTaskStore(postgres_dsn)
-    if environment == "production":
-        raise ConfigurationError("生产 Financial Task Store 需要 POSTGRES_DSN")
+    if environment != "test":
+        raise ConfigurationError("Python 内存 Financial Task Store 仅允许测试环境")
     return InMemoryTaskStore()
 
 
-def create_notification_outbox(
-    *, environment: str, postgres_dsn: str | None
-) -> NotificationOutbox:
-    """创建通知 outbox。
+def create_notification_outbox(*, environment: str = "test") -> NotificationOutbox:
+    """创建测试用内存 Outbox；运行时数据必须经 Java Data Plane。"""
 
-    有 ``POSTGRES_DSN`` 时（任意环境）一律使用 PostgreSQL；
-    仅本地单测未配置 DSN 时退回内存。生产缺少 DSN 时 fail-closed。
-    """
-
-    if postgres_dsn:
-        return PostgresNotificationOutbox(postgres_dsn)
-    if environment == "production":
-        raise ConfigurationError("生产 Notification Outbox 需要 POSTGRES_DSN")
+    if environment != "test":
+        raise ConfigurationError("Python 内存 Notification Outbox 仅允许测试环境")
     return InMemoryNotificationOutbox()
 
 

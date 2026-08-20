@@ -38,7 +38,9 @@ class DomainDispatcher:
             if inspect.isawaitable(outcome):
                 outcome = await outcome
         except Exception as exc:
-            return self._failed(request, "DOMAIN_DISPATCH_FAILED", f"Domain execution failed: {type(exc).__name__}", retryable=True)
+            return self._failed(
+                request, "DOMAIN_DISPATCH_FAILED", f"Domain execution failed: {type(exc).__name__}", retryable=True
+            )
         if not isinstance(outcome, DomainOutcome):
             return self._failed(request, "DOMAIN_CONTRACT_VIOLATION", "Domain runtime did not return DomainOutcome")
         if outcome.request_id != request.request_id or outcome.domain != request.domain:

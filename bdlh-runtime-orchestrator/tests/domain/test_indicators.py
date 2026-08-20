@@ -11,7 +11,6 @@ from bdlh_runtime.domain.indicators import (
     sma_series,
 )
 
-
 # ── SMA ──
 
 
@@ -110,7 +109,7 @@ def test_atr_length_mismatch_raises():
     """OHLC 长度不一致抛 ValueError。"""
     try:
         atr_series([1.0, 2.0], [1.0], [1.0, 2.0])
-        assert False, "应抛出 ValueError"
+        raise AssertionError("应抛出 ValueError")
     except ValueError:
         pass
 

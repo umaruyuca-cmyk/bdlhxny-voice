@@ -20,8 +20,8 @@ from .contracts import (
     CognitiveActionSummary,
     CognitiveActionType,
     CognitiveState,
-    CommunicationSection,
     CommunicationPlan,
+    CommunicationSection,
     InputEvent,
     PublicResponse,
 )
@@ -111,9 +111,7 @@ class CognitiveOrchestrator:
             read_only=True,
             enabled_domains=self._enabled_domains,
             authorized_operations=self._authorized_operations,
-            enabled_actions=frozenset(
-                item.value for item in self._action_policy.enabled_actions
-            ),
+            enabled_actions=frozenset(item.value for item in self._action_policy.enabled_actions),
         )
         state = CognitiveState(event=event)
         action = await self._selector.select(event)
@@ -157,13 +155,8 @@ class CognitiveOrchestrator:
             assert action.domain_request is not None
             request = action.domain_request
             requested_tool_calls = state.requested_tool_calls + request.budget.tool_call_limit
-            requested_runtime_seconds = (
-                state.requested_runtime_seconds + request.budget.runtime_seconds
-            )
-            if (
-                requested_tool_calls > context.max_tool_calls
-                or requested_runtime_seconds > context.max_runtime_seconds
-            ):
+            requested_runtime_seconds = state.requested_runtime_seconds + request.budget.runtime_seconds
+            if requested_tool_calls > context.max_tool_calls or requested_runtime_seconds > context.max_runtime_seconds:
                 return self._guardrail_exit_code(
                     state,
                     "RUN_BUDGET_EXCEEDED",
@@ -198,10 +191,12 @@ class CognitiveOrchestrator:
                     "DOMAIN_OUTCOME_MUTATED",
                     ["表达阶段不得修改领域结果"],
                 )
-            allowed_refs = set(_collect_string_refs(
-                outcome_before_communication,
-                {"source_refs", "evidence_refs", "evidence_ids", "calculation_ids"},
-            ))
+            allowed_refs = set(
+                _collect_string_refs(
+                    outcome_before_communication,
+                    {"source_refs", "evidence_refs", "evidence_ids", "calculation_ids"},
+                )
+            )
             if not set(plan.evidence_refs).issubset(allowed_refs):
                 return self._guardrail_exit_code(
                     state,
@@ -237,7 +232,9 @@ class CognitiveOrchestrator:
         if result.decision == GuardrailDecision.MODIFY:
             assert result.replacement is not None
             response = result.replacement
-            response.audit_codes = list(dict.fromkeys(response.audit_codes + [result.audit_code or "RESPONSE_MODIFIED"]))
+            response.audit_codes = list(
+                dict.fromkeys(response.audit_codes + [result.audit_code or "RESPONSE_MODIFIED"])
+            )
         elif result.decision != GuardrailDecision.ALLOW:
             return self._guardrail_exit(state, result)
         state.public_events.append("response.ready")
@@ -271,9 +268,7 @@ class CognitiveOrchestrator:
         message = reasons[0] if reasons else "请求已被安全策略阻断"
         response = PublicResponse(
             response_kind=kind,
-            response_structure=(
-                "CAPABILITY_NOTICE" if kind == "CAPABILITY_NOT_ENABLED" else "SAFETY_BLOCK"
-            ),
+            response_structure=("CAPABILITY_NOTICE" if kind == "CAPABILITY_NOT_ENABLED" else "SAFETY_BLOCK"),
             message=message,
             limitations=reasons,
             audit_codes=[code],
@@ -287,20 +282,20 @@ def _action_plan(action: CognitiveAction) -> CommunicationPlan:
             response_kind="ASK_USER",
             response_structure="CLARIFICATION",
             summary=action.reason,
-            sections=[CommunicationSection(
-                section_type="NEXT_STEPS",
-                title="需要你确认",
-                items=[action.reason],
-            )],
+            sections=[
+                CommunicationSection(
+                    section_type="NEXT_STEPS",
+                    title="需要你确认",
+                    items=[action.reason],
+                )
+            ],
             next_steps=["请补充问题中要求的信息后继续。"],
         )
     return CommunicationPlan(
         response_kind="ANSWER",
         response_structure="KNOWLEDGE",
         summary=action.reason,
-        sections=[CommunicationSection(
-            section_type="SUMMARY", title="说明", items=[action.reason]
-        )],
+        sections=[CommunicationSection(section_type="SUMMARY", title="说明", items=[action.reason])],
     )
 
 
@@ -309,9 +304,7 @@ def _domain_plan(outcome: DomainOutcome) -> CommunicationPlan:
     dumped = outcome.model_dump(mode="json")
     evidence_refs = _collect_string_refs(dumped, {"source_refs", "evidence_refs", "evidence_ids", "calculation_ids"})
     statements = _collect_values(dumped, {"statement", "headline", "description"})
-    data_times = _collect_values(
-        dumped, {"data_time", "source_time", "trade_date", "retrieved_at", "published_at"}
-    )
+    data_times = _collect_values(dumped, {"data_time", "source_time", "trade_date", "retrieved_at", "published_at"})
     limitations = list(dict.fromkeys(outcome.limitations))
     risk_disclosures = _collect_values(dumped.get("risks", []), {"description"})
     next_steps = _collect_values(dumped.get("suggested_followups", []), {"description"})
@@ -330,11 +323,14 @@ def _domain_plan(outcome: DomainOutcome) -> CommunicationPlan:
             response_kind="ASK_USER",
             response_structure="CLARIFICATION",
             summary=decision.question,
-            sections=sections + [CommunicationSection(
-                section_type="NEXT_STEPS",
-                title="需要你确认",
-                items=[decision.question],
-            )],
+            sections=sections
+            + [
+                CommunicationSection(
+                    section_type="NEXT_STEPS",
+                    title="需要你确认",
+                    items=[decision.question],
+                )
+            ],
             required_fields=[decision.decision_id],
             evidence_refs=evidence_refs,
             data_times=data_times,
@@ -412,9 +408,11 @@ def _sections(
         ("NEXT_STEPS", "下一步", next_steps),
     ):
         if items:
-            sections.append(CommunicationSection(
-                section_type=section_type,
-                title=title,
-                items=items,
-            ))
+            sections.append(
+                CommunicationSection(
+                    section_type=section_type,
+                    title=title,
+                    items=items,
+                )
+            )
     return sections

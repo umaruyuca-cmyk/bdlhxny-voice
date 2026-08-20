@@ -5,17 +5,6 @@ spring:
     active: dev
   application:
     name: bdlh-runtime-data
-  flyway:
-    enabled: ${BDLH_FLYWAY_ENABLED:true}
-    locations: classpath:db/migration
-    schemas: business,runtime,registry
-    default-schema: registry
-    create-schemas: false
-    clean-disabled: true
-    validate-on-migrate: true
-    out-of-order: false
-    connect-retries: 2
-
 management:
   endpoints:
     web:

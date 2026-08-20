@@ -111,8 +111,7 @@ def assemble_research_bundle(
             findings=closed_findings,
             sources=sources,
             conflicts=conflicts,
-            limitations=limitations
-            + ([] if coverage_computable else ["coverage_not_computable"]),
+            limitations=limitations + ([] if coverage_computable else ["coverage_not_computable"]),
             research_summary=research_summary,
             usage=usage,
             deep_trigger_reasons=list(deep_trigger_reasons or []),

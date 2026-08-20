@@ -1,8 +1,10 @@
 # M4 Cognitive Graph 与 Communication 实施报告
 
+> **路径收敛附注（2026-08-16）：** Cognitive 现已是默认且唯一产品编排路径；“未切换旧 Root Graph/API”仅为当时状态。旧 Root Graph 其后已删除。
+>
 > 实施日期：2026-08-12  
-> 状态：`DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`  
-> 范围：独立、非默认流量；未切换旧 Root Graph/API
+> 状态：`DEVELOPMENT_COMPLETE / RELEASE_BLOCKED`（历史）  
+> 范围（历史）：独立、非默认流量；未切换旧 Root Graph/API
 
 ## 1. 交付结果
 

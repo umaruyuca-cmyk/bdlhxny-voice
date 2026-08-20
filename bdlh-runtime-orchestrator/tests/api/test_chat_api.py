@@ -1,24 +1,27 @@
-from datetime import datetime, timedelta, timezone
 import json
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import jwt
 from fastapi.testclient import TestClient
 
 from bdlh_runtime.api.routes import create_api_app
+from bdlh_runtime.cognitive.contracts import (
+    CognitiveState,
+    InputEvent,
+    PublicResponse,
+)
+from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
+from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH
 from tests.helpers_registry import seeded_snapshot
-from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import (
-    DeterministicDirectResponseModel,
-)
-from bdlh_runtime.runtimes.langgraph.graphs.root_graph import build_root_graph
-
 
 SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes"
 
 
 def _token(user_id: int) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return jwt.encode(
         {"sub": str(user_id), "iat": now, "exp": now + timedelta(hours=1)},
         SECRET,
@@ -31,28 +34,51 @@ def _headers(user_id: int) -> dict[str, str]:
 
 
 def _events(response) -> list[dict]:
-    return [
-        json.loads(line.removeprefix("data: "))
-        for line in response.text.splitlines()
-        if line.startswith("data: ")
-    ]
+    return [json.loads(line.removeprefix("data: ")) for line in response.text.splitlines() if line.startswith("data: ")]
 
 
-def _client() -> TestClient:
+class KnowledgeCognitive:
+    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+        del observer
+        return CognitiveExecution(
+            state=CognitiveState(event=event),
+            response=PublicResponse(
+                response_kind="ANSWER",
+                response_structure="KNOWLEDGE",
+                message="市盈率（PE）是股票价格与每股收益的比值。",
+                audit_codes=["TEST_KNOWLEDGE"],
+            ),
+        )
+
+
+class ClarifyingCognitive:
+    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+        del observer
+        asking = "分析" in event.message and "600000" not in event.message
+        return CognitiveExecution(
+            state=CognitiveState(event=event),
+            response=PublicResponse(
+                response_kind="ASK_USER" if asking else "ANSWER",
+                response_structure="CLARIFICATION" if asking else "KNOWLEDGE",
+                message="你想分析哪只股票？" if asking else "已完成对 600000 的分析。",
+                next_steps=["请提供名称或代码"] if asking else [],
+                audit_codes=["TEST_CLARIFY"],
+            ),
+        )
+
+
+def _client(*, cognitive: Any | None = None) -> TestClient:
     application = create_application(
-        Settings(environment="development", auth_required=True, jwt_secret=SECRET),
+        Settings(environment="test", auth_required=True, jwt_secret=SECRET),
         registry_snapshot=seeded_snapshot(),
     )
-    # API 契约测试不连接外部 LLM/MCP，只验证 Root Graph 路由和恢复语义。
-    application.graph = build_root_graph(
-        registry_snapshot=seeded_snapshot(),
-        direct_response_model=DeterministicDirectResponseModel()
-    )
+    if cognitive is not None:
+        application.cognitive_application = cognitive
     return TestClient(create_api_app(application))
 
 
-def test_chat_stream_requires_auth_and_uses_direct_response_without_tools():
-    client = _client()
+def test_chat_stream_requires_auth_and_uses_cognitive_path():
+    client = _client(cognitive=KnowledgeCognitive())
 
     unauthorized = client.post(
         "/api/v1/chat/stream",
@@ -67,13 +93,15 @@ def test_chat_stream_requires_auth_and_uses_direct_response_without_tools():
 
     assert unauthorized.status_code == 401
     assert response.status_code == 200
+    assert events[0]["runtimePath"] == COGNITIVE_RUNTIME_PATH
     assert any(event.get("type") == "token" for event in events)
     assert events[-1]["type"] == "done"
     assert events[-1]["status"] == "COMPLETED"
+    assert events[-1]["runtimePath"] == COGNITIVE_RUNTIME_PATH
 
 
-def test_chat_clarification_resumes_the_same_graph_run():
-    client = _client()
+def test_chat_clarification_resumes_the_same_cognitive_run():
+    client = _client(cognitive=ClarifyingCognitive())
     first = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
@@ -84,6 +112,7 @@ def test_chat_clarification_resumes_the_same_graph_run():
     session_id = next(event["sessionId"] for event in first_events if event["type"] == "agent_run")
 
     assert first_events[-1]["status"] == "NEED_CLARIFICATION"
+    assert first_events[0]["runtimePath"] == COGNITIVE_RUNTIME_PATH
 
     resumed = client.post(
         "/api/v1/chat/stream",
@@ -94,20 +123,19 @@ def test_chat_clarification_resumes_the_same_graph_run():
     resumed_run = next(event["runId"] for event in resumed_events if event["type"] == "agent_run")
 
     assert resumed_run == first_run
+    assert resumed_events[0]["runtimePath"] == COGNITIVE_RUNTIME_PATH
     assert resumed_events[-1]["type"] == "done"
     assert resumed_events[-1]["status"] == "COMPLETED"
 
 
 def test_conversations_are_user_scoped_regenerable_and_deletable():
-    client = _client()
+    client = _client(cognitive=KnowledgeCognitive())
     created = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
         json={"message": "什么是市净率？", "mode": "general"},
     )
-    session_id = next(
-        event["sessionId"] for event in _events(created) if event["type"] == "agent_run"
-    )
+    session_id = next(event["sessionId"] for event in _events(created) if event["type"] == "agent_run")
 
     regenerated = client.post(
         "/api/v1/chat/stream",
@@ -119,22 +147,14 @@ def test_conversations_are_user_scoped_regenerable_and_deletable():
             "regenerate": True,
         },
     )
-    own_detail = client.get(
-        f"/api/v1/conversations/{session_id}", headers=_headers(7)
-    )
-    other_detail = client.get(
-        f"/api/v1/conversations/{session_id}", headers=_headers(8)
-    )
+    own_detail = client.get(f"/api/v1/conversations/{session_id}", headers=_headers(7))
+    other_detail = client.get(f"/api/v1/conversations/{session_id}", headers=_headers(8))
 
     assert regenerated.status_code == 200
     assert [item["role"] for item in own_detail.json()["messages"]] == ["user", "assistant"]
     assert other_detail.status_code == 404
     assert client.get("/api/v1/conversations", headers=_headers(8)).json() == []
 
-    deleted = client.delete(
-        f"/api/v1/conversations/{session_id}", headers=_headers(7)
-    )
+    deleted = client.delete(f"/api/v1/conversations/{session_id}", headers=_headers(7))
     assert deleted.status_code == 204
-    assert client.get(
-        f"/api/v1/conversations/{session_id}", headers=_headers(7)
-    ).status_code == 404
+    assert client.get(f"/api/v1/conversations/{session_id}", headers=_headers(7)).status_code == 404

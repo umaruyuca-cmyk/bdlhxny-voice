@@ -55,13 +55,21 @@ class AShareTradingCalendar:
 # 2026 年 A 股休市安排（元旦/春节/清明/五一/端午/中秋/国庆）。
 # 注意：调休补班（周末上班日）启发式无法覆盖，仅作降级兜底。
 _KNOWN_HOLIDAYS_2026: set[date] = {
-    date(2026, 1, 1), date(2026, 1, 2),           # 元旦
-    date(2026, 2, 16), date(2026, 2, 17), date(2026, 2, 18),  # 春节（示例）
-    date(2026, 4, 5), date(2026, 4, 6),           # 清明（示例）
-    date(2026, 5, 1), date(2026, 5, 2),           # 劳动节
-    date(2026, 6, 19),                             # 端午（示例）
-    date(2026, 9, 25),                             # 中秋（示例）
-    date(2026, 10, 1), date(2026, 10, 2), date(2026, 10, 3), date(2026, 10, 7),  # 国庆
+    date(2026, 1, 1),
+    date(2026, 1, 2),  # 元旦
+    date(2026, 2, 16),
+    date(2026, 2, 17),
+    date(2026, 2, 18),  # 春节（示例）
+    date(2026, 4, 5),
+    date(2026, 4, 6),  # 清明（示例）
+    date(2026, 5, 1),
+    date(2026, 5, 2),  # 劳动节
+    date(2026, 6, 19),  # 端午（示例）
+    date(2026, 9, 25),  # 中秋（示例）
+    date(2026, 10, 1),
+    date(2026, 10, 2),
+    date(2026, 10, 3),
+    date(2026, 10, 7),  # 国庆
 }
 
 
@@ -69,9 +77,7 @@ def _heuristic_is_trading_day(value: date) -> bool:
     """降级启发式：非周末且非已知节假日。"""
     if value.weekday() >= 5:  # 周六/周日
         return False
-    if value in _KNOWN_HOLIDAYS_2026:
-        return False
-    return True
+    return value not in _KNOWN_HOLIDAYS_2026
 
 
 # 统一入口（替代 Protocol 的便捷工厂）

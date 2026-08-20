@@ -1,12 +1,10 @@
 """应用装配入口。
 
-负责把所有组件（LLM、Memory、Gateway、Agent）按配置创建并注入到 Root Graph，
-同时装配独立、非默认入口的 M1 Finance Runtime。
-装配原则：每个组件都走"有配置用真实版、无配置降级"的路径，保证应用在任何
-环境（无 API Key、无 Mem0、无 MCP）都能启动并跑通流程——只是质量从 LLM 降到规则。
+负责把 LLM、Memory、Gateway、Finance Runtime 与 Cognitive Orchestrator 按配置
+装配为唯一产品执行路径。装配原则：每个组件都走"有配置用真实版、无配置降级"
+的路径，保证应用在任何环境（无 API Key、无 Mem0、无 MCP）都能启动并跑通流程。
 
-Root Graph 的生产部署需替换 Checkpointer；M1 Finance Runtime 本身不接入
-Checkpointer，持久化与发布门禁由 M0 单独完成。
+Cognitive + Finance 是默认且唯一的编排入口；不再装配 Root Graph 产品路径。
 """
 
 from __future__ import annotations
@@ -15,46 +13,34 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtimes.langgraph.agents.query_agent import create_understand_agent
 from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import create_direct_response_model
-from bdlh_runtime.runtimes.langgraph.agents.research_agent import create_research_agent
-from bdlh_runtime.runtimes.langgraph.agents.summary_model import create_summary_model
-from bdlh_runtime.runtimes.langgraph.graphs.root_graph import build_root_graph
 
 from .errors import ConfigurationError
 from .llm import create_llm
-
-# Java API 地址的环境变量名（与 config 一致）
-_JAVA_API_BASE_URL_ENV = "JAVA_API_BASE_URL"
+from .run_state import InMemoryRunStateReader
 
 
 @dataclass
 class AgentRuntimeApplication:
-    """已装配的应用实例，持有 Graph 和所有注入的组件。"""
+    """已装配的应用实例，持有 Cognitive 编排器与支撑组件。"""
 
     settings: Settings
-    graph: Any  # 编译后的 LangGraph
     # 持有组件引用供调试和可观测性使用
-    checkpointer: Any | None = None
     llm: Any | None = None
     memory_store: Any | None = None
     gateway_adapter: Any | None = None
-    query_agent: Any | None = None
     direct_response_model: Any | None = None
-    summary_model: Any | None = None
-    research_agent: Any | None = None
-    llm_research_agent: Any | None = None
     analysis_capability: Any | None = None
     web_search_adapter: Any | None = None
     history_store: Any | None = None
     run_registry: Any | None = None
     chat_session_store: Any | None = None
+    # 运行状态读写端口；内存实现仅用于显式测试环境。
+    run_state_reader: Any = field(default_factory=InMemoryRunStateReader)
     capability_registry: Any | None = None
     domain_registry: Any | None = None
     finance_runtime: Any | None = None
     cognitive_application: Any | None = None
-    traffic_router: Any | None = None
-    rollout_metrics: Any | None = None
     task_store: Any | None = None
     notification_outbox: Any | None = None
     task_scheduler: Any | None = None
@@ -64,29 +50,20 @@ class AgentRuntimeApplication:
 def create_application(
     settings: Settings | None = None,
     *,
-    checkpointer_override: Any | None = None,
     registry_snapshot: Any | None = None,
 ) -> AgentRuntimeApplication:
     """从 Settings 装配完整应用。
 
-    装配顺序：LLM → Memory → Gateway → Agents → Root Graph。
+    装配顺序：LLM → Memory → Gateway → Agents → Finance → Cognitive。
     每一步都可能降级（无 Key/无依赖），降级信息记日志但不阻断启动。
     """
     settings = settings or Settings.from_environment()
     if settings.auth_required and not settings.jwt_secret:
         raise ConfigurationError("启用用户隔离时必须配置 JWT_SECRET")
+    if settings.environment != "test" and not settings.java_api_base_url:
+        raise ConfigurationError("当前终态要求配置 JAVA_API_BASE_URL；不再支持 Python 本地数据存储回退")
     if settings.financial_task_worker_enabled and settings.financial_task_poll_seconds <= 0:
         raise ConfigurationError("M6 Worker 轮询间隔必须大于 0 秒")
-
-    # ── 0. Checkpointer（审查文档 §4.3：按配置创建，生产注入持久化后端）──
-    # memory 后端在 production 被 create_checkpointer 拒绝（ConfigurationError）。
-    from .checkpointers import create_checkpointer
-
-    checkpointer = (
-        checkpointer_override
-        if checkpointer_override is not None
-        else create_checkpointer(settings)
-    )
 
     # ── 1. LLM（有 DeepSeek Key 用真实，无则 None 触发各 Agent 降级）──
     llm = create_llm(
@@ -101,44 +78,29 @@ def create_application(
     # ── 3. MCP Gateway（创建 client，云端不在线时调用会失败但启动不阻断）──
     gateway_adapter = _create_gateway(settings)
 
-    # ── 4. Agents（按 LLM 有无自动选 LLM 版或规则版）──
-    query_agent = create_understand_agent(llm)
+    # ── 4. Direct response（Cognitive knowledge_responder；按 LLM 有无降级）──
     direct_response_model = create_direct_response_model(llm)
-    summary_model = create_summary_model(llm)
-    # 单一 Research Agent（重写 §6.2）：窗口内选择，白名单=allowed。
-    research_agent = create_research_agent(llm)
-    llm_research_agent = research_agent
 
     # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
-    # base_url 未配置时 Adapter 内部自动 mock 降级（见 java_data_adapter.py）
-    import os as _os
-
     java_adapter = _create_java_adapter(
-        _os.getenv(_JAVA_API_BASE_URL_ENV),
+        settings.java_api_base_url,
         production=(settings.environment == "production"),
-        token=_os.getenv("JAVA_DATA_INTERNAL_TOKEN") or _os.getenv("JAVA_API_TOKEN"),
+        token=settings.java_data_internal_token,
     )
 
     # ── 4.5b web-search 适配器（网络搜索，HTTP 非 MCP）──
-    # base_url 未配置时 Adapter 内部自动 mock 降级（见 web_search_adapter.py）
     web_search_adapter = _create_web_search_adapter(settings)
-
-    # ── 4.5c Deep Research 执行器（ADR-016；默认关闭，不改浅搜语义）──
-    deep_research_adapter = _create_deep_research_adapter(settings, llm=llm)
 
     # ── 4.6 注册表快照（DB 真源；测试显式注入，禁止默认清单兜底）──
     registry_snapshot = _load_registry_snapshot(settings, registry_snapshot=registry_snapshot)
     from bdlh_runtime.tools.capabilities import load_capability_registry
 
     capability_registry = load_capability_registry(registry_snapshot)
-    # 从 CapabilityRegistry 组装能力清单；Memory 召回内容由 load_memory 节点写入
-    # state，ContextBuilder 只做组装不做 I/O。
-    context_builder = _create_context_builder(capability_registry, memory_store=memory_store)
     from bdlh_runtime.tools.analysis_capability import create_analysis_capability
 
     analysis_capability = create_analysis_capability()
 
-    # ── 4.6b M1 Finance Runtime（独立装配，不接默认 Root Graph 流量）──
+    # ── 4.6b Finance Runtime ──
     from bdlh_runtime.domains.finance.runtime import create_finance_runtime
     from bdlh_runtime.domains.registry import DomainRegistry
 
@@ -156,9 +118,7 @@ def create_application(
     domain_registry = DomainRegistry()
     domain_registry.register("finance", finance_runtime)
 
-    # ── 4.6c Domain Descriptor + SkillManifest 注册与启动校验（ADR-010 §3.1.2/§6）──
-    # 注册 finance 域的 descriptor（声明现状），并在启动时对 Capability Registry
-    # 逐项校验——不一致即 fail-fast，绝不留到运行时静默跳过。
+    # ── 4.6c Domain Descriptor + SkillManifest 注册与启动校验 ──
     from bdlh_runtime.domains.finance.manifests import build_finance_descriptor
     from bdlh_runtime.runtime.manifest_validation import (
         validate_descriptor_against_registry,
@@ -169,14 +129,11 @@ def create_application(
     validate_descriptor_against_registry(finance_descriptor, capability_registry)
 
     # ── 4.6c.1 M7 第二 Domain 插件契约探针（实验性、非用户入口）──
-    # 仅注册 Runtime + Descriptor，并复用同一 Capability Registry 启动校验。
-    # Cognitive 的 enabled_domains 仍只有 finance，因此探针不会成为产品能力。
     from bdlh_runtime.domains.plugin_probe import (
         PLUGIN_PROBE_DESCRIPTOR,
         PluginProbeRuntime,
     )
 
-    # 探针能力只来自库表种子（重写 §6.1：删除内存硬编码注册）。
     domain_registry.register(
         "plugin_probe",
         PluginProbeRuntime(capability_registry),
@@ -187,7 +144,7 @@ def create_application(
         capability_registry,
     )
 
-    # ── 4.6d M4 Cognitive Application（独立装配，不接默认 API/Root Graph）──
+    # ── 4.6d Cognitive Application（唯一产品编排路径）──
     from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
     from bdlh_runtime.cognitive.semantic_router import (
         SemanticRouteSelector,
@@ -201,7 +158,6 @@ def create_application(
     )
 
     verified_entities = InMemoryVerifiedEntityStore()
-    # 语义路由只做内核快路径；未命中再交给领域选择器，不在这里点名 Skill。
     cognitive_selector = SemanticRouteSelector(
         build_kernel_router(snapshot=registry_snapshot),
         fallback=FinanceCognitiveSelector(verified_entities),
@@ -224,12 +180,13 @@ def create_application(
         ),
     )
 
-    # ── 4.6e M0 关键持久化：Run Registry / Analysis History / Chat Store ──
-    from .chat_sessions import InMemoryChatSessionStore, create_chat_session_store
-    from .history import InMemoryAnalysisHistoryStore, create_history_store
-    from .run_registry import InMemoryRunRegistry, create_run_registry
+    # ── 4.6e 运行持久化：Java Data Plane 是唯一运行时写源 ──
+    from .chat_sessions import create_chat_session_store
+    from .history import create_history_store
+    from .run_registry import create_run_registry
 
-    if settings.runtime_data_mode == "java":
+    if settings.java_api_base_url:
+        from .remote_run_state import create_remote_run_state_store
         from .remote_runtime_data import create_remote_runtime_stores
 
         history_store, run_registry, chat_session_store = create_remote_runtime_stores(
@@ -237,40 +194,17 @@ def create_application(
             internal_token=settings.java_data_internal_token,
             production=(settings.environment == "production"),
         )
-    elif settings.runtime_data_mode == "legacy":
-        history_store = create_history_store(
-            environment=settings.environment,
-            postgres_dsn=settings.postgres_dsn,
-        )
-        run_registry = create_run_registry(
-            environment=settings.environment,
-            postgres_dsn=settings.postgres_dsn,
-        )
-        chat_session_store = create_chat_session_store(
-            environment=settings.environment,
-            postgres_dsn=settings.postgres_dsn,
+        run_state_reader = create_remote_run_state_store(
+            base_url=settings.java_api_base_url,
+            internal_token=settings.java_data_internal_token,
         )
     else:
-        raise ConfigurationError(
-            "BDLH_RUNTIME_DATA_MODE 只允许 legacy 或 java"
-        )
-    # M5 灰度要求 Run Registry、Analysis History、Chat Store 均为非内存实现。
-    # 云上联调只要配置了 POSTGRES_DSN，上述工厂会一律返回 PG 实现。
-    # Cognitive VerifiedEntityStore 仍为进程内短生命周期上下文，不计入该门禁。
-    production_storage_ready = not (
-        isinstance(run_registry, InMemoryRunRegistry)
-        or isinstance(history_store, InMemoryAnalysisHistoryStore)
-        or isinstance(chat_session_store, InMemoryChatSessionStore)
-    )
-
-    # ── 4.6f M5 灰度路由（默认 OFF，生产门禁未满足时 fail-fast）──
-    from bdlh_runtime.runtime.rollout import RolloutMetrics, build_rollout_router
-
-    traffic_router = build_rollout_router(
-        settings,
-        production_storage_ready=production_storage_ready,
-    )
-    rollout_metrics = RolloutMetrics()
+        # Isolated unit tests may exercise domain assembly without a Java service.
+        # This branch is intentionally unavailable to development and production.
+        history_store = create_history_store(environment=settings.environment)
+        run_registry = create_run_registry(environment=settings.environment)
+        chat_session_store = create_chat_session_store(environment=settings.environment)
+        run_state_reader = InMemoryRunStateReader()
 
     # ── 4.6g M6 最小持续任务（价格条件观察）──
     from .scheduler import (
@@ -278,7 +212,8 @@ def create_application(
         FinancialTaskWakeupHandler,
         NotificationOutboxWorker,
     )
-    if settings.runtime_data_mode == "java":
+
+    if settings.java_api_base_url:
         from .remote_tasks import create_remote_task_stores
 
         task_store, notification_outbox = create_remote_task_stores(
@@ -288,14 +223,8 @@ def create_application(
     else:
         from .tasks import create_notification_outbox, create_task_store
 
-        task_store = create_task_store(
-            environment=settings.environment,
-            postgres_dsn=settings.postgres_dsn,
-        )
-        notification_outbox = create_notification_outbox(
-            environment=settings.environment,
-            postgres_dsn=settings.postgres_dsn,
-        )
+        task_store = create_task_store(environment=settings.environment)
+        notification_outbox = create_notification_outbox(environment=settings.environment)
     task_wakeup_handler = FinancialTaskWakeupHandler(
         task_store=task_store,
         outbox=notification_outbox,
@@ -309,49 +238,22 @@ def create_application(
         outbox=notification_outbox,
     )
 
-    # ── 5. Root Graph（注入全部组件）──
-    graph = build_root_graph(
-        registry_snapshot=registry_snapshot,
-        checkpointer=checkpointer,
-        memory_store=memory_store,
-        query_agent=query_agent,
-        direct_response_model=direct_response_model,
-        summary_model=summary_model,
-        gateway_adapter=gateway_adapter,
-        research_agent=research_agent,
-        llm_research_agent=llm_research_agent,
-        java_adapter=java_adapter,
-        context_builder=context_builder,
-        analysis_capability=analysis_capability,
-        web_search_adapter=web_search_adapter,
-        deep_research_adapter=deep_research_adapter,
-        deep_research_enabled=bool(settings.deep_research_enabled),
-        history_store=history_store,
-    )
-
     return AgentRuntimeApplication(
         settings=settings,
-        graph=graph,
-        checkpointer=checkpointer,
         llm=llm,
         memory_store=memory_store,
         gateway_adapter=gateway_adapter,
-        query_agent=query_agent,
         direct_response_model=direct_response_model,
-        summary_model=summary_model,
-        research_agent=research_agent,
-        llm_research_agent=llm_research_agent,
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         history_store=history_store,
         run_registry=run_registry,
         chat_session_store=chat_session_store,
+        run_state_reader=run_state_reader,
         capability_registry=capability_registry,
         domain_registry=domain_registry,
         finance_runtime=finance_runtime,
         cognitive_application=cognitive_application,
-        traffic_router=traffic_router,
-        rollout_metrics=rollout_metrics,
         task_store=task_store,
         notification_outbox=notification_outbox,
         task_scheduler=task_scheduler,
@@ -360,22 +262,20 @@ def create_application(
 
 
 def _load_registry_snapshot(settings: Settings, *, registry_snapshot: Any | None) -> Any:
-    """注册表快照：测试显式注入优先；生产从 POSTGRES_DSN 加载并 fail-fast。
+    """注册表快照：测试显式注入优先；运行时仅从 Java Data Plane 加载。
 
-    禁止任何内置目录兜底（重写硬规则 7）——无注入且无 DSN 直接拒绝装配。
+    禁止 Python 直连 registry schema、运行时 DDL/seed 与内置目录兜底。
     """
     if registry_snapshot is not None:
         return registry_snapshot
-    dsn = getattr(settings, "postgres_dsn", None)
-    if not dsn:
-        raise ConfigurationError(
-            "registry snapshot is required: pass registry_snapshot explicitly in tests, "
-            "or configure POSTGRES_DSN for production; in-memory fallback is forbidden"
-        )
-    from bdlh_runtime.registry import PostgresRegistryStore, load_and_validate
+    if not settings.java_api_base_url or not settings.java_data_internal_token:
+        raise ConfigurationError("Registry 快照需要 JAVA_API_BASE_URL 与 JAVA_DATA_INTERNAL_TOKEN")
+    from bdlh_runtime.registry import create_remote_registry_store, load_and_validate
 
-    store = PostgresRegistryStore(dsn)
-    store.ensure_schema_and_seed()
+    store = create_remote_registry_store(
+        base_url=settings.java_api_base_url,
+        internal_token=settings.java_data_internal_token,
+    )
     return load_and_validate(store)
 
 
@@ -405,6 +305,7 @@ def _create_memory(settings: Settings) -> Any:
         )
     if settings.memory_mode == "embedded-test" and settings.environment != "production":
         from bdlh_runtime.memory.mem0.mem0_store import create_memory_store
+
         return create_memory_store(
             mem0_llm_model=settings.mem0.llm_model,
             mem0_llm_api_key=settings.mem0.llm_api_key,
@@ -452,57 +353,4 @@ def _create_web_search_adapter(settings: Settings) -> Any:
         production=(settings.environment == "production"),
         agent_id=settings.web_search_agent_id,
         token=settings.web_search_token,
-    )
-
-
-def _create_deep_research_adapter(settings: Settings, *, llm: Any | None = None) -> Any:
-    """创建 Deep Research 执行器（ADR-016 / §6.5）。
-
-    默认 ``deep_research_enabled=False``：调用返回 UNAVAILABLE，不改浅搜路径。
-    原子搜索优先百炼 Provider（已配置时）；非生产且未配百炼时用 Fake 供隔离评测；
-    生产开启但未配百炼 → 无原子口（UNAVAILABLE），禁止静默回落 SearXNG。
-    """
-    from bdlh_runtime.tools.deep_research import (
-        BailianWebSearchProvider,
-        DeepResearchToolExecutor,
-        FakeAtomicSearchPort,
-        LangchainDeepResearchModel,
-        RuleBasedDeepResearchModel,
-    )
-
-    atomic = None
-    if settings.deep_research_enabled:
-        bailian = BailianWebSearchProvider(
-            api_key=settings.bailian_web_search_api_key,
-            endpoint=settings.bailian_web_search_endpoint,
-            timeout_seconds=settings.bailian_web_search_timeout_seconds,
-            rate_limit_per_minute=settings.bailian_web_search_rate_limit_per_minute,
-        )
-        if bailian.configured:
-            atomic = bailian
-        elif settings.environment != "production":
-            atomic = FakeAtomicSearchPort()
-
-    research_model: Any = RuleBasedDeepResearchModel()
-    if settings.deep_research_enabled and llm is not None:
-        research_model = LangchainDeepResearchModel(llm)
-
-    return DeepResearchToolExecutor(
-        enabled=bool(settings.deep_research_enabled),
-        atomic_search=atomic,
-        research_model=research_model,
-    )
-
-
-def _create_context_builder(capability_registry: Any, *, memory_store: Any) -> Any:
-    """创建 ContextBuilder（审查文档 §4.4）。
-
-    工具清单从 CapabilityRegistry 组装（确定性）；ContextBuilder 本身不做 I/O，
-    Memory 召回内容由 load_memory 节点写入 state 后传入。
-    """
-    from bdlh_runtime.runtimes.langgraph.context import ContextBuilder, ContextService
-    tool_manifest = [spec.manifest() for spec in capability_registry.list()]
-    return ContextService(
-        builder=ContextBuilder(tool_manifest=tool_manifest),
-        memory_store=memory_store,
     )

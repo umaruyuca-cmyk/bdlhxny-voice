@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -175,7 +174,7 @@ class DomainRequest(DomainContractModel):
     budget: DomainBudget
 
     @model_validator(mode="after")
-    def validate_identity(self) -> "DomainRequest":
+    def validate_identity(self) -> DomainRequest:
         if not self.authenticated_user_id.strip():
             raise ValueError("authenticated_user_id must come from the server auth context")
         return self
@@ -207,7 +206,7 @@ class DomainOutcome(DomainContractModel):
     suggested_followups: list[SuggestedFollowup] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_failure_errors(self) -> "DomainOutcome":
+    def validate_failure_errors(self) -> DomainOutcome:
         if self.status == "FAILED" and not self.errors:
             raise ValueError("FAILED DomainOutcome requires at least one DomainError")
         return self

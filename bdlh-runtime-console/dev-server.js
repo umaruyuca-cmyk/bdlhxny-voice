@@ -87,7 +87,7 @@ function proxyApi(request, response, upstream) {
 }
 
 /**
- * 新版聊天由 Python Root Graph 提供；认证和用户领域仍由 Java 提供。
+ * 新版聊天由 Python Cognitive Orchestrator 提供；认证和用户领域仍由 Java 提供。
  */
 function apiTarget(pathname) {
   // 认证由 Java 签发和校验 JWT，不能跟随聊天路由改动而意外切到 Python。
@@ -101,7 +101,7 @@ function apiTarget(pathname) {
 }
 
 /**
- * 从 public 目录提供静态资源；/agent 是统一助手，/workspace 保留旧工作站。
+ * 从 public 目录提供静态资源；/agent 是唯一助手入口，/workspace 重定向到 /agent。
  */
 async function serveStatic(requestPath, request, response, rootDirectory) {
   // 1. 保持文档目录有尾部斜杠，确保相对 CSS/图片资源在开发服务器中正确解析。
@@ -110,10 +110,13 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
     response.end();
     return;
   }
+  if (requestPath === "/workspace" || requestPath === "/workspace/") {
+    response.writeHead(301, { Location: "/agent" });
+    response.end();
+    return;
+  }
   let target = requestPath;
   if (requestPath === "/") target = "/index.html";
-  else if (requestPath === "/workspace") target = "/workspace.html";
-  else if (requestPath === "/workspace/") target = "/workspace.html";
   else if (requestPath === "/agent" || requestPath === "/agent/") target = "/chat.html";
   else if (requestPath.startsWith("/agent/")) target = "/chat.html";
   else if (requestPath === "/docs" || requestPath === "/docs/") target = "/docs/index.html";

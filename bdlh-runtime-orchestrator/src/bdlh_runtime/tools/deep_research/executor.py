@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -52,8 +52,7 @@ class DeepResearchToolExecutor:
                 status="UNAVAILABLE",
                 error_code="DEEP_RESEARCH_NOT_ENABLED",
                 error_message=(
-                    "research.deep_search is feature-gated (ADR-016); "
-                    "use research.web_search for ordinary queries"
+                    "research.deep_search is feature-gated (ADR-016); use research.web_search for ordinary queries"
                 ),
                 data=None,
                 known_unavailable=[DEEP_SEARCH_CAPABILITY],
@@ -97,9 +96,7 @@ class DeepResearchToolExecutor:
             in_allowed=True,
             entitled=True,
             sync_budget_ok=True,
-            expected_independent_queries=(
-                max(len(request.research_topics), len(request.success_criteria), 1)
-            ),
+            expected_independent_queries=(max(len(request.research_topics), len(request.success_criteria), 1)),
         )
         bundle = await run_deep_research(
             request,
@@ -133,7 +130,7 @@ class DeepResearchToolExecutor:
                     source="deep-research-executor",
                     tool=DEEP_SEARCH_CAPABILITY,
                     request_id=bundle.request_id,
-                    retrieved_at=datetime.now(timezone.utc).isoformat(),
+                    retrieved_at=datetime.now(UTC).isoformat(),
                 )
             ],
             error_code=None if status in {"SUCCESS", "PARTIAL"} else "DEEP_RESEARCH_ASSEMBLY_FAILED",

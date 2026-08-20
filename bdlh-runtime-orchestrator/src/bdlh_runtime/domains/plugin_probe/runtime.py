@@ -17,8 +17,8 @@ from bdlh_runtime.domains.contracts import (
 )
 from bdlh_runtime.tools.capabilities import CapabilityRegistry
 
-from .contracts import PluginProbeOutcome, PluginProbeRequest, PluginProbeResult
 from .capability import PLUGIN_PROBE_CAPABILITY
+from .contracts import PluginProbeOutcome, PluginProbeRequest, PluginProbeResult
 
 
 class PluginProbeRuntime:
@@ -40,10 +40,7 @@ class PluginProbeRuntime:
                 "PROBE_OPERATION_NOT_AUTHORIZED",
                 "contract probe requires the shared RUN_ANALYSIS operation",
             )
-        if (
-            request.budget.tool_call_limit != 0
-            or request.budget.model_call_limit != 0
-        ):
+        if request.budget.tool_call_limit != 0 or request.budget.model_call_limit != 0:
             return self._failed(
                 request,
                 "PROBE_BUDGET_INVALID",

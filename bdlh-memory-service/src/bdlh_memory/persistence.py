@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 from uuid import uuid4
 
@@ -38,12 +38,11 @@ class PostgresInboxRepository:
 
     GROUP = "bdlh-memory-consumer"
 
-    def __init__(self, dsn: str) -> None:
-        self._dsn = dsn
+    def __init__(self, pool: Any) -> None:
+        self._pool = pool
 
     def _connect(self):
-        import psycopg
-        return psycopg.connect(self._dsn)
+        return self._pool.connection()
 
     def claim(self, event_id: UUID) -> bool:
         with self._connect() as connection:

@@ -16,7 +16,9 @@ def _make_obs(raw_text: str, capability: str = "market.get_money_flow") -> Obser
         status="SUCCESS",
         data={"raw_text": raw_text, "source_used": None},
         data_quality=DataQuality(completeness=1.0, quality_status="OK"),
-        provenance=[ProvenanceRecord(source="cn-financial-mcp", tool="get_money_flow", retrieved_at="2026-08-06T00:00:00Z")],
+        provenance=[
+            ProvenanceRecord(source="cn-financial-mcp", tool="get_money_flow", retrieved_at="2026-08-06T00:00:00Z")
+        ],
     )
 
 
@@ -40,13 +42,15 @@ def test_normal_response_passes_through():
 
 def test_quote_normalizer_preserves_valuation_identity_and_time():
     obs = _make_obs(
-        json.dumps({
-            "symbol": "600519",
-            "exchange": "SSE",
-            "currency": "CNY",
-            "price": 1300.0,
-            "timestamp": "2026-08-10T10:00:00+08:00",
-        }),
+        json.dumps(
+            {
+                "symbol": "600519",
+                "exchange": "SSE",
+                "currency": "CNY",
+                "price": 1300.0,
+                "timestamp": "2026-08-10T10:00:00+08:00",
+            }
+        ),
         "market.get_realtime_quote",
     )
 

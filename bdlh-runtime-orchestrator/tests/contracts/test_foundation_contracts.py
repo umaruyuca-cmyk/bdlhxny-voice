@@ -227,11 +227,11 @@ def test_m3_percentage_contracts_use_percentage_points_in_zero_to_one_hundred() 
 
 def test_cognitive_action_is_the_single_nine_action_contract() -> None:
     assert len(CognitiveActionType) == 9
-    assert ENABLED_ACTION_TYPES == {
+    assert {
         CognitiveActionType.RESPOND,
         CognitiveActionType.ASK_USER,
         CognitiveActionType.INVOKE_DOMAIN,
-    }
+    } == ENABLED_ACTION_TYPES
     assert ACTION_NOT_ENABLED == "ACTION_NOT_ENABLED"
     assert not is_action_enabled(CognitiveActionType.CREATE_TASK)
 

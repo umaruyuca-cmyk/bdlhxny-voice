@@ -5,9 +5,8 @@ from __future__ import annotations
 from bdlh_runtime.domains.contracts import DomainOperation
 from bdlh_runtime.domains.manifests import DomainDescriptor, SkillManifest
 
-from .contracts import PLUGIN_PROBE_INTENT
 from .capability import PLUGIN_PROBE_CAPABILITY
-
+from .contracts import PLUGIN_PROBE_INTENT
 
 PLUGIN_PROBE_MANIFEST = SkillManifest(
     skill_id="plugin-contract-probe",

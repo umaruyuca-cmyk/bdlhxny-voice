@@ -10,11 +10,10 @@ transactional outbox. Its `bdlh.memory.commands` RocketMQ event is consumed by
 this service as consumer group `bdlh-memory-consumer`. Deduplication is local
 to `memory.consumer_inbox`; this service never writes `runtime.consumer_inbox`.
 
-Run the service migration once with the `bdlh_memory_service` database role:
+在启动服务前，使用 `bdlh_memory_service` 数据库角色手工执行根目录脚本：
 
 ```powershell
-$env:MEMORY_POSTGRES_DSN = 'postgresql://bdlh_memory_service:password@postgres:5432/bdlh'
-python scripts/migrate.py
+psql -v ON_ERROR_STOP=1 -d bdlhRuntime -f ../db/postgresql/schema/memory_service.sql
 ```
 
 ## Required production configuration

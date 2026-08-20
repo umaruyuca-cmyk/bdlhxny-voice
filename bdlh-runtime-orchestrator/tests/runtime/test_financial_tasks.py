@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -35,8 +35,7 @@ from bdlh_runtime.runtime.tasks import (
     TaskAuditEvent,
 )
 
-
-NOW = datetime(2026, 8, 12, 10, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 12, 10, 0, tzinfo=UTC)
 
 
 def task(*, threshold: float = 10, expires_at: datetime | None = None) -> FinancialTask:
@@ -56,11 +55,13 @@ def task(*, threshold: float = 10, expires_at: datetime | None = None) -> Financ
         expires_at=expires_at or NOW + timedelta(days=1),
         created_at=NOW - timedelta(minutes=1),
         updated_at=NOW - timedelta(minutes=1),
-        audit_events=[TaskAuditEvent(
-            event_type="task.scheduled",
-            occurred_at=NOW - timedelta(minutes=1),
-            reason_code="USER_CONFIRMED_PRICE_OBSERVATION",
-        )],
+        audit_events=[
+            TaskAuditEvent(
+                event_type="task.scheduled",
+                occurred_at=NOW - timedelta(minutes=1),
+                reason_code="USER_CONFIRMED_PRICE_OBSERVATION",
+            )
+        ],
     )
 
 
@@ -80,7 +81,9 @@ class FinanceWakeup:
                 currency="CNY",
                 source_time=NOW,
                 quality="HIGH" if self.price else "LOW",
-            ) if self.price else None,
+            )
+            if self.price
+            else None,
             coverage="COMPLETE" if self.price else "LIMITED",
             confidence=ConfidenceAssessment(
                 level="HIGH" if self.price else "LOW",
@@ -200,9 +203,7 @@ async def test_expired_task_is_not_woken() -> None:
     cognitive = FinanceWakeup(price=11)
     worker = FinancialTaskScheduler(
         task_store=store,
-        wakeup_handler=FinancialTaskWakeupHandler(
-            task_store=store, outbox=outbox, cognitive=cognitive
-        ),
+        wakeup_handler=FinancialTaskWakeupHandler(task_store=store, outbox=outbox, cognitive=cognitive),
     )
 
     result = await worker.tick(now=NOW)

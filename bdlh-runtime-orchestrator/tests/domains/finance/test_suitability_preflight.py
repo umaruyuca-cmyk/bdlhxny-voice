@@ -8,11 +8,11 @@ import pytest
 
 from bdlh_runtime.domains.contracts import ConfidenceAssessment
 from bdlh_runtime.domains.finance.contracts import (
+    ConcentrationThreshold,
     FinancialDataMode,
     FinancialInstrument,
     FinancialSnapshot,
     LiquiditySnapshot,
-    ConcentrationThreshold,
     MarketRiskProxy,
     MarketRiskProxyThresholds,
     RiskProfile,
@@ -69,9 +69,7 @@ def test_preflight_is_deterministic_and_never_returns_personalized_result() -> N
     assert assessment.rule_set_version == PENDING_RULE_SET_VERSION
     assert assessment.rule_ids == list(PENDING_RULE_IDS)
     assert assessment.evidence_refs == ["obs-account", "obs-risk-profile"]
-    assert assessment.required_conditions[0].condition_id == (
-        "SUITABILITY_RULE_SET_APPROVAL_REQUIRED"
-    )
+    assert assessment.required_conditions[0].condition_id == ("SUITABILITY_RULE_SET_APPROVAL_REQUIRED")
     assert "ADR-004 rule thresholds and aggregation are not approved" in assessment.limitations
 
 
@@ -150,26 +148,14 @@ def test_unapproved_rule_set_cannot_carry_approval_metadata() -> None:
             price_adjustment="FORWARD",
         ),
         "single_position_thresholds": {
-            "CONSERVATIVE": ConcentrationThreshold(
-                conditional_above_pct=15, block_above_pct=20
-            ),
-            "BALANCED": ConcentrationThreshold(
-                conditional_above_pct=20, block_above_pct=30
-            ),
-            "AGGRESSIVE": ConcentrationThreshold(
-                conditional_above_pct=30, block_above_pct=40
-            ),
+            "CONSERVATIVE": ConcentrationThreshold(conditional_above_pct=15, block_above_pct=20),
+            "BALANCED": ConcentrationThreshold(conditional_above_pct=20, block_above_pct=30),
+            "AGGRESSIVE": ConcentrationThreshold(conditional_above_pct=30, block_above_pct=40),
         },
         "industry_thresholds": {
-            "CONSERVATIVE": ConcentrationThreshold(
-                conditional_above_pct=30, block_above_pct=40
-            ),
-            "BALANCED": ConcentrationThreshold(
-                conditional_above_pct=40, block_above_pct=50
-            ),
-            "AGGRESSIVE": ConcentrationThreshold(
-                conditional_above_pct=50, block_above_pct=60
-            ),
+            "CONSERVATIVE": ConcentrationThreshold(conditional_above_pct=30, block_above_pct=40),
+            "BALANCED": ConcentrationThreshold(conditional_above_pct=40, block_above_pct=50),
+            "AGGRESSIVE": ConcentrationThreshold(conditional_above_pct=50, block_above_pct=60),
         },
         "liquidity_pass_buffer_ratio": 1.2,
     }

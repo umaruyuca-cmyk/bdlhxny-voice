@@ -49,9 +49,7 @@ def test_goal_spec_rejects_extra_tool_fields() -> None:
             {
                 "goal_id": "g1",
                 "objective": "x",
-                "success_criteria": [
-                    SuccessCriterion(criterion_id="c1", description="d").model_dump()
-                ],
+                "success_criteria": [SuccessCriterion(criterion_id="c1", description="d").model_dump()],
                 "analysis_type": "comprehensive",
             }
         )
