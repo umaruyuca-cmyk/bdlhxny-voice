@@ -7,6 +7,7 @@ from typing import Any
 from bdlh_runtime.cognitive.contracts import CognitiveAction, PublicResponse
 
 from .contracts import GuardrailContext, GuardrailDecision, GuardrailResult, GuardrailStage
+from .data_quality_rules import evaluate_freshness, evaluate_provenance_depth
 from .research_rules import (
     action_rejects_unauthorized_deep,
     evaluate_research_observation,
@@ -177,6 +178,14 @@ class DefaultDataQualityGuardrail:
         research_hit = evaluate_research_observation(data)
         if research_hit is not None:
             code, rule_id, reason = research_hit
+            return _block(GuardrailStage.DATA_QUALITY, code, rule_id, reason)
+        freshness_hit = evaluate_freshness(data)
+        if freshness_hit is not None:
+            code, rule_id, reason = freshness_hit
+            return _block(GuardrailStage.DATA_QUALITY, code, rule_id, reason)
+        provenance_hit = evaluate_provenance_depth(data)
+        if provenance_hit is not None:
+            code, rule_id, reason = provenance_hit
             return _block(GuardrailStage.DATA_QUALITY, code, rule_id, reason)
         return _allow(GuardrailStage.DATA_QUALITY)
 

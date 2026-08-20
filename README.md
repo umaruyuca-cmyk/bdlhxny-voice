@@ -75,7 +75,15 @@
 
 `docs/archive/` 下是版本演进档案、旧 Java 链路时期图与旧提案，只用于追溯，不指导开发。当前唯一配套架构图是 `docs/architecture/00-BDLH-Agent-Runtime生产架构.drawio`。
 
-## 快速开始
+## 配置
+
+全项目共用一份配置清单：
+
+1. 复制 [`deploy/.env.example`](deploy/.env.example) 为 `deploy/.env`
+2. 按每条中文注释填写真实值（`.env` 不要入库）
+3. 启动：`docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`
+
+各服务只读取自己需要的键；不要再为 Python/Java/Memory/Search 各维护一份分散 `.env`。
 
 ```powershell
 # Python 编排服务（Agent 唯一编排入口）：运行全量回归

@@ -21,7 +21,9 @@ public final class RuntimeDataDtos {
             String runId,
             String threadId,
             String checkpointId,
-            String runtimePath) {
+            String runtimePath,
+            String pauseReason,
+            Boolean awaitingRouteConfirm) {
     }
 
     public record ChatMessageResponse(String role, String content, OffsetDateTime createdAt) {
@@ -35,6 +37,8 @@ public final class RuntimeDataDtos {
             String pendingThreadId,
             String pendingCheckpointId,
             String pendingRuntimePath,
+            String pauseReason,
+            Boolean awaitingRouteConfirm,
             OffsetDateTime updatedAt) {
     }
 

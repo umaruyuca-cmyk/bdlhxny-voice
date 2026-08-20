@@ -203,6 +203,7 @@ class PublicResponse(BaseModel):
     risk_disclosures: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
     audit_codes: list[str] = Field(default_factory=list)
+    rule_ids: list[str] = Field(default_factory=list)
 
 
 class CommunicationSection(BaseModel):

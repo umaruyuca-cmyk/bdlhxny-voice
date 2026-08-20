@@ -54,7 +54,7 @@ public class RuntimeDataService {
                 return existing;
             }
         }
-        String sessionId = UUID.randomUUID().toString();
+        String sessionId = requested != null ? requested : UUID.randomUUID().toString();
         jdbcTemplate.update(
                 "INSERT INTO runtime.chat_session(user_id, session_id) VALUES (?, ?)",
                 userId,
@@ -123,12 +123,19 @@ public class RuntimeDataService {
         requireSession(userId, id);
         jdbcTemplate.update(
                 "UPDATE runtime.chat_session SET pending_run_id = ?, pending_thread_id = ?, "
-                        + "pending_checkpoint_id = ?, pending_runtime_path = ?, updated_at = CURRENT_TIMESTAMP "
+                        + "pending_checkpoint_id = ?, pending_runtime_path = ?, pause_reason = ?, "
+                        + "awaiting_route_confirm = ?, updated_at = CURRENT_TIMESTAMP "
                         + "WHERE user_id = ? AND session_id = ?",
                 normalizedNullable(request.runId()),
                 normalizedNullable(request.threadId()),
                 normalizedNullable(request.checkpointId()),
                 normalizedNullable(request.runtimePath()),
+                request.runId() == null || request.runId().isBlank()
+                        ? null
+                        : normalizedNullable(request.pauseReason()),
+                request.runId() != null
+                        && !request.runId().isBlank()
+                        && Boolean.TRUE.equals(request.awaitingRouteConfirm()),
                 userId,
                 id);
         return requireSession(userId, id);
@@ -264,7 +271,8 @@ public class RuntimeDataService {
     private ChatSessionResponse findSession(long userId, String sessionId) {
         List<SessionRow> results = jdbcTemplate.query(
                 "SELECT session_id, title, pending_run_id, pending_thread_id, pending_checkpoint_id, "
-                        + "pending_runtime_path, updated_at FROM runtime.chat_session "
+                        + "pending_runtime_path, pause_reason, awaiting_route_confirm, updated_at "
+                        + "FROM runtime.chat_session "
                         + "WHERE user_id = ? AND session_id = ?",
                 (rs, rowNum) -> new SessionRow(
                         rs.getString("session_id"),
@@ -273,6 +281,8 @@ public class RuntimeDataService {
                         rs.getString("pending_thread_id"),
                         rs.getString("pending_checkpoint_id"),
                         rs.getString("pending_runtime_path"),
+                        rs.getString("pause_reason"),
+                        rs.getBoolean("awaiting_route_confirm"),
                         rs.getObject("updated_at", OffsetDateTime.class)),
                 userId,
                 sessionId);
@@ -297,6 +307,8 @@ public class RuntimeDataService {
                 row.pendingThreadId(),
                 row.pendingCheckpointId(),
                 row.pendingRuntimePath(),
+                row.pauseReason(),
+                row.awaitingRouteConfirm(),
                 row.updatedAt());
     }
 
@@ -442,6 +454,8 @@ public class RuntimeDataService {
             String pendingThreadId,
             String pendingCheckpointId,
             String pendingRuntimePath,
+            String pauseReason,
+            boolean awaitingRouteConfirm,
             OffsetDateTime updatedAt) {
     }
 }

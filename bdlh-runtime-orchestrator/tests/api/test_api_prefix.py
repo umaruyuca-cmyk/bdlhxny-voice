@@ -16,6 +16,7 @@ def test_api_prefix_from_settings():
     )
     # url_path_for 按路由名解析完整路径，验证前缀生效
     assert app.url_path_for("health") == "/custom/v2/health"
+    assert app.url_path_for("ready") == "/custom/v2/ready"
     assert app.url_path_for("create_run") == "/custom/v2/agent-runs"
     # 旧硬编码前缀不应生效
     assert app.url_path_for("health") != "/api/v1/health"

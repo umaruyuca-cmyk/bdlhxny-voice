@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Response
 
 from bdlh_runtime.runtime.application import AgentRuntimeApplication
+from bdlh_runtime.runtime.readiness import evaluate_readiness
 
 from .auth import JwtAuthenticator
 from .context import ApiContext
@@ -65,10 +66,30 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
     app.router.add_event_handler("startup", start_financial_task_worker)
     app.router.add_event_handler("shutdown", stop_financial_task_worker)
 
-    @router.get("/health")
+    @router.get("/health", name="health")
     async def health() -> dict[str, str]:
-        """本地健康检查。"""
+        """进程存活探针（liveness）；不检查下游依赖。"""
         return {"status": "UP", "service": "bdlh-runtime-orchestrator"}
+
+    @router.get("/ready", name="ready")
+    async def ready(response: Response) -> dict:
+        """流量就绪探针（readiness）；Java / Registry / 条件 Memory 不通过则 503。"""
+        report = evaluate_readiness(application)
+        if not report.ready:
+            response.status_code = 503
+        return report.as_dict()
+
+    # Compose / 运维常用无前缀路径；与 api_prefix 下同名探针语义一致。
+    @app.get("/health", name="health_root")
+    async def health_root() -> dict[str, str]:
+        return {"status": "UP", "service": "bdlh-runtime-orchestrator"}
+
+    @app.get("/ready", name="ready_root")
+    async def ready_root(response: Response) -> dict:
+        report = evaluate_readiness(application)
+        if not report.ready:
+            response.status_code = 503
+        return report.as_dict()
 
     chat.register(router, ctx)
     conversations.register(router, ctx)

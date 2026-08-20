@@ -26,13 +26,14 @@ FINANCE_DESCRIPTOR = build_finance_descriptor(_registry)
 
 
 def test_finance_descriptor_declares_current_reality() -> None:
-    """enabled_intents 忠于 runtime.py:124 的 ACTION_NOT_ENABLED 门。"""
+    """enabled_intents 反映 runtime 已开放的意图门。"""
     descriptor = FINANCE_DESCRIPTOR
 
     assert descriptor.domain == "finance"
     assert descriptor.status == "CURRENT"
-    # 只有 STOCK_RESEARCH 端到端跑通；其余意图被 runtime 门拦住
-    assert descriptor.enabled_intents == frozenset({FinancialIntent.STOCK_RESEARCH})
+    assert descriptor.enabled_intents == frozenset(
+        {FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY}
+    )
     # supported_intents 覆盖契约层全部 4 个意图
     assert descriptor.supported_intents == frozenset(
         {
@@ -137,7 +138,8 @@ def test_registry_registers_descriptor_and_queries_intent() -> None:
 
     assert registry.descriptor("finance") is FINANCE_DESCRIPTOR
     assert registry.is_intent_enabled("finance", FinancialIntent.STOCK_RESEARCH)
-    assert not registry.is_intent_enabled("finance", FinancialIntent.SUITABILITY)
+    assert registry.is_intent_enabled("finance", FinancialIntent.SUITABILITY)
+    assert not registry.is_intent_enabled("finance", FinancialIntent.PORTFOLIO_IMPACT)
 
 
 def test_registry_rejects_descriptor_for_unregistered_domain() -> None:

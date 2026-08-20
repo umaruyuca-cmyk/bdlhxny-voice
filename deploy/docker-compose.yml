@@ -1,8 +1,9 @@
 # ============================================================
 # BDLH Agent Runtime 本地/测试部署
-# Python Runtime 负责 Agent 编排；Java 只负责认证与用户数据；
+# Python Runtime 负责 Agent 编排；Java 负责认证、用户事实与运行数据；
 # Web Search Adapter 与 SearXNG 提供受控外部检索。
-# 使用: docker compose -f deploy/docker-compose.yml up -d --build
+# 配置：统一使用 deploy/.env（模板见 deploy/.env.example，含中文注释）。
+# 使用: docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 # ============================================================
 
 services:
@@ -78,8 +79,11 @@ services:
     ports:
       - "127.0.0.1:8090:8090"
     environment:
+      # 以下变量统一来自 deploy/.env（模板见 .env.example）
       BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-development}
       BDLH_RUNTIME_AUTH_REQUIRED: ${BDLH_RUNTIME_AUTH_REQUIRED:-true}
+      BDLH_RUNTIME_API_PREFIX: ${BDLH_RUNTIME_API_PREFIX:-/api/v1}
+      BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS: ${BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS:-30}
       BDLH_FINANCIAL_TASK_WORKER_ENABLED: ${BDLH_FINANCIAL_TASK_WORKER_ENABLED:-false}
       BDLH_FINANCIAL_TASK_POLL_SECONDS: ${BDLH_FINANCIAL_TASK_POLL_SECONDS:-10}
       JWT_SECRET: ${JWT_SECRET}
@@ -90,14 +94,25 @@ services:
       BDLH_MEMORY_MODE: ${BDLH_MEMORY_MODE:-noop}
       MEMORY_SERVICE_BASE_URL: ${MEMORY_SERVICE_BASE_URL:-http://bdlh-memory-service:8091}
       MEMORY_SERVICE_INTERNAL_TOKEN: ${MEMORY_SERVICE_INTERNAL_TOKEN}
-      AKSHARE_ONE_MCP_ENDPOINT: ${AKSHARE_ONE_MCP_ENDPOINT:-https://akshare-mcp.bdlhxny.com/mcp}
-      CN_FINANCIAL_MCP_ENDPOINT: ${CN_FINANCIAL_MCP_ENDPOINT:-https://cn-financial-mcp.bdlhxny.com/sse}
+      AKSHARE_ONE_MCP_TRANSPORT: ${AKSHARE_ONE_MCP_TRANSPORT:-streamable_http}
+      AKSHARE_ONE_MCP_ENDPOINT: ${AKSHARE_ONE_MCP_ENDPOINT:-http://host.docker.internal:8083/mcp}
+      AKSHARE_ONE_MCP_TIMEOUT: ${AKSHARE_ONE_MCP_TIMEOUT:-20}
+      CN_FINANCIAL_MCP_TRANSPORT: ${CN_FINANCIAL_MCP_TRANSPORT:-sse}
+      CN_FINANCIAL_MCP_ENDPOINT: ${CN_FINANCIAL_MCP_ENDPOINT:-http://host.docker.internal:8000/sse}
+      CN_FINANCIAL_MCP_TIMEOUT: ${CN_FINANCIAL_MCP_TIMEOUT:-20}
       WEB_SEARCH_BASE_URL: ${WEB_SEARCH_BASE_URL:-http://bdlh-web-search-adapter:3002}
       WEB_SEARCH_AGENT_ID: ${WEB_SEARCH_AGENT_ID:-bdlh_runtime}
-      WEB_SEARCH_TOKEN: ${WEB_SEARCH_AGENT_TOKEN}
+      WEB_SEARCH_TOKEN: ${WEB_SEARCH_TOKEN}
+      WEB_SEARCH_TIMEOUT: ${WEB_SEARCH_TIMEOUT:-20}
+      BDLH_DEEP_RESEARCH_ENABLED: ${BDLH_DEEP_RESEARCH_ENABLED:-false}
+      BDLH_BAILIAN_WEB_SEARCH_API_KEY: ${BDLH_BAILIAN_WEB_SEARCH_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      BDLH_BAILIAN_WEB_SEARCH_ENDPOINT: ${BDLH_BAILIAN_WEB_SEARCH_ENDPOINT:-}
+      BDLH_BAILIAN_WEB_SEARCH_TIMEOUT: ${BDLH_BAILIAN_WEB_SEARCH_TIMEOUT:-20}
+      BDLH_BAILIAN_WEB_SEARCH_RATE_LIMIT_PER_MINUTE: ${BDLH_BAILIAN_WEB_SEARCH_RATE_LIMIT_PER_MINUTE:-30}
       REDIS_URL: ${REDIS_URL:-}
       MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-v4-flash}
-      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-qwen3-embedding:0.6b}
+      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-qwen3-embedding:4b-q8_0}
       QWEN3_BASE_URL: ${QWEN3_BASE_URL:-http://host.docker.internal:11434/v1}
       QWEN3_API_KEY: ${QWEN3_API_KEY:-ollama}
     extra_hosts:
@@ -109,6 +124,12 @@ services:
         condition: service_healthy
       bdlh-web-search-adapter:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
 
   bdlh-runtime-data:
     build:
@@ -119,10 +140,17 @@ services:
     ports:
       - "127.0.0.1:8081:8080"
     environment:
+      # 以下变量统一来自 deploy/.env（模板见 .env.example）
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       PG_URL: ${PG_URL}
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL:-${PG_URL}}
+      BDLH_DB_MIN_IDLE: ${BDLH_DB_MIN_IDLE:-1}
+      BDLH_DB_MAX_POOL_SIZE: ${BDLH_DB_MAX_POOL_SIZE:-8}
+      BDLH_DB_CONNECTION_TIMEOUT_MS: ${BDLH_DB_CONNECTION_TIMEOUT_MS:-3000}
+      BDLH_DB_VALIDATION_TIMEOUT_MS: ${BDLH_DB_VALIDATION_TIMEOUT_MS:-1000}
+      BDLH_DB_LEAK_DETECTION_THRESHOLD_MS: ${BDLH_DB_LEAK_DETECTION_THRESHOLD_MS:-0}
       ROCKETMQ_ENABLED: ${ROCKETMQ_ENABLED:-false}
       ROCKETMQ_ENDPOINTS: ${ROCKETMQ_ENDPOINTS:-rmq-broker:8081}
       ROCKETMQ_RELAY_FIXED_DELAY_MS: ${ROCKETMQ_RELAY_FIXED_DELAY_MS:-1000}
@@ -132,6 +160,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       BDLH_RUNTIME_SINGLE_USER_ID: ${BDLH_RUNTIME_SINGLE_USER_ID:-1}
       JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_DAYS: ${JWT_EXPIRATION_DAYS:-7}
       JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
       JAVA_DATA_REQUIRE_AUTHENTICATED: ${JAVA_DATA_REQUIRE_AUTHENTICATED:-true}
     depends_on:
@@ -156,8 +185,8 @@ services:
       MEMORY_POSTGRES_DSN: ${MEMORY_POSTGRES_DSN}
       MEMORY_ROCKETMQ_ENABLED: ${MEMORY_ROCKETMQ_ENABLED:-false}
       ROCKETMQ_ENDPOINTS: ${ROCKETMQ_ENDPOINTS:-rmq-broker:8081}
-      MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-chat}
-      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-Qwen3-Embedding}
+      MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-v4-flash}
+      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-qwen3-embedding:4b-q8_0}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       QWEN3_API_KEY: ${QWEN3_API_KEY:-}
@@ -182,8 +211,9 @@ services:
     container_name: bdlh-web-search-adapter
     restart: unless-stopped
     environment:
-      PORT: 3002
-      SEARXNG_URL: http://searxng:8080
+      # 以下变量统一来自 deploy/.env（模板见 .env.example）
+      PORT: ${PORT:-3002}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       SEARXNG_ENGINES: ${SEARXNG_ENGINES:-baidu,360search}
       WEB_SEARCH_AGENTS_JSON: ${WEB_SEARCH_AGENTS_JSON}
       WEB_SEARCH_TIMEOUT_MS: ${WEB_SEARCH_TIMEOUT_MS:-10000}
@@ -191,6 +221,9 @@ services:
       WEB_SEARCH_RATE_LIMIT_PER_MINUTE: ${WEB_SEARCH_RATE_LIMIT_PER_MINUTE:-60}
       WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD: ${WEB_SEARCH_CIRCUIT_FAILURE_THRESHOLD:-5}
       WEB_SEARCH_CIRCUIT_RESET_MS: ${WEB_SEARCH_CIRCUIT_RESET_MS:-30000}
+      WEB_SEARCH_MAX_BODY_BYTES: ${WEB_SEARCH_MAX_BODY_BYTES:-32768}
+      WEB_SEARCH_MAX_TASKS: ${WEB_SEARCH_MAX_TASKS:-3}
+      WEB_SEARCH_MAX_RESULTS: ${WEB_SEARCH_MAX_RESULTS:-5}
     expose:
       - "3002"
     depends_on:

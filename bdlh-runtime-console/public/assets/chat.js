@@ -38,6 +38,8 @@ var ST={
   sending:false,
   streamText:"",
   controller:null,
+  activeRunId:null,
+  pauseAcked:false,
   loadingEarlier:false,
   page:"chat"
 };
@@ -585,6 +587,19 @@ function handleEvent(data,row){
     setStatus(row,data.step,data.skill);
   }else if(type==="agent_run"){
     if(data.sessionId)adoptServerSessionId(data.sessionId);
+    if(data.runId)ST.activeRunId=data.runId;
+    ST.pauseAcked=false;
+  }else if(type==="run.paused"){
+    ST.pauseAcked=!!data.resumable;
+    if($(".typing",text))text.textContent="";
+    clearStatus(row);
+    text.textContent=text.textContent||"已暂停，可回复「继续」恢复。";
+  }else if(type==="guardrail.blocked"){
+    if($(".typing",text))text.textContent="";
+    clearStatus(row);
+    text.classList.remove("streaming");
+    text.textContent=data.message||("请求已被安全策略阻断"+(data.auditCode?"（"+data.auditCode+"）":""));
+    text.classList.add("error");
   }else if(type==="token"){
     var tok=data.content||"";
     ST.streamText+=tok;
@@ -715,6 +730,8 @@ async function send(preset,regenerateExisting){
 
   var controller=new AbortController();
   ST.controller=controller;
+  ST.activeRunId=null;
+  ST.pauseAcked=false;
 
   try{
     var response=await apiFetch("/api/v1/chat/stream",{
@@ -1018,6 +1035,74 @@ input.addEventListener("keydown",function(e){
     send();
   }
 });
+document.addEventListener("keydown",function(e){
+  if(e.key!=="Escape")return;
+  if(!ST.sending&&!ST.activeRunId&&!ST.pauseAcked)return;
+  e.preventDefault();
+  if(e.shiftKey){
+    if(ST.controller){try{ST.controller.abort();}catch(err){}}
+    requestCancelRun();
+    return;
+  }
+  if(!ST.sending||!ST.controller)return;
+  requestPauseAndAbort();
+});
+
+async function requestCancelRun(){
+  var runId=ST.activeRunId;
+  if(!runId||MOCK){
+    ST.sending=false;
+    sendBtn.disabled=false;
+    return;
+  }
+  try{
+    var response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/cancel",{
+      method:"POST",
+      headers:{"Accept":"application/json"}
+    });
+    if(response.ok){
+      ST.pauseAcked=false;
+      ST.activeRunId=null;
+      toast("已取消当前分析");
+    }
+  }catch(err){
+    toast("取消请求失败，请稍后重试");
+  }
+}
+
+async function requestPauseAndAbort(){
+  var runId=ST.activeRunId;
+  var controller=ST.controller;
+  if(controller){
+    try{controller.abort();}catch(err){}
+  }
+  if(!runId||MOCK){
+    ST.sending=false;
+    sendBtn.disabled=false;
+    return;
+  }
+  try{
+    var response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/pause",{
+      method:"POST",
+      headers:{"Accept":"application/json"}
+    });
+    if(response.ok){
+      var ack=await response.json();
+      ST.pauseAcked=!!(ack.resumable||ack.resumable===undefined);
+      toast(ST.pauseAcked?"已暂停，可回复「继续」恢复":"已请求暂停");
+    }
+  }catch(err){
+    toast("暂停请求失败，请稍后重试");
+  }
+}
+
+function toast(msg){
+  if(!toastEl)return;
+  toastEl.textContent=msg;
+  toastEl.classList.add("on");
+  setTimeout(function(){toastEl.classList.remove("on");},2200);
+}
+
 composer.addEventListener("submit",function(e){
   e.preventDefault();
   send();

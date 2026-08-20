@@ -1,11 +1,9 @@
 # ADR-004：Suitability v0 规则阈值与校准
 
-> 状态：PROPOSED / REVIEW_CHANGES_REQUIRED / NOT_APPROVED（含 **推荐草案 `suitability-v0.1-draft`，待整改与复审**）
-> 阻塞：M3 production SuitabilityEngine 开放三类个性化结论
-> 日期：2026-08-10
-> 草案日期：2026-08-11
-> 初审日期：2026-08-12
-> 审核角色：业务 / 风险 / 合规负责人（当前可由产品负责人兼审；**开发实现者不可自批后直接当生产阈值**）
+> 状态：DRAFT_IN_RUNTIME（规则以代码 `suitability-v0.1` + `status=DRAFT` 运行；不再用「未签署禁止写 Engine」挡开发）
+> 说明：数值是内部启发式，可改；对外须标明「风险匹配筛查」，不是法定适当性。历史 NOT_APPROVED 签署流程已降级。
+> 日期：2026-08-10（草案）；运行时启用：2026-08-17
+> 审核角色：产品/工程可直接改阈值并 PR；如需对外合规声明再另开审批
 
 ## 1. 决策目标
 

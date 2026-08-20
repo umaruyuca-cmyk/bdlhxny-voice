@@ -214,12 +214,34 @@ class HttpJavaDataAdapter:
 
 # ── mock 持仓数据（确定性，测试用）──
 _MOCK_POSITIONS = [
-    {"symbol": "600519", "name": "贵州茅台", "quantity": 100, "cost_price": 1500.0, "current_price": None},
-    {"symbol": "000001", "name": "平安银行", "quantity": 2000, "cost_price": 10.5, "current_price": None},
+    {
+        "symbol": "600519",
+        "name": "贵州茅台",
+        "exchange": "SSE",
+        "currency": "CNY",
+        "quantity": 100,
+        "cost_price": 1500.0,
+        "current_price": None,
+    },
+    {
+        "symbol": "000001",
+        "name": "平安银行",
+        "exchange": "SZSE",
+        "currency": "CNY",
+        "quantity": 2000,
+        "cost_price": 10.5,
+        "current_price": None,
+    },
 ]
 
 _MOCK_DATA = {
-    "portfolio.get_account_snapshot": {"user_id": "unknown", "total_asset": 0.0, "cash": 0.0, "is_mock": True},
+    "portfolio.get_account_snapshot": {
+        "user_id": "unknown",
+        "total_asset": 0.0,
+        "cash": 50_000.0,
+        "currency": "CNY",
+        "is_mock": True,
+    },
     "portfolio.get_transaction_history": {"transactions": [], "is_mock": True},
     "user.get_risk_profile": {
         "risk_tolerance": "moderate",

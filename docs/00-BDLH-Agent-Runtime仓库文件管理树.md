@@ -152,7 +152,8 @@ Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用�
 | `db/postgresql/`、`db/mysql/` | `ACTIVE` | 数据库管理员手工执行的当前 Schema 与全量种子 |
 | `db/mysql-schema.sql` | `HISTORICAL` | 早期 MySQL 阶段产物 |
 | `deploy/docker-compose*.yml` | `ACTIVE` | 本地、云端与前端三套编排 |
-| `deploy/.env.example` | `ACTIVE` | 唯一环境变量模板；复制为 `deploy/.env`，不要入库 |
+| `deploy/.env.example` | `ACTIVE` | **全项目唯一配置清单模板**（中文注释）；复制为 `deploy/.env` 后填写，不要入库 |
+| `deploy/.env.ci` | `ACTIVE` | CI/compose 校验用占位环境，不含真实密钥 |
 | `deploy/nginx/bdlh-runtime.conf` | `ACTIVE` | 生产路由收口，`/api/v1/agent-runs*` 必须指向 Python |
 | `deploy/DOMAIN_DEPLOYMENT.md` | `ACTIVE` | 域名、HTTPS 与端口收口手册 |
 | `deploy/searxng/settings.yml` | `ACTIVE` | 检索后端配置，供 bdlh-web-search-adapter 使用 |

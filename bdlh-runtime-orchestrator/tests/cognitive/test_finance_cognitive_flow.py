@@ -17,11 +17,15 @@ from bdlh_runtime.domains.finance.cognitive_adapter import (
     InMemoryVerifiedEntityStore,
 )
 from bdlh_runtime.domains.finance.contracts import (
+    FinancialDomainOutcome,
     FinancialDomainRequest,
     FinancialInstrument,
+    FinancialIntent,
     InstrumentCandidate,
     InstrumentResolutionOutcome,
     InstrumentResolutionRequest,
+    SuitabilityAssessment,
+    SuitabilityCondition,
 )
 
 
@@ -79,6 +83,33 @@ class FinanceDispatcher:
                 confidence=ConfidenceAssessment(level="HIGH", reasons=["validated"], coverage_status="COMPLETE"),
             )
         assert isinstance(request, FinancialDomainRequest)
+        if request.financial_intent == FinancialIntent.SUITABILITY:
+            return FinancialDomainOutcome(
+                request_id=request.request_id,
+                status="LIMITED",
+                financial_intent=FinancialIntent.SUITABILITY,
+                suitability=SuitabilityAssessment(
+                    rule_set_version="suitability-v0.pending-adr-004-approval",
+                    rule_ids=["SUIT-RESEARCH-COVERAGE-001"],
+                    evidence_refs=["obs-fixture"],
+                    result="INSUFFICIENT_INFORMATION",
+                    required_conditions=[
+                        SuitabilityCondition(
+                            condition_id="SUITABILITY_RULE_SET_APPROVAL_REQUIRED",
+                            description="Suitability rules require an approved ADR-004 rule set",
+                            verification_source="ADR-004 approval record",
+                        )
+                    ],
+                    reasons=["No personalized suitability determination is produced before ADR-004 approval"],
+                    limitations=["ADR-004 rule thresholds and aggregation are not approved"],
+                ),
+                confidence=ConfidenceAssessment(
+                    level="LOW",
+                    reasons=["preflight"],
+                    coverage_status="LIMITED",
+                ),
+                limitations=["ADR-004 rule thresholds and aggregation are not approved"],
+            )
         return DomainOutcome(
             request_id=request.request_id,
             domain="finance",
@@ -257,7 +288,7 @@ async def test_knowledge_prefix_with_issuer_name_still_resolves() -> None:
 
 
 @pytest.mark.asyncio
-async def test_suitability_only_request_does_not_invoke_dead_intent() -> None:
+async def test_suitability_only_request_invokes_suitability_intent() -> None:
     store = InMemoryVerifiedEntityStore()
     dispatcher = FinanceDispatcher()
     app = _app(dispatcher, store)
@@ -266,7 +297,25 @@ async def test_suitability_only_request_does_not_invoke_dead_intent() -> None:
 
     result = await app.run(_event("它适合我吗", event_id="event-2"))
 
-    assert dispatcher.requests == []
-    assert result.response.response_kind == "ANSWER"
-    assert result.response.audit_codes == ["SUITABILITY_NOT_ENABLED"]
-    assert "尚未启用" in result.response.message
+    assert len(dispatcher.requests) == 1
+    request = dispatcher.requests[0]
+    assert isinstance(request, FinancialDomainRequest)
+    assert request.financial_intent == FinancialIntent.SUITABILITY
+    assert request.requires_financial_snapshot is True
+    assert result.response.response_kind == "LIMITED"
+    assert result.response.response_structure == "SUITABILITY"
+    assert "INSUFFICIENT_INFORMATION" in result.response.message
+
+
+@pytest.mark.asyncio
+async def test_mixed_research_and_suitability_words_still_route_suitability() -> None:
+    store = InMemoryVerifiedEntityStore()
+    dispatcher = FinanceDispatcher()
+    app = _app(dispatcher, store)
+    await app.run(_event("贵州茅台今天怎么样", event_id="event-1"))
+    dispatcher.requests.clear()
+
+    await app.run(_event("分析一下它适不适合我", event_id="event-2"))
+
+    assert len(dispatcher.requests) == 1
+    assert dispatcher.requests[0].financial_intent == FinancialIntent.SUITABILITY

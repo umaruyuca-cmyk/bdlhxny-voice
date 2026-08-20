@@ -185,7 +185,7 @@ def _suitability_manifest(m1, m3, valuation, public_research) -> SkillManifest:
         skill_id="suitability-evaluation",
         skill_version="suitability-evaluation.v1",
         domain="finance",
-        status="FOUNDATION",  # 契约+授权+engine 占位存在，runtime 未启用
+        status="FOUNDATION",  # Preflight 路径已接线；个性化引擎仍待 ADR-004
         # 输入
         request_contract="FinancialDomainRequest",
         accepted_intents=frozenset({FinancialIntent.SUITABILITY}),
@@ -266,9 +266,9 @@ def build_finance_descriptor(registry) -> DomainDescriptor:
                 FinancialIntent.GOAL_PLANNING,
             }
         ),
-        # enabled_intents：忠于 runtime.py:124 的 ACTION_NOT_ENABLED 门——
-        # 当前只有 STOCK_RESEARCH 端到端跑通。其余意图返回稳定失败，不静默降级。
-        enabled_intents=frozenset({FinancialIntent.STOCK_RESEARCH}),
+        # enabled_intents：STOCK_RESEARCH 全路径 + SUITABILITY fail-closed Preflight。
+        # PORTFOLIO_IMPACT / GOAL_PLANNING 仍被 runtime ACTION_NOT_ENABLED 拦住。
+        enabled_intents=frozenset({FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY}),
         skills=(
             _stock_research_manifest(m1, public_research),
             _portfolio_health_manifest(m3, valuation),

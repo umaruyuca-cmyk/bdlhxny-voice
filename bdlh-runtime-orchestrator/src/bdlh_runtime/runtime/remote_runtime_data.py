@@ -159,6 +159,8 @@ class RemoteChatSessionStore:
         thread_id: str | None,
         checkpoint_id: str | None,
         runtime_path: str | None = None,
+        pause_reason: str | None = None,
+        awaiting_route_confirm: bool = False,
     ) -> None:
         self._client.call(
             "PUT",
@@ -169,6 +171,8 @@ class RemoteChatSessionStore:
                 "threadId": thread_id,
                 "checkpointId": checkpoint_id,
                 "runtimePath": runtime_path,
+                "pauseReason": pause_reason,
+                "awaitingRouteConfirm": bool(awaiting_route_confirm) if run_id else False,
             },
         )
 
@@ -290,6 +294,8 @@ def _chat_session(data: dict[str, Any], user_id: str | None) -> ChatSession:
         pending_thread_id=data.get("pendingThreadId"),
         pending_checkpoint_id=data.get("pendingCheckpointId"),
         pending_runtime_path=data.get("pendingRuntimePath"),
+        pause_reason=data.get("pauseReason"),
+        awaiting_route_confirm=bool(data.get("awaitingRouteConfirm") or False),
         updated_at=_timestamp(data["updatedAt"]),
     )
 

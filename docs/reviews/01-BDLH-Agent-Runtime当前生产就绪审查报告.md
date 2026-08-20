@@ -2,6 +2,8 @@
 
 > **路径收敛附注（2026-08-16）：** 本报告基于旧 Root Graph 仍为默认路径时期的基线。之后代码已删除 Root Graph / M5 双路径；默认编排改为 Cognitive + Finance。报告中关于“默认仍走旧图 / 可回退旧路径”的结论不再指导开发，但仍保留其对 M0 持久化、readiness、发布证据等开放项的历史证据价值。
 >
+> **P0 进展（2026-08-16）：** SW-R-002 相关能力已落地——Orchestrator 提供 `GET /health`（liveness）与 `GET /ready`（readiness，探测 Java Actuator / Registry 装配 / 条件 Memory）；生产启动对 Java 不可达 fail-closed；Compose 已为 orchestrator 增加 `/ready` healthcheck。完整发布证据（E2E、多实例、故障注入）仍待补齐。
+>
 > **审查日期：2026-08-10**  
 > **代码基线：`ea87317`（当前 `main` 的 M1 代码基线）**  
 > **工作区：文档治理改动随本报告单独提交；代码实现状态以 `ea87317` 为准**  

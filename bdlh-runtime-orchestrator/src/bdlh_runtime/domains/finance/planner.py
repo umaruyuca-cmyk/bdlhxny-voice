@@ -93,4 +93,6 @@ class FinancePlanner:
             return {"symbol": request.instruments[0].symbol}
         if name == "research.web_search":
             return {"query": f"{request.instruments[0].symbol} 最新动态", "mode": "NEWS", "max_results": 5}
+        if name in _SNAPSHOT_CAPABILITIES:
+            return {"user_id": request.authenticated_user_id}
         return {}

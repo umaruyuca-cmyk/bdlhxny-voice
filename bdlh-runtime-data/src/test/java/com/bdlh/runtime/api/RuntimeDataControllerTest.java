@@ -87,6 +87,7 @@ class RuntimeDataControllerTest {
     private static ChatSessionResponse session() {
         return new ChatSessionResponse(
                 "session-1", "新的对话", List.of(), null, null, null, null,
+                null, false,
                 OffsetDateTime.parse("2026-08-15T00:00:00Z"));
     }
 }

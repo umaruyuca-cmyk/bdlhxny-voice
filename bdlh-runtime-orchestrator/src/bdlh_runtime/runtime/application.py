@@ -45,6 +45,7 @@ class AgentRuntimeApplication:
     notification_outbox: Any | None = None
     task_scheduler: Any | None = None
     notification_outbox_worker: Any | None = None
+    run_control: Any | None = None
 
 
 def create_application(
@@ -62,8 +63,14 @@ def create_application(
         raise ConfigurationError("启用用户隔离时必须配置 JWT_SECRET")
     if settings.environment != "test" and not settings.java_api_base_url:
         raise ConfigurationError("当前终态要求配置 JAVA_API_BASE_URL；不再支持 Python 本地数据存储回退")
+    if settings.environment == "production" and not settings.java_data_internal_token:
+        raise ConfigurationError("生产环境必须配置 JAVA_DATA_INTERNAL_TOKEN")
     if settings.financial_task_worker_enabled and settings.financial_task_poll_seconds <= 0:
         raise ConfigurationError("M6 Worker 轮询间隔必须大于 0 秒")
+
+    from .dependency_probes import assert_java_reachable_for_startup
+
+    assert_java_reachable_for_startup(settings, registry_snapshot=registry_snapshot)
 
     # ── 1. LLM（有 DeepSeek Key 用真实，无则 None 触发各 Agent 降级）──
     llm = create_llm(
@@ -114,6 +121,11 @@ def create_application(
         web_search_adapter=web_search_adapter,
         analysis_capability=analysis_capability,
         java_adapter=java_adapter,
+        execution_environment=(
+            settings.environment
+            if settings.environment in {"production", "development", "test"}
+            else "development"
+        ),
     )
     domain_registry = DomainRegistry()
     domain_registry.register("finance", finance_runtime)
@@ -157,6 +169,11 @@ def create_application(
         InMemoryVerifiedEntityStore,
     )
 
+    from bdlh_runtime.guardrails.assembly import authorized_capabilities_from_registry
+
+    from .run_control import RunControlPlane
+
+    run_control = RunControlPlane()
     verified_entities = InMemoryVerifiedEntityStore()
     cognitive_selector = SemanticRouteSelector(
         build_kernel_router(snapshot=registry_snapshot),
@@ -178,6 +195,11 @@ def create_application(
                 "RUN_ANALYSIS",
             }
         ),
+        authorized_capabilities=authorized_capabilities_from_registry(
+            capability_registry,
+            deep_research_enabled=settings.deep_research_enabled,
+        ),
+        pause_check=run_control.is_pause_requested,
     )
 
     # ── 4.6e 运行持久化：Java Data Plane 是唯一运行时写源 ──
@@ -258,6 +280,7 @@ def create_application(
         notification_outbox=notification_outbox,
         task_scheduler=task_scheduler,
         notification_outbox_worker=notification_outbox_worker,
+        run_control=run_control,
     )
 
 

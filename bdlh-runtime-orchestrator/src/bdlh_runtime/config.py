@@ -27,7 +27,6 @@ class McpSourceConfig:
     transport: str  # "sse" 或 "streamable_http"
     endpoint: str  # 完整 URL，如 http://host:port/sse
     timeout_seconds: float = 20.0
-    token: str | None = None  # 部分部署需要鉴权 token
 
 
 @dataclass(frozen=True)
@@ -72,13 +71,13 @@ class Settings:
     mcp_akshare_one: McpSourceConfig = field(
         default_factory=lambda: McpSourceConfig(
             transport="streamable_http",
-            endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "https://akshare-mcp.bdlhxny.com/mcp"),
+            endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "http://127.0.0.1:8083/mcp"),
         )
     )
     mcp_cn_financial: McpSourceConfig = field(
         default_factory=lambda: McpSourceConfig(
             transport="sse",
-            endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "https://cn-financial-mcp.bdlhxny.com/sse"),
+            endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "http://127.0.0.1:8000/sse"),
         )
     )
 
@@ -134,15 +133,13 @@ class Settings:
             memory_service_internal_token=os.getenv("MEMORY_SERVICE_INTERNAL_TOKEN"),
             mcp_akshare_one=McpSourceConfig(
                 transport=os.getenv("AKSHARE_ONE_MCP_TRANSPORT", "streamable_http"),
-                endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "https://akshare-mcp.bdlhxny.com/mcp"),
+                endpoint=os.getenv("AKSHARE_ONE_MCP_ENDPOINT", "http://127.0.0.1:8083/mcp"),
                 timeout_seconds=float(os.getenv("AKSHARE_ONE_MCP_TIMEOUT", "20")),
-                token=os.getenv("AKSHARE_ONE_MCP_TOKEN"),
             ),
             mcp_cn_financial=McpSourceConfig(
                 transport=os.getenv("CN_FINANCIAL_MCP_TRANSPORT", "sse"),
-                endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "https://cn-financial-mcp.bdlhxny.com/sse"),
+                endpoint=os.getenv("CN_FINANCIAL_MCP_ENDPOINT", "http://127.0.0.1:8000/sse"),
                 timeout_seconds=float(os.getenv("CN_FINANCIAL_MCP_TIMEOUT", "20")),
-                token=os.getenv("CN_FINANCIAL_MCP_TOKEN"),
             ),
             mem0=Mem0Config(
                 llm_model=os.getenv("MEM0_LLM_MODEL", "deepseek-chat"),

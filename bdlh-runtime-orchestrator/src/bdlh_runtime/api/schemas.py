@@ -29,6 +29,29 @@ class ResumeRequest(BaseModel):
     value: dict[str, Any] | str
 
 
+class PauseAckResponse(BaseModel):
+    """用户 Pause 确认（ADR-014）；未收到 resumable=true 前前端不得宣称可继续。"""
+
+    run_id: str = Field(alias="runId")
+    session_id: str | None = Field(default=None, alias="sessionId")
+    status: Literal["PAUSED_BY_USER", "PAUSE_REQUESTED"] = "PAUSED_BY_USER"
+    checkpoint_id: str | None = Field(default=None, alias="checkpointId")
+    resumable: bool = True
+
+    model_config = {"populate_by_name": True}
+
+
+class CancelAckResponse(BaseModel):
+    """用户放弃当前 pending run（不再 resume）。"""
+
+    run_id: str = Field(alias="runId")
+    session_id: str | None = Field(default=None, alias="sessionId")
+    status: Literal["ABANDONED"] = "ABANDONED"
+    resumable: bool = False
+
+    model_config = {"populate_by_name": True}
+
+
 class ChatRequest(BaseModel):
     """统一聊天页面请求；用户身份只来自 JWT，mode 不参与业务路由。"""
 

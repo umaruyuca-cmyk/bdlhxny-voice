@@ -132,17 +132,37 @@ class UserFinancialObservationNormalizer:
     @staticmethod
     def _position(item: dict[str, Any], source_ref: str) -> dict[str, Any]:
         # target_weight 与 cost_price 不是当前实际权重/市值，故意不做别名映射。
+        symbol = str(item.get("symbol", item.get("code", ""))).strip()
+        exchange = item.get("exchange")
+        if not (isinstance(exchange, str) and exchange.strip()):
+            exchange = UserFinancialObservationNormalizer._infer_cn_exchange(symbol)
+        elif isinstance(exchange, str):
+            exchange = exchange.strip()
+        currency = item.get("currency")
+        if not currency and exchange in {"SSE", "SZSE"}:
+            currency = "CNY"
         return {
-            "symbol": str(item.get("symbol", item.get("code", ""))).strip(),
+            "symbol": symbol,
             "name": item.get("name"),
-            "exchange": item.get("exchange"),
-            "currency": item.get("currency"),
+            "exchange": exchange,
+            "currency": currency,
             "quantity": item.get("quantity", item.get("shares")),
             "market_value": item.get("market_value"),
             "weight_pct": item.get("weight_pct"),
             "industry": item.get("industry", item.get("sector")),
             "source": source_ref,
         }
+
+    @staticmethod
+    def _infer_cn_exchange(symbol: str) -> str | None:
+        code = symbol.strip()
+        if len(code) != 6 or not code.isdigit():
+            return None
+        if code.startswith(("5", "6", "9")):
+            return "SSE"
+        if code.startswith(("0", "1", "3")):
+            return "SZSE"
+        return None
 
     @staticmethod
     def _risk_level(value: Any) -> str | None:

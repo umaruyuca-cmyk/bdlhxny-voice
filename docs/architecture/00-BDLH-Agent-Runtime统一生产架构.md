@@ -1,10 +1,10 @@
 # BDLH Agent Runtime 统一生产架构
 
 > **文档状态：生产架构唯一权威基线**  
-> **架构版本：v1.9**
+> **架构版本：v1.12**
 > **生效日期：2026-08-16**
 > **适用范围：`bdlh-runtime-orchestrator`、Java 用户数据服务、前端/API Gateway、外部数据服务及生产基础设施**  
-> **当前实施状态：默认产品路径已收敛为 Cognitive Orchestrator（`cognitive_finance`）+ Finance Domain；旧 Root Graph / M5 灰度双路径 / cognitive→legacy 回退已从代码删除。M0 持久化与 PLATFORM（Data Plane / RocketMQ / Memory Service）门禁仍可能阻塞完整生产放行，但不恢复旧编排路径。**
+> **当前实施状态：默认产品路径为 Cognitive Orchestrator（`cognitive_finance`）+ Finance Domain。Orchestrator 提供 `/health`（存活）与 `/ready`（就绪，含 Java Actuator / Registry / 条件 Memory）。Chat 有 pending 时经 Turn Router（`resume`/`new_turn`/`ask_which`）；支持 `POST .../pause` 与 Console Esc。Suitability 已走 fail-closed Preflight（ADR-004 未批前仅 `INSUFFICIENT_INFORMATION`）。Chat/Run/History/Task/Registry 经 Java Data Plane；M0 发布证据与 PLATFORM 默认开关仍可能阻塞完整生产放行。**
 > **配套架构图：[00-BDLH-Agent-Runtime生产架构.drawio](./00-BDLH-Agent-Runtime生产架构.drawio)**
 
 ## 产品身份（定位声明，不编号）
@@ -77,7 +77,9 @@ BDLH Agent Runtime 的产品身份是**通用 Agent Runtime / 编排内核**：�
 | v1.5 | 2026-08-11 | 修正实施状态残留：统一 ADR-010 已落地、PortfolioValuationBuilder 已完成但尚未发布的表述；同步 M3、§20、§23.1 与 01 号说明的术语和 Skill 状态 |
 | v1.6 | 2026-08-11 | 收口文档治理与状态语义：更新 §0.1 的历史文档称呼；补充基础设施级 `CURRENT` 不等于默认切流的说明；§19.1 登记 manifest/descriptor 启动校验测试 |
 | v1.7 | 2026-08-11 | 合成桌面 Resume/记忆草案与现网契约：§2.1/§8/§9/§12 吸收 [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)（系统/用户截断同构、Turn Router）与 [ADR-015](./ADR-015-Context组装服务与压缩策略.md)（Context 组装挂靠 ADR-011，禁止第二套 L 编号）；§23.1 登记两份 ADR |
-| v1.9 | 2026-08-16 | 默认路径收敛：旧 Root Graph / M5 灰度双路径 / cognitive→legacy 回退删除；Cognitive + Finance 为唯一产品编排入口；§3/§4.1/§13.4 对齐代码事实 |
+| v1.10 | 2026-08-16 | P0 就绪：Orchestrator `/health`+`/ready`；Java Actuator 启动探测；§3 对齐 Java 远程持久化与退役 Checkpointer |
+| v1.11 | 2026-08-16 | P1：ADR-014 Turn Router + Pause（`/chat/stream` 分流、`POST .../pause`、Console Esc）；§3 状态表更新 |
+| v1.12 | 2026-08-16 | P1：Suitability fail-closed 垂直切片（Cognitive→SUITABILITY→Preflight；ADR-004 前无个性化结论） |
 
 版本号只反映本文的表述与登记变化；阶段范围、契约字段语义与发布门禁的任何调整必须另有 ADR。
 
@@ -213,23 +215,23 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 | StockResearchResult | `CURRENT` | Finance Runtime 客观研究输出契约已接线 | 继续强化字段来源与 provenance |
 | Financial User Facts v2 | `FOUNDATION` | Java 已提供鉴权确认入口、版本与幂等控制、审计记录及只读查询元数据；Python 已按事实来源归一化 | 作为账户、持仓与风险事实的唯一权威来源，禁止旧记录被推断为实时数据 |
 | PortfolioValuationBuilder | `DEVELOPMENT_COMPLETE` / `RELEASE_BLOCKED` | M3 切片已完成：以 `quantity × price` 重算市值/权重，sha256 内容寻址，fail-closed 校验；能力 `portfolio.build_current_valuation` 已注册；尚未因发布门禁进入默认流量 | 使用权威持仓和受预算约束的市场报价生成可追溯估值快照 |
-| SuitabilityEngine | `TARGET` | Schema 已存在，规则未实现 | 确定性个性化适配评估 |
+| SuitabilityEngine | `CURRENT` | v0 DRAFT 规则集已接线；缺输入 → `INSUFFICIENT_INFORMATION`；v0 封顶无 `SUITABLE` | 阈值可 PR 调整；法定适当性另议 |
 | Capability Registry | `CURRENT` | 15 个统一只读能力（含 M3 `portfolio.build_current_valuation` 确定性重算） | 继续作为唯一能力真源 |
 | Toolset Registry | `CURRENT` | 六个 finance 域派生分组已存在并接入 Finance Planner；PORTFOLIO_READ 含估值重算能力 | 继续分层暴露能力并服务后续 Research/Suitability |
-| 四时点 Guardrails | `FOUNDATION` | 只有契约和 Protocol | 切换前必须全部实现并接线 |
+| 四时点 Guardrails | `CURRENT` | Default* 已接线；能力白名单、`guardrail.blocked` SSE、Data-quality freshness/provenance 已落地 | 继续补供应商冲突 / over-read 等 §11 余项 |
 | Observation / Coverage | `CURRENT` | 已有标准化与覆盖判断 | 进入所有外部数据路径 |
-| Java Data Plane | `TARGET` | 现有 Java 已承载认证和 L4 用户金融事实；Python 仍直接持久化部分 Runtime 数据 | 现有单 JVM 演进为模块化数据平面，接管除 Checkpoint、L3 Memory 外的结构化数据、事务、Registry、Outbox 和消息适配 |
-| Memory Service / Mem0 | `TARGET` | Mem0 仍以 Python 进程内 SDK 装配，可用时增强、失败降级 NoOp | 抽离为独立 Python 服务；同步 search、异步候选写入；不存权威业务事实，读写收敛见 ADR-015/017 |
-| RocketMQ | `TARGET` | 尚未接入 | 单 NameServer + 单 Broker/Proxy 起步；数据库事件只经 Transactional Outbox 发布，消费按至少一次与 Inbox 幂等设计 |
+| Java Data Plane | `CURRENT` / `TRANSITION` | 认证、L4 用户事实、Run/Chat/History/Task/Registry/Outbox API；Orchestrator 经 `JAVA_API_BASE_URL` 远程访问，启动与 `/ready` 探测 Actuator | 继续按 ADR-017 收敛模块化单体与 MQ 中继 |
+| Memory Service / Mem0 | `FOUNDATION` / `TARGET` | 独立服务与 remote 客户端已存在；默认 `BDLH_MEMORY_MODE=noop` | 生产切 `remote` 并完成 Outbox→MQ→消费闭环 |
+| RocketMQ | `FOUNDATION` | Compose/客户端与 Outbox Relay 代码已有；默认 `ROCKETMQ_ENABLED=false` | 打开开关前完成迁移与主题初始化验收 |
 | Context 组装 | `CURRENT` / `TARGET` | Cognitive / Finance 路径组装上下文；旧 Root Graph `ContextBuilder` 已删除 | 对齐 ADR-015：purpose/budget、窗口主路径、dropped 可观测；不另起第二套组装语义 |
-| 系统 ASK_USER + pending resume | `CURRENT` | Chat/Cognitive 路径写 `pending_*` 并在同会话恢复 | 必须叠加 ADR-014 Turn Router，禁止有 pending 默认盲目 resume |
-| 用户 Pause（Esc） | `TARGET` | 尚无 `/pause` 与协作式停止 | ADR-014：Pause API + 安全点停 + `PAUSED_BY_USER` |
-| Turn Router | `TARGET` | 有 pending 时倾向直接 resume | ADR-014：`resume` / `new_turn` / `ask_which` |
-| Checkpointer | `CURRENT` | 生产可使用 PostgreSQL | 必须持久化并隔离命名空间 |
-| Chat Session | `CURRENT` | 生产已有 PostgreSQL Store | 继续持久化和用户隔离 |
-| Run Registry | `FOUNDATION` | 当前只有内存实现 | 上线前迁移 PostgreSQL |
-| Analysis History | `FOUNDATION` | 当前只有内存实现 | 上线前迁移 PostgreSQL并保证幂等 |
-| Task / Scheduler | `TARGET` | 尚未实现 | 第二阶段只落地一个观察任务垂直切片 |
+| 系统 ASK_USER + pending resume | `CURRENT` | Chat 写 `pending_*`；同会话下一句经 Turn Router，禁止盲目 resume | 继续叠加真实 checkpoint / L0 恢复 |
+| 用户 Pause（Esc） | `CURRENT` | `POST .../pause` + PauseAck；Console Esc=abort+/pause；协作式停点在 Cognitive 步骤边界 | 长 LLM 调用中途更细粒度停止可增强 |
+| Turn Router | `CURRENT` | `resume` / `new_turn` / `ask_which` 已接线 `/chat/stream` | 持续校准强/弱信号词典 |
+| Checkpointer | `RETIRED` | 默认产品路径不再依赖 Python Postgres Checkpointer | 运行状态由 Java Data Plane 持有 |
+| Chat Session | `CURRENT` | 经 Java Data Plane 远程持久化（无 Java 仅测试内存） | 继续用户隔离与保留策略 |
+| Run Registry | `CURRENT` | 经 Java Data Plane 远程持久化；Python 仅保留测试内存实现 | 上线必须配置 Java 并保证 `/ready` 通过 |
+| Analysis History | `CURRENT` | 经 Java Data Plane 远程持久化 | 保证幂等与保留期 |
+| Task / Scheduler | `FOUNDATION` | 远程 Task/Outbox 客户端与 Worker 循环已有；默认 Worker 关闭 | 打开 `BDLH_FINANCIAL_TASK_WORKER_ENABLED` 前完成通知闭环验收 |
 | Letta | `EXPERIMENTAL` | 无生产实现 | 仅隔离研究，不进入部署拓扑 |
 | Node Stock Skill / Wrapper | `RETIRED` | `skills/stock-analysis-skill` 与 stock-wrapper 均已退出仓库；勿配置 `STOCK_WRAPPER_*` / `LEGACY_JAVA_*` | 禁止恢复旧 CLI Skill 或旧 Java Agent 链路 |
 
@@ -1063,8 +1065,8 @@ MEMORY_SERVICE_INTERNAL_TOKEN=...
 ROCKETMQ_ENDPOINTS=127.0.0.1:8080
 ROCKETMQ_NAMESPACE=bdlh
 DEEPSEEK_API_KEY=...
-AKSHARE_ONE_MCP_ENDPOINT=https://akshare-mcp.bdlhxny.com/mcp
-CN_FINANCIAL_MCP_ENDPOINT=https://cn-financial-mcp.bdlhxny.com/sse
+AKSHARE_ONE_MCP_ENDPOINT=http://127.0.0.1:8083/mcp
+CN_FINANCIAL_MCP_ENDPOINT=http://127.0.0.1:8000/sse
 WEB_SEARCH_BASE_URL=http://127.0.0.1:3002
 WEB_SEARCH_AGENT_ID=bdlh_runtime
 WEB_SEARCH_TOKEN=...

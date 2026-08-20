@@ -76,12 +76,14 @@ from .snapshot_builder import (
     SnapshotIdentityError,
     UserFinancialObservationNormalizer,
 )
+from .suitability_engine import SuitabilityEngine
 from .suitability_preflight import (
     PENDING_RULE_IDS,
     PENDING_RULE_SET_VERSION,
     SuitabilityPreflight,
     SuitabilityPreflightError,
 )
+from .suitability_v0_ruleset import default_suitability_v0_rule_set
 from .valuation_builder import (
     PortfolioValuationBuilder,
     PortfolioValuationError,
@@ -146,6 +148,7 @@ __all__ = [
     "SnapshotIdentityError",
     "SuitabilityAssessment",
     "SuitabilityCondition",
+    "SuitabilityEngine",
     "SuitabilityRuleEvaluation",
     "SuitabilityV0RuleSet",
     "SuitabilityPreflight",
@@ -155,4 +158,5 @@ __all__ = [
     "UserFinancialObservationNormalizer",
     "ApplicationFinanceCapabilityExecutor",
     "create_finance_runtime",
+    "default_suitability_v0_rule_set",
 ]

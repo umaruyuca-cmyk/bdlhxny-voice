@@ -563,6 +563,8 @@ async def test_application_executor_routes_only_exact_user_capabilities_to_java(
 
     assert isinstance(result, Observation)
     assert java.calls == [(POSITIONS_CAPABILITY, {"user_id": "7"})]
+    assert result.data["schema_version"] == "financial-user-observation.v1"
+    assert result.data["user_id"] == "7"
     with pytest.raises(ValueError, match="does not support"):
         await executor.execute(
             "portfolio.delete_positions",

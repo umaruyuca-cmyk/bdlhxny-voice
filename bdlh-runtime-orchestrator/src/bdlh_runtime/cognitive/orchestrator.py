@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -80,8 +81,10 @@ class CognitiveOrchestrator:
         response_guardrail: DefaultResponseGuardrail | None = None,
         enabled_domains: frozenset[str] = frozenset(),
         authorized_operations: frozenset[str] = frozenset(),
+        authorized_capabilities: frozenset[str] = frozenset(),
         observer: CognitiveExecutionObserver | None = None,
         max_domain_steps: int = 2,
+        pause_check: Callable[[str], bool] | None = None,
     ) -> None:
         if max_domain_steps < 1:
             raise ValueError("max_domain_steps must be positive")
@@ -92,11 +95,13 @@ class CognitiveOrchestrator:
         self._max_domain_steps = max_domain_steps
         self._enabled_domains = enabled_domains
         self._authorized_operations = authorized_operations
+        self._authorized_capabilities = authorized_capabilities
         self._observer = observer or NoopCognitiveExecutionObserver()
         self._plan_guardrail = plan_guardrail or DefaultPlanGuardrail()
         self._action_guardrail = action_guardrail or DefaultActionGuardrail()
         self._data_guardrail = data_guardrail or DefaultDataQualityGuardrail()
         self._response_guardrail = response_guardrail or DefaultResponseGuardrail()
+        self._pause_check = pause_check
 
     async def run(
         self,
@@ -109,6 +114,7 @@ class CognitiveOrchestrator:
             run_id=event.run_id or event.event_id,
             authenticated_user_id=event.user_id,
             read_only=True,
+            authorized_capabilities=self._authorized_capabilities,
             enabled_domains=self._enabled_domains,
             authorized_operations=self._authorized_operations,
             enabled_actions=frozenset(item.value for item in self._action_policy.enabled_actions),
@@ -117,6 +123,8 @@ class CognitiveOrchestrator:
         action = await self._selector.select(event)
 
         for step in range(self._max_domain_steps + 1):
+            if self._should_pause(event):
+                return self._paused_exit(state)
             state.action = CognitiveActionSummary.from_action(action)
             state.action_history.append(state.action)
             policy_result = self._action_policy.evaluate(action)
@@ -166,8 +174,12 @@ class CognitiveOrchestrator:
             state.requested_runtime_seconds = requested_runtime_seconds
             state.domain_calls_used += 1
             state.domain_request_refs.append(request.request_id)
+            if self._should_pause(event):
+                return self._paused_exit(state)
             execution_observer.on_domain_request(request)
             outcome = await self._dispatcher.dispatch(request)
+            if self._should_pause(event):
+                return self._paused_exit(state)
             outcome_callback = getattr(execution_observer, "on_domain_outcome", None)
             if callable(outcome_callback):
                 outcome_callback(outcome)
@@ -240,6 +252,26 @@ class CognitiveOrchestrator:
         state.public_events.append("response.ready")
         return CognitiveExecution(state=state, response=response)
 
+    def _should_pause(self, event: InputEvent) -> bool:
+        if self._pause_check is None:
+            return False
+        run_id = str(event.run_id or event.event_id or "").strip()
+        return bool(run_id) and bool(self._pause_check(run_id))
+
+    def _paused_exit(self, state: CognitiveState) -> CognitiveExecution:
+        state.public_events.append("run.paused")
+        state.error_codes.append("PAUSED_BY_USER")
+        return CognitiveExecution(
+            state=state,
+            response=PublicResponse(
+                response_kind="ASK_USER",
+                response_structure="CLARIFICATION",
+                message="已按你的操作暂停。回复「继续」可接着刚才的分析，或直接提出新的问题。",
+                next_steps=["继续", "换一个新问题"],
+                audit_codes=["PAUSED_BY_USER"],
+            ),
+        )
+
     @staticmethod
     def _guardrail_exit(
         state: CognitiveState,
@@ -253,7 +285,13 @@ class CognitiveOrchestrator:
             kind = "CAPABILITY_NOT_ENABLED"
         if result.decision == GuardrailDecision.ASK_USER:
             kind = "ASK_USER"
-        return CognitiveOrchestrator._guardrail_exit_code(state, code, result.reasons, kind=kind)
+        return CognitiveOrchestrator._guardrail_exit_code(
+            state,
+            code,
+            result.reasons,
+            kind=kind,
+            rule_ids=list(result.rule_ids),
+        )
 
     @staticmethod
     def _guardrail_exit_code(
@@ -262,9 +300,11 @@ class CognitiveOrchestrator:
         reasons: list[str],
         *,
         kind: str = "BLOCKED",
+        rule_ids: list[str] | None = None,
     ) -> CognitiveExecution:
         state.error_codes.append(code)
         state.public_events.append("response.blocked")
+        state.public_events.append("guardrail.blocked")
         message = reasons[0] if reasons else "请求已被安全策略阻断"
         response = PublicResponse(
             response_kind=kind,
@@ -272,6 +312,7 @@ class CognitiveOrchestrator:
             message=message,
             limitations=reasons,
             audit_codes=[code],
+            rule_ids=list(rule_ids or []),
         )
         return CognitiveExecution(state=state, response=response)
 

@@ -8,6 +8,8 @@ CREATE TABLE runtime.chat_session (
     pending_thread_id VARCHAR(255),
     pending_checkpoint_id VARCHAR(255),
     pending_runtime_path VARCHAR(64),
+    pause_reason VARCHAR(32),
+    awaiting_route_confirm BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, session_id)
 );

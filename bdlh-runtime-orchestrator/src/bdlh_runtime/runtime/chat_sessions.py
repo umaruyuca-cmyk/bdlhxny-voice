@@ -31,6 +31,8 @@ class ChatSession:
     pending_thread_id: str | None = None
     pending_checkpoint_id: str | None = None
     pending_runtime_path: str | None = None
+    pause_reason: str | None = None  # system_interrupt | user_pause | null
+    awaiting_route_confirm: bool = False
 
 
 class ChatSessionStore(Protocol):
@@ -53,6 +55,8 @@ class ChatSessionStore(Protocol):
         thread_id: str | None,
         checkpoint_id: str | None,
         runtime_path: str | None = None,
+        pause_reason: str | None = None,
+        awaiting_route_confirm: bool = False,
     ) -> None: ...
 
     def delete(self, session_id: str, user_id: str | None) -> bool: ...
@@ -79,7 +83,9 @@ class InMemoryChatSessionStore:
                 existing = self._sessions.get(self._key(normalized, user_id))
                 if existing is not None:
                     return existing
-            session_id = str(uuid4())
+                session_id = normalized
+            else:
+                session_id = str(uuid4())
             session = ChatSession(session_id=session_id, user_id=user_id)
             self._sessions[self._key(session_id, user_id)] = session
             return session
@@ -125,6 +131,8 @@ class InMemoryChatSessionStore:
         thread_id: str | None,
         checkpoint_id: str | None,
         runtime_path: str | None = None,
+        pause_reason: str | None = None,
+        awaiting_route_confirm: bool = False,
     ) -> None:
         with self._lock:
             session = self._sessions.get(self._key(session_id, user_id))
@@ -134,6 +142,12 @@ class InMemoryChatSessionStore:
             session.pending_thread_id = thread_id
             session.pending_checkpoint_id = checkpoint_id
             session.pending_runtime_path = runtime_path
+            if run_id is None:
+                session.pause_reason = None
+                session.awaiting_route_confirm = False
+            else:
+                session.pause_reason = pause_reason
+                session.awaiting_route_confirm = bool(awaiting_route_confirm)
             session.updated_at = datetime.now(UTC)
 
     def delete(self, session_id: str, user_id: str | None) -> bool:

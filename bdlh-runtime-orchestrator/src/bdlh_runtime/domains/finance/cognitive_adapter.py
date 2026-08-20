@@ -15,6 +15,7 @@ from bdlh_runtime.cognitive.contracts import (
     InputEventType,
 )
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainOutcome
+from bdlh_runtime.runtime.turn_router import is_resume_signal
 
 from .contracts import (
     FinancialDomainOutcome,
@@ -139,7 +140,7 @@ class FinanceCognitiveSelector:
             )
             return self._research_action(event, selected_candidate)
 
-        if _FOLLOWUP_PATTERN.fullmatch(message):
+        if _FOLLOWUP_PATTERN.fullmatch(message) or is_resume_signal(message):
             entity = self._entity_store.latest(event)
             if entity is not None:
                 return self._research_action(event, entity.candidate)
@@ -243,16 +244,28 @@ class FinanceCognitiveSelector:
 
     @staticmethod
     def _research_action(event: InputEvent, candidate: InstrumentCandidate) -> CognitiveAction:
-        # SuitabilityEngine 在 M1–M3 未启用；禁止路由到已废弃意图。
         if _is_suitability_only_request(event.message):
+            request = FinancialDomainRequest(
+                request_id=f"{event.event_id}:suitability",
+                authenticated_user_id=event.user_id,
+                objective="对已验证证券标的执行 fail-closed 个性化风险匹配筛查前置",
+                authorized_operations={
+                    DomainOperation.READ_MARKET_DATA,
+                    DomainOperation.READ_PUBLIC_RESEARCH,
+                    DomainOperation.READ_PORTFOLIO,
+                    DomainOperation.READ_PROFILE,
+                    DomainOperation.RUN_ANALYSIS,
+                },
+                budget=DomainBudget(tool_call_limit=16, runtime_seconds=90, model_call_limit=0),
+                financial_intent=FinancialIntent.SUITABILITY,
+                instruments=[candidate.instrument],
+                requires_financial_snapshot=True,
+            )
             return CognitiveAction(
-                action_type=CognitiveActionType.RESPOND,
-                reason_code="SUITABILITY_NOT_ENABLED",
-                reason=(
-                    f"个性化适配性评估尚未启用。"
-                    f"我可以先对 {candidate.instrument.name or candidate.canonical_symbol} "
-                    f"做客观只读研究；请直接问走势、估值或基本面。"
-                ),
+                action_type=CognitiveActionType.INVOKE_DOMAIN,
+                reason_code="SUITABILITY",
+                reason="对已验证标的执行适配性前置评估（ADR-004 未批准前仅 fail-closed）",
+                domain_request=request,
             )
         request = FinancialDomainRequest(
             request_id=f"{event.event_id}:research",
@@ -295,17 +308,27 @@ class FinanceCognitiveContinuation:
             return FinanceCognitiveSelector._research_action(event, outcome.selected)
         if isinstance(outcome, FinancialDomainOutcome) and outcome.suitability:
             assessment = outcome.suitability
-            required = outcome.suitability.required_conditions
-            if required:
+            required = list(outcome.suitability.required_conditions)
+            user_actionable = [
+                item
+                for item in required
+                if item.condition_id
+                not in {
+                    "SUITABILITY_RULE_SET_APPROVAL_REQUIRED",
+                    "SUITABILITY_INPUT_GAP",
+                    "SUITABILITY_CONDITIONS_PRESENT",
+                }
+            ]
+            if user_actionable:
                 return CommunicationPlan(
                     response_kind="ASK_USER",
                     response_structure="SUITABILITY",
-                    summary=required[0].description,
-                    required_fields=[item.condition_id for item in required],
+                    summary=user_actionable[0].description,
+                    required_fields=[item.condition_id for item in user_actionable],
                     evidence_refs=list(outcome.suitability.evidence_refs),
                     limitations=list(outcome.limitations) + list(outcome.suitability.limitations),
                     risk_disclosures=list(outcome.suitability.reasons),
-                    next_steps=[item.description for item in required],
+                    next_steps=[item.description for item in user_actionable],
                 )
             summary = f"个性化风险匹配筛查结果：{assessment.result}。"
             sections = [
@@ -323,7 +346,13 @@ class FinanceCognitiveContinuation:
                         items=list(assessment.reasons),
                     )
                 )
-            limitations = list(dict.fromkeys(list(outcome.limitations) + list(assessment.limitations)))
+            limitations = list(
+                dict.fromkeys(
+                    list(outcome.limitations)
+                    + list(assessment.limitations)
+                    + [item.description for item in required]
+                )
+            )
             if limitations:
                 sections.append(
                     CommunicationSection(
@@ -333,13 +362,14 @@ class FinanceCognitiveContinuation:
                     )
                 )
             return CommunicationPlan(
-                response_kind=("LIMITED" if limitations else "DOMAIN_RESULT"),
+                response_kind="LIMITED",
                 response_structure="SUITABILITY",
                 summary=summary,
                 sections=sections,
                 evidence_refs=list(assessment.evidence_refs),
                 limitations=limitations,
                 risk_disclosures=list(assessment.reasons),
+                next_steps=["可继续追问该标的客观研究，或补充风险偏好与持仓后再做适配筛查"],
             )
         return None
 
@@ -377,10 +407,9 @@ def _knowledge_answer(message: str) -> str:
 
 
 def _is_suitability_only_request(message: str) -> bool:
-    if not re.search(r"(?:适合我|适不适合|是否适合|匹配我的风险)", message):
-        return False
-    # 若用户同时要求市场研究，优先走客观研究。
-    return not bool(_RESEARCH_PATTERN.search(message))
+    """含适配意图即走 Suitability；研究词不再一刀切排除（可并存）。"""
+
+    return bool(re.search(r"(?:适合我|适不适合|是否适合|匹配我的风险)", message))
 
 
 def _is_stable_knowledge_question(message: str) -> bool:

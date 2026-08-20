@@ -26,14 +26,28 @@ from .contracts import (
     InstrumentResolutionOutcome,
     InstrumentResolutionRequest,
     StockResearchResult,
+    SuitabilityAssessment,
+    SuitabilityCondition,
 )
 from .instrument_resolver import FinanceInstrumentResolver
 from .planner import FinancePlanner
 from .research_builder import StockResearchResultBuilder
-from .snapshot_builder import PORTFOLIO_VALUATION_CAPABILITY, USER_SNAPSHOT_CAPABILITIES
-from .valuation_builder import PortfolioValuationBuilder, PortfolioValuationInput
+from .snapshot_builder import (
+    ACCOUNT_CAPABILITY,
+    POSITIONS_CAPABILITY,
+    PORTFOLIO_VALUATION_CAPABILITY,
+    USER_SNAPSHOT_CAPABILITIES,
+    ExecutionEnvironment,
+    FinancialSnapshotBuilder,
+    FinancialSnapshotError,
+    UserFinancialObservationNormalizer,
+)
+from .suitability_engine import SuitabilityEngine
+from .suitability_v0_ruleset import RULE_IDS, default_suitability_v0_rule_set
+from .valuation_builder import PortfolioValuationBuilder, PortfolioValuationError, PortfolioValuationInput
 
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
+_ENABLED_INTENTS = frozenset({FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY})
 
 
 class FinanceCapabilityExecutor(Protocol):
@@ -66,6 +80,7 @@ class ApplicationFinanceCapabilityExecutor:
         self._java = java_adapter
         self._valuation_builder = valuation_builder or PortfolioValuationBuilder()
         self._normalizer = ObservationNormalizer()
+        self._user_normalizer = UserFinancialObservationNormalizer()
 
     async def execute(
         self,
@@ -98,7 +113,11 @@ class ApplicationFinanceCapabilityExecutor:
         if capability in USER_SNAPSHOT_CAPABILITIES:
             if self._java is None:
                 raise ValueError("Finance executor has no Java user-data adapter")
-            return await self._java.execute(capability, arguments)
+            raw = await self._java.execute(capability, arguments)
+            user_id = str(arguments.get("user_id") or arguments.get("authenticated_user_id") or "").strip()
+            if not user_id:
+                raise ValueError("user_id is required for user snapshot capability")
+            return self._user_normalizer.normalize(raw, authenticated_user_id=user_id)
         if capability == PORTFOLIO_VALUATION_CAPABILITY:
             valuation_input = PortfolioValuationInput.model_validate(arguments)
             return self._valuation_builder.build(
@@ -129,12 +148,13 @@ class FinanceRunState(BaseModel):
     analysis_input: AnalysisInput | None = None
     analysis_result: AnalysisResult | None = None
     stock_research_result: StockResearchResult | None = None
+    suitability: SuitabilityAssessment | None = None
     limitations: list[str] = Field(default_factory=list)
     errors: list[DomainError] = Field(default_factory=list)
 
 
 class FinanceRuntime:
-    """执行五类单标的兼容股票研究，不产生聊天文案或持久副作用。"""
+    """执行股票研究与 Suitability fail-closed 前置；不产生聊天文案或持久副作用。"""
 
     def __init__(
         self,
@@ -144,12 +164,18 @@ class FinanceRuntime:
         executor: FinanceCapabilityExecutor,
         research_builder: StockResearchResultBuilder | None = None,
         instrument_resolver: FinanceInstrumentResolver | None = None,
+        snapshot_builder: FinancialSnapshotBuilder | None = None,
+        suitability_engine: SuitabilityEngine | None = None,
+        execution_environment: ExecutionEnvironment = "development",
     ) -> None:
         self._planner = planner
         self._authorization = authorization
         self._executor = executor
         self._research_builder = research_builder or StockResearchResultBuilder()
         self._instrument_resolver = instrument_resolver
+        self._snapshot_builder = snapshot_builder or FinancialSnapshotBuilder()
+        self._suitability_engine = suitability_engine or SuitabilityEngine(default_suitability_v0_rule_set())
+        self._execution_environment = execution_environment
 
     async def run(
         self, request: FinancialDomainRequest | InstrumentResolutionRequest
@@ -174,11 +200,11 @@ class FinanceRuntime:
                     limitations=["Finance instrument resolver is not configured"],
                 )
             return await self._instrument_resolver.resolve(request)
-        if request.financial_intent != FinancialIntent.STOCK_RESEARCH:
+        if request.financial_intent not in _ENABLED_INTENTS:
             return self._failed(
                 request,
                 ACTION_NOT_ENABLED,
-                f"M1 does not enable financial intent {request.financial_intent}",
+                f"Finance Runtime does not enable financial intent {request.financial_intent}",
             )
 
         try:
@@ -257,6 +283,9 @@ class FinanceRuntime:
                     state.observations.append(result)
                     state.tool_calls_used += 1
 
+                if request.financial_intent == FinancialIntent.SUITABILITY:
+                    await self._try_append_portfolio_valuation(state)
+
                 state.analysis_input = assemble_analysis_input(
                     analysis_id=request.request_id,
                     symbol=request.instruments[0].symbol,
@@ -293,6 +322,95 @@ class FinanceRuntime:
             )
 
         return self._outcome(state)
+
+    async def _try_append_portfolio_valuation(self, state: FinanceRunState) -> None:
+        """Suitability 路径尽力装配当前估值；失败只记 limitation，不阻断研究。"""
+        request = state.request
+        if any(item.capability == PORTFOLIO_VALUATION_CAPABILITY for item in state.observations):
+            return
+        # 预留 analysis 一跳；估值本身至少再占一跳
+        remaining = request.budget.tool_call_limit - state.tool_calls_used - 1
+        if remaining < 1:
+            state.limitations.append("Portfolio valuation skipped by budget")
+            return
+
+        positions = next((item for item in state.observations if item.capability == POSITIONS_CAPABILITY), None)
+        account = next((item for item in state.observations if item.capability == ACCOUNT_CAPABILITY), None)
+        if positions is None or account is None:
+            return
+
+        quotes = [
+            item
+            for item in state.observations
+            if item.capability == "market.get_realtime_quote" and item.status in {"SUCCESS", "PARTIAL"}
+        ]
+        for symbol in self._missing_quote_symbols(positions, quotes):
+            if remaining < 2:
+                break
+            try:
+                quote = await self._executor.execute(
+                    "market.get_realtime_quote",
+                    {"symbol": symbol},
+                    request_id=request.request_id,
+                )
+            except Exception:
+                state.limitations.append(f"Quote fetch failed for held symbol: {symbol}")
+                continue
+            if not isinstance(quote, Observation) or quote.capability != "market.get_realtime_quote":
+                state.limitations.append(f"Quote fetch contract violation for held symbol: {symbol}")
+                continue
+            state.observations.append(quote)
+            state.tool_calls_used += 1
+            remaining -= 1
+            if quote.status in {"SUCCESS", "PARTIAL"}:
+                quotes.append(quote)
+
+        if remaining < 1:
+            state.limitations.append("Portfolio valuation skipped by budget")
+            return
+
+        try:
+            valued = await self._executor.execute(
+                PORTFOLIO_VALUATION_CAPABILITY,
+                {
+                    "positions_observation": positions.model_dump(mode="json"),
+                    "account_observation": account.model_dump(mode="json"),
+                    "quote_observations": [item.model_dump(mode="json") for item in quotes],
+                    "authenticated_user_id": request.authenticated_user_id,
+                },
+                request_id=request.request_id,
+            )
+        except (PortfolioValuationError, ValueError, Exception) as exc:
+            state.limitations.append(f"Current portfolio valuation unavailable: {type(exc).__name__}")
+            return
+        if not isinstance(valued, Observation) or valued.capability != PORTFOLIO_VALUATION_CAPABILITY:
+            state.limitations.append("Current portfolio valuation unavailable: contract violation")
+            return
+        if valued.status not in {"SUCCESS", "PARTIAL"}:
+            state.limitations.append(
+                valued.error_message or "Current portfolio valuation unavailable"
+            )
+            return
+        state.observations.append(valued)
+        state.tool_calls_used += 1
+
+    @staticmethod
+    def _missing_quote_symbols(positions: Observation, quotes: list[Observation]) -> list[str]:
+        if positions.status not in {"SUCCESS", "PARTIAL"} or not isinstance(positions.data, dict):
+            return []
+        have = {
+            str(item.data.get("symbol") or "").strip().upper()
+            for item in quotes
+            if isinstance(item.data, dict) and item.data.get("symbol")
+        }
+        missing: list[str] = []
+        for entry in positions.data.get("positions") or []:
+            if not isinstance(entry, dict):
+                continue
+            symbol = str(entry.get("symbol") or "").strip()
+            if symbol and symbol.upper() not in have and symbol not in missing:
+                missing.append(symbol)
+        return missing
 
     def _outcome(self, state: FinanceRunState) -> FinancialDomainOutcome:
         assert state.analysis_result is not None
@@ -333,17 +451,71 @@ class FinanceRuntime:
 
         state.stock_research_result = research
         limitations = list(dict.fromkeys(state.limitations + result.limitations + research.limitations))
+        suitability = None
+        if state.request.financial_intent == FinancialIntent.SUITABILITY:
+            suitability = self._evaluate_suitability(state=state, research=research)
+            limitations = list(dict.fromkeys(limitations + list(suitability.limitations)))
+            state.suitability = suitability
         status = "FAILED" if result.status == "FAILED" else research.coverage
+        if suitability is not None and suitability.result == "INSUFFICIENT_INFORMATION" and status == "COMPLETE":
+            status = "LIMITED"
         return FinancialDomainOutcome(
             request_id=state.request.request_id,
             status=status,
             financial_intent=state.request.financial_intent,
             analysis_result=result,
             stock_research_result=research,
+            suitability=suitability,
             confidence=research.confidence,
             limitations=limitations,
             errors=errors,
         )
+
+    def _evaluate_suitability(
+        self,
+        *,
+        state: FinanceRunState,
+        research: StockResearchResult,
+    ) -> SuitabilityAssessment:
+        try:
+            snapshot = self._snapshot_builder.build(
+                request=state.request,
+                observations=state.observations,
+                execution_environment=self._execution_environment,
+            )
+            return self._suitability_engine.evaluate(research=research, snapshot=snapshot)
+        except (FinancialSnapshotError, ValueError) as exc:
+            message = str(exc) or type(exc).__name__
+            evidence_refs = sorted(
+                {
+                    item.observation_id
+                    for item in state.observations
+                    if item.capability in USER_SNAPSHOT_CAPABILITIES
+                    or item.capability == PORTFOLIO_VALUATION_CAPABILITY
+                }
+            )
+            if not evidence_refs:
+                evidence_refs = sorted({item.observation_id for item in state.observations})
+            if not evidence_refs:
+                evidence_refs = [f"request:{state.request.request_id}"]
+            return SuitabilityAssessment(
+                rule_set_version=self._suitability_engine.rule_set.version,
+                rule_ids=list(RULE_IDS),
+                evidence_refs=evidence_refs,
+                result="INSUFFICIENT_INFORMATION",
+                required_conditions=[
+                    SuitabilityCondition(
+                        condition_id="SUITABILITY_INPUT_GAP",
+                        description="无法构建可审计金融快照，风险匹配筛查未能完成",
+                        verification_source="snapshot_builder",
+                    )
+                ],
+                reasons=["Suitability evaluation could not build a usable financial snapshot"],
+                limitations=[
+                    message,
+                    "本结果为内部风险匹配筛查，不是法定适当性评估或投资建议",
+                ],
+            )
 
     @staticmethod
     def _failed(
@@ -398,8 +570,9 @@ def create_finance_runtime(
     web_search_adapter: Any,
     analysis_capability: Any,
     java_adapter: Any | None = None,
+    execution_environment: ExecutionEnvironment = "development",
 ) -> FinanceRuntime:
-    """使用现有 Application 组件装配 M1 Runtime 与 M2 研究 Builder。"""
+    """使用现有 Application 组件装配 Finance Runtime（研究 + Suitability Preflight）。"""
 
     planner = FinancePlanner(topic_capabilities)
     authorization = FinanceCapabilityAuthorizationPolicy(capability_registry)
@@ -414,6 +587,9 @@ def create_finance_runtime(
         authorization=authorization,
         executor=executor,
         research_builder=StockResearchResultBuilder(),
+        snapshot_builder=FinancialSnapshotBuilder(),
+        suitability_engine=SuitabilityEngine(default_suitability_v0_rule_set()),
+        execution_environment=execution_environment,
         instrument_resolver=FinanceInstrumentResolver(
             registry=capability_registry,
             authorization=authorization,

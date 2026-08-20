@@ -1,8 +1,6 @@
-"""M3 Suitability 的 fail-closed 前置评估。
+"""M3 Suitability 的 fail-closed 前置评估（历史模块，现网默认走 SuitabilityEngine）。
 
-ADR-004 尚未获批，因此本模块刻意不包含任何风险阈值或资产规则，也绝不返回
-``SUITABLE``、``CONDITIONALLY_SUITABLE`` 或 ``CURRENTLY_NOT_SUITABLE``。它只把
-研究与快照的前置条件以稳定结构暴露出来，防止未批准的规则被临时默认值替代。
+保留供对照与单测；生产路径由 ``SuitabilityEngine`` + ``suitability-v0.1`` DRAFT 规则集执行。
 """
 
 from __future__ import annotations
@@ -35,7 +33,7 @@ class SuitabilityPreflight:
     """评估 M3 规则执行的输入前提，但不执行任何适配性规则。
 
     该类不依赖 LangGraph、MCP、HTTP、LLM 或系统时钟。获得已批准的 ADR-004
-    规则集之前，Finance Runtime 不得装配它来开放 ``SUITABILITY`` intent。
+    规则集之前，只允许产出 ``INSUFFICIENT_INFORMATION``，不得产出三类个性化结论。
     """
 
     def evaluate(

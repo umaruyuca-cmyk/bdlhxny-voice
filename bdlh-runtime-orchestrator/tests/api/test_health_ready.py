@@ -1,0 +1,126 @@
+"""Liveness / Readiness 分离测试（P0）。"""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from bdlh_runtime.api.routes import create_api_app
+from bdlh_runtime.config import Settings
+from bdlh_runtime.runtime.application import create_application
+from bdlh_runtime.runtime.dependency_probes import ProbeResult
+from bdlh_runtime.runtime.errors import ConfigurationError
+from tests.helpers_registry import seeded_snapshot
+
+
+def _app(**settings_kwargs):
+    settings = Settings(environment="test", **settings_kwargs)
+    return create_api_app(
+        create_application(settings, registry_snapshot=seeded_snapshot()),
+        api_prefix="/api/v1",
+    )
+
+
+def test_health_is_liveness_only(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
+    )
+    client = TestClient(_app())
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "UP"
+    assert client.get("/health").status_code == 200
+
+
+def test_ready_ok_when_java_probe_passes(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
+    )
+    client = TestClient(
+        _app(
+            java_api_base_url="http://java.example",
+            java_data_internal_token="token",
+            auth_required=False,
+        )
+    )
+    response = client.get("/api/v1/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "READY"
+    assert any(item["name"] == "java_data_plane" and item["ok"] for item in body["checks"])
+    assert client.get("/ready").status_code == 200
+
+
+def test_ready_503_when_java_unreachable(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
+    )
+    client = TestClient(
+        _app(
+            java_api_base_url="http://java.example",
+            java_data_internal_token="token",
+        )
+    )
+    response = client.get("/api/v1/ready")
+    assert response.status_code == 503
+    assert response.json()["status"] == "NOT_READY"
+
+
+def test_ready_503_when_remote_memory_down(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
+    )
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", False, "down"),
+    )
+    client = TestClient(
+        _app(
+            java_api_base_url="http://java.example",
+            java_data_internal_token="token",
+            memory_mode="remote",
+            memory_service_base_url="http://memory.example",
+            memory_service_internal_token="mem-token",
+        )
+    )
+    response = client.get("/api/v1/ready")
+    assert response.status_code == 503
+    assert any(
+        item["name"] == "memory_service" and not item["ok"]
+        for item in response.json()["checks"]
+    )
+
+
+def test_production_startup_fails_when_java_actuator_down(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.dependency_probes.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
+    )
+    with pytest.raises(ConfigurationError, match="Java Data Plane 不可达"):
+        create_application(
+            Settings(
+                environment="production",
+                java_api_base_url="http://java.example",
+                java_data_internal_token="token",
+                jwt_secret="x" * 32,
+                auth_required=True,
+            ),
+            registry_snapshot=seeded_snapshot(),
+        )
+
+
+def test_production_requires_internal_token():
+    with pytest.raises(ConfigurationError, match="JAVA_DATA_INTERNAL_TOKEN"):
+        create_application(
+            Settings(
+                environment="production",
+                java_api_base_url="http://java.example",
+                jwt_secret="x" * 32,
+                auth_required=True,
+            ),
+            registry_snapshot=seeded_snapshot(),
+        )

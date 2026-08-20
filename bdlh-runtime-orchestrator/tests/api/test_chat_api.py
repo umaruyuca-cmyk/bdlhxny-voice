@@ -101,6 +101,7 @@ def test_chat_stream_requires_auth_and_uses_cognitive_path():
 
 
 def test_chat_clarification_resumes_the_same_cognitive_run():
+    """澄清后纯代码回答经 Turn Router resume 同一 run（禁止盲目 sticky 以外的路径）。"""
     client = _client(cognitive=ClarifyingCognitive())
     first = client.post(
         "/api/v1/chat/stream",
@@ -123,6 +124,7 @@ def test_chat_clarification_resumes_the_same_cognitive_run():
     resumed_run = next(event["runId"] for event in resumed_events if event["type"] == "agent_run")
 
     assert resumed_run == first_run
+    assert resumed_events[0].get("turnDecision") == "resume"
     assert resumed_events[0]["runtimePath"] == COGNITIVE_RUNTIME_PATH
     assert resumed_events[-1]["type"] == "done"
     assert resumed_events[-1]["status"] == "COMPLETED"

@@ -85,6 +85,42 @@ class FakeFinanceExecutor:
             data = {"items": [{"title": "公司公告"}]}
         elif capability == "research.web_search":
             data = {"results": [{"title": "公开资料", "url": "https://example.com"}]}
+        elif capability in {
+            "portfolio.get_current_positions",
+            "portfolio.get_account_snapshot",
+            "user.get_risk_profile",
+        }:
+            return Observation(
+                observation_id=f"obs-{len(self.calls)}",
+                capability=capability,
+                status="UNAVAILABLE",
+                data_quality=DataQuality(
+                    quality_status="INVALID",
+                    known_unavailable=[capability],
+                ),
+                error_code="FIXTURE_UNAVAILABLE",
+                error_message=f"{capability} unavailable",
+                provenance=[
+                    ProvenanceRecord(
+                        source="fixture",
+                        tool=capability,
+                        request_id=request_id,
+                        retrieved_at="2026-08-11T00:00:00+00:00",
+                    )
+                ],
+            )
+        elif capability == "portfolio.build_current_valuation":
+            return Observation(
+                observation_id=f"obs-{len(self.calls)}",
+                capability=capability,
+                status="UNAVAILABLE",
+                data_quality=DataQuality(
+                    quality_status="INVALID",
+                    known_unavailable=[capability],
+                ),
+                error_code="FIXTURE_UNAVAILABLE",
+                error_message=f"{capability} unavailable",
+            )
         else:
             raise AssertionError(f"unexpected capability: {capability}")
         return Observation(
@@ -98,8 +134,7 @@ class FakeFinanceExecutor:
                     source="provider-a",
                     tool=capability,
                     request_id=request_id,
-                    as_of="2026-08-10T10:00:00+08:00",
-                    retrieved_at="2026-08-10T10:00:01+08:00",
+                    retrieved_at="2026-08-11T00:00:00+00:00",
                 )
             ],
         )
@@ -310,7 +345,6 @@ async def test_builder_failure_returns_stable_error_and_preserves_analysis_resul
 @pytest.mark.parametrize(
     "intent",
     [
-        FinancialIntent.SUITABILITY,
         FinancialIntent.PORTFOLIO_IMPACT,
         FinancialIntent.GOAL_PLANNING,
     ],
@@ -322,6 +356,181 @@ async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> N
     assert disabled.status == "FAILED"
     assert disabled.errors[0].code == "ACTION_NOT_ENABLED"
     assert disabled_executor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_suitability_intent_runs_engine() -> None:
+    executor = FakeFinanceExecutor()
+    outcome = await build_runtime(executor).run(
+        request_for(
+            intent=FinancialIntent.SUITABILITY,
+            tool_call_limit=20,
+            operations={
+                DomainOperation.READ_MARKET_DATA,
+                DomainOperation.READ_PUBLIC_RESEARCH,
+                DomainOperation.READ_PORTFOLIO,
+                DomainOperation.READ_PROFILE,
+                DomainOperation.RUN_ANALYSIS,
+            },
+        )
+    )
+
+    assert outcome.suitability is not None
+    assert outcome.suitability.result == "INSUFFICIENT_INFORMATION"
+    assert outcome.suitability.rule_set_version == "suitability-v0.1"
+    assert any(call.startswith("portfolio.") or call.startswith("user.") for call in executor.calls)
+    assert "portfolio.build_current_valuation" in executor.calls
+    assert outcome.status in {"LIMITED", "PARTIAL", "COMPLETE"}
+
+
+@pytest.mark.asyncio
+async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> None:
+    from bdlh_runtime.domains.finance.snapshot_builder import (
+        ACCOUNT_CAPABILITY,
+        NORMALIZED_USER_DATA_SCHEMA,
+        POSITIONS_CAPABILITY,
+        RISK_PROFILE_CAPABILITY,
+    )
+
+    class ValuationReadyExecutor(FakeFinanceExecutor):
+        async def execute(
+            self,
+            capability: str,
+            arguments: dict[str, Any],
+            *,
+            request_id: str,
+        ) -> Observation | AnalysisResult:
+            if capability == POSITIONS_CAPABILITY:
+                self.calls.append(capability)
+                return Observation(
+                    observation_id="pos-1",
+                    capability=capability,
+                    status="SUCCESS",
+                    data={
+                        "schema_version": NORMALIZED_USER_DATA_SCHEMA,
+                        "user_id": "user-1",
+                        "data_mode": "TEST_FIXTURE",
+                        "positions": [
+                            {
+                                "symbol": "600519",
+                                "exchange": "SSE",
+                                "currency": "CNY",
+                                "quantity": 100,
+                                "source": "pos-1",
+                            }
+                        ],
+                    },
+                    data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+                    provenance=[
+                        ProvenanceRecord(
+                            source="fixture",
+                            tool=capability,
+                            retrieved_at="2026-08-11T00:00:00+00:00",
+                        )
+                    ],
+                )
+            if capability == ACCOUNT_CAPABILITY:
+                self.calls.append(capability)
+                return Observation(
+                    observation_id="acct-1",
+                    capability=capability,
+                    status="SUCCESS",
+                    data={
+                        "schema_version": NORMALIZED_USER_DATA_SCHEMA,
+                        "user_id": "user-1",
+                        "data_mode": "TEST_FIXTURE",
+                        "account": {"cash": 50_000, "currency": "CNY", "source": "acct-1"},
+                        "liquidity": {},
+                    },
+                    data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+                    provenance=[
+                        ProvenanceRecord(
+                            source="fixture",
+                            tool=capability,
+                            retrieved_at="2026-08-11T00:00:00+00:00",
+                        )
+                    ],
+                )
+            if capability == RISK_PROFILE_CAPABILITY:
+                self.calls.append(capability)
+                return Observation(
+                    observation_id="risk-1",
+                    capability=capability,
+                    status="SUCCESS",
+                    data={
+                        "schema_version": NORMALIZED_USER_DATA_SCHEMA,
+                        "user_id": "user-1",
+                        "data_mode": "TEST_FIXTURE",
+                        "risk_profile": {
+                            "risk_level": "BALANCED",
+                            "max_loss_tolerance_pct": 20.0,
+                            "source": "risk-1",
+                        },
+                    },
+                    data_quality=DataQuality(completeness=1.0, quality_status="OK"),
+                    provenance=[
+                        ProvenanceRecord(
+                            source="fixture",
+                            tool=capability,
+                            retrieved_at="2026-08-11T00:00:00+00:00",
+                        )
+                    ],
+                )
+            if capability == "portfolio.build_current_valuation":
+                self.calls.append(capability)
+                from bdlh_runtime.domains.finance.valuation_builder import PortfolioValuationBuilder
+
+                payload = arguments
+                return PortfolioValuationBuilder().build(
+                    positions_observation=Observation.model_validate(payload["positions_observation"]),
+                    account_observation=Observation.model_validate(payload["account_observation"]),
+                    quote_observations=[
+                        Observation.model_validate(item) for item in payload["quote_observations"]
+                    ],
+                    authenticated_user_id=payload["authenticated_user_id"],
+                )
+            if capability == "market.get_realtime_quote":
+                self.calls.append(capability)
+                return Observation(
+                    observation_id=f"quote-{arguments.get('symbol')}",
+                    capability=capability,
+                    status="SUCCESS",
+                    data={
+                        "symbol": arguments.get("symbol"),
+                        "exchange": "SSE",
+                        "currency": "CNY",
+                        "price": 1500.0,
+                        "as_of": "2026-08-11T00:00:00+00:00",
+                    },
+                    data_quality=DataQuality(completeness=1.0, freshness="CURRENT", quality_status="OK"),
+                    provenance=[
+                        ProvenanceRecord(
+                            source="fixture",
+                            tool=capability,
+                            retrieved_at="2026-08-11T00:00:00+00:00",
+                        )
+                    ],
+                )
+            return await super().execute(capability, arguments, request_id=request_id)
+
+    executor = ValuationReadyExecutor()
+    outcome = await build_runtime(executor).run(
+        request_for(
+            intent=FinancialIntent.SUITABILITY,
+            tool_call_limit=24,
+            operations={
+                DomainOperation.READ_MARKET_DATA,
+                DomainOperation.READ_PUBLIC_RESEARCH,
+                DomainOperation.READ_PORTFOLIO,
+                DomainOperation.READ_PROFILE,
+                DomainOperation.RUN_ANALYSIS,
+            },
+        )
+    )
+
+    assert "portfolio.build_current_valuation" in executor.calls
+    assert outcome.suitability is not None
+    assert not any("valuation unavailable" in item.lower() for item in outcome.limitations)
 
 
 @pytest.mark.asyncio
