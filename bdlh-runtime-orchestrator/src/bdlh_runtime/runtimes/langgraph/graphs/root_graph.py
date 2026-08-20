@@ -12,7 +12,7 @@ from langgraph.graph import END, START, StateGraph
 
 try:
     from langgraph.checkpoint.memory import InMemorySaver
-except ImportError:  # LangGraph versions before the rename expose MemorySaver.
+except ImportError:  # 旧版 LangGraph 在重命名前仍导出 MemorySaver。
     from langgraph.checkpoint.memory import MemorySaver as InMemorySaver
 
 from ..nodes.nodes import (

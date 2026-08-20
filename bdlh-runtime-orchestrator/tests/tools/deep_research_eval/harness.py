@@ -111,7 +111,7 @@ async def run_case(case: dict[str, Any]) -> CaseResult:
         ok = False
         detail_parts.append(f"min_sources<{min_sources}")
     if (not usable) and min_sources and case.get("expect_usable"):
-        pass  # already failed expected_usable
+        pass  # 已在 expected_usable 检查中失败
 
     if case.get("forbid_complete_without_sources") and bundle.status == "COMPLETE" and not bundle.sources:
         ok = False

@@ -58,9 +58,9 @@ class SkillRecord:
     status: str  # CURRENT | FOUNDATION | EXPERIMENTAL
     enabled: bool
     side_effects_empty: bool
-    # (operation_code, required)；optional 行 required=False
+    # (操作证代码, 是否必选)；optional 行 required=False
     operations: frozenset[tuple[str, bool]] = frozenset()
-    # (capability_name, required)
+    # (能力名, 是否必选)
     capabilities: frozenset[tuple[str, bool]] = frozenset()
 
     @property

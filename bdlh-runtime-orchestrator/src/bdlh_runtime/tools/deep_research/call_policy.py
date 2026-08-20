@@ -85,15 +85,14 @@ def evaluate_deep_research_trigger(
 ) -> DeepTriggerDecision:
     """在已拼好参数后判定是否应调用 Deep。
 
-    Parameters
-    ----------
-    feature_enabled / in_allowed / entitled / sync_budget_ok
-        硬约束；任一失败则 ``should_deep=False`` 并写入 ``blocked_reasons``。
-    expected_independent_queries
-        规则 5：预期独立检索问题数；``None`` 时不因本条触发（保守）。
-    user_text
-        可选用户原句/objective 拼接文本，用于规则 1/4 关键词；默认用
-        ``question + objective``。
+    参数：
+    - feature_enabled / in_allowed / entitled / sync_budget_ok：
+      硬约束；任一失败则 ``should_deep=False`` 并写入 ``blocked_reasons``。
+    - expected_independent_queries：
+      规则 5：预期独立检索问题数；``None`` 时不因本条触发（保守）。
+    - user_text：
+      可选用户原句/objective 拼接文本，用于规则 1/4 关键词；默认用
+      ``question + objective``。
     """
 
     blocked: list[str] = []

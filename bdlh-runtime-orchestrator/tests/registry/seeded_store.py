@@ -45,7 +45,7 @@ TOOLSETS = [
     ("plugin_probe_compute", "执行无外部调用的插件契约探针"),
 ]
 
-# name, adapter, auth_user, depends_on, ops, toolsets
+# 能力名, 适配器, 是否需登录用户, depends_on, 操作证, toolsets
 CAPABILITIES = [
     ("market.resolve_instrument", "mcp", False, frozenset(), {"READ_MARKET_DATA"}, {"market_read"}),
     ("market.get_realtime_quote", "mcp", False, {"market.resolve_instrument"}, {"READ_MARKET_DATA"}, {"market_read"}),

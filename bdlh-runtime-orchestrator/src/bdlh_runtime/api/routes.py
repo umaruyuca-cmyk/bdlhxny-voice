@@ -756,7 +756,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
                     "runtimePath": RuntimePath.COGNITIVE.value,
                 })
 
-            # Legacy closure is declared below and resolved when the stream is consumed.
+            # 旧式闭包在下方声明，于流被消费时再解析。
             return StreamingResponse(
                 cognitive_chat_event_stream(),
                 media_type="text/event-stream",

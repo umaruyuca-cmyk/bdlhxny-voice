@@ -1,4 +1,4 @@
-"""Finance-owned, source-validated natural-language instrument resolution."""
+"""金融领域自有、经数据源校验的自然语言标的解析。"""
 
 from __future__ import annotations
 
@@ -27,10 +27,10 @@ RESOLVE_INSTRUMENT_CAPABILITY = "market.resolve_instrument"
 
 
 class FinanceInstrumentResolver:
-    """Resolve only through the registered market capability and Observation output.
+    """只通过已登记的市场能力与 Observation 输出解析标的。
 
-    Web discovery is deliberately absent from this slice: a discovery result without a
-    second structured-market validation call cannot safely establish instrument identity.
+    本切片刻意不做网页发现：发现结果若未经第二次结构化行情校验，
+    不能安全确立标的身份。
     """
 
     def __init__(

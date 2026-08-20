@@ -1,9 +1,9 @@
-"""Market Data Graph 真实 ReAct 模式回归测试（P0 验收）。
+"""市场数据子图真实 ReAct 模式回归测试（P0 验收）。
 
 验证审查文档 §3.1 的验收标准：
-- Fake Gateway 注入 → select_action → execute_tool → normalize_observation
+- 注入假 Gateway → select_action → execute_tool → normalize_observation
   → evaluate_market_data → 子图结束；
-- action / pending observation / round counter 在节点间正确传递；
+- 动作 / 待标准化观测 / 轮次计数在节点间正确传递；
 - 不得出现 GraphRecursionError。
 """
 

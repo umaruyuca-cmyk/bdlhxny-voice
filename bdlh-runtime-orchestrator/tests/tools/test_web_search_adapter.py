@@ -78,7 +78,7 @@ async def test_success_wraps_observation(monkeypatch):
         token="x" * 32,
     )
 
-    # mock httpx.AsyncClient
+    # 模拟 httpx.AsyncClient
     class MockResponse:
         def raise_for_status(self): pass
         def json(self):

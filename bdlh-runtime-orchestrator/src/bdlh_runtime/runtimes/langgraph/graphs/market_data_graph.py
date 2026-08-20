@@ -1,9 +1,9 @@
-"""Market Data Graph：市场数据获取子图。
+"""市场数据获取子图。
 
 两种运行模式：
-- 注入 gateway_adapter + research_agent：走真实 MCP 链路，Research Agent 决策
+- 注入 gateway_adapter + research_agent：走真实 MCP 链路，由研究 Agent 决策
   下一步统一能力 → Gateway 按路由表执行 → normalizer 标准化（含吞错识别）。
-  循环直到 GoalCoverage settled（或无 Goal 时 allowed 覆盖）或触顶预算/轮次。
+  循环直到 GoalCoverage 已 settled（或无 Goal 时按 allowed 覆盖）或触顶预算/轮次。
 - 无注入（默认）：走 mock 路径，只产出占位 Observation，保证测试不依赖网络。
 
 ReAct 边界：Agent 只输出结构化动作（choose_next_action），不直接执行工具；
@@ -28,7 +28,7 @@ from .state import RootState
 
 
 class _MarketDataOutput(TypedDict, total=False):
-    """Market Data Graph 子图的受限输出 schema。
+    """市场数据子图的受限输出结构。
 
     只包含子图负责的字段，刻意排除 workflow_plan——防止子图入口快照覆盖
     主图调度进度（resolve_instrument 等任务被重复执行的根因）。
@@ -40,12 +40,12 @@ class _MarketDataOutput(TypedDict, total=False):
     _current_action: dict[str, Any]
     _pending_observation: dict[str, Any] | None
 
-# ReAct 轮数上限（默认值，comprehensive 可由调用方覆盖）
+# ReAct 轮数上限（默认值，调用方可覆盖）
 _DEFAULT_MAX_REACT_ROUNDS = 6
 
 
 def build_market_query(state: RootState) -> dict:
-    """根据 DataRequirement 形成统一能力查询计划。"""
+    """根据当前资格菜单形成统一能力查询计划。"""
     return {
         "events": [event(state, "market.query_planned", "build_market_query", {"allowed_count": len(state.get("allowed", []))})]
     }

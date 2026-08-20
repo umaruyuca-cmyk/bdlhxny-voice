@@ -248,7 +248,7 @@ class FinanceCognitiveSelector:
     def _research_action(
         event: InputEvent, candidate: InstrumentCandidate
     ) -> CognitiveAction:
-        # SuitabilityEngine is not enabled in M1–M3; never route to the dead intent.
+        # SuitabilityEngine 在 M1–M3 未启用；禁止路由到已废弃意图。
         if _is_suitability_only_request(event.message):
             return CognitiveAction(
                 action_type=CognitiveActionType.RESPOND,
@@ -380,12 +380,12 @@ def _knowledge_answer(message: str) -> str:
 def _is_suitability_only_request(message: str) -> bool:
     if not re.search(r"(?:适合我|适不适合|是否适合|匹配我的风险)", message):
         return False
-    # If the user also asks for market research, prefer objective research.
+    # 若用户同时要求市场研究，优先走客观研究。
     return not bool(_RESEARCH_PATTERN.search(message))
 
 
 def _is_stable_knowledge_question(message: str) -> bool:
-    """Only treat pure concept questions as knowledge; instrument mentions must resolve."""
+    """仅把纯概念问答当知识题；出现标的提及时必须走解析。"""
     if _CODE_PATTERN.search(message):
         return False
     looks_like_knowledge = message.startswith(("什么是", "解释一下")) or bool(

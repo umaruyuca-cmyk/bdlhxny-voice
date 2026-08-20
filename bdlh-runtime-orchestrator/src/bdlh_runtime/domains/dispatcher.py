@@ -1,4 +1,4 @@
-"""The domain-neutral dispatch boundary used by the Cognitive runtime."""
+"""领域无关的分发边界，供 Cognitive 运行时调用。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class DomainRuntime(Protocol):
 
 
 class DomainDispatcher:
-    """Routes only registered domains and normalizes boundary failures."""
+    """只路由已注册领域，并将边界失败规范化为 DomainOutcome。"""
 
     def __init__(self, registry: DomainRegistry) -> None:
         self._registry = registry

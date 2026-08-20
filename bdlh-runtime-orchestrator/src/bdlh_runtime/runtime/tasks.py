@@ -659,8 +659,8 @@ class PostgresTaskStore:
                     f"{task.task_id}:"
                     f"{task.next_wakeup_at.astimezone(timezone.utc).isoformat()}"
                 )
-                # Mirror InMemoryTaskStore: free the idempotency slot so claim_due
-                # can re-insert the same wakeup_key after stale recovery.
+                # 与 InMemoryTaskStore 对齐：释放幂等槽位，便于陈旧恢复后
+                # claim_due 能重新插入同一 wakeup_key。
                 connection.execute(
                     "DELETE FROM bdlh_runtime_task_wakeup WHERE wakeup_key = %s",
                     (wakeup_key,),

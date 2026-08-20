@@ -195,7 +195,7 @@ async def test_expired_task_is_not_woken() -> None:
     store = InMemoryTaskStore()
     outbox = InMemoryNotificationOutbox()
     expired_task = task(expires_at=NOW)
-    # Model requires expiry after creation; equal to tick time is valid and should expire.
+    # 模型要求创建后才算过期；等于 tick 时间仍视为有效并应过期。
     store.create(expired_task)
     cognitive = FinanceWakeup(price=11)
     worker = FinancialTaskScheduler(

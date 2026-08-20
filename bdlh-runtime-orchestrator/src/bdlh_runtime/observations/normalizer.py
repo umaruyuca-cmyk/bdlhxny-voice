@@ -303,7 +303,7 @@ def _parse_generic_list(raw: str) -> dict[str, Any]:
 
 
 def _infer_cn_exchange(symbol: Any) -> str | None:
-    """Infer SSE/SZSE from a 6-digit A-share code when the source omits exchange."""
+    """源端未给交易所时，由 6 位 A 股代码推断 SSE/SZSE。"""
     if not isinstance(symbol, str):
         return None
     code = symbol.strip()
