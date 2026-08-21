@@ -7,13 +7,24 @@
 - 基础运行：environment / API 前缀，控制服务启停行为。
 - MCP 数据源：两个金融 MCP 的传输方式与端点，传输协议不同必须分别配置。
 - 记忆层：Mem0 内部使用的 LLM 与 Embedding，显式指定避免走默认 OpenAI。
-- 模型凭证：DeepSeek 与 Qwen3 的接入参数，供记忆层和后续 Agent 使用。
+- 模型凭证：LLM（默认 GLM-4.7）与 Qwen3 的接入参数，供记忆层和后续 Agent 使用。
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+
+from bdlh_runtime.runtime.llm import DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL
+
+
+def _first_env(*names: str, default: str | None = None) -> str | None:
+    """按优先级读取环境变量；空字符串视为未设置。"""
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return default
 
 
 @dataclass(frozen=True)
@@ -38,9 +49,9 @@ class Mem0Config:
     NoOpMemoryStore 降级，主流程不受影响（见 memory/noop.py）。
     """
 
-    llm_model: str = "deepseek-chat"  # Mem0 内部抽取/去重用的 LLM
-    llm_api_key: str | None = None  # DeepSeek API Key
-    llm_base_url: str = "https://api.deepseek.com"
+    llm_model: str = DEFAULT_LLM_MODEL  # Mem0 内部抽取/去重用的 LLM
+    llm_api_key: str | None = None  # 智谱 / OpenAI 兼容 API Key
+    llm_base_url: str = DEFAULT_LLM_BASE_URL
     embedder_model: str = "Qwen3-Embedding"  # 向量化模型
     embedder_api_key: str | None = None  # Qwen3 服务 Key
     embedder_base_url: str | None = None  # Qwen3 服务地址
@@ -98,9 +109,44 @@ class Settings:
     bailian_web_search_timeout_seconds: float = 20.0
     bailian_web_search_rate_limit_per_minute: int = 30
 
+    # ── 资格 / 预算（配置层；非 Registry 八表）──
+    runtime_allowed_operations: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {
+                "READ_MARKET_DATA",
+                "READ_PUBLIC_RESEARCH",
+                "READ_PORTFOLIO",
+                "READ_PROFILE",
+                "READ_FINANCIAL_GOALS",
+                "RUN_ANALYSIS",
+            }
+        )
+    )
+    default_entitlement_operations: frozenset[str] = field(
+        default_factory=lambda: frozenset(
+            {
+                "READ_MARKET_DATA",
+                "READ_PUBLIC_RESEARCH",
+                "READ_PORTFOLIO",
+                "READ_PROFILE",
+                "READ_FINANCIAL_GOALS",
+                "RUN_ANALYSIS",
+            }
+        )
+    )
+    default_react_round_limit: int = 8
+    default_tool_call_limit: int = 12
+    default_subgraph_timeout_seconds: int = 60
+    default_request_timeout_seconds: int = 90
+
     # ── 模型凭证（供记忆层和后续 Agent 使用）──
-    deepseek_api_key: str | None = None
+    llm_api_key: str | None = None
     qwen3_base_url: str | None = None
+
+    @property
+    def deepseek_api_key(self) -> str | None:
+        """兼容旧字段名；新代码请使用 llm_api_key。"""
+        return self.llm_api_key
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -110,12 +156,10 @@ class Settings:
         保证一次请求生命周期内配置稳定。
         """
 
-        environment = os.getenv("BDLH_RUNTIME_ENV", "development")
-        auth_required_default = "true" if environment == "production" else "false"
+        environment = os.getenv("BDLH_RUNTIME_ENV", "production")
+        # G3：产品路径默认鉴权开启；禁止内置开发 JWT。测试显式关鉴权。
+        auth_required_default = "false" if environment == "test" else "true"
         jwt_secret = os.getenv("JWT_SECRET")
-        if not jwt_secret and environment != "production":
-            # 仅用于本地联调，与 Java 开发默认值一致；生产环境禁止使用。
-            jwt_secret = "BDLH Agent Runtime-Default-JWT-Key-2026-Must-Override-In-Production!!!"
         return cls(
             environment=environment,
             api_prefix=os.getenv("BDLH_RUNTIME_API_PREFIX", "/api/v1"),
@@ -142,14 +186,15 @@ class Settings:
                 timeout_seconds=float(os.getenv("CN_FINANCIAL_MCP_TIMEOUT", "20")),
             ),
             mem0=Mem0Config(
-                llm_model=os.getenv("MEM0_LLM_MODEL", "deepseek-chat"),
-                llm_api_key=os.getenv("DEEPSEEK_API_KEY"),
-                llm_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                llm_model=_first_env("LLM_MODEL", "MEM0_LLM_MODEL", default=DEFAULT_LLM_MODEL) or DEFAULT_LLM_MODEL,
+                llm_api_key=_first_env("LLM_API_KEY", "DEEPSEEK_API_KEY"),
+                llm_base_url=_first_env("LLM_BASE_URL", "DEEPSEEK_BASE_URL", default=DEFAULT_LLM_BASE_URL)
+                or DEFAULT_LLM_BASE_URL,
                 embedder_model=os.getenv("MEM0_EMBEDDER_MODEL", "Qwen3-Embedding"),
                 embedder_api_key=os.getenv("QWEN3_API_KEY"),
                 embedder_base_url=os.getenv("QWEN3_BASE_URL"),
             ),
-            deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
+            llm_api_key=_first_env("LLM_API_KEY", "DEEPSEEK_API_KEY"),
             qwen3_base_url=os.getenv("QWEN3_BASE_URL"),
             web_search_base_url=os.getenv("WEB_SEARCH_BASE_URL"),
             web_search_agent_id=os.getenv("WEB_SEARCH_AGENT_ID"),
@@ -163,4 +208,37 @@ class Settings:
             bailian_web_search_rate_limit_per_minute=int(
                 os.getenv("BDLH_BAILIAN_WEB_SEARCH_RATE_LIMIT_PER_MINUTE", "30")
             ),
+            runtime_allowed_operations=_ops_from_env(
+                "RUNTIME_ALLOWED_OPERATIONS",
+                {
+                    "READ_MARKET_DATA",
+                    "READ_PUBLIC_RESEARCH",
+                    "READ_PORTFOLIO",
+                    "READ_PROFILE",
+                    "READ_FINANCIAL_GOALS",
+                    "RUN_ANALYSIS",
+                },
+            ),
+            default_entitlement_operations=_ops_from_env(
+                "DEFAULT_ENTITLEMENT_OPERATIONS",
+                {
+                    "READ_MARKET_DATA",
+                    "READ_PUBLIC_RESEARCH",
+                    "READ_PORTFOLIO",
+                    "READ_PROFILE",
+                    "READ_FINANCIAL_GOALS",
+                    "RUN_ANALYSIS",
+                },
+            ),
+            default_react_round_limit=int(os.getenv("DEFAULT_REACT_ROUND_LIMIT", "8")),
+            default_tool_call_limit=int(os.getenv("DEFAULT_TOOL_CALL_LIMIT", "12")),
+            default_subgraph_timeout_seconds=int(os.getenv("DEFAULT_SUBGRAPH_TIMEOUT_SECONDS", "60")),
+            default_request_timeout_seconds=int(os.getenv("DEFAULT_REQUEST_TIMEOUT_SECONDS", "90")),
         )
+
+
+def _ops_from_env(name: str, default: set[str]) -> frozenset[str]:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return frozenset(default)
+    return frozenset(item.strip() for item in raw.split(",") if item.strip())

@@ -59,7 +59,7 @@ public class OutboxRelay {
         result.put("aggregate_type", event.aggregateType());
         result.put("aggregate_id", event.aggregateId());
         result.put("aggregate_version", event.aggregateVersion());
-        result.put("occurred_at", event.createdAt());
+        result.put("occurred_at", event.createdAt() == null ? null : event.createdAt().toString());
         result.put("producer", "bdlh-runtime-data");
         result.put("trace_id", event.traceId());
         result.put("correlation_id", event.correlationId());

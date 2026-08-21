@@ -1,4 +1,4 @@
-"""理解输出契约：禁止 analysis_type / route / skill_id / plan_steps（重写硬规则 2）。"""
+"""理解输出契约：禁止 route / skill_id / plan_steps 及任意额外字段。"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def _minimal_payload(**extra) -> dict:
 
 @pytest.mark.parametrize("field", FORBIDDEN_UNDERSTAND_FIELDS)
 def test_understand_output_rejects_forbidden_fields(field: str) -> None:
-    """输出含 analysis_type / route / skill_id / plan_steps 必须校验失败。"""
+    """输出含 route / skill_id / plan_steps 必须校验失败。"""
     with pytest.raises(ValidationError):
         UnderstandOutput.model_validate(_minimal_payload(**{field: "forbidden"}))
 
@@ -43,13 +43,13 @@ def test_understand_output_accepts_minimal_goals() -> None:
     assert out.goals[0].status == "PENDING"
 
 
-def test_goal_spec_rejects_extra_tool_fields() -> None:
+def test_goal_spec_rejects_extra_fields() -> None:
     with pytest.raises(ValidationError):
         GoalSpec.model_validate(
             {
                 "goal_id": "g1",
                 "objective": "x",
                 "success_criteria": [SuccessCriterion(criterion_id="c1", description="d").model_dump()],
-                "analysis_type": "comprehensive",
+                "legacy_route_type": "comprehensive",
             }
         )

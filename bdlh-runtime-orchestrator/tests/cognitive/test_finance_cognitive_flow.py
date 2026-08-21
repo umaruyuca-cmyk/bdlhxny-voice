@@ -87,11 +87,11 @@ class FinanceDispatcher:
                 confidence=ConfidenceAssessment(level="HIGH", reasons=["validated"], coverage_status="COMPLETE"),
             )
         assert isinstance(request, FinancialDomainRequest)
-        if request.financial_intent == FinancialIntent.SUITABILITY:
+        if request.requires_financial_snapshot:
             return FinancialDomainOutcome(
                 request_id=request.request_id,
                 status="LIMITED",
-                financial_intent=FinancialIntent.SUITABILITY,
+                financial_intent=request.financial_intent,
                 suitability=SuitabilityAssessment(
                     rule_set_version="suitability-v0.pending-adr-004-approval",
                     rule_ids=["SUIT-RESEARCH-COVERAGE-001"],
@@ -240,7 +240,7 @@ async def test_ellipsis_followup_reuses_verified_entity_but_new_topic_does_not()
     followup = await app.run(_event("估值呢", event_id="event-2"))
     request = dispatcher.requests[0]
     assert isinstance(request, FinancialDomainRequest)
-    # 重写：analysis_type 已删除；由 requested_topics/研究面板表达
+    # requested_topics / 研究面板表达主题；不按类型字符串选工具
     assert followup.response.response_kind == "DOMAIN_RESULT"
 
     dispatcher.requests.clear()
@@ -310,7 +310,27 @@ async def test_suitability_input_gap_asks_user_with_actionable_next_steps() -> N
 
 
 @pytest.mark.asyncio
-async def test_suitability_only_request_invokes_suitability_intent() -> None:
+async def test_suitability_user_facts_confirmation_required_surfaces_profile_confirm() -> None:
+    store = InMemoryVerifiedEntityStore()
+    dispatcher = FinanceDispatcher()
+    dispatcher.suitability_condition_id = "USER_FACTS_CONFIRMATION_REQUIRED"
+    dispatcher.suitability_condition_description = (
+        "用户金融事实未确认或不可用，请打开金融资料确认后再评估"
+    )
+    app = _app(dispatcher, store)
+    await app.run(_event("贵州茅台今天怎么样", event_id="event-1"))
+    dispatcher.requests.clear()
+
+    result = await app.run(_event("它适合我吗", event_id="event-2"))
+
+    assert result.response.response_kind == "ASK_USER"
+    assert result.response.response_structure == "SUITABILITY"
+    assert "用户金融事实未确认或不可用" in result.response.message
+    assert "打开金融资料确认" in result.response.next_steps
+
+
+@pytest.mark.asyncio
+async def test_suitability_only_request_requires_financial_snapshot() -> None:
     store = InMemoryVerifiedEntityStore()
     dispatcher = FinanceDispatcher()
     app = _app(dispatcher, store)
@@ -322,7 +342,7 @@ async def test_suitability_only_request_invokes_suitability_intent() -> None:
     assert len(dispatcher.requests) == 1
     request = dispatcher.requests[0]
     assert isinstance(request, FinancialDomainRequest)
-    assert request.financial_intent == FinancialIntent.SUITABILITY
+    assert request.financial_intent == FinancialIntent.STOCK_RESEARCH
     assert request.requires_financial_snapshot is True
     assert result.response.response_kind == "LIMITED"
     assert result.response.response_structure == "SUITABILITY"
@@ -330,7 +350,7 @@ async def test_suitability_only_request_invokes_suitability_intent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mixed_research_and_suitability_words_still_route_suitability() -> None:
+async def test_mixed_research_and_suitability_words_still_require_snapshot() -> None:
     store = InMemoryVerifiedEntityStore()
     dispatcher = FinanceDispatcher()
     app = _app(dispatcher, store)
@@ -340,4 +360,5 @@ async def test_mixed_research_and_suitability_words_still_route_suitability() ->
     await app.run(_event("分析一下它适不适合我", event_id="event-2"))
 
     assert len(dispatcher.requests) == 1
-    assert dispatcher.requests[0].financial_intent == FinancialIntent.SUITABILITY
+    assert dispatcher.requests[0].requires_financial_snapshot is True
+    assert dispatcher.requests[0].financial_intent == FinancialIntent.STOCK_RESEARCH

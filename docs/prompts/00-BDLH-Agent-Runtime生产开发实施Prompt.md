@@ -86,7 +86,7 @@ Memory Service
 1. 修改契约时同时修改生产代码、调用方、测试、SQL 和文档。
 2. 删除字段就是物理删除，不保留废弃字段、别名、双写或读取兜底。
 3. 删除执行路径就是删除代码和装配，不保留开关切回旧路径。
-4. 数据库按空库全量脚本维护（根目录 `db/`）；已有库的手工增量只放 `db/postgresql/upgrades/`，**应用启动不执行 DDL/seed/迁移**。
+4. 数据库按空库全量脚本维护（根目录 `db/`）；执行顺序以 `db/execution/` 最新说明为准；**应用启动不执行 DDL/seed/迁移**。
 5. 测试替身只能由测试显式注入，不得成为开发或生产启动兜底。
 6. 一个数据集、一个契约和一个能力目录都只能有一个真源。
 
@@ -137,14 +137,14 @@ Memory Service
 
 | ID | 缺口 | 权威出处 | 完成标准（摘要） |
 |---|---|---|---|
-| G1 | 真 L0 / Checkpoint 续跑 | ADR-014；架构 §3 / §9 | Pause 写入非空 `checkpoint_id`；Resume 从断点续跑，禁止仅重放用户 objective |
-| G2 | 入口 Goal + Registry 八表 + `eligible→allowed` | 01 号 Prompt；架构实施状态 | `analysis_type` 全仓清零；无内置业务目录；空 Registry 拒启 |
-| G3 | 运行时去环境双轨 | 本文件 §2.1；架构 §17 | 装配路径禁止 development mock 降级；缺依赖拒启或 ready 失败 |
-| G4 | Suitability 生产规则集 | ADR-004（批准前 fail-closed） | 未批准前不得产出个性化 `SUITABLE`；批准后按规则集与阈值 |
-| G5 | USER_CONFIRMED / LIVE 用户事实闭环 | 架构 §10；L4 | 确认 API + Console 闭环；无 confirmation 不得抬升为 LIVE/CONFIRMED |
-| G6 | Deep Research 生产切流 | ADR-016 | 门禁满足后方可对默认路径开放；超预算走 ADR-014，禁止假 COMPLETE |
-| G7 | Memory remote + Outbox→MQ 闭环 | ADR-011/015/017 | 默认可切 `remote`；失败不污染 L4；L0/L1/L4 不得静默空成功 |
-| G8 | PORTFOLIO_IMPACT / GOAL_PLANNING | 架构 Domain 意图 | 未启用前保持显式拒绝；启用须 Skill、权限、证据链齐全 |
+| G1 | 真 L0 / Checkpoint 续跑 | ADR-014；架构 §3 / §9 | **CLOSED（2026-08-17）**：Pause/ASK_USER 写入非空 `checkpoint_id` + `cognitive_checkpoint`；Resume 经 L0 快照恢复 goals/行动游标，禁止仅重放 objective |
+| G2 | 入口 Goal + Registry 八表 + `eligible→allowed` | 01 号 Prompt；架构实施状态 | **CLOSED（2026-08-17）**：八表 + 菜单装配；LLM Understand（规则降级）→GoalCoverage；业务路径按 `requires_financial_snapshot` 而非 FinancialIntent 分流；Manifest/Descriptor 仅从 Registry Snapshot 投影，无第二份能力清单 |
+| G3 | 运行时去环境双轨 | 本文件 §2.1；架构 §17 | **CLOSED（2026-08-17）**：Java/Web Adapter 缺依赖一律 `UNAVAILABLE`；非 `test` 强制 `JAVA_DATA_INTERNAL_TOKEN` 与 Java 可达探测；`from_environment` 默认鉴权开启且无内置 JWT；单测仅 `environment=test` + 显式注入 |
+| G4 | Suitability 生产规则集 | ADR-004（批准前 fail-closed） | **CLOSED（2026-08-17）**：`suitability-v0.1`/`DRAFT` 可跑个性化筛查，但不得产出 `SUITABLE`；`APPROVED`+已确认拟投入才可 `SUITABLE`；真实性不足 → `USER_FACTS_CONFIRMATION_REQUIRED` |
+| G5 | USER_CONFIRMED / LIVE 用户事实闭环 | 架构 §10；L4 | **CLOSED（2026-08-17）**：Java 确认 API（版本/幂等/审计）+ Console 资料确认；无 v2 confirmation 的 java-api 不得抬升为 LIVE/CONFIRMED；适配缺口引导「打开金融资料确认」 |
+| G6 | Deep Research 生产切流 | ADR-016 | **CLOSED（2026-08-17）**：Flag+百炼门禁同时满足才进 allowed；Finance 默认可执行 `research.deep_search`；超预算 → ADR-014 Pause；装配禁止假 `COMPLETE` |
+| G7 | Memory remote + Outbox→MQ 闭环 | ADR-011/015/017 | **CLOSED（2026-08-17）**：可切 `BDLH_MEMORY_MODE=remote`；Chat 入口召回/出口 Writer；L4 元数据禁入 Outbox；失败标记 degraded；L0/L1/L4 仍经 Java fail-closed |
+| G8 | PORTFOLIO_IMPACT / GOAL_PLANNING | 架构 Domain 意图 | **CLOSED（2026-08-17）**：`portfolio-health` 默认 CURRENT/启用；影响意图走快照+估值证据链；无目标不假 COMPLETE；缺授权 fail-closed |
 
 实施任何 TASK 时，必须在交付报告的「未完成事项」中引用上表 ID，不得省略。
 
@@ -153,7 +153,7 @@ Memory Service
 1. 读取当前代码、测试、根目录 `db/`、统一生产架构 §3 状态表与相关 ADR。
 2. 列出本次要删除的旧结构、要关闭的缺口 ID（§5）以及最终唯一结构。
 3. 在一个工作范围内同步修改所有生产引用和测试引用。
-4. 若数据库结构变化，直接修改全量 schema / seed，或增加 `db/postgresql/upgrades/` 手工增量；确保服务启动无 DDL。
+4. 若数据库结构变化，直接修改全量 schema / seed，并在 `db/execution/` 追加一份当日执行说明；确保服务启动无 DDL。
 5. 执行静态检查、单元测试、契约测试和必要的空库脚本静态审查。
 6. 搜索已删除术语，生产代码和当前测试中必须为零。
 7. 汇报实际完成项、验证结果和仍未关闭的 §5 缺口，不沿用过时阶段口号。

@@ -80,14 +80,14 @@ def test_portfolio_impact_no_history_needed():
 
 
 @pytest.mark.asyncio
-async def test_java_adapter_mock_when_no_base_url():
-    """无 base_url 时 Adapter 返回带 is_mock 标记的 mock 持仓。"""
+async def test_java_adapter_unavailable_when_no_base_url():
+    """无 base_url 时 Adapter 返回 UNAVAILABLE，不伪造持仓（G3）。"""
     adapter = create_java_adapter(base_url=None)
     obs = await adapter.execute("portfolio.get_current_positions", {"user_id": "u1"})
-    assert obs.status == "SUCCESS"
-    assert obs.data["is_mock"] is True
-    assert obs.data["user_id"] == "u1"
-    assert len(obs.data["positions"]) > 0
+    assert obs.status == "UNAVAILABLE"
+    assert obs.data is None
+    assert "portfolio.get_current_positions" in obs.data_quality.known_unavailable
+    assert obs.error_code == "JAVA_UNAVAILABLE"
 
 
 @pytest.mark.asyncio
@@ -100,25 +100,13 @@ async def test_java_adapter_rejects_unknown_capability():
 
 
 @pytest.mark.asyncio
-async def test_java_adapter_returns_risk_profile():
-    """风控画像能力返回默认 mock。"""
+async def test_java_adapter_risk_profile_unavailable_without_service():
+    """无 Java 服务时风控画像亦为 UNAVAILABLE，不返回 mock 画像。"""
     adapter = HttpJavaDataAdapter(base_url=None)
     obs = await adapter.execute("user.get_risk_profile", {"user_id": "u1"})
-    assert obs.status == "SUCCESS"
-    assert obs.data["risk_tolerance"] == "moderate"
-    assert obs.data["user_id"] == "u1"
-    assert obs.data["data_mode"] == "MOCK"
-
-
-@pytest.mark.asyncio
-async def test_java_adapter_production_no_mock_degration():
-    """生产环境（production=True）无 Java 服务 → UNAVAILABLE，不伪造 mock（审查 §5.3）。"""
-    adapter = HttpJavaDataAdapter(base_url=None, production=True)
-    obs = await adapter.execute("portfolio.get_current_positions", {"user_id": "u1"})
     assert obs.status == "UNAVAILABLE"
     assert obs.data is None
-    assert "portfolio.get_current_positions" in obs.data_quality.known_unavailable
-    assert obs.provenance and obs.provenance[0].source == "java-api"
+    assert obs.error_code == "JAVA_UNAVAILABLE"
 
 
 @pytest.mark.asyncio
@@ -205,7 +193,7 @@ async def test_java_adapter_does_not_mock_a_configured_but_failed_service(monkey
             raise httpx.ConnectError("connection refused")
 
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FailingClient())
-    adapter = HttpJavaDataAdapter(base_url="http://java-data", production=False)
+    adapter = HttpJavaDataAdapter(base_url="http://java-data")
 
     obs = await adapter.execute("portfolio.get_current_positions", {"user_id": 7})
 

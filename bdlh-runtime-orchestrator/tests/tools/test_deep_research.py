@@ -104,7 +104,7 @@ def test_assemble_rejects_complete_without_sources():
 
 def test_assemble_complete_with_closed_sources():
     bundle = assemble_research_bundle(
-        _request(research_topics=["舆情"], success_criteria=["有来源"]),
+        _request(research_topics=["舆情"], success_criteria=["有公开讨论"]),
         findings=[ResearchFinding(finding_id="f1", statement="有公开讨论", source_ids=["s1"])],
         sources=[
             ResearchSource(
@@ -116,6 +116,41 @@ def test_assemble_complete_with_closed_sources():
         ],
     )
     assert bundle.status == "COMPLETE"
+
+
+def test_assemble_never_complete_when_budget_exhausted():
+    bundle = assemble_research_bundle(
+        _request(research_topics=["舆情"], success_criteria=["有公开讨论"]),
+        findings=[ResearchFinding(finding_id="f1", statement="有公开讨论", source_ids=["s1"])],
+        sources=[
+            ResearchSource(
+                source_id="s1",
+                title="t",
+                url="https://example.com/a",
+                retrieved_at="2026-08-15T00:00:00Z",
+            )
+        ],
+        budget_exhausted=True,
+    )
+    assert bundle.status == "LIMITED"
+    assert "DEEP_RESEARCH_BUDGET_EXHAUSTED" in bundle.limitations
+
+
+def test_assemble_partial_when_success_criteria_uncovered():
+    bundle = assemble_research_bundle(
+        _request(success_criteria=["必须覆盖回购计划细节"]),
+        findings=[ResearchFinding(finding_id="f1", statement="有公开讨论", source_ids=["s1"])],
+        sources=[
+            ResearchSource(
+                source_id="s1",
+                title="t",
+                url="https://example.com/a",
+                retrieved_at="2026-08-15T00:00:00Z",
+            )
+        ],
+    )
+    assert bundle.status == "PARTIAL"
+    assert "success_criteria_uncovered" in bundle.limitations
 
 
 def test_seed_includes_deep_search_optional():
@@ -134,8 +169,18 @@ def test_feature_gate_excludes_deep_from_allowed_when_flag_off():
     assert any(cap.name == DEEP_SEARCH_CAPABILITY for cap in allowed)
     gated = apply_feature_gates(allowed, deep_research_enabled=False)
     assert all(cap.name != DEEP_SEARCH_CAPABILITY for cap in gated)
-    enabled = apply_feature_gates(allowed, deep_research_enabled=True)
+    enabled = apply_feature_gates(
+        allowed,
+        deep_research_enabled=True,
+        deep_research_infra_ready=True,
+    )
     assert any(cap.name == DEEP_SEARCH_CAPABILITY for cap in enabled)
+    flag_without_infra = apply_feature_gates(
+        allowed,
+        deep_research_enabled=True,
+        deep_research_infra_ready=False,
+    )
+    assert all(cap.name != DEEP_SEARCH_CAPABILITY for cap in flag_without_infra)
 
 
 def test_parse_bailian_pages_payload():

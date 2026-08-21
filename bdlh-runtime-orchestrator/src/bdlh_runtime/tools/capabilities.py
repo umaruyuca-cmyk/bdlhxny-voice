@@ -38,9 +38,7 @@ class CapabilitySpec:
     domain: str
     adapter: str
     required_arguments: frozenset[str] = frozenset()
-    output_schema: str = "Observation"
     timeout_seconds: int = 20
-    cost: int = 1
     read_only: bool = True
     requires_authenticated_user: bool = False
     depends_on: frozenset[str] = frozenset()
@@ -54,7 +52,6 @@ class CapabilitySpec:
             "description": self.description,
             "domain": self.domain,
             "required_arguments": sorted(self.required_arguments),
-            "output_schema": self.output_schema,
             "read_only": self.read_only,
             "toolsets": sorted(self.toolsets),
         }
@@ -67,9 +64,7 @@ class CapabilitySpec:
             domain=record.domain,
             adapter=record.adapter,
             required_arguments=record.required_arguments,
-            output_schema=record.output_schema,
             timeout_seconds=record.timeout_seconds,
-            cost=record.cost,
             read_only=record.read_only,
             requires_authenticated_user=record.requires_authenticated_user,
             depends_on=record.depends_on,

@@ -36,18 +36,23 @@ def cognitive_state(
     session_id: str,
     response: PublicResponse,
     user_id: str | None = None,
+    *,
+    checkpoint_id: str | None = None,
+    cognitive_checkpoint: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """把 Cognitive 公开响应投影为运行状态快照（RunStateReader 存储结构）。"""
 
     waiting = response.response_kind == "ASK_USER"
+    paused = "PAUSED_BY_USER" in response.audit_codes
     failed = response.response_kind in {"BLOCKED", "CAPABILITY_NOT_ENABLED"}
-    return {
+    status = "PAUSED_BY_USER" if paused else ("WAITING_USER" if waiting else ("FAILED" if failed else "SUCCESS"))
+    payload = {
         "run_id": run_id,
         "thread_id": session_id,
         "user_id": user_id,
         "runtime_path": COGNITIVE_RUNTIME_PATH,
-        "status": "WAITING_USER" if waiting else ("FAILED" if failed else "SUCCESS"),
-        "next_stage": "awaiting_user" if waiting else "completed",
+        "status": status,
+        "next_stage": "paused" if paused else ("awaiting_user" if waiting else "completed"),
         "final_response": response.model_dump(mode="json"),
         "events": [
             {
@@ -55,11 +60,15 @@ def cognitive_state(
                 "event_type": "response.completed",
                 "run_id": run_id,
                 "runtime_path": COGNITIVE_RUNTIME_PATH,
-                "status": "WAITING_USER" if waiting else ("FAILED" if failed else "COMPLETED"),
+                "status": status if status != "SUCCESS" else "COMPLETED",
                 "audit_codes": response.audit_codes,
             }
         ],
+        "checkpoint_id": checkpoint_id,
     }
+    if cognitive_checkpoint is not None:
+        payload["cognitive_checkpoint"] = cognitive_checkpoint
+    return payload
 
 
 def config_for(

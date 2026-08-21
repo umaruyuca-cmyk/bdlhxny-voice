@@ -35,6 +35,9 @@ public class MemoryCandidateService {
         if (!"confirmed".equals(request.metadata().path("knowledge_type").asText())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory candidate must be confirmed");
         }
+        if (containsForbiddenL4Metadata(request.metadata())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory candidate must not carry L4 facts");
+        }
         UUID eventId = request.candidateId();
         String idempotencyKey = "memory-candidate:" + eventId;
         int inserted = jdbcTemplate.update(
@@ -66,6 +69,20 @@ public class MemoryCandidateService {
 
     private static boolean blank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static boolean containsForbiddenL4Metadata(JsonNode metadata) {
+        String[] forbidden = {
+                "risk_tolerance", "risk_level", "max_loss_tolerance_pct", "portfolio", "positions",
+                "account", "liquid_assets", "checkpoint", "checkpoint_id", "data_mode",
+                "confirmation_ref", "broker", "order", "trade"
+        };
+        for (String key : forbidden) {
+            if (metadata.has(key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String nullable(String value) {

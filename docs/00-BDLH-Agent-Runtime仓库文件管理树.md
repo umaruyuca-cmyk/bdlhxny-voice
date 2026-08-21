@@ -42,7 +42,7 @@ docs/
 │   ├── 00-BDLH-Agent-Runtime统一生产架构.md          AUTHORITATIVE  生产架构唯一权威基线
 │   ├── 00-BDLH-Agent-Runtime生产架构.drawio          AUTHORITATIVE  上文的唯一配套图
 │   ├── 01-BDLH-Agent-Runtime定位与Skill扩展说明.md     ACTIVE         对外叙事与新人理解，非决策来源
-│   ├── ADR-004-Suitability-v0规则阈值与校准.md            PROPOSED，未批准前生产规则失败关闭
+│   ├── ADR-004-Suitability-v0规则阈值与校准.md            DRAFT_IN_RUNTIME；未批准前禁止 SUITABLE
 │   ├── ADR-009-Runtime-Domain-Skill定位与命名.md          APPROVED
 │   ├── ADR-010-SkillManifest与DomainDispatcher契约.md     APPROVED（§6.1 已落地）
 │   ├── ADR-011-Memory分层与晋升边界.md                    APPROVED

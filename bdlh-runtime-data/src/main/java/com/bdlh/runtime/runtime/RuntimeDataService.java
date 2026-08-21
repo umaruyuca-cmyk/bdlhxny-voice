@@ -34,7 +34,7 @@ import java.util.UUID;
 public class RuntimeDataService {
 
     private static final String DEFAULT_TITLE = "新的对话";
-    private static final String DEFAULT_RUNTIME_PATH = "legacy_root_graph";
+    private static final String DEFAULT_RUNTIME_PATH = "cognitive_finance";
     private static final Set<String> HISTORY_STATUSES = Set.of(
             "SUCCESS", "PARTIAL", "LIMITED", "FAILED", "RUNNING");
 

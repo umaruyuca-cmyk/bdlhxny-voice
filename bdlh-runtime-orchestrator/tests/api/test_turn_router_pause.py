@@ -38,8 +38,8 @@ def _events(response) -> list[dict]:
 
 
 class ClarifyingCognitive:
-    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
-        del observer
+    async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
+        del observer, checkpoint
         asking = "分析" in event.message and "600000" not in event.message
         return CognitiveExecution(
             state=CognitiveState(event=event),
@@ -106,9 +106,9 @@ def test_chat_pending_ambiguous_message_asks_which_without_main_graph():
     original = application.cognitive_application
 
     class Counting:
-        async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+        async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
             calls["n"] += 1
-            return await original.run(event, observer=observer)
+            return await original.run(event, observer=observer, checkpoint=checkpoint)
 
     application.cognitive_application = Counting()
     first = client.post(
@@ -180,10 +180,12 @@ def test_resolve_resume_message_replays_prior_objective():
 class CapturingCognitive:
     def __init__(self) -> None:
         self.seen: list[str] = []
+        self.checkpoints: list[Any] = []
 
-    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+    async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
         del observer
         self.seen.append(event.message)
+        self.checkpoints.append(checkpoint)
         if len(self.seen) == 1:
             return CognitiveExecution(
                 state=CognitiveState(event=event),
@@ -228,6 +230,10 @@ def test_chat_continue_restores_prior_objective_message():
     resumed_events = _events(resumed)
     assert resumed_events[0]["turnDecision"] == "resume"
     assert cognitive.seen == ["分析贵州茅台适合我吗", "分析贵州茅台适合我吗"]
+    assert cognitive.checkpoints[0] is None
+    assert cognitive.checkpoints[1] is not None
+    assert cognitive.checkpoints[1].checkpoint_id
+    assert cognitive.checkpoints[1].original_message == "分析贵州茅台适合我吗"
 
 
 def test_pause_endpoint_sets_pending_and_is_resumable():
@@ -249,12 +255,19 @@ def test_pause_endpoint_sets_pending_and_is_resumable():
     assert ack["runId"] == run_id
     assert ack["status"] == "PAUSED_BY_USER"
     assert ack["resumable"] is True
+    assert ack["checkpointId"]
     assert application.run_control.is_pause_requested(run_id) is True
 
     session = application.chat_session_store.get(thread_id, "7")
     assert session is not None
     assert session.pending_run_id == run_id
+    assert session.pending_checkpoint_id == ack["checkpointId"]
     assert session.pause_reason == "user_pause"
+
+    state = application.run_state_reader.load(run_id, "7")
+    assert state is not None
+    assert state.get("checkpoint_id") == ack["checkpointId"]
+    assert isinstance(state.get("cognitive_checkpoint"), dict)
 
 
 def test_pause_requested_during_run_keeps_pending_after_answer():
@@ -263,8 +276,8 @@ def test_pause_requested_during_run_keeps_pending_after_answer():
     holder: dict[str, Any] = {}
 
     class PauseThenAnswerCognitive:
-        async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
-            del observer
+        async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
+            del observer, checkpoint
             control = holder["control"]
             control.request_pause(event.run_id)
             return CognitiveExecution(
@@ -292,6 +305,7 @@ def test_pause_requested_during_run_keeps_pending_after_answer():
     assert session is not None
     assert session.pending_run_id == run_id
     assert session.pause_reason == "user_pause"
+    assert session.pending_checkpoint_id
 
 
 def test_cancel_endpoint_abandons_and_clears_pending():

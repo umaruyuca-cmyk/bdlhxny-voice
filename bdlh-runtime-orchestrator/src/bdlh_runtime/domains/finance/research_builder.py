@@ -48,6 +48,7 @@ _INDUSTRY = "market.get_industry_context"
 _MONEY_FLOW = "market.get_money_flow"
 _NEWS = "market.get_news"
 _WEB = "research.web_search"
+_DEEP = "research.deep_search"
 
 Quality = Literal["HIGH", "MEDIUM", "LOW", "INVALID"]
 Coverage = Literal["COMPLETE", "PARTIAL", "LIMITED"]
@@ -197,7 +198,7 @@ class StockResearchResultBuilder:
             )
 
         events: list[NewsEvent] = []
-        for capability in (_NEWS, _WEB):
+        for capability in (_NEWS, _WEB, _DEEP):
             if capability not in planned:
                 continue
             for item in by_capability[capability]:
@@ -448,6 +449,8 @@ class StockResearchResultBuilder:
         return risks
 
     def _events(self, observation: Observation) -> list[NewsEvent]:
+        if observation.capability == _DEEP:
+            return self._events_from_research_bundle(observation)
         data = observation.data
         if isinstance(data, dict):  # noqa: SIM108 —— 展开成三元表达式反而不可读
             raw_items = data.get("items", data.get("results", data.get("data", [])))
@@ -479,10 +482,67 @@ class StockResearchResultBuilder:
             )
         return events
 
+    def _events_from_research_bundle(self, observation: Observation) -> list[NewsEvent]:
+        """只消费 ResearchBundle，不投影旧 SearchResult 字段。"""
+        data = observation.data if isinstance(observation.data, dict) else {}
+        sources = data.get("sources") if isinstance(data.get("sources"), list) else []
+        findings = data.get("findings") if isinstance(data.get("findings"), list) else []
+        events: list[NewsEvent] = []
+        for index, source in enumerate(sources):
+            if not isinstance(source, dict):
+                continue
+            headline = self._clean_text(source.get("title") or source.get("summary"))
+            if not headline:
+                continue
+            events.append(
+                NewsEvent(
+                    event_id=f"deep:{observation.observation_id}:src:{index}",
+                    headline=headline,
+                    source=str(source.get("domain") or source.get("url") or "research.deep_search"),
+                    published_at=self._datetime(source.get("published_at")),
+                    sentiment="UNKNOWN",
+                )
+            )
+        if not events:
+            for index, finding in enumerate(findings):
+                if not isinstance(finding, dict):
+                    continue
+                headline = self._clean_text(finding.get("statement"))
+                if not headline:
+                    continue
+                events.append(
+                    NewsEvent(
+                        event_id=f"deep:{observation.observation_id}:find:{index}",
+                        headline=headline,
+                        source="research.deep_search",
+                        published_at=None,
+                        sentiment="UNKNOWN",
+                    )
+                )
+        return events
+
     def _evidence_value(self, observation: Observation) -> Any:
         """新闻/网页证据只保留受控元数据，避免把外部正文或指令带入结果。"""
-        if observation.capability not in {_NEWS, _WEB}:
+        if observation.capability not in {_NEWS, _WEB, _DEEP}:
             return self._json_value(observation.data)
+        if observation.capability == _DEEP:
+            data = observation.data if isinstance(observation.data, dict) else {}
+            sources = data.get("sources") if isinstance(data.get("sources"), list) else []
+            sanitized_deep: list[dict[str, Any]] = []
+            for item in sources:
+                if not isinstance(item, dict):
+                    continue
+                headline = self._clean_text(item.get("title") or item.get("summary"))
+                if not headline:
+                    continue
+                sanitized_deep.append(
+                    {
+                        "headline": headline,
+                        "source": item.get("domain") or item.get("url"),
+                        "published_at": item.get("published_at"),
+                    }
+                )
+            return sanitized_deep
         data = observation.data
         if isinstance(data, dict):  # noqa: SIM108 —— 展开成三元表达式反而不可读
             raw_items = data.get("items", data.get("results", data.get("data", [])))

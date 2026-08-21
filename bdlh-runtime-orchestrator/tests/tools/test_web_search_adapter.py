@@ -1,7 +1,7 @@
 """web-search 适配器测试（对照 java_data_adapter 测试风格）。
 
-覆盖：mock 降级 / 白名单外拒绝 / 成功包装 Observation / httpx 失败降级 /
-生产环境不 mock / 请求体构造。
+覆盖：未配置 UNAVAILABLE / 白名单外拒绝 / 成功包装 Observation / httpx 失败 UNAVAILABLE /
+请求体构造 / 空结果降级。
 """
 
 from __future__ import annotations
@@ -13,24 +13,10 @@ from bdlh_runtime.tools.web_search_adapter import (
     create_web_search_adapter,
 )
 
-# ── mock 降级（开发环境，base_url 未配置）──
 
-
-async def test_mock_fallback_when_base_url_none_dev():
-    """开发环境 base_url=None → mock 降级，返回带 is_mock 的结果。"""
-    adapter = create_web_search_adapter(base_url=None, production=False)
-    obs = await adapter.execute("research.web_search", {"query": "茅台"})
-    assert obs.status == "SUCCESS"
-    assert obs.data["is_mock"] is True
-    assert obs.data["results"][0]["is_mock"] is True
-    assert "茅台" in obs.data["results"][0]["title"]
-    assert obs.data_quality.quality_status == "PARTIAL"  # mock 标记 PARTIAL
-    assert obs.provenance[0].source == "mock-web-search"
-
-
-async def test_production_returns_unavailable_when_base_url_none():
-    """生产环境 base_url=None → UNAVAILABLE，不伪造。"""
-    adapter = create_web_search_adapter(base_url=None, production=True)
+async def test_unavailable_when_base_url_none():
+    """base_url=None → UNAVAILABLE，不伪造搜索结果（G3）。"""
+    adapter = create_web_search_adapter(base_url=None)
     obs = await adapter.execute("research.web_search", {"query": "茅台"})
     assert obs.status == "UNAVAILABLE"
     assert obs.data is None
@@ -38,17 +24,11 @@ async def test_production_returns_unavailable_when_base_url_none():
     assert obs.error_code == "WEB_SEARCH_UNAVAILABLE"
 
 
-# ── 白名单外能力拒绝 ──
-
-
 async def test_rejects_capability_outside_whitelist():
-    adapter = create_web_search_adapter(base_url="http://example.com", production=False)
+    adapter = create_web_search_adapter(base_url="http://example.com")
     obs = await adapter.execute("market.get_realtime_quote", {})
     assert obs.status == "FAILED"
     assert "白名单外" in (obs.error_message or "")
-
-
-# ── 请求体构造 ──
 
 
 def test_build_request_body_wraps_query_into_tasks():
@@ -57,7 +37,7 @@ def test_build_request_body_wraps_query_into_tasks():
     assert len(body["tasks"]) == 1
     assert body["tasks"][0]["query"] == "A股市场"
     assert body["tasks"][0]["maxResults"] == 3
-    assert body["tasks"][0]["purposeCode"]  # 有默认值
+    assert body["tasks"][0]["purposeCode"]
 
 
 def test_build_request_body_raises_on_empty_query():
@@ -65,19 +45,14 @@ def test_build_request_body_raises_on_empty_query():
         HttpWebSearchAdapter._build_request_body({"query": ""})
 
 
-# ── 成功包装（mock httpx 响应）──
-
-
 async def test_success_wraps_observation(monkeypatch):
     """模拟 httpx 返回成功响应，验证 Observation 包装。"""
     adapter = HttpWebSearchAdapter(
         base_url="http://example.com",
-        production=False,
         agent_id="test-agent",
         token="x" * 32,
     )
 
-    # 模拟 httpx.AsyncClient
     class MockResponse:
         def raise_for_status(self):
             pass
@@ -128,7 +103,7 @@ async def test_success_wraps_observation(monkeypatch):
 
 async def test_partial_status_when_errors_present(monkeypatch):
     """wrapper 返回 errors 非空但有结果 → PARTIAL 状态。"""
-    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
+    adapter = HttpWebSearchAdapter(base_url="http://example.com")
 
     class MockResponse:
         def raise_for_status(self):
@@ -161,38 +136,9 @@ async def test_partial_status_when_errors_present(monkeypatch):
     assert obs.status == "PARTIAL"
 
 
-# ── httpx 失败降级 ──
-
-
-async def test_httpx_failure_fallback_to_mock_in_dev(monkeypatch):
-    """开发环境 httpx 异常 → mock 降级。"""
-    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
-
-    class FailingClient:
-        def __init__(self, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            pass
-
-        async def post(self, *args, **kwargs):
-            raise ConnectionError("network down")
-
-    import httpx
-
-    monkeypatch.setattr(httpx, "AsyncClient", FailingClient)
-
-    obs = await adapter.execute("research.web_search", {"query": "test"})
-    assert obs.status == "SUCCESS"
-    assert obs.data["is_mock"] is True  # 开发环境降级到 mock
-
-
-async def test_httpx_failure_returns_unavailable_in_production(monkeypatch):
-    """生产环境 httpx 异常 → UNAVAILABLE，不 mock。"""
-    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=True)
+async def test_httpx_failure_returns_unavailable(monkeypatch):
+    """httpx 异常 → UNAVAILABLE，不 mock（G3）。"""
+    adapter = HttpWebSearchAdapter(base_url="http://example.com")
 
     class FailingClient:
         def __init__(self, **kwargs):
@@ -216,12 +162,9 @@ async def test_httpx_failure_returns_unavailable_in_production(monkeypatch):
     assert obs.error_code == "WEB_SEARCH_UNAVAILABLE"
 
 
-# ── 空结果降级（P0-1：SearXNG 被反爬时常见 200 + 空数组，禁止伪装成成功）──
-
-
 async def test_empty_results_downgraded_to_partial(monkeypatch):
     """wrapper 返回 EMPTY_RESULTS → 降级 PARTIAL + known_unavailable。"""
-    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
+    adapter = HttpWebSearchAdapter(base_url="http://example.com")
 
     class MockResponse:
         def raise_for_status(self):
@@ -251,7 +194,7 @@ async def test_empty_results_downgraded_to_partial(monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", MockClient)
 
     obs = await adapter.execute("research.web_search", {"query": "冷门概念"})
-    assert obs.status == "PARTIAL"  # 不再是 SUCCESS
+    assert obs.status == "PARTIAL"
     assert obs.data_quality.completeness == 0.0
     assert "research.web_search" in obs.data_quality.known_unavailable
     assert obs.data_quality.quality_status == "PARTIAL"
@@ -259,7 +202,7 @@ async def test_empty_results_downgraded_to_partial(monkeypatch):
 
 async def test_blank_success_envelope_also_downgraded(monkeypatch):
     """防御：即便 wrapper 返回完全空信封（results=[] errors=[]），也降级 PARTIAL。"""
-    adapter = HttpWebSearchAdapter(base_url="http://example.com", production=False)
+    adapter = HttpWebSearchAdapter(base_url="http://example.com")
 
     class MockResponse:
         def raise_for_status(self):

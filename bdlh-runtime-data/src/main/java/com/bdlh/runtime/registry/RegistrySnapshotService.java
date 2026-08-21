@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Read-only registry catalog projection for the Python orchestrator. */
+/** Read-only registry catalog projection for the Python orchestrator (final eight tables). */
 @Service
 public class RegistrySnapshotService {
 
@@ -48,12 +48,6 @@ public class RegistrySnapshotService {
         queries.put("skills", arrayQuery("bdlh_runtime_skill", "skill_id"));
         queries.put("skillOperations", arrayQuery("bdlh_runtime_skill_operation", "skill_id, operation_code"));
         queries.put("skillCapabilities", arrayQuery("bdlh_runtime_skill_capability", "skill_id, capability_name"));
-        queries.put("runtimeAllowlist", arrayQuery("bdlh_runtime_runtime_allowlist", "runtime_id, operation_code"));
-        queries.put("entitlements", arrayQuery("bdlh_runtime_account_entitlement", "account_id, operation_code"));
-        queries.put("fastpathRoutes", arrayQuery("bdlh_runtime_fastpath_route", "name"));
-        queries.put("fastpathUtterances", arrayQuery("bdlh_runtime_fastpath_utterance", "id"));
-        queries.put("budgets", arrayQuery("bdlh_runtime_run_budget", "profile"));
-        queries.put("topicCapabilities", arrayQuery("bdlh_runtime_topic_capability", "topic, capability_name"));
         return Map.copyOf(queries);
     }
 

@@ -60,16 +60,20 @@ test("柔和版入口连接后端流式协议", async () => {
  * 验证公共导航只保留正式入口，Skill 目录可以通过注册清单扩展。
  */
 test("公共入口与 Skill 目录边界完整", async () => {
-  const [index, consolePage, dashboard, registry] = await Promise.all([
+  const [index, consolePage, dashboard, registry, skillsPage, docsPage, server] = await Promise.all([
     readFile(new URL("../public/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/api-console.html", import.meta.url), "utf8"),
     readFile(new URL("../public/skill-dashboard.html", import.meta.url), "utf8"),
     readFile(new URL("../public/skills/registry.json", import.meta.url), "utf8"),
+    readFile(new URL("../public/skills/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/docs/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../dev-server.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(index, /href="\/skill-dashboard\.html"/);
-  assert.match(index, /href="\/docs"/);
-  assert.match(index, /WebSearchSkill/);
+  assert.match(index, /href="\/skills\/"/);
+  assert.match(index, /href="\/docs\/"/);
+  assert.match(index, /DeepSearch/);
+  assert.match(index, /Stock Skill/);
   assert.doesNotMatch(index, /api-console\.html|agent-chat-soft|agent-chat\.html/);
   assert.doesNotMatch(consolePage, /旧版聊天|柔版/);
   assert.match(consolePage, /开发工具/);
@@ -78,6 +82,13 @@ test("公共入口与 Skill 目录边界完整", async () => {
   assert.match(registry, /"id": "stock"/);
   assert.match(registry, /"id": "web-search"/);
   assert.doesNotMatch(registry, /"status": "planned"/);
+  assert.match(skillsPage, /Stock Skill/);
+  assert.match(skillsPage, /DeepSearch/);
+  assert.match(skillsPage, /href="\/docs\/docs\.css"/);
+  assert.match(docsPage, /业务模块/);
+  assert.match(docsPage, /整体架构/);
+  assert.match(docsPage, /href="\/docs\/docs\.css"/);
+  assert.match(server, /\/skills\//);
 });
 
 /**

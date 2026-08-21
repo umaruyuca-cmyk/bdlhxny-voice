@@ -282,12 +282,13 @@ def create_remote_runtime_stores(
     *,
     base_url: str | None,
     internal_token: str | None,
-    production: bool,
+    production: bool | None = None,
 ) -> tuple[RemoteAnalysisHistoryStore, RemoteRunRegistry, RemoteChatSessionStore]:
+    del production  # G3：远程 Store 一律要求凭证，不再按环境放宽
     if not base_url:
         raise ConfigurationError("远程 Runtime Store 需要 JAVA_API_BASE_URL")
-    if production and not internal_token:
-        raise ConfigurationError("生产 Java Runtime Data API 需要 JAVA_DATA_INTERNAL_TOKEN")
+    if not internal_token:
+        raise ConfigurationError("Java Runtime Data API 需要 JAVA_DATA_INTERNAL_TOKEN")
     client = RuntimeDataClient(base_url=base_url, internal_token=internal_token)
     return RemoteAnalysisHistoryStore(client), RemoteRunRegistry(client), RemoteChatSessionStore(client)
 

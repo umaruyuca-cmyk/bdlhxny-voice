@@ -20,7 +20,9 @@
 - 单规则输出 `PASS / CONDITIONAL / BLOCK / UNKNOWN`；
 - 聚合：关键 UNKNOWN → `INSUFFICIENT_INFORMATION`；否则任一 BLOCK →
   `CURRENTLY_NOT_SUITABLE`；否则任一 CONDITIONAL → `CONDITIONALLY_SUITABLE`；
-  全部必需规则 PASS → 才可能 `SUITABLE`（另受 §6.0 产品封顶约束）；
+  全部必需规则 PASS → 才可能 `SUITABLE`（另受规则集 `status` 与拟投入确认约束：
+  `DRAFT` 永不出 `SUITABLE`；`APPROVED` 且已确认拟投入才可 `SUITABLE`）；
+- 数据真实性不足时条件 id 为 `USER_FACTS_CONFIRMATION_REQUIRED`；
 - Rule reason 使用批准模板，必须携带 evidence refs；不生成交易指令。
 
 ## 3. 待批准规则表（摘要；细节见 §6）

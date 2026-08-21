@@ -16,6 +16,7 @@ from bdlh_runtime.guardrails.policies import (
     DefaultResponseGuardrail,
 )
 
+from .checkpoint import CognitiveCheckpoint, build_checkpoint
 from .contracts import (
     CognitiveAction,
     CognitiveActionSummary,
@@ -27,6 +28,7 @@ from .contracts import (
     PublicResponse,
 )
 from .policy import ActionPolicy, DefaultActionPolicy
+from .understand import RuleBasedUnderstandModel, UnderstandModel
 
 
 class CognitiveActionSelector(Protocol):
@@ -63,6 +65,7 @@ class CognitiveExecution(BaseModel):
 
     state: CognitiveState
     response: PublicResponse
+    checkpoint: CognitiveCheckpoint | None = None
 
 
 class CognitiveOrchestrator:
@@ -85,6 +88,7 @@ class CognitiveOrchestrator:
         observer: CognitiveExecutionObserver | None = None,
         max_domain_steps: int = 2,
         pause_check: Callable[[str], bool] | None = None,
+        understand: UnderstandModel | None = None,
     ) -> None:
         if max_domain_steps < 1:
             raise ValueError("max_domain_steps must be positive")
@@ -102,12 +106,14 @@ class CognitiveOrchestrator:
         self._data_guardrail = data_guardrail or DefaultDataQualityGuardrail()
         self._response_guardrail = response_guardrail or DefaultResponseGuardrail()
         self._pause_check = pause_check
+        self._understand = understand or RuleBasedUnderstandModel()
 
     async def run(
         self,
         event: InputEvent,
         *,
         observer: CognitiveExecutionObserver | None = None,
+        checkpoint: CognitiveCheckpoint | None = None,
     ) -> CognitiveExecution:
         execution_observer = observer or self._observer
         context = GuardrailContext(
@@ -119,105 +125,250 @@ class CognitiveOrchestrator:
             authorized_operations=self._authorized_operations,
             enabled_actions=frozenset(item.value for item in self._action_policy.enabled_actions),
         )
-        state = CognitiveState(event=event)
+        from .goal_coverage import backfill_criteria
+
+        if checkpoint is not None:
+            state = checkpoint.state.model_copy(deep=True)
+            state.event = event
+            state.public_events = [item for item in state.public_events if item != "run.paused"]
+            state.error_codes = [item for item in state.error_codes if item != "PAUSED_BY_USER"]
+            if checkpoint.resume_cursor == "dispatch" and checkpoint.pending_action is not None:
+                action = checkpoint.pending_action
+                return await self._action_loop(
+                    event=event,
+                    state=state,
+                    action=action,
+                    context=context,
+                    execution_observer=execution_observer,
+                    start_at_dispatch=True,
+                )
+            if checkpoint.resume_cursor == "after_domain" and checkpoint.last_outcome is not None:
+                outcome = DomainOutcome.model_validate(checkpoint.last_outcome)
+                return await self._continue_from_outcome(
+                    event=event,
+                    state=state,
+                    outcome=outcome,
+                    context=context,
+                    execution_observer=execution_observer,
+                    prior_action=checkpoint.pending_action,
+                )
+            # select：保留 goals，仅用新消息重选行动
+            action = await self._selector.select(event)
+            if state.goals:
+                action = action.model_copy(
+                    update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
+                )
+            return await self._action_loop(
+                event=event,
+                state=state,
+                action=action,
+                context=context,
+                execution_observer=execution_observer,
+            )
+
+        understood = await self._understand.understand(event.message)
+        allowed_names = sorted(self._authorized_capabilities)
+        goals = backfill_criteria(None, list(understood.goals), allowed_names)
+        state = CognitiveState(
+            event=event,
+            goals=goals,
+            needs_external=understood.needs_external,
+        )
         action = await self._selector.select(event)
+        if state.goals:
+            action = action.model_copy(
+                update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
+            )
+        return await self._action_loop(
+            event=event,
+            state=state,
+            action=action,
+            context=context,
+            execution_observer=execution_observer,
+        )
 
+    async def _action_loop(
+        self,
+        *,
+        event: InputEvent,
+        state: CognitiveState,
+        action: CognitiveAction,
+        context: GuardrailContext,
+        execution_observer: CognitiveExecutionObserver,
+        start_at_dispatch: bool = False,
+    ) -> CognitiveExecution:
         for step in range(self._max_domain_steps + 1):
-            if self._should_pause(event):
-                return self._paused_exit(state)
-            state.action = CognitiveActionSummary.from_action(action)
-            state.action_history.append(state.action)
-            policy_result = self._action_policy.evaluate(action)
-            if policy_result.decision == "REJECTED":
-                return self._guardrail_exit_code(
-                    state,
-                    policy_result.audit_code or "ACTION_POLICY_REJECTED",
-                    [policy_result.public_reason or "该行动当前未启用"],
-                    kind="CAPABILITY_NOT_ENABLED",
-                )
-            plan_result = self._plan_guardrail.evaluate_plan(action, context=context)
-            if plan_result.decision == GuardrailDecision.MODIFY:
-                assert plan_result.replacement is not None
-                action = plan_result.replacement
+            if not start_at_dispatch:
+                if self._should_pause(event):
+                    return self._paused_exit(
+                        state,
+                        resume_cursor="select",
+                        pending_action=None,
+                    )
                 state.action = CognitiveActionSummary.from_action(action)
-            elif plan_result.decision != GuardrailDecision.ALLOW:
-                return self._guardrail_exit(state, plan_result, action=action)
-            action_result = self._action_guardrail.evaluate_action(action, context=context)
-            if action_result.decision == GuardrailDecision.MODIFY:
-                assert action_result.replacement is not None
-                action = action_result.replacement
-                state.action = CognitiveActionSummary.from_action(action)
-            elif action_result.decision != GuardrailDecision.ALLOW:
-                return self._guardrail_exit(state, action_result, action=action)
+                state.action_history.append(state.action)
+                policy_result = self._action_policy.evaluate(action)
+                if policy_result.decision == "REJECTED":
+                    return self._guardrail_exit_code(
+                        state,
+                        policy_result.audit_code or "ACTION_POLICY_REJECTED",
+                        [policy_result.public_reason or "该行动当前未启用"],
+                        kind="CAPABILITY_NOT_ENABLED",
+                    )
+                plan_result = self._plan_guardrail.evaluate_plan(action, context=context)
+                if plan_result.decision == GuardrailDecision.MODIFY:
+                    assert plan_result.replacement is not None
+                    action = plan_result.replacement
+                    state.action = CognitiveActionSummary.from_action(action)
+                elif plan_result.decision != GuardrailDecision.ALLOW:
+                    return self._guardrail_exit(state, plan_result, action=action)
+                action_result = self._action_guardrail.evaluate_action(action, context=context)
+                if action_result.decision == GuardrailDecision.MODIFY:
+                    assert action_result.replacement is not None
+                    action = action_result.replacement
+                    state.action = CognitiveActionSummary.from_action(action)
+                elif action_result.decision != GuardrailDecision.ALLOW:
+                    return self._guardrail_exit(state, action_result, action=action)
 
-            if action.action_type != CognitiveActionType.INVOKE_DOMAIN:
-                plan = _action_plan(action)
-                return self._finalize(state, plan, context=context, audit_code=action.reason_code)
+                if action.action_type != CognitiveActionType.INVOKE_DOMAIN:
+                    plan = _action_plan(action)
+                    return self._finalize(state, plan, context=context, audit_code=action.reason_code)
 
-            if step >= self._max_domain_steps:
-                return self._guardrail_exit_code(
-                    state,
-                    "COGNITIVE_STEP_LIMIT_EXCEEDED",
-                    ["本轮领域调用步骤已达到上限"],
-                )
-            assert action.domain_request is not None
-            request = action.domain_request
-            requested_tool_calls = state.requested_tool_calls + request.budget.tool_call_limit
-            requested_runtime_seconds = state.requested_runtime_seconds + request.budget.runtime_seconds
-            if requested_tool_calls > context.max_tool_calls or requested_runtime_seconds > context.max_runtime_seconds:
-                return self._guardrail_exit_code(
-                    state,
-                    "RUN_BUDGET_EXCEEDED",
-                    ["本轮累计领域调用预算超过允许上限"],
-                )
-            state.requested_tool_calls = requested_tool_calls
-            state.requested_runtime_seconds = requested_runtime_seconds
-            state.domain_calls_used += 1
-            state.domain_request_refs.append(request.request_id)
-            if self._should_pause(event):
-                return self._paused_exit(state)
+                if step >= self._max_domain_steps:
+                    return self._guardrail_exit_code(
+                        state,
+                        "COGNITIVE_STEP_LIMIT_EXCEEDED",
+                        ["本轮领域调用步骤已达到上限"],
+                    )
+                assert action.domain_request is not None
+                request = action.domain_request
+                requested_tool_calls = state.requested_tool_calls + request.budget.tool_call_limit
+                requested_runtime_seconds = state.requested_runtime_seconds + request.budget.runtime_seconds
+                if (
+                    requested_tool_calls > context.max_tool_calls
+                    or requested_runtime_seconds > context.max_runtime_seconds
+                ):
+                    return self._guardrail_exit_code(
+                        state,
+                        "RUN_BUDGET_EXCEEDED",
+                        ["本轮累计领域调用预算超过允许上限"],
+                    )
+                state.requested_tool_calls = requested_tool_calls
+                state.requested_runtime_seconds = requested_runtime_seconds
+                state.domain_calls_used += 1
+                state.domain_request_refs.append(request.request_id)
+                if self._should_pause(event):
+                    return self._paused_exit(
+                        state,
+                        resume_cursor="dispatch",
+                        pending_action=action,
+                    )
+            else:
+                start_at_dispatch = False
+                assert action.domain_request is not None
+                request = action.domain_request
+
             execution_observer.on_domain_request(request)
             outcome = await self._dispatcher.dispatch(request)
             if self._should_pause(event):
-                return self._paused_exit(state)
-            outcome_callback = getattr(execution_observer, "on_domain_outcome", None)
-            if callable(outcome_callback):
-                outcome_callback(outcome)
-            state.domain_outcome_refs.append(outcome.request_id)
-            outcome_before_communication = outcome.model_dump(mode="json")
-
-            data_result = self._data_guardrail.evaluate_data_quality(outcome, context=context)
-            if data_result.decision != GuardrailDecision.ALLOW:
-                return self._guardrail_exit(state, data_result, kind="LIMITED")
-
-            continuation = None
-            if self._continuation is not None:
-                continuation = await self._continuation.continue_after(event=event, outcome=outcome)
-            if isinstance(continuation, CognitiveAction):
-                action = continuation
-                continue
-            plan = continuation if isinstance(continuation, CommunicationPlan) else _domain_plan(outcome)
-            if outcome.model_dump(mode="json") != outcome_before_communication:
-                return self._guardrail_exit_code(
+                return self._paused_exit(
                     state,
-                    "DOMAIN_OUTCOME_MUTATED",
-                    ["表达阶段不得修改领域结果"],
+                    resume_cursor="after_domain",
+                    pending_action=action,
+                    last_outcome=outcome.model_dump(mode="json"),
                 )
-            allowed_refs = set(
-                _collect_string_refs(
-                    outcome_before_communication,
-                    {"source_refs", "evidence_refs", "evidence_ids", "calculation_ids"},
-                )
+            continued = await self._continue_from_outcome(
+                event=event,
+                state=state,
+                outcome=outcome,
+                context=context,
+                execution_observer=execution_observer,
+                prior_action=action,
+                return_next_action=True,
             )
-            if not set(plan.evidence_refs).issubset(allowed_refs):
-                return self._guardrail_exit_code(
-                    state,
-                    "RESPONSE_EVIDENCE_NOT_TRACEABLE",
-                    ["表达计划包含领域结果中不存在的证据引用"],
-                )
-            return self._finalize(state, plan, context=context, audit_code=action.reason_code)
+            if isinstance(continued, CognitiveAction):
+                action = continued
+                continue
+            return continued
 
         raise AssertionError("unreachable")
+
+    async def _continue_from_outcome(
+        self,
+        *,
+        event: InputEvent,
+        state: CognitiveState,
+        outcome: DomainOutcome,
+        context: GuardrailContext,
+        execution_observer: CognitiveExecutionObserver,
+        prior_action: CognitiveAction | None,
+        return_next_action: bool = False,
+    ) -> CognitiveExecution | CognitiveAction:
+        outcome_callback = getattr(execution_observer, "on_domain_outcome", None)
+        if callable(outcome_callback):
+            outcome_callback(outcome)
+        if outcome.request_id not in state.domain_outcome_refs:
+            state.domain_outcome_refs.append(outcome.request_id)
+        outcome_before_communication = outcome.model_dump(mode="json")
+
+        data_result = self._data_guardrail.evaluate_data_quality(outcome, context=context)
+        if data_result.decision != GuardrailDecision.ALLOW:
+            return self._guardrail_exit(state, data_result, kind="LIMITED")
+
+        # G6 / ADR-014：领域或 Deep Research 超预算 → 系统截断 Pause（可恢复），禁止假 COMPLETE
+        if _is_budget_exhaustion(outcome):
+            return self._budget_pause_exit(
+                state,
+                outcome=outcome,
+                pending_action=prior_action,
+            )
+
+        state.goals = _refresh_goal_coverage(
+            state.goals,
+            outcome=outcome,
+            allowed=sorted(self._authorized_capabilities),
+        )
+
+        continuation = None
+        if self._continuation is not None:
+            continuation = await self._continuation.continue_after(event=event, outcome=outcome)
+        if isinstance(continuation, CognitiveAction):
+            action = continuation
+            if state.goals:
+                action = action.model_copy(
+                    update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
+                )
+            if return_next_action:
+                return action
+            return await self._action_loop(
+                event=event,
+                state=state,
+                action=action,
+                context=context,
+                execution_observer=execution_observer,
+            )
+        plan = continuation if isinstance(continuation, CommunicationPlan) else _domain_plan(outcome)
+        if outcome.model_dump(mode="json") != outcome_before_communication:
+            return self._guardrail_exit_code(
+                state,
+                "DOMAIN_OUTCOME_MUTATED",
+                ["表达阶段不得修改领域结果"],
+            )
+        allowed_refs = set(
+            _collect_string_refs(
+                outcome_before_communication,
+                {"source_refs", "evidence_refs", "evidence_ids", "calculation_ids"},
+            )
+        )
+        if not set(plan.evidence_refs).issubset(allowed_refs):
+            return self._guardrail_exit_code(
+                state,
+                "RESPONSE_EVIDENCE_NOT_TRACEABLE",
+                ["表达计划包含领域结果中不存在的证据引用"],
+            )
+        plan = _apply_goal_coverage_gate(plan, state.goals, needs_external=state.needs_external)
+        audit = prior_action.reason_code if prior_action is not None else "DOMAIN_RESULT"
+        return self._finalize(state, plan, context=context, audit_code=audit)
 
     def _finalize(
         self,
@@ -250,7 +401,17 @@ class CognitiveOrchestrator:
         elif result.decision != GuardrailDecision.ALLOW:
             return self._guardrail_exit(state, result)
         state.public_events.append("response.ready")
-        return CognitiveExecution(state=state, response=response)
+        checkpoint = None
+        if response.response_kind == "ASK_USER":
+            checkpoint = build_checkpoint(
+                run_id=str(state.event.run_id or state.event.event_id),
+                user_id=state.event.user_id,
+                state=state,
+                pause_reason="system_interrupt",
+                resume_cursor="select",
+                original_message=state.event.message,
+            )
+        return CognitiveExecution(state=state, response=response, checkpoint=checkpoint)
 
     def _should_pause(self, event: InputEvent) -> bool:
         if self._pause_check is None:
@@ -258,9 +419,26 @@ class CognitiveOrchestrator:
         run_id = str(event.run_id or event.event_id or "").strip()
         return bool(run_id) and bool(self._pause_check(run_id))
 
-    def _paused_exit(self, state: CognitiveState) -> CognitiveExecution:
+    def _paused_exit(
+        self,
+        state: CognitiveState,
+        *,
+        resume_cursor: str = "select",
+        pending_action: CognitiveAction | None = None,
+        last_outcome: dict | None = None,
+    ) -> CognitiveExecution:
         state.public_events.append("run.paused")
         state.error_codes.append("PAUSED_BY_USER")
+        checkpoint = build_checkpoint(
+            run_id=str(state.event.run_id or state.event.event_id),
+            user_id=state.event.user_id,
+            state=state,
+            pause_reason="user_pause",
+            resume_cursor=resume_cursor,  # type: ignore[arg-type]
+            pending_action=pending_action,
+            last_outcome=last_outcome,
+            original_message=state.event.message,
+        )
         return CognitiveExecution(
             state=state,
             response=PublicResponse(
@@ -270,6 +448,45 @@ class CognitiveOrchestrator:
                 next_steps=["继续", "换一个新问题"],
                 audit_codes=["PAUSED_BY_USER"],
             ),
+            checkpoint=checkpoint,
+        )
+
+    def _budget_pause_exit(
+        self,
+        state: CognitiveState,
+        *,
+        outcome: DomainOutcome,
+        pending_action: CognitiveAction | None,
+    ) -> CognitiveExecution:
+        state.public_events.append("run.paused")
+        state.error_codes.append("RUN_BUDGET_EXCEEDED")
+        codes = [item.code for item in outcome.errors]
+        message = (
+            outcome.errors[0].message
+            if outcome.errors
+            else "本轮研究预算已用尽，已安全暂停；回复「继续」可从断点恢复。"
+        )
+        checkpoint = build_checkpoint(
+            run_id=str(state.event.run_id or state.event.event_id),
+            user_id=state.event.user_id,
+            state=state,
+            pause_reason="system_interrupt",
+            resume_cursor="after_domain",
+            pending_action=pending_action,
+            last_outcome=outcome.model_dump(mode="json"),
+            original_message=state.event.message,
+        )
+        return CognitiveExecution(
+            state=state,
+            response=PublicResponse(
+                response_kind="ASK_USER",
+                response_structure="CLARIFICATION",
+                message=message,
+                limitations=list(outcome.limitations),
+                next_steps=["继续", "换一个新问题"],
+                audit_codes=list(dict.fromkeys(["RUN_BUDGET_EXCEEDED", *codes])),
+            ),
+            checkpoint=checkpoint,
         )
 
     @staticmethod
@@ -457,3 +674,83 @@ def _sections(
                 )
             )
     return sections
+
+
+def _outcome_observations(outcome: DomainOutcome) -> list[dict]:
+    found: list[dict] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if "observation_id" in node and "capability" in node:
+                found.append(node)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(outcome.model_dump(mode="json"))
+    return found
+
+
+def _refresh_goal_coverage(goals: list, *, outcome: DomainOutcome, allowed: list[str]):
+    from .goal_coverage import evaluate_goals
+    from .goal_schema import GoalSpec
+
+    if not goals:
+        return goals
+    typed = [goal if isinstance(goal, GoalSpec) else GoalSpec.model_validate(goal) for goal in goals]
+    observations = _outcome_observations(outcome)
+    updated = evaluate_goals(typed, observations, allowed)
+    # 当前 DomainOutcome 未必携带统一 Observation 信封；COMPLETE 时结算仍为 PENDING 的 Goal
+    if outcome.status == "COMPLETE":
+        settled = []
+        for goal in updated:
+            if goal.status == "PENDING":
+                settled.append(goal.model_copy(update={"status": "COVERED"}))
+            else:
+                settled.append(goal)
+        return settled
+    return updated
+
+
+def _is_budget_exhaustion(outcome: DomainOutcome) -> bool:
+    """领域超预算或 Deep Research 预算耗尽 → 走 ADR-014 系统 Pause。"""
+    budget_codes = {
+        "BUDGET_EXHAUSTED",
+        "RUNTIME_BUDGET_EXHAUSTED",
+        "DEEP_RESEARCH_BUDGET_EXHAUSTED",
+        "RUN_BUDGET_EXCEEDED",
+    }
+    if any(item.code in budget_codes for item in outcome.errors):
+        return True
+    return any(
+        "DEEP_RESEARCH_BUDGET_EXHAUSTED" in str(item) or "budget exhausted" in str(item).lower()
+        for item in outcome.limitations
+    )
+
+
+def _apply_goal_coverage_gate(plan: CommunicationPlan, goals: list, *, needs_external: bool) -> CommunicationPlan:
+    from .goal_coverage import all_goals_settled
+    from .goal_schema import GoalSpec
+
+    if not needs_external or not goals:
+        return plan
+    typed = [goal if isinstance(goal, GoalSpec) else GoalSpec.model_validate(goal) for goal in goals]
+    if all_goals_settled(typed):
+        return plan
+    pending = [goal.goal_id for goal in typed if goal.status == "PENDING"]
+    if not pending:
+        return plan
+    limitation = f"Goals still pending coverage: {', '.join(pending)}"
+    limitations = list(dict.fromkeys([*plan.limitations, limitation]))
+    # 硬降级：仅当表达为“完成态”却仍有 PENDING Goal
+    if plan.response_kind in {"DOMAIN_RESULT", "ANSWER"}:
+        return plan.model_copy(
+            update={
+                "response_kind": "LIMITED",
+                "limitations": limitations,
+                "summary": f"{plan.summary}（目标尚未完全覆盖，结果标记为有限）",
+            }
+        )
+    return plan.model_copy(update={"limitations": limitations})

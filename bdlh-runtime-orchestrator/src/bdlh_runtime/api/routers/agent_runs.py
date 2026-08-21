@@ -15,6 +15,11 @@ from bdlh_runtime.runtime.run_registry import RunLocation
 from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
 from bdlh_runtime.runtime.turn_router import TurnDecision, TurnRoute, is_resume_signal, resolve_resume_message
 
+from ..checkpoint_persistence import (
+    load_resume_checkpoint,
+    mint_pause_checkpoint,
+    persist_execution_checkpoint,
+)
 from ..context import ApiContext
 from ..projections import CognitiveExecutionObserverAdapter, cognitive_state, public_state
 from ..schemas import CancelAckResponse, PauseAckResponse, ResumeRequest, RunRequest, RunResponse
@@ -82,8 +87,30 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
             }
             ctx.store.save(run_id, user_id, failed_state)
             return public_state(run_id, failed_state)
-        state = cognitive_state(run_id, public_thread_id, execution.response, user_id)
-        ctx.store.save(run_id, user_id, state)
+        chat_sessions = getattr(application, "chat_session_store", None) or ctx.chat_sessions
+        if chat_sessions is not None:
+            chat_sessions.ensure(public_thread_id, user_id)
+            chat_sessions.add_message(public_thread_id, user_id, "user", payload.message)
+        checkpoint_id = persist_execution_checkpoint(
+            application=application,
+            store=ctx.store,
+            chat_sessions=chat_sessions,
+            run_id=run_id,
+            session_id=public_thread_id,
+            user_id=str(user_id),
+            execution=execution,
+        )
+        if checkpoint_id is None:
+            state = cognitive_state(run_id, public_thread_id, execution.response, user_id)
+            ctx.store.save(run_id, user_id, state)
+        else:
+            state = ctx.store.load(run_id, user_id) or cognitive_state(
+                run_id,
+                public_thread_id,
+                execution.response,
+                user_id,
+                checkpoint_id=checkpoint_id,
+            )
         return public_state(run_id, state)
 
     @router.get("/agent-runs/{run_id}")
@@ -128,47 +155,28 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
             or (state or {}).get("thread_id")
             or (state or {}).get("session_id")
         )
-        checkpoint_id = location.checkpoint_id if location is not None else (state or {}).get("checkpoint_id")
         chat_sessions = getattr(application, "chat_session_store", None) or ctx.chat_sessions
-        if session_id and chat_sessions is not None:
+        if not session_id:
+            raise HTTPException(status_code=422, detail="run missing session/thread")
+        if chat_sessions is not None:
             try:
                 chat_sessions.ensure(str(session_id), requester_user_id)
-                chat_sessions.set_pending(
-                    str(session_id),
-                    requester_user_id,
-                    run_id=run_id,
-                    thread_id=str(session_id),
-                    checkpoint_id=checkpoint_id,
-                    runtime_path=COGNITIVE_RUNTIME_PATH,
-                    pause_reason="user_pause",
-                    awaiting_route_confirm=False,
-                )
             except KeyError:
                 logger.warning("pause: chat session missing session_id=%s run_id=%s", session_id, run_id)
-
-        paused_state = {
-            "run_id": run_id,
-            "thread_id": session_id,
-            "user_id": requester_user_id,
-            "runtime_path": COGNITIVE_RUNTIME_PATH,
-            "status": "PAUSED_BY_USER",
-            "next_stage": "paused",
-            "final_response": {
-                "response_kind": "ASK_USER",
-                "response_structure": "CLARIFICATION",
-                "message": "已按你的操作暂停。回复「继续」可接着刚才的分析，或直接提出新的问题。",
-                "audit_codes": ["PAUSED_BY_USER"],
-            },
-            "events": list((state or {}).get("events") or [])
-            + [{"type": "run.paused", "status": "PAUSED_BY_USER", "resumable": True}],
-            "checkpoint_id": checkpoint_id,
-        }
-        ctx.store.save(run_id, requester_user_id, paused_state)
+        checkpoint = mint_pause_checkpoint(
+            application=application,
+            store=ctx.store,
+            chat_sessions=chat_sessions,
+            run_id=run_id,
+            session_id=str(session_id),
+            user_id=str(requester_user_id),
+            existing_state=state,
+        )
         return PauseAckResponse(
             runId=run_id,
-            sessionId=str(session_id) if session_id else None,
+            sessionId=str(session_id),
             status="PAUSED_BY_USER",
-            checkpointId=checkpoint_id,
+            checkpointId=checkpoint.checkpoint_id,
             resumable=True,
         )
 
@@ -283,6 +291,17 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
             route=resume_route,
             prior_user_messages=prior_user_messages,
         )
+        checkpoint = load_resume_checkpoint(
+            application=application,
+            store=ctx.store,
+            run_id=run_id,
+            user_id=str(user_id),
+            checkpoint_id=(
+                (location.checkpoint_id if location is not None else None)
+                or state_before_resume.get("checkpoint_id")
+                or (session.pending_checkpoint_id if session is not None else None)
+            ),
+        )
         progress = CognitiveExecutionProgress()
         try:
             execution = await application.cognitive_application.run(
@@ -294,6 +313,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                     message=cognitive_message,
                 ),
                 observer=CognitiveExecutionObserverAdapter(progress),
+                checkpoint=checkpoint,
             )
         except Exception:
             logger.exception("Cognitive run 恢复失败 run_id=%s", run_id)
@@ -314,13 +334,39 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
             }
             ctx.store.save(run_id, user_id, failed_state)
             return public_state(run_id, failed_state)
-        state = cognitive_state(
-            run_id,
-            thread_id or run_id,
-            execution.response,
-            user_id,
+        checkpoint_id = persist_execution_checkpoint(
+            application=application,
+            store=ctx.store,
+            chat_sessions=chat_sessions,
+            run_id=run_id,
+            session_id=thread_id or run_id,
+            user_id=str(user_id),
+            execution=execution,
         )
-        ctx.store.save(run_id, user_id, state)
+        if checkpoint_id is None:
+            state = cognitive_state(run_id, thread_id or run_id, execution.response, user_id)
+            ctx.store.save(run_id, user_id, state)
+            if chat_sessions is not None and thread_id:
+                try:
+                    chat_sessions.ensure(str(thread_id), user_id)
+                    chat_sessions.set_pending(
+                        str(thread_id),
+                        user_id,
+                        run_id=None,
+                        thread_id=None,
+                        checkpoint_id=None,
+                        runtime_path=None,
+                    )
+                except KeyError:
+                    pass
+        else:
+            state = ctx.store.load(run_id, user_id) or cognitive_state(
+                run_id,
+                thread_id or run_id,
+                execution.response,
+                user_id,
+                checkpoint_id=checkpoint_id,
+            )
         return public_state(run_id, state)
 
     async def event_stream(run_id: str, requester_user_id: str | None) -> AsyncIterator[str]:

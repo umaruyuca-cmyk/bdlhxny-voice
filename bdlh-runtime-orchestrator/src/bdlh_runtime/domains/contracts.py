@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -54,6 +55,9 @@ class GoalRef(DomainContractModel):
         "TASK",
         "INFERRED",
     ]
+    horizon: Literal["SHORT_TERM", "MEDIUM_TERM", "LONG_TERM"] | None = None
+    target_date: datetime | None = None
+    target_amount: float | None = Field(default=None, ge=0)
 
 
 class DomainConstraint(DomainContractModel):

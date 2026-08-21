@@ -59,7 +59,7 @@ class RuntimeDataControllerTest {
     void runAndHistoryWritesUseUseCasePayloads() throws Exception {
         OffsetDateTime now = OffsetDateTime.parse("2026-08-15T00:00:00Z");
         when(service.upsertRun(eq(7L), eq("run-1"), any())).thenReturn(
-                new RunLocationResponse("run-1", "thread-1", "cp-1", "legacy_root_graph", now));
+                new RunLocationResponse("run-1", "thread-1", "cp-1", "cognitive_finance", now));
         when(service.saveHistory(eq(7L), eq("history-1"), any())).thenReturn(
                 new AnalysisHistoryResponse(
                         "history-1", "thread-1", "run-1", "SUCCESS",
@@ -68,7 +68,7 @@ class RuntimeDataControllerTest {
         mvc.perform(put("/internal/v1/runtime/runs/run-1")
                         .param("user_id", "7")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"threadId\":\"thread-1\",\"checkpointId\":\"cp-1\",\"runtimePath\":\"legacy_root_graph\"}"))
+                        .content("{\"threadId\":\"thread-1\",\"checkpointId\":\"cp-1\",\"runtimePath\":\"cognitive_finance\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.runId").value("run-1"));
 

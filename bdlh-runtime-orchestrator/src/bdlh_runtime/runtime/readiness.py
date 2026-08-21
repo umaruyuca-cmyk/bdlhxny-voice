@@ -61,7 +61,7 @@ def evaluate_readiness(application: Any) -> ReadinessReport:
     else:
         checks.append(ReadinessCheck("config.jwt_secret", True, "auth_required=false，跳过"))
 
-    if settings.environment == "production":
+    if java_url or settings.environment != "test":
         if settings.java_data_internal_token:
             checks.append(ReadinessCheck("config.java_data_internal_token", True, "已配置"))
         else:
@@ -69,7 +69,7 @@ def evaluate_readiness(application: Any) -> ReadinessReport:
                 ReadinessCheck(
                     "config.java_data_internal_token",
                     False,
-                    "生产环境缺少 JAVA_DATA_INTERNAL_TOKEN",
+                    "缺少 JAVA_DATA_INTERNAL_TOKEN（产品路径不允许无凭证）",
                 )
             )
 
@@ -111,6 +111,22 @@ def evaluate_readiness(application: Any) -> ReadinessReport:
                 f"memory_mode={settings.memory_mode}，不探测",
             )
         )
+
+    # G6：Flag 打开时必须具备原子搜索凭证，禁止用 Flag 掩盖缺基础设施
+    if settings.deep_research_enabled:
+        key = (settings.bailian_web_search_api_key or "").strip()
+        if key:
+            checks.append(ReadinessCheck("deep_research.bailian", True, "已配置百炼 Key"))
+        else:
+            checks.append(
+                ReadinessCheck(
+                    "deep_research.bailian",
+                    False,
+                    "BDLH_DEEP_RESEARCH_ENABLED=true 但缺少 BDLH_BAILIAN_WEB_SEARCH_API_KEY",
+                )
+            )
+    else:
+        checks.append(ReadinessCheck("deep_research.bailian", True, "Deep Research Flag 关闭，跳过"))
 
     ready = all(item.ok for item in checks)
     return ReadinessReport(ready=ready, checks=tuple(checks))

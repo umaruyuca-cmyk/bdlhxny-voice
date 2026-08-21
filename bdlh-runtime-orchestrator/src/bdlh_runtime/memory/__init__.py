@@ -6,5 +6,15 @@
 
 from .base import MemoryRecord, MemoryStore
 from .noop import NoOpMemoryStore
+from .recall import MemoryRecallResult, recall_semantic_memory
+from .writer import MemoryWriteResult, MemoryWriter
 
-__all__ = ["MemoryRecord", "MemoryStore", "NoOpMemoryStore"]
+__all__ = [
+    "MemoryRecord",
+    "MemoryRecallResult",
+    "MemoryStore",
+    "MemoryWriteResult",
+    "MemoryWriter",
+    "NoOpMemoryStore",
+    "recall_semantic_memory",
+]

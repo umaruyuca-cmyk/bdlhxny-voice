@@ -143,7 +143,7 @@ def test_financial_request_extends_domain_request_and_validates_intent() -> None
         instruments=[FinancialInstrument(symbol="600519")],
         requested_topics={"news", "money_flow"},
     )
-    # 重写：analysis_type 已删除；requested_topics 是唯一主题表达
+    # requested_topics 是唯一主题表达
     assert research.requested_topics == {"news", "money_flow"}
 
     planning = FinancialDomainRequest(

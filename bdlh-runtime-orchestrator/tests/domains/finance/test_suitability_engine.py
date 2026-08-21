@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from bdlh_runtime.domains.contracts import ConfidenceAssessment
 from bdlh_runtime.domains.finance.contracts import (
     FinancialDataMode,
@@ -12,9 +14,11 @@ from bdlh_runtime.domains.finance.contracts import (
     LiquiditySnapshot,
     RiskProfile,
     StockResearchResult,
+    SuitabilityV0RuleSet,
     Technicals,
 )
 from bdlh_runtime.domains.finance.suitability_engine import SuitabilityEngine
+from bdlh_runtime.domains.finance.suitability_v0_ruleset import default_suitability_v0_rule_set
 
 
 def _research(
@@ -45,6 +49,8 @@ def _snapshot(
     liquid: float = 100_000,
     needs: float = 20_000,
     is_mock: bool | None = None,
+    proposed_amount: float | None = None,
+    proposed_weight_pct: float | None = None,
 ) -> FinancialSnapshot:
     mock = bool(is_mock) if is_mock is not None else data_mode == FinancialDataMode.MOCK
     return FinancialSnapshot(
@@ -64,6 +70,24 @@ def _snapshot(
             liquid_assets=liquid,
             near_term_cash_needs=needs,
         ),
+        proposed_amount=proposed_amount,
+        proposed_weight_pct=proposed_weight_pct,
+    )
+
+
+def _approved_rule_set() -> SuitabilityV0RuleSet:
+    draft = default_suitability_v0_rule_set()
+    return SuitabilityV0RuleSet(
+        version=draft.version,
+        status="APPROVED",
+        rule_ids=list(draft.rule_ids),
+        critical_rule_ids=set(draft.critical_rule_ids),
+        market_risk_proxy_thresholds=draft.market_risk_proxy_thresholds,
+        single_position_thresholds=dict(draft.single_position_thresholds),
+        industry_thresholds=dict(draft.industry_thresholds),
+        liquidity_pass_buffer_ratio=draft.liquidity_pass_buffer_ratio,
+        approval_ref="ADR-004-TEST-APPROVAL",
+        approved_at=datetime(2026, 8, 17, tzinfo=UTC),
     )
 
 
@@ -74,6 +98,7 @@ def test_engine_insufficient_when_research_partial() -> None:
     )
     assert assessment.result == "INSUFFICIENT_INFORMATION"
     assert assessment.rule_set_version == "suitability-v0.1"
+    assert any(item.condition_id == "SUITABILITY_INPUT_GAP" for item in assessment.required_conditions)
 
 
 def test_engine_insufficient_when_snapshot_mock() -> None:
@@ -82,6 +107,20 @@ def test_engine_insufficient_when_snapshot_mock() -> None:
         snapshot=_snapshot(data_mode=FinancialDataMode.MOCK),
     )
     assert assessment.result == "INSUFFICIENT_INFORMATION"
+    assert any(
+        item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in assessment.required_conditions
+    )
+
+
+def test_engine_insufficient_when_snapshot_unavailable() -> None:
+    assessment = SuitabilityEngine().evaluate(
+        research=_research(),
+        snapshot=_snapshot(data_mode=FinancialDataMode.UNAVAILABLE),
+    )
+    assert assessment.result == "INSUFFICIENT_INFORMATION"
+    assert any(
+        item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in assessment.required_conditions
+    )
 
 
 def test_engine_blocks_conservative_with_high_band() -> None:
@@ -115,6 +154,17 @@ def test_engine_conditional_when_mdd_equals_tolerance() -> None:
     )
 
 
+def test_engine_draft_caps_at_conditionally_suitable_even_with_proposed_amount() -> None:
+    assessment = SuitabilityEngine().evaluate(
+        research=_research(mdd=10, vol=12),
+        snapshot=_snapshot(risk_level="AGGRESSIVE", max_loss=40, proposed_amount=10_000),
+    )
+    assert assessment.result == "CONDITIONALLY_SUITABLE"
+    assert assessment.proposed_allocation_confirmed is True
+    assert any(item.condition_id == "SUITABILITY_RULE_SET_APPROVAL_REQUIRED" for item in assessment.required_conditions)
+    assert all(item.condition_id != "SUITABILITY_PROPOSED_AMOUNT_REQUIRED" for item in assessment.required_conditions)
+
+
 def test_engine_caps_at_conditionally_suitable_without_proposed_amount() -> None:
     assessment = SuitabilityEngine().evaluate(
         research=_research(mdd=10, vol=12),
@@ -123,4 +173,31 @@ def test_engine_caps_at_conditionally_suitable_without_proposed_amount() -> None
     assert assessment.result == "CONDITIONALLY_SUITABLE"
     assert assessment.proposed_allocation_confirmed is False
     assert any(item.condition_id == "SUITABILITY_PROPOSED_AMOUNT_REQUIRED" for item in assessment.required_conditions)
+    assert any(item.condition_id == "SUITABILITY_RULE_SET_APPROVAL_REQUIRED" for item in assessment.required_conditions)
     assert all(item.outcome in {"PASS", "UNKNOWN"} for item in assessment.rule_evaluations if item.critical)
+
+
+def test_engine_approved_with_proposed_amount_can_be_suitable() -> None:
+    assessment = SuitabilityEngine(_approved_rule_set()).evaluate(
+        research=_research(mdd=10, vol=12),
+        snapshot=_snapshot(risk_level="AGGRESSIVE", max_loss=40, proposed_amount=10_000),
+    )
+    assert assessment.result == "SUITABLE"
+    assert assessment.proposed_allocation_confirmed is True
+    assert assessment.required_conditions == []
+
+
+def test_engine_rejects_review_changes_required_assembly() -> None:
+    draft = default_suitability_v0_rule_set()
+    blocked = SuitabilityV0RuleSet(
+        version=draft.version,
+        status="REVIEW_CHANGES_REQUIRED",
+        rule_ids=list(draft.rule_ids),
+        critical_rule_ids=set(draft.critical_rule_ids),
+        market_risk_proxy_thresholds=draft.market_risk_proxy_thresholds,
+        single_position_thresholds=dict(draft.single_position_thresholds),
+        industry_thresholds=dict(draft.industry_thresholds),
+        liquidity_pass_buffer_ratio=draft.liquidity_pass_buffer_ratio,
+    )
+    with pytest.raises(ValueError, match="REVIEW_CHANGES_REQUIRED"):
+        SuitabilityEngine(blocked)

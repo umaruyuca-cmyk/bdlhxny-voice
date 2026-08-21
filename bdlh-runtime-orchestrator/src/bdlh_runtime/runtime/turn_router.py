@@ -128,8 +128,8 @@ def resolve_resume_message(
 ) -> str:
     """Resume 口令时回放挂起前的真实用户目标；澄清答案仍用本句。
 
-    ADR-014 的 resume 当前是同 run 重入 Cognitive，不是 L0 checkpoint 续跑；
-    因此至少要把「继续」还原成原问题，避免 selector 当成无标的追问。
+    有 L0 checkpoint 时仍可能用口令还原 message 供 selector；Goal/行动历史
+    由 checkpoint 恢复，不再依赖「整轮重跑」冒充断点续跑。
     """
 
     text = str(user_message or "").strip()

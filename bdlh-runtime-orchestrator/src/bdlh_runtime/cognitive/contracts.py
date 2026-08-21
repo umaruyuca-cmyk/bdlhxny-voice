@@ -21,6 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bdlh_runtime.domains.contracts import DomainRequest
 
+from .goal_schema import GoalSpec
+
 #: 未启用行动的稳定审计码（§7.2）：不能静默降级为 RESPOND。
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
 
@@ -111,6 +113,8 @@ class CognitiveState(BaseModel):
     event: InputEvent
     situation_summary: str | None = None
     uncertainty_codes: list[str] = Field(default_factory=list)
+    goals: list[GoalSpec] = Field(default_factory=list)
+    needs_external: bool = False
     action: CognitiveActionSummary | None = None
     action_history: list[CognitiveActionSummary] = Field(default_factory=list)
     domain_request_refs: list[str] = Field(default_factory=list)
@@ -161,6 +165,8 @@ class CommunicationPlan(BaseModel):
         "CLARIFICATION",
         "RESEARCH",
         "SUITABILITY",
+        "PORTFOLIO_IMPACT",
+        "GOAL_PLANNING",
         "CAPABILITY_NOTICE",
         "SAFETY_BLOCK",
     ] = "KNOWLEDGE"
@@ -192,6 +198,8 @@ class PublicResponse(BaseModel):
         "CLARIFICATION",
         "RESEARCH",
         "SUITABILITY",
+        "PORTFOLIO_IMPACT",
+        "GOAL_PLANNING",
         "CAPABILITY_NOTICE",
         "SAFETY_BLOCK",
     ] = "KNOWLEDGE"

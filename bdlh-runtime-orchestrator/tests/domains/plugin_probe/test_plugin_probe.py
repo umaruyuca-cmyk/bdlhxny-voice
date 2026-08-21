@@ -43,9 +43,27 @@ def request(
     )
 
 
-def dispatcher() -> DomainDispatcher:
-    # 重写：探针能力来自种子目录（registry snapshot），不再内存注册
+def _capabilities_with_probe():
+    from bdlh_runtime.tools.capabilities import CapabilitySpec
+
     capabilities = build_default_capability_registry()
+    if not capabilities.contains("plugin_probe.run_contract_check"):
+        capabilities.register(
+            CapabilitySpec(
+                name="plugin_probe.run_contract_check",
+                description="probe",
+                domain="plugin_probe",
+                adapter="local",
+                toolsets=frozenset({"plugin_probe_compute"}),
+                operations=frozenset({"RUN_ANALYSIS"}),
+            )
+        )
+    return capabilities
+
+
+def dispatcher() -> DomainDispatcher:
+    # 业务种子不含 probe；测试显式注入能力
+    capabilities = _capabilities_with_probe()
     registry = DomainRegistry()
     registry.register("plugin_probe", PluginProbeRuntime(capabilities))
     registry.register_descriptor("plugin_probe", PLUGIN_PROBE_DESCRIPTOR)
@@ -97,12 +115,24 @@ async def test_probe_uses_shared_budget_and_operation_contracts() -> None:
     assert outcome.errors[0].code == "PROBE_BUDGET_INVALID"
 
 
-def test_probe_manifest_validates_against_the_single_capability_registry() -> None:
+def test_probe_manifest_validates_when_capability_is_injected() -> None:
+    """业务种子不含 probe；校验前须显式注入能力（非产品路径）。"""
+    from bdlh_runtime.tools.capabilities import CapabilitySpec
+
     registry = build_default_capability_registry()
+    registry.register(
+        CapabilitySpec(
+            name="plugin_probe.run_contract_check",
+            description="probe",
+            domain="plugin_probe",
+            adapter="local",
+            toolsets=frozenset({"plugin_probe_compute"}),
+            operations=frozenset({"RUN_ANALYSIS"}),
+        )
+    )
 
     validate_descriptor_against_registry(PLUGIN_PROBE_DESCRIPTOR, registry)
 
-    assert registry.contains("plugin_probe.run_contract_check")  # 来自种子
     assert registry.contains("plugin_probe.run_contract_check")
     assert PLUGIN_PROBE_DESCRIPTOR.status == "EXPERIMENTAL"
     assert PLUGIN_PROBE_DESCRIPTOR.enabled_intents == frozenset({"CONTRACT_PROBE"})

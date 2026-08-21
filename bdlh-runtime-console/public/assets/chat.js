@@ -77,7 +77,9 @@ async function apiFetch(resource,options){
   if(token)next.headers.set("Authorization","Bearer "+token);
   var response=await NATIVE_FETCH(resource,next);
   if(response.status===401&&String(resource).indexOf("/api/v1/auth/")<0){
-    AUTH.ready=false;AUTH.user=null;localStorage.removeItem(AUTH_TOKEN_KEY);showAuth();
+    AUTH.ready=true;AUTH.user=null;localStorage.removeItem(AUTH_TOKEN_KEY);
+    updateAccount();
+    toast("登录已失效，已切换为访客模式");
   }
   return response;
 }
@@ -135,23 +137,21 @@ function setSkillEnabled(id,on,note){
 function syncPluginUi(){
   var on=skillEnabled(STOCK_SKILL);
   var toggle=document.getElementById("pluginToggle");
+  var tray=document.getElementById("pluginTray");
   var chip=document.getElementById("chipEnabled");
   var ro=document.getElementById("roTag");
-  var skillStock=document.getElementById("skillStock");
   var statusTag=document.getElementById("statusTag");
-  var navPlugins=document.getElementById("navPlugins");
   if(toggle){
     toggle.classList.toggle("on",on);
     toggle.setAttribute("aria-checked",on?"true":"false");
   }
+  if(tray)tray.hidden=!on;
   if(chip)chip.hidden=!on;
   if(ro)ro.hidden=!on;
-  if(skillStock)skillStock.classList.toggle("on",on);
   if(statusTag){
     statusTag.textContent=on?"本对话已启用":"未启用";
     statusTag.className="tag "+(on?"ok":"off");
   }
-  if(navPlugins)navPlugins.classList.toggle("on",ST.page==="plugins");
 }
 function showPage(name){
   ST.page=name==="plugins"?"plugins":"chat";
@@ -169,6 +169,8 @@ function showPage(name){
 }
 function showEnableNudge(question){
   hero.classList.add("hidden");
+  var viewChat=document.getElementById("viewChat");
+  if(viewChat)viewChat.classList.remove("is-empty");
   chatTitle.textContent=activeSession()?activeSession().title:"新的对话";
   var row=document.createElement("div");
   row.className="msg user";
@@ -295,6 +297,8 @@ function renderMessages(){
   var list=s&&s.messages?s.messages:[];
   chatTitle.textContent=s?s.title:"新的对话";
   hero.classList.toggle("hidden",list.length>0);
+  var viewChat=document.getElementById("viewChat");
+  if(viewChat)viewChat.classList.toggle("is-empty",list.length===0);
   list.forEach(function(m){appendMessage(m.role,m.content,false);});
   scrollBottom();
   rebuildQnav();
@@ -710,7 +714,7 @@ var profileError=document.getElementById("profileError");
 var PROFILE_RESUME_MESSAGE="我已确认风险偏好与持仓，请继续评估适不适合我";
 
 async function openProfileModal(opts){
-  if(!AUTH.ready){showAuth();return;}
+  if(!AUTH.user){showAuth("确认金融资料前请先登录");return;}
   profileError.textContent="";
   profileModal.dataset.resumeAfter=opts&&opts.resumeAfter?"1":"0";
   try{
@@ -754,7 +758,7 @@ function idempotencyKey(prefix){
 
 profileForm.addEventListener("submit",async function(e){
   e.preventDefault();
-  if(!AUTH.ready){showAuth();return;}
+  if(!AUTH.user){showAuth("确认金融资料前请先登录");return;}
   profileError.textContent="";
   var saveBtn=document.getElementById("profileSave");
   saveBtn.disabled=true;
@@ -826,7 +830,6 @@ document.getElementById("profileCancel").addEventListener("click",closeProfileMo
 
 /* ---------- 发送 ---------- */
 async function send(preset,regenerateExisting){
-  if(!AUTH.ready){showAuth();return;}
   var value=(preset||input.value).trim();
   if(!value||ST.sending)return;
 
@@ -859,6 +862,8 @@ async function send(preset,regenerateExisting){
   renderSessionList();
   chatTitle.textContent=s.title;
   hero.classList.add("hidden");
+  var viewChat=document.getElementById("viewChat");
+  if(viewChat)viewChat.classList.remove("is-empty");
   showPage("chat");
 
   if(!regenerateExisting)appendMessage("user",value,true);
@@ -1087,6 +1092,12 @@ function showAuth(message){
   setAuthMode(AUTH_MODE);
   setTimeout(function(){document.getElementById("authUsername").focus();},0);
 }
+function enterGuest(){
+  AUTH.ready=true;
+  AUTH.user=null;
+  document.getElementById("authModal").hidden=true;
+  resetForUser();
+}
 function setAuthMode(mode){
   AUTH_MODE=mode;
   var registering=mode==="register";
@@ -1131,15 +1142,15 @@ async function initializeAuth(){
     return;
   }
   var token=localStorage.getItem(AUTH_TOKEN_KEY);
-  if(!token){showAuth();return;}
+  if(!token){enterGuest();return;}
   try{
     var response=await NATIVE_FETCH("/api/v1/auth/me",{headers:{Authorization:"Bearer "+token}});
     if(response.ok){completeAuth(Object.assign(await response.json(),{token:token}));return;}
     if(response.status===401||response.status===403)localStorage.removeItem(AUTH_TOKEN_KEY);
-    showAuth(response.status>=500?"登录服务暂时不可用，请稍后重试":"登录状态已失效，请重新登录");
+    enterGuest();
   }catch(e){
-    // 网络故障不删除仍可能有效的 Token。
-    showAuth("暂时无法连接登录服务，请稍后重试");
+    // 网络故障不删除仍可能有效的 Token；先以访客进入，不弹登录遮罩。
+    enterGuest();
   }
 }
 async function login(){
@@ -1164,12 +1175,12 @@ document.getElementById("authLogin").addEventListener("click",login);
 document.getElementById("authRegister").addEventListener("click",function(){setAuthMode(AUTH_MODE==="register"?"login":"register");});
 document.getElementById("authPassword").addEventListener("keydown",function(e){if(e.key==="Enter")login();});
 document.getElementById("accountButton").addEventListener("click",function(){
-  if(!AUTH.ready){showAuth();return;}
+  if(!AUTH.user){showAuth();return;}
   if(MOCK)return;
   if(window.confirm("退出当前账号？")){
     localStorage.removeItem(AUTH_TOKEN_KEY);
     document.getElementById("authPassword").value="";
-    location.reload();
+    enterGuest();
   }
 });
 
@@ -1258,20 +1269,20 @@ document.querySelectorAll(".suggest").forEach(function(btn){
   });
 });
 
-var skillStockBtn=document.getElementById("skillStock");
-if(skillStockBtn){
-  skillStockBtn.addEventListener("click",function(){
-    if(skillEnabled(STOCK_SKILL))setSkillEnabled(STOCK_SKILL,false,"off");
-    else showPage("plugins");
+var skillGotoPlugins=document.getElementById("skillGotoPlugins");
+if(skillGotoPlugins){
+  skillGotoPlugins.addEventListener("click",function(){showPage("plugins");});
+}
+var chipEnabled=document.getElementById("chipEnabled");
+if(chipEnabled){
+  chipEnabled.addEventListener("click",function(e){
+    if(e.target.closest("#chipClose")){
+      setSkillEnabled(STOCK_SKILL,false,"off");
+      return;
+    }
+    showPage("plugins");
   });
 }
-function bindGotoPlugins(id){
-  var el=document.getElementById(id);
-  if(el)el.addEventListener("click",function(){showPage("plugins");});
-}
-bindGotoPlugins("skillGotoPlugins");
-bindGotoPlugins("dockPlugins");
-bindGotoPlugins("navPlugins");
 var navProfile=document.getElementById("navProfile");
 if(navProfile)navProfile.addEventListener("click",function(){void openProfileModal({resumeAfter:false});});
 var btnBackChat=document.getElementById("btnBackChat");
@@ -1292,13 +1303,6 @@ if(btnEnableAndChat){
     showPage("chat");
     input.placeholder="股票分析已启用，直接提问即可";
     input.focus();
-  });
-}
-var chipEnabled=document.getElementById("chipEnabled");
-if(chipEnabled){
-  chipEnabled.addEventListener("click",function(e){
-    if(e.target.closest("#chipClose")){setSkillEnabled(STOCK_SKILL,false,"off");return;}
-    showPage("plugins");
   });
 }
 

@@ -115,6 +115,11 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
     response.end();
     return;
   }
+  if (requestPath === "/skills") {
+    response.writeHead(302, { Location: "/skills/" });
+    response.end();
+    return;
+  }
   if (requestPath === "/workspace" || requestPath === "/workspace/") {
     response.writeHead(301, { Location: "/agent" });
     response.end();
@@ -128,6 +133,11 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
   else if (requestPath.startsWith("/docs/")) {
     const docPath = requestPath.slice("/docs/".length);
     target = "/docs/" + (docPath.endsWith(".html") || docPath.includes(".") ? docPath : docPath + ".html");
+  }
+  else if (requestPath === "/skills" || requestPath === "/skills/") target = "/skills/index.html";
+  else if (requestPath.startsWith("/skills/")) {
+    const skillPath = requestPath.slice("/skills/".length);
+    target = "/skills/" + (skillPath.endsWith(".html") || skillPath.includes(".") ? skillPath : skillPath + ".html");
   }
   const decodedPath = decodeURIComponent(target);
   const relativePath = decodedPath.replace(/^[/\\]+/, "");

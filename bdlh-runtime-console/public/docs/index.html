@@ -3,71 +3,172 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>グリッドユニバース研究所 · 文档中心</title>
-<link rel="stylesheet" href="docs.css">
+<meta name="color-scheme" content="light">
+<title>架构概览 · グリッドユニバース研究所</title>
+<link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <div class="docs-top">
   <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
-  <span class="crumb">DOCS</span>
+  <div class="docs-top-links">
+    <a href="/skills/">Skills 试用</a>
+    <a href="/agent">工作站</a>
+  </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
 <div class="docs-layout">
   <nav class="docs-nav" id="docsNav">
-    <h4>开始</h4>
+    <h4>文档</h4>
     <ul>
-      <li><a href="/docs/" class="active">文档中心</a></li>
-    </ul>
-    <h4>系统</h4>
-    <ul>
-      <li><a href="/docs/agents">Agent 与路由</a></li>
-      <li><a href="/docs/skill">Skill 接入规范</a></li>
-    </ul>
-    <h4>研究入口</h4>
-    <ul>
-      <li><a href="/agent">Agent 工作站</a></li>
-      <li><a href="/skill-dashboard.html">Skill 生态</a></li>
+      <li>
+        <a href="/docs/" class="active">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="#modules">业务模块</a></li>
+          <li><a href="#architecture">整体架构</a></li>
+          <li><a href="#flow">请求链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents">Agent 与路由</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/agents#roles">角色分工</a></li>
+          <li><a href="/docs/agents#domain">领域分析</a></li>
+          <li><a href="/docs/agents#route">路由判断</a></li>
+          <li><a href="/docs/agents#sse">对话输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill">Skill 接入规范</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/skill#stock-skill">Stock Skill</a></li>
+          <li><a href="/docs/skill#web-search-skill">DeepSearch</a></li>
+          <li><a href="/docs/skill#errors">错误与重试</a></li>
+          <li><a href="/docs/skill#checklist">接入清单</a></li>
+        </ul>
+      </li>
     </ul>
   </nav>
   <main class="docs-main">
     <a class="back-link" href="/">← 返回首页</a>
-    <h1>グリッドユニバース研究所 · 文档中心</h1>
-    <p class="lead">理解 Agent、Skill 和研究流程，快速开始一次可验证的研究。</p>
+    <div class="crumb-inline">文档 <span>/</span> 架构概览</div>
+    <h1>架构概览</h1>
+    <p class="lead">生产系统按「内核能力」与「金融 Domain」拆分。本页说明模块边界、主链路与如何选择入口。</p>
+    <div class="page-toc">
+      <a href="#modules">业务模块</a>
+      <a href="#architecture">整体架构</a>
+      <a href="#flow">请求链路</a>
+    </div>
 
     <div class="doc-grid">
       <div class="doc-card">
+        <span class="mod-tag">GUIDE</span>
         <h3>Agent 与路由</h3>
-        <p>普通问答、领域分析、ReAct、Gate、记忆与 SSE 输出。</p>
+        <p>普通问答、领域分析、Gate、记忆与 SSE 输出。</p>
         <a href="/docs/agents">阅读 →</a>
       </div>
       <div class="doc-card">
+        <span class="mod-tag">GUIDE</span>
         <h3>Skill 接入规范</h3>
-        <p>Stock Skill 与 Web Search Skill 的用途、接口、认证、错误处理和调用边界。</p>
+        <p>Stock Skill 与 DeepSearch 的用途、边界与调用约定。</p>
         <a href="/docs/skill">阅读 →</a>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">TRY</span>
+        <h3>Skills 试用</h3>
+        <p>在独立白底页试用 Stock Skill / DeepSearch。</p>
+        <a href="/skills/">去试用 →</a>
       </div>
     </div>
 
-    <h2>系统概览</h2>
+    <h2 id="modules">业务模块</h2>
+    <div class="doc-grid">
+      <div class="doc-card">
+        <span class="mod-tag">FRONTEND</span>
+        <h3>Runtime Console</h3>
+        <p>首页、工作站、文档与 Skill 试用入口。浏览器只访问同源 <code>/api/</code>。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">KERNEL</span>
+        <h3>Python Orchestrator</h3>
+        <p>认知编排、Domain 调度、Capability 网关、Guardrail、SSE 与 Pause/Resume。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">DOMAIN</span>
+        <h3>Finance Runtime</h3>
+        <p>金融 Skill 宿主：校验请求、选 Skill、收集 Observation、组装领域结果。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">DATA</span>
+        <h3>Java Data Plane</h3>
+        <p>认证、用户事实、会话/运行索引、任务与 Registry；Orchestrator 不直连业务库。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">SKILL</span>
+        <h3>Stock Skill</h3>
+        <p>stock-research、portfolio-health、suitability-evaluation 等确定性金融计算。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">SKILL</span>
+        <h3>DeepSearch</h3>
+        <p>Web Search Adapter：新闻/网页/舆情结构化检索，失败可降级。</p>
+      </div>
+    </div>
+
+    <h3>模块边界</h3>
+    <table>
+      <tr><th>模块</th><th>负责</th><th>不负责</th></tr>
+      <tr><td>Cognitive Orchestrator</td><td>选行动、追问、调用 Domain</td><td>直连原始工具或供应商</td></tr>
+      <tr><td>Finance Runtime</td><td>金融 Skill 与证据组装</td><td>最终聊天文案</td></tr>
+      <tr><td>Stock / DeepSearch</td><td>确定性计算 / 外部证据</td><td>代替模型下结论</td></tr>
+      <tr><td>Java Data Plane</td><td>身份、用户事实、持久化</td><td>领域研判逻辑</td></tr>
+    </table>
+
+    <h2 id="architecture">整体架构</h2>
+    <p>唯一产品路径：Cognitive → Domain Dispatcher → Finance Runtime → Skill / Capability → Observation → SSE。</p>
+    <div class="flow">Nginx / API Gateway
+  → Python FastAPI（Cognitive Orchestrator）
+  → Domain Dispatcher
+  → Finance Runtime（Skill 宿主）
+  → Stock Skill / DeepSearch / MCP / Java Data API
+  → Observation / Evidence
+  → Communication Plan
+  → SSE / JSON</div>
+
+    <h3>生产单元</h3>
+    <table>
+      <tr><th>单元</th><th>角色</th></tr>
+      <tr><td>Nginx</td><td>TLS、路由、SSE、限流</td></tr>
+      <tr><td>Python Analysis</td><td>通用编排内核 + finance 域</td></tr>
+      <tr><td>Java Data Plane</td><td>认证、用户事实、状态持久化</td></tr>
+      <tr><td>PostgreSQL</td><td>业务 / runtime / registry / memory schema</td></tr>
+      <tr><td>MCP / Web Search / LLM</td><td>外部数据、证据补充、理解与表达</td></tr>
+    </table>
+    <div class="note"><strong>边界：</strong>公网只暴露 Nginx。Python、Java、搜索、数据库与消息组件走内网，不直接对公网监听。</div>
+
+    <h2 id="flow">请求链路</h2>
+    <p>前端稳定只传 <code>sessionId</code> + <code>message</code>，身份走 JWT。编排路径固定为 <code>cognitive_finance</code>。</p>
     <div class="flow">用户问题
-  → Agent（路由判断：普通问答 / 领域分析）
-  → Skill（行情、指标、回测、热度等结构化计算）
-  → 模型（本地解释 / 付费正式研判）
+  → 识别研究对象与意图
+  → Cognitive 选择行动（RESPOND / ASK_USER / INVOKE_DOMAIN）
+  → Finance Runtime 选择 Skill
+  → Capability 拉取数据并转为 Observation
+  → Stock Skill / DeepSearch 执行
+  → 校验完整性、时间与来源
+  → 模型解释（必要时付费研判）
   → 结论 + 依据 + 风险 + 数据时间</div>
 
-    <div class="note"><strong>边界：</strong>Skill 是确定性的数据和计算层；调用 Skill 不等于调用付费大模型。只有在需要把结构化结果转成正式研判结论时才调用付费模型。</div>
-
-    <h2>如何选择</h2>
+    <h3>如何选择</h3>
     <table>
       <tr><th>你需要</th><th>入口</th></tr>
-      <tr><td>普通问答、资料整理、解释概念</td><td><a href="/agent?name=general">通用 Agent</a></td></tr>
-      <tr><td>标的 / 组合 / 板块 / 量化分析</td><td><a href="/agent?name=stock">标的研究</a></td></tr>
-      <tr><td>直接调用 Skill 接口</td><td><a href="/docs/skill">Skill 接入规范</a></td></tr>
+      <tr><td>普通问答、资料整理、解释概念</td><td><a href="/agent?name=general">通用研究</a></td></tr>
+      <tr><td>标的 / 组合 / 板块 / 量化分析</td><td><a href="/skills/#stock">Stock Skill 试用</a></td></tr>
+      <tr><td>新闻 / 舆情 / 核验</td><td><a href="/skills/#deepsearch">DeepSearch 试用</a></td></tr>
+      <tr><td>直接看接口约定</td><td><a href="/docs/skill">Skill 接入规范</a></td></tr>
     </table>
   </main>
 </div>
 <script>
-  document.getElementById("menuBtn").addEventListener("click",()=>{
+  document.getElementById("menuBtn").addEventListener("click", () => {
     document.getElementById("docsNav").classList.toggle("open");
   });
 </script>

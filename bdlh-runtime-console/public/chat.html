@@ -35,11 +35,6 @@
       金融资料
     </button>
 
-    <button class="nav-item" id="navPlugins" type="button">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"/></svg>
-      插件
-    </button>
-
     <div class="sessions-label">聊天</div>
     <div class="sessions" id="sessionList"></div>
 
@@ -55,7 +50,7 @@
   <!-- ===== 主区 ===== -->
   <main class="main">
     <!-- 对话视图 -->
-    <section class="view on" id="viewChat">
+    <section class="view on is-empty" id="viewChat">
       <header class="topbar">
         <button class="icon-btn mobile-menu" id="mobileMenu" type="button" aria-label="菜单">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
@@ -64,45 +59,40 @@
         <span class="topbar-model">GRID</span>
       </header>
 
-      <div class="scroll" id="scroll">
-        <div class="hero" id="hero">
-          <h1>准备好了，随时开始。</h1>
-          <p>通用 Agent Runtime。有问题尽管问；需要深度能力时，再启用插件。</p>
-          <div class="skill-row" id="heroSkills">
-            <button class="skill-chip" type="button" id="skillStock" data-skill="finance.stock-research">
-              <span class="ic" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6"/></svg>
-              </span>
-              股票分析
-            </button>
-            <button class="skill-chip" type="button" id="skillGotoPlugins">管理插件</button>
-            <button class="skill-chip soon" type="button" disabled>更多即将推出</button>
+      <div class="chat-stage" id="chatStage">
+        <div class="scroll" id="scroll">
+          <div class="hero" id="hero">
+            <h1>准备好了，随时开始。</h1>
+            <p>通用 Agent Runtime。有问题尽管问；需要深度能力时，再启用插件。</p>
+            <div class="skill-row" id="heroSkills">
+              <button class="skill-chip" type="button" id="skillGotoPlugins">管理插件</button>
+              <button class="skill-chip soon" type="button" disabled>更多即将推出</button>
+            </div>
           </div>
+
+          <div class="messages" id="messages"></div>
         </div>
 
-        <div class="messages" id="messages"></div>
-      </div>
-
-      <div class="composer-wrap">
-        <div class="plugin-tray" id="pluginTray">
-          <button class="plugin-chip" type="button" id="dockPlugins">管理插件</button>
-          <button class="plugin-chip on" type="button" id="chipEnabled" hidden>
-            <span class="dot"></span>
-            股票分析 · 已启用
-            <span class="x" id="chipClose" aria-label="关闭股票分析">×</span>
-          </button>
-          <span class="ro-tag" id="roTag" hidden>READ-ONLY</span>
-        </div>
-        <form class="composer" id="composer">
-          <textarea id="input" rows="1" placeholder="有问题，尽管问…" autofocus></textarea>
-          <div class="composer-bar">
-            <span class="composer-tip">Enter 发送 · Shift + Enter 换行</span>
-            <button class="send" id="sendBtn" type="submit" aria-label="发送">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <div class="composer-wrap">
+          <div class="plugin-tray" id="pluginTray" hidden>
+            <button class="plugin-chip on" type="button" id="chipEnabled">
+              <span class="dot"></span>
+              股票分析 · 已启用
+              <span class="x" id="chipClose" aria-label="关闭股票分析">×</span>
             </button>
+            <span class="ro-tag" id="roTag">READ-ONLY</span>
           </div>
-        </form>
-        <div class="foot-note">由 Runtime 编排生成，仅供参考</div>
+          <form class="composer" id="composer">
+            <textarea id="input" rows="1" placeholder="有问题，尽管问…" autofocus></textarea>
+            <div class="composer-bar">
+              <span class="composer-tip">Enter 发送 · Shift + Enter 换行</span>
+              <button class="send" id="sendBtn" type="submit" aria-label="发送">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </button>
+            </div>
+          </form>
+          <div class="foot-note">由 Runtime 编排生成，仅供参考</div>
+        </div>
       </div>
 
       <button class="to-bottom" id="toBottom" type="button" aria-label="回到底部">

@@ -99,7 +99,7 @@ Runtime 资格上限、默认 entitlement 和默认预算改为单一配置；�
 
 - seed 是新项目完整初始目录，不使用 `ON CONFLICT DO NOTHING` 承担旧库合并。
 - seed 只引用最终八张表和最终字段。
-- `stock-research` 默认启用；`portfolio-health`、`suitability-evaluation` 默认关闭。
+- `stock-research`、`portfolio-health` 默认启用；`suitability-evaluation` 默认关闭（Suitability 仍可由 `requires_financial_snapshot` 请求路径驱动）。
 - `plugin-contract-probe` 和 `plugin_probe.run_contract_check` 不进入当前业务种子。
 - `research.deep_search` 是否登记由 ADR-016 当前决定；本任务不修改其内部执行策略。
 

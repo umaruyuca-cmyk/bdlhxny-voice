@@ -1,17 +1,14 @@
 """Skill 与 Domain 的自描述契约模型（ADR-010）。
 
-本模块是 ADR-010 冻结字段表的代码落点。``SkillManifest`` 描述单个 Skill 的
-输入、输出、权限、工具面、数据条件、预算、降级、幂等与观测；``DomainDescriptor``
-描述一个 Domain 声明支持哪些意图、当前启用哪些、挂载哪些 Skill。
+``SkillManifest`` / ``DomainDescriptor`` 是 Registry Snapshot 的运行时视图模型；
+实例数据必须由 Snapshot 投影，不得在业务代码中手抄 Capability/Operation/Toolset。
 
 纯净度约束（ADR-009 §3.3）：本模块只允许依赖 ``domains.contracts``（通用
-``DomainOperation``）。它不得 import 任何领域实现（``domains.finance``）、
-确定性引擎（``domain``）、供应商适配（``integrations``）或 Capability 实现
-（``tools``）。能力名、Toolset 名、意图名一律以字符串形式声明，启动时由
+``DomainOperation``）。能力名、Toolset 名一律以字符串形式声明，启动时由
 ``runtime/manifest_validation.py`` 对 Capability Registry 逐项校验。
 
-manifest 是编译期注册的一等对象（Python 声明），不是运行时从磁盘/网络加载
-的配置文件（ADR-010 §3.1.1）。
+``accepted_intents`` / ``supported_intents`` / ``enabled_intents`` 保留为空兼容槽，
+不再用于业务分流（ADR-010：不以 intent 路由）。
 """
 
 from __future__ import annotations
@@ -44,9 +41,9 @@ class SkillManifest:
     request_contract: str
     """指向严格 Pydantic 模型名，如 ``"FinancialDomainRequest"``。"""
     accepted_intents: frozenset[str]
-    """该 Skill 可处理的领域意图；空集表示不由意图触发。"""
+    """已废弃作路由；应为空集。业务路径不按意图分流。"""
     input_constraints: tuple[str, ...]
-    """结构化约束，如 ``("instrument_count == 1",)``；禁止自由文本。"""
+    """结构化约束；禁止自由文本。"""
 
     # ── 输出 ──
     result_contract: str
@@ -94,26 +91,27 @@ class SkillManifest:
     """供 Guardrail 与日志断言的稳定码。"""
     stable_error_codes: frozenset[str] = field(default_factory=frozenset)
     """稳定错误码进 manifest，避免散落在实现里。"""
+    enabled: bool = True
+    """来自 Registry Skill.enabled；非 intent 路由。"""
 
 
 @dataclass(frozen=True)
 class DomainDescriptor:
     """Domain 的自描述契约（ADR-010 §4 冻结字段表）。
 
-    Dispatcher 通过 descriptor 完成路由与拒绝，因此**不需要 import 任何领域
-    枚举**——``supported_intents`` / ``enabled_intents`` 都是字符串集合，
-    ADR-009 §3.3 的内核纯净度得以保持。
+    Dispatcher 通过 descriptor 完成按 domain 分发；启用态以 Registry
+    Skill.enabled 为准，不再用 ``enabled_intents`` 做业务分流。
     """
 
     domain: str
     """稳定小写标识，如 ``"finance"``。"""
     descriptor_version: str
     status: ManifestStatus
-    supported_intents: frozenset[str]
-    """该域声明可处理的意图集合。"""
-    enabled_intents: frozenset[str]
-    """当前实际启用的子集；未启用的意图必须返回 ``ACTION_NOT_ENABLED``（ADR-010 §5）。"""
     skills: tuple[SkillManifest, ...]
-    """该域下的 SkillManifest 列表。"""
+    """该域下从 Registry 投影出的 SkillManifest 列表。"""
     request_contract: str
     outcome_contract: str
+    supported_intents: frozenset[str] = field(default_factory=frozenset)
+    """已废弃作路由；保留空集兼容。"""
+    enabled_intents: frozenset[str] = field(default_factory=frozenset)
+    """已废弃作路由；启用态以 Registry Skill.enabled 为准。"""

@@ -3,31 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <title>Agent 与路由 · グリッドユニバース研究所</title>
-<link rel="stylesheet" href="docs.css">
+<link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <div class="docs-top">
   <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
-  <span class="crumb">DOCS / AGENTS</span>
+  <div class="docs-top-links">
+    <a href="/skills/">Skills 试用</a>
+    <a href="/agent">工作站</a>
+  </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
 <div class="docs-layout">
   <nav class="docs-nav" id="docsNav">
-    <h4>开始</h4>
+    <h4>文档</h4>
     <ul>
-      <li><a href="/docs/">文档中心</a></li>
-    </ul>
-    <h4>系统</h4>
-    <ul>
-      <li><a href="/docs/agents" class="active">Agent 与路由</a></li>
-      <li><a href="/docs/skill">Skill 接入规范</a></li>
-    </ul>
-    <h4>研究入口</h4>
-    <ul>
-      <li><a href="/agent">Agent 工作站</a></li>
-      <li><a href="/skill-dashboard.html">Skill 生态</a></li>
+      <li>
+        <a href="/docs/">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/#modules">业务模块</a></li>
+          <li><a href="/docs/#architecture">整体架构</a></li>
+          <li><a href="/docs/#flow">请求链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents" class="active">Agent 与路由</a>
+        <ul class="nav-sub">
+          <li><a href="#roles">角色分工</a></li>
+          <li><a href="#domain">领域分析</a></li>
+          <li><a href="#route">路由判断</a></li>
+          <li><a href="#sse">对话输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill">Skill 接入规范</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/skill#stock-skill">Stock Skill</a></li>
+          <li><a href="/docs/skill#web-search-skill">DeepSearch</a></li>
+          <li><a href="/docs/skill#errors">错误与重试</a></li>
+          <li><a href="/docs/skill#checklist">接入清单</a></li>
+        </ul>
+      </li>
     </ul>
   </nav>
   <main class="docs-main">
@@ -35,7 +53,7 @@
     <h1>Agent 与路由</h1>
     <p class="lead">理解 Agent、Skill、模型各自的职责，以及"领域分析"在什么情况下被触发。</p>
 
-    <h2>角色分工</h2>
+    <h2 id="roles">角色分工</h2>
     <table>
       <tr><th>名称</th><th>作用</th></tr>
       <tr><td>通用 Agent</td><td>处理普通问答、资料整理、解释和不需要付费分析的请求。</td></tr>
@@ -46,7 +64,7 @@
       <tr><td>付费分析模型</td><td>仅在满足正式分析条件且 Skill 数据完整时调用。</td></tr>
     </table>
 
-    <h2>什么是"领域分析"</h2>
+    <h2 id="domain">什么是"领域分析"</h2>
     <p>领域分析不是另一个无法解释的 Agent 名称，也不是普通聊天的换皮。它表示：</p>
     <blockquote class="note"><strong>针对某一类研究对象和专业问题，使用固定的路由、数据源、Skill、校验规则和输出模板，形成可重复的研究流程。</strong></blockquote>
     <p>当前领域分析对象包括：</p>
@@ -83,7 +101,7 @@
       <li>用户没有要求正式分析，且问题可以由本地模型直接回答。</li>
     </ul>
 
-    <h2>路由判断原则</h2>
+    <h2 id="route">路由判断原则</h2>
     <div class="flow">普通问答       → 通用 Agent + 本地模型
 单值/行情查询  → Stock Agent 轻量数据查询，不自动进入付费分析
 实时 K 线      → Stock Agent + 对应行情数据接口
@@ -92,7 +110,7 @@
 新闻/舆情      → Web Search Wrapper → 本地模型整理</div>
     <div class="note"><strong>关键：</strong>调用 Skill 本身不等于调用付费大模型。Skill 是确定性的数据和计算层；只有在需要将结构化结果转成正式研判结论时，才根据 Route/Gate 结果调用付费模型。</div>
 
-    <h2>对话输出（SSE）</h2>
+    <h2 id="sse">对话输出（SSE）</h2>
     <p>工作站通过 <code>POST /api/v1/chat/stream</code> 接收统一 SSE 事件：<code>status</code>、<code>agent_run</code>、<code>token</code>、<code>ask</code>、<code>clarification</code>、<code>done</code>、<code>error</code> 等。Agent 负责思考编排，Skill 负责执行专业计算，模型负责解释结果；三者不是三个重复的聊天机器人。</p>
     <div class="note"><strong>开发提示：</strong>API 联调台属于内部开发工具，不在公共导航中展示。需要调试 SSE 时直接访问部署环境的 <code>/api-console.html</code>。</div>
   </main>

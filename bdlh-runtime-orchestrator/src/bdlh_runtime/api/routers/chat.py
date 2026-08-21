@@ -14,6 +14,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
 from bdlh_runtime.cognitive.contracts import InputEvent
+from bdlh_runtime.memory import MemoryWriter, recall_semantic_memory
 from bdlh_runtime.runtime.run_registry import RunLocation
 from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
 from bdlh_runtime.runtime.turn_router import (
@@ -23,6 +24,7 @@ from bdlh_runtime.runtime.turn_router import (
     route_turn,
 )
 
+from ..checkpoint_persistence import load_resume_checkpoint, persist_execution_checkpoint
 from ..context import ApiContext
 from ..projections import CognitiveExecutionObserverAdapter, chat_answer_text, cognitive_state
 from ..schemas import ChatRequest
@@ -107,6 +109,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                     application.run_control.clear(abandoned)
             run_id = str(uuid4())
             routing_reason = f"TURN_NEW:{route.reason}"
+            resume_checkpoint_id = None
             logger.info(
                 "turn_router decision=new_turn abandoned=%s new_run=%s reason=%s session_id=%s",
                 abandoned,
@@ -117,6 +120,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         elif route.decision == TurnDecision.RESUME:
             run_id = str(session.pending_run_id)
             routing_reason = f"TURN_RESUME:{route.reason}"
+            resume_checkpoint_id = session.pending_checkpoint_id
             chat_sessions.set_pending(
                 session.session_id,
                 user_id,
@@ -128,14 +132,16 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 awaiting_route_confirm=False,
             )
             logger.info(
-                "turn_router decision=resume run_id=%s reason=%s session_id=%s",
+                "turn_router decision=resume run_id=%s reason=%s session_id=%s checkpoint_id=%s",
                 run_id,
                 route.reason,
                 session.session_id,
+                resume_checkpoint_id,
             )
         else:
             run_id = str(uuid4())
             routing_reason = "COGNITIVE_ONLY"
+            resume_checkpoint_id = None
             logger.info(
                 "runtime_path_selected path=%s reason=%s session_id=%s",
                 COGNITIVE_RUNTIME_PATH,
@@ -168,11 +174,22 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                     run_id=run_id,
                     thread_id=session.session_id,
                     user_id=user_id,
+                    checkpoint_id=resume_checkpoint_id if route.decision == TurnDecision.RESUME else None,
                     runtime_path=COGNITIVE_RUNTIME_PATH,
                 )
             )
         if application.run_control is not None:
             application.run_control.clear(run_id)
+
+        resume_checkpoint = None
+        if route.decision == TurnDecision.RESUME:
+            resume_checkpoint = load_resume_checkpoint(
+                application=application,
+                store=ctx.store,
+                run_id=run_id,
+                user_id=str(user_id),
+                checkpoint_id=resume_checkpoint_id,
+            )
 
         async def cognitive_chat_event_stream() -> AsyncIterator[str]:
             yield encode_event(
@@ -185,6 +202,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                     "runtimePath": COGNITIVE_RUNTIME_PATH,
                     "routingReason": routing_reason,
                     "turnDecision": route.decision.value,
+                    "checkpointId": resume_checkpoint.checkpoint_id if resume_checkpoint else None,
                 },
             )
             yield encode_event(
@@ -194,6 +212,12 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                     "type": "status",
                     "step": "classifying",
                 },
+            )
+            memory_recall = await recall_semantic_memory(
+                application.memory_store,
+                user_id=str(user_id),
+                query=cognitive_message,
+                limit=5,
             )
             try:
                 execution = await application.cognitive_application.run(
@@ -205,6 +229,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         message=cognitive_message,
                     ),
                     observer=CognitiveExecutionObserverAdapter(progress),
+                    checkpoint=resume_checkpoint,
                 )
             except Exception:
                 logger.exception("Cognitive 聊天执行失败 run_id=%s", run_id)
@@ -219,19 +244,29 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 )
                 return
 
+            if memory_recall.degraded:
+                yield encode_event(
+                    "message",
+                    {
+                        "schema_version": "1.0",
+                        "type": "status",
+                        "step": "memory_degraded",
+                        "limitation": memory_recall.limitation or "semantic_memory_degraded",
+                    },
+                )
+
             response = execution.response
-            ctx.store.save(run_id, user_id, cognitive_state(run_id, session.session_id, response, user_id))
             paused = "PAUSED_BY_USER" in response.audit_codes
             if response.response_kind == "ASK_USER":
-                chat_sessions.set_pending(
-                    session.session_id,
-                    user_id,
+                checkpoint_id = persist_execution_checkpoint(
+                    application=application,
+                    store=ctx.store,
+                    chat_sessions=chat_sessions,
                     run_id=run_id,
-                    thread_id=session.session_id,
-                    checkpoint_id=None,
-                    runtime_path=COGNITIVE_RUNTIME_PATH,
+                    session_id=session.session_id,
+                    user_id=str(user_id),
+                    execution=execution,
                     pause_reason="user_pause" if paused else "system_interrupt",
-                    awaiting_route_confirm=False,
                 )
                 if paused:
                     yield encode_event(
@@ -243,6 +278,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                             "sessionId": session.session_id,
                             "status": "PAUSED_BY_USER",
                             "resumable": True,
+                            "checkpointId": checkpoint_id,
                         },
                     )
                 else:
@@ -254,6 +290,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                             "runId": run_id,
                             "sessionId": session.session_id,
                             "status": "WAITING_USER",
+                            "checkpointId": checkpoint_id,
                         },
                     )
                 yield encode_event(
@@ -276,6 +313,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         "runId": run_id,
                         "runtimePath": COGNITIVE_RUNTIME_PATH,
                         "resumable": True,
+                        "checkpointId": checkpoint_id,
                     },
                 )
                 return
@@ -309,20 +347,52 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 )
                 await asyncio.sleep(0)
             chat_sessions.add_message(session.session_id, user_id, "assistant", answer)
+            await _maybe_persist_confirmed_memory(
+                application.memory_store,
+                user_id=str(user_id),
+                run_id=run_id,
+                user_message=message,
+            )
+            ctx.store.save(
+                run_id,
+                user_id,
+                cognitive_state(run_id, session.session_id, response, user_id),
+            )
             # Esc pause 可能已写入 pending；完成路径不得盲目清掉可恢复书签。
             pause_requested = (
                 application.run_control is not None and application.run_control.is_pause_requested(run_id)
             )
             if pause_requested:
-                chat_sessions.set_pending(
-                    session.session_id,
-                    user_id,
+                from bdlh_runtime.cognitive.checkpoint import build_checkpoint
+                from bdlh_runtime.cognitive.contracts import PublicResponse
+                from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
+
+                paused_response = PublicResponse(
+                    response_kind="ASK_USER",
+                    response_structure="CLARIFICATION",
+                    message=answer,
+                    audit_codes=list(dict.fromkeys([*response.audit_codes, "PAUSED_BY_USER"])),
+                )
+                checkpoint = execution.checkpoint or build_checkpoint(
                     run_id=run_id,
-                    thread_id=session.session_id,
-                    checkpoint_id=None,
-                    runtime_path=COGNITIVE_RUNTIME_PATH,
+                    user_id=str(user_id),
+                    state=execution.state,
                     pause_reason="user_pause",
-                    awaiting_route_confirm=False,
+                    resume_cursor="select",
+                )
+                persist_execution_checkpoint(
+                    application=application,
+                    store=ctx.store,
+                    chat_sessions=chat_sessions,
+                    run_id=run_id,
+                    session_id=session.session_id,
+                    user_id=str(user_id),
+                    execution=CognitiveExecution(
+                        state=execution.state,
+                        response=paused_response,
+                        checkpoint=checkpoint,
+                    ),
+                    pause_reason="user_pause",
                 )
             else:
                 chat_sessions.set_pending(
@@ -418,3 +488,37 @@ def _clarification_options(next_steps: list[str] | None) -> list[dict[str, str]]
         label = text if len(text) <= 28 else text[:27] + "…"
         options.append({"label": label, "message": text})
     return options
+
+
+def _confirmed_soft_preference(message: str) -> str | None:
+    """仅当用户明确要求「确认记住」软偏好时提取；禁止把账本事实当记忆。"""
+    text = (message or "").strip()
+    if not text:
+        return None
+    markers = ("确认记住", "请记住我的偏好", "记住这个偏好", "confirm remember")
+    if not any(marker in text.lower() if marker.isascii() else marker in text for marker in markers):
+        return None
+    if any(token in text for token in ("持仓", "账户余额", "风险等级", "下单", "password")):
+        return None
+    return text[:1200]
+
+
+async def _maybe_persist_confirmed_memory(
+    store: object | None,
+    *,
+    user_id: str,
+    run_id: str,
+    user_message: str,
+) -> None:
+    if store is None:
+        return
+    content = _confirmed_soft_preference(user_message)
+    if content is None:
+        return
+    result = await MemoryWriter(store).persist(
+        user_id=user_id,
+        content=content,
+        metadata={"knowledge_type": "confirmed", "run_id": run_id},
+    )
+    if result.degraded:
+        logger.warning("memory_persist_degraded run_id=%s reason=%s", run_id, result.skipped_reason)

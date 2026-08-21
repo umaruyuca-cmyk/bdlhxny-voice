@@ -71,7 +71,8 @@ class FinanceWakeup:
         self.status = status
         self.events: list[InputEvent] = []
 
-    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+    async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
+        del checkpoint
         self.events.append(event)
         research = StockResearchResult(
             instrument=FinancialInstrument(symbol="600519"),

@@ -1,9 +1,8 @@
-"""理解节点输出契约与 Goal 覆盖单元（重写 §4）。
+"""理解节点输出契约与 Goal 覆盖单元。
 
 理解 LLM 输出 ``UnderstandOutput``：goals[] 立案、实体、约束、缺口、
-是否需要外部工具。**禁止**输出 route / skill_id / analysis_type /
-plan_steps / 任何 capability 或工具名——理解节点 ``tools = []``，
-写工具名即选工具（硬规则 2）。
+是否需要外部工具。**禁止**输出 route / skill_id / plan_steps /
+任何 capability 或工具名——理解节点 ``tools = []``，写工具名即选工具。
 
 ``candidate_capabilities`` / ``observation_refs`` 由控制器回填，
 LLM 不写。
@@ -17,8 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 RequestedTopic = Literal["news", "money_flow", "industry", "web_research"]
 
-#: 禁止理解层输出的字段名（重写硬规则 2 / §4）
-FORBIDDEN_UNDERSTAND_FIELDS = ("route", "skill_id", "analysis_type", "plan_steps")
+#: 禁止理解层输出的字段名（选工具 / 类型路由走私）
+FORBIDDEN_UNDERSTAND_FIELDS = ("route", "skill_id", "plan_steps")
 
 
 class SuccessCriterion(BaseModel):

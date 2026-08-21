@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bdlh_runtime.cognitive.topic_hints import topic_capabilities_for
 from bdlh_runtime.registry import RegistrySnapshot, dependency_closure
 
 from .goal_schema import GoalSpec
@@ -39,21 +40,22 @@ def _usable_observations(observations: list[dict[str, Any]]) -> dict[str, list[s
 
 
 def backfill_criteria(
-    snapshot: RegistrySnapshot,
+    snapshot: RegistrySnapshot | None,
     goals: list[GoalSpec],
     allowed: list[str],
 ) -> list[GoalSpec]:
-    """控制器回填：按 topic 对照表 + depends_on 闭包计算 candidate_capabilities。
+    """控制器回填：按主题覆盖提示 + depends_on 闭包计算 candidate_capabilities。
 
-    闭包能力（如 resolve）单独记录、不进 OR 集合——只要求先于主题能力 SUCCESS。
+    主题提示不发放权限；只在 allowed 内取交集。
     """
+    del snapshot
     allowed_set = set(allowed)
     updated: list[GoalSpec] = []
     for goal in goals:
         criteria = []
         for criterion in goal.success_criteria:
             if criterion.topic is not None:
-                topic_caps = [name for name in snapshot.topic_capabilities_for(criterion.topic) if name in allowed_set]
+                topic_caps = [name for name in topic_capabilities_for(criterion.topic) if name in allowed_set]
                 candidate = sorted(topic_caps)
             elif goal.needs_account:
                 candidate = sorted(name for name in allowed_set if name.startswith(_ACCOUNT_PREFIX))
@@ -70,16 +72,17 @@ def evaluate_goals(
     goals: list[GoalSpec],
     observations: list[dict[str, Any]],
     allowed: list[str],
-    snapshot: RegistrySnapshot,
+    snapshot: RegistrySnapshot | None = None,
     *,
     rule_based_fallback: bool = False,
 ) -> list[GoalSpec]:
     """对每个 Goal 做覆盖判定并回填 observation_refs / status。"""
+    del snapshot  # 主题覆盖已迁出 Registry；保留参数兼容旧调用
     allowed_set = set(allowed)
     usable = _usable_observations(observations)
     updated: list[GoalSpec] = []
     for goal in goals:
-        status, refs = _evaluate_one(goal, usable, allowed_set, snapshot, rule_based_fallback)
+        status, refs = _evaluate_one(goal, usable, allowed_set, rule_based_fallback)
         updated.append(goal.model_copy(update={"status": status, "observation_refs": refs}))
     return updated
 
@@ -88,7 +91,6 @@ def _evaluate_one(
     goal: GoalSpec,
     usable: dict[str, list[str]],
     allowed_set: set[str],
-    snapshot: RegistrySnapshot,
     rule_based_fallback: bool,
 ) -> tuple[str, list[str]]:
     # ── 分支 1：账户 / 画像 Goal（RequestedTopic 无此主题，靠标记判定）──
@@ -111,7 +113,7 @@ def _evaluate_one(
             candidates = criterion.candidate_capabilities
             if not candidates:
                 # 主题能力全部不在 allowed → 资格缺口
-                topic_caps = snapshot.topic_capabilities_for(criterion.topic)
+                topic_caps = topic_capabilities_for(criterion.topic)
                 if topic_caps and not (set(topic_caps) & allowed_set):
                     any_blocked = True
                     continue

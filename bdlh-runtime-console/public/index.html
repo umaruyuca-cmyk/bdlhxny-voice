@@ -324,23 +324,6 @@
         border-color: rgba(255, 255, 255, 0.18);
         transform: translateY(-1px);
       }
-      .nav-cta {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 38px;
-        padding: 0 18px;
-        border-radius: 10px;
-        background: var(--accent-grad);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 600;
-        transition: box-shadow 0.2s, transform 0.2s;
-      }
-      .nav-cta:hover {
-        box-shadow: 0 6px 20px rgba(110, 139, 255, 0.4);
-        transform: translateY(-1px);
-      }
       .menu-toggle {
         display: none;
         width: 38px;
@@ -1061,33 +1044,7 @@
         color: #a9bcff;
       }
 
-      /* ============ Skill 生态 ============ */
-      section.skills {
-        padding: 0 0 96px;
-      }
-      .skills-wrap {
-        border: 1px solid var(--card-border);
-        border-radius: 20px;
-        background: var(--card);
-        padding: 32px;
-      }
-      .skills-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 16px;
-        margin-bottom: 24px;
-      }
-      .skills-head h3 {
-        font-size: 22px;
-        font-weight: 800;
-      }
-      .skills-head p {
-        color: var(--text-dim);
-        font-size: 14px;
-        margin-top: 4px;
-      }
+      /* ============ 白底文档面板（Skills / Docs） ============ */
       .code-link {
         display: inline-flex;
         align-items: center;
@@ -1103,68 +1060,378 @@
       .code-link:hover {
         background: rgba(125, 211, 252, 0.12);
       }
-      .skill-group-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--text-faint);
-        letter-spacing: 1px;
-        margin: 20px 0 12px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+
+      section.lite-panel {
+        padding: 0 0 72px;
+        position: relative;
+        z-index: 1;
       }
-      .skill-group-label::after {
-        content: "";
-        flex: 1;
-        height: 1px;
-        background: var(--card-border);
+      .lite-intro {
+        max-width: 1120px;
+        margin: 0 auto 20px;
+        padding: 0 24px;
       }
-      .cmd-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 14px;
+      .lite-intro .kicker {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 750;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
       }
-      .cmd {
-        border: 1px solid var(--card-border);
-        border-radius: 12px;
-        padding: 16px;
-        background: rgba(255, 255, 255, 0.02);
-        transition: all 0.2s;
+      .lite-intro h2 {
+        margin: 8px 0 6px;
+        font-size: clamp(22px, 3vw, 30px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--text);
       }
-      .cmd:hover {
-        border-color: rgba(125, 211, 252, 0.35);
-        transform: translateY(-3px);
-      }
-      .cmd code {
-        display: block;
-        font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
-        font-size: 14px;
-        font-weight: 700;
-        color: #b7c6ff;
-        margin-bottom: 8px;
-      }
-      .cmd span {
-        font-size: 13px;
+      .lite-intro p {
+        margin: 0;
         color: var(--text-dim);
+        font-size: 14px;
+        max-width: 640px;
+        line-height: 1.65;
       }
-      .cmd.connected code {
-        color: var(--green);
+      .lite-shell {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 24px;
       }
-      .cmd.coming {
-        border-style: dashed;
+      .lite-frame {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        min-height: 480px;
+        background: #ffffff;
+        color: #111827;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+      }
+      .lite-side {
+        background: #fafafa;
+        border-right: 1px solid #e5e7eb;
+        padding: 20px 12px;
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        min-height: 74px;
+        gap: 4px;
       }
-      .cmd.coming .plus {
-        font-size: 18px;
+      .lite-side .side-brand {
+        padding: 4px 12px 16px;
+        font-size: 12px;
         font-weight: 700;
-        color: var(--text-faint);
+        color: #6b7280;
+        letter-spacing: 0.04em;
+      }
+      .lite-side .side-brand strong {
+        display: block;
+        margin-top: 2px;
+        color: #111827;
+        font-size: 14px;
+        letter-spacing: 0;
+      }
+      .lite-side button,
+      .lite-side a.side-link {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 6px;
+        font: inherit;
+        font-size: 13.5px;
+        font-weight: 500;
+        color: #4b5563;
+        cursor: pointer;
+        text-decoration: none;
+        display: block;
+        position: relative;
+        transition: background 0.15s, color 0.15s;
+      }
+      .lite-side button:hover,
+      .lite-side a.side-link:hover {
+        background: #f3f4f6;
+        color: #111827;
+      }
+      .lite-side button.active,
+      .lite-side a.side-link.active {
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-weight: 650;
+      }
+      .lite-side button.active::before,
+      .lite-side a.side-link.active::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 0 2px 2px 0;
+        background: #2563eb;
+      }
+      .lite-side .side-group {
+        margin-top: 14px;
+        padding: 8px 12px 4px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #9ca3af;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .lite-main {
+        padding: 28px 32px 36px;
+        background: #fff;
+        min-width: 0;
+      }
+      .lite-crumb {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 14px;
+      }
+      .lite-crumb span {
+        color: #6b7280;
+      }
+      .lite-main h3 {
+        margin: 0 0 8px;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: #111827;
+      }
+      .lite-main .lead {
+        margin: 0 0 22px;
+        color: #6b7280;
+        font-size: 14px;
+        line-height: 1.7;
+        max-width: 58ch;
+      }
+      .lite-main h4 {
+        margin: 28px 0 10px;
+        font-size: 16px;
+        font-weight: 750;
+        color: #111827;
+      }
+      .lite-main p {
+        margin: 0 0 12px;
+        color: #4b5563;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .lite-panel-view[hidden] {
+        display: none !important;
+      }
+      .lite-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin: 8px 0 4px;
+      }
+      .lite-table th,
+      .lite-table td {
+        border: 1px solid #e5e7eb;
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .lite-table th {
+        background: #f9fafb;
+        color: #374151;
+        font-weight: 650;
+        white-space: nowrap;
+      }
+      .lite-table td {
+        color: #4b5563;
+      }
+      .lite-table tr:nth-child(even) td {
+        background: #fcfcfd;
+      }
+      .lite-table code,
+      .lite-main code {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 12px;
+        background: #f3f4f6;
+        color: #1f2937;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .lite-flow {
+        margin: 12px 0 8px;
+        padding: 14px 16px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #f9fafb;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.75;
+        color: #374151;
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+      .lite-note {
+        margin: 16px 0 0;
+        padding: 12px 14px;
+        border: 1px solid #dbeafe;
+        border-radius: 8px;
+        background: #eff6ff;
+        color: #1e40af;
+        font-size: 13px;
+        line-height: 1.65;
+      }
+      .trial-form {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 8px 0 16px;
+      }
+      .trial-form input,
+      .trial-form select {
+        flex: 1 1 220px;
+        min-width: 0;
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #fff;
+        color: #111827;
+        font: inherit;
+        font-size: 14px;
+        outline: none;
+      }
+      .trial-form input:focus,
+      .trial-form select:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+      }
+      .trial-form button {
+        height: 40px;
+        padding: 0 18px;
+        border: 0;
+        border-radius: 8px;
+        background: #2563eb;
+        color: #fff;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 650;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .trial-form button:hover {
+        background: #1d4ed8;
+      }
+      .trial-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 8px;
+      }
+      .trial-chips button {
+        appearance: none;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        color: #374151;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .trial-chips button:hover {
+        border-color: #93c5fd;
+        color: #1d4ed8;
+        background: #eff6ff;
+      }
+      .trial-meta {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin: 18px 0 8px;
+      }
+      .trial-meta div {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px 14px;
+        background: #fafafa;
+      }
+      .trial-meta span {
+        display: block;
+        font-size: 11px;
+        color: #9ca3af;
         margin-bottom: 4px;
       }
-      .cmd.coming span {
-        color: var(--text-faint);
+      .trial-meta strong {
+        display: block;
+        font-size: 13px;
+        color: #111827;
+        font-weight: 650;
+      }
+      .lite-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+      .lite-actions a {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .lite-actions a.primary {
+        background: #2563eb;
+        color: #fff;
+      }
+      .lite-actions a.primary:hover {
+        background: #1d4ed8;
+      }
+      .lite-actions a.ghost {
+        border: 1px solid #e5e7eb;
+        color: #4b5563;
+        background: #fff;
+      }
+      .lite-actions a.ghost:hover {
+        border-color: #93c5fd;
+        color: #1d4ed8;
+      }
+      .arch-modules {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin: 12px 0 4px;
+      }
+      .arch-mod {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 14px 16px;
+        background: #fff;
+      }
+      .arch-mod .mod-tag {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        color: #2563eb;
+        margin-bottom: 6px;
+      }
+      .arch-mod h5 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        font-weight: 750;
+        color: #111827;
+      }
+      .arch-mod p {
+        margin: 0;
+        font-size: 12.5px;
+        color: #6b7280;
+        line-height: 1.6;
       }
 
       /* ============ 数据収容庫（画廊） ============ */
@@ -1484,8 +1751,32 @@
         .cards {
           grid-template-columns: 1fr;
         }
-        .cmd-grid {
-          grid-template-columns: repeat(2, 1fr);
+        .lite-frame {
+          grid-template-columns: 1fr;
+        }
+        .lite-side {
+          border-right: 0;
+          border-bottom: 1px solid #e5e7eb;
+          flex-direction: row;
+          flex-wrap: wrap;
+          padding: 12px;
+        }
+        .lite-side .side-brand,
+        .lite-side .side-group {
+          width: 100%;
+        }
+        .lite-side button,
+        .lite-side a.side-link {
+          width: auto;
+          flex: 0 0 auto;
+        }
+        .lite-side button.active::before,
+        .lite-side a.side-link.active::before {
+          display: none;
+        }
+        .trial-meta,
+        .arch-modules {
+          grid-template-columns: 1fr;
         }
         .archive-grid {
           grid-template-columns: 1fr;
@@ -1501,11 +1792,8 @@
         .menu-toggle {
           display: grid;
         }
-        .nav-cta {
-          display: none;
-        }
-        .cmd-grid {
-          grid-template-columns: 1fr;
+        .lite-main {
+          padding: 20px 16px 28px;
         }
         .hero-core {
           width: 220px;
@@ -1571,17 +1859,16 @@
         </a>
         <ul class="nav-links" id="navLinks">
           <li><a href="/agent">工作站</a></li>
-          <li><a href="/skill-dashboard.html">Skills</a></li>
-          <li><a href="/docs">文档</a></li>
+          <li><a href="/skills/">Skills</a></li>
+          <li><a href="/docs/">文档</a></li>
           <li><a href="#gallery">收藏</a></li>
         </ul>
         <div class="nav-actions">
-          <a class="icon-btn" href="https://github.com/" target="_blank" rel="noopener" aria-label="GitHub">
+          <a class="icon-btn" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.17c-3.2.7-3.87-1.38-3.87-1.38-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.34.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.97 10.97 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.66.41.36.77 1.05.77 2.12v3.15c0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
             </svg>
           </a>
-          <a class="nav-cta" href="/agent">开始研究</a>
           <button class="menu-toggle" id="menuToggle" aria-label="菜单">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <path d="M3 6h18M3 12h18M3 18h18" />
@@ -1752,9 +2039,9 @@
             <div class="card-icon">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
             </div>
-            <h3>Skill 服务 <span class="chip-tag">可编程</span></h3>
-            <p>结构化、可独立调用的能力服务，不是第三个 Agent。通过命令驱动，可嵌入你的程序与工作流。</p>
-            <a class="card-link" href="/docs/skill">查看 Skill
+            <h3>Skill 试用 <span class="chip-tag">可执行</span></h3>
+            <p>Stock Skill 做确定性金融分析，DeepSearch 做外部证据检索。首页可直接试用，再进入工作站跑完整链路。</p>
+            <a class="card-link" href="/skills/">试用 Skill
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
             </a>
           </div>
@@ -1762,30 +2049,44 @@
       </div>
     </section>
 
-    <!-- ===== Skill 生态 ===== -->
-    <section class="skills">
-      <div class="container">
-        <div class="skills-wrap reveal">
-          <div class="skills-head">
-            <div>
-              <h3>Skill 能力 · Agent 的执行层</h3>
-              <p>当前平台已配置两类内部能力：市场分析与外部搜索。Agent 负责判断和编排，Skill 负责执行。</p>
+    <!-- ===== Skills / 文档入口 ===== -->
+    <section class="lite-panel" id="skills">
+      <div class="lite-intro reveal">
+        <div class="kicker">Explore</div>
+        <h2>Skills 试用与文档中心</h2>
+        <p>完整内容已拆成独立白底页面：试用 Stock Skill / DeepSearch，或阅读业务模块与整体架构。</p>
+      </div>
+      <div class="container reveal">
+        <div class="cards" style="margin:0">
+          <div class="card">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
             </div>
-            <a class="code-link" href="/skill-dashboard.html">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6M16 6l6 6-6 6"/></svg>
-              VIEW SKILL API
-            </a>
+            <h3>Skills 试用</h3>
+            <p>独立白底页体验 Stock Skill 与 DeepSearch。输入问题或点场景 chips，跳转工作站预填试用。</p>
+            <div style="display:flex;gap:14px;align-items:center;margin-top:18px;flex-wrap:wrap">
+              <a class="card-link" href="/skills/#stock">Stock Skill
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+              <a class="card-link" href="/skills/#deepsearch">DeepSearch
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </div>
           </div>
-          <div class="skill-group-label">已接入</div>
-          <div class="cmd-grid">
-            <a class="cmd connected" href="/skill-dashboard.html#stock">
-              <code>StockSkill</code>
-              <span>行情分析 · 个股 / 板块 / 量化 / 持仓</span>
-            </a>
-            <a class="cmd connected" href="/skill-dashboard.html#web-search">
-              <code>WebSearchSkill</code>
-              <span>外部搜索 · 新闻 / 舆情 / 讨论度证据</span>
-            </a>
+          <div class="card">
+            <div class="card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </div>
+            <h3>文档中心</h3>
+            <p>业务模块、整体架构、请求链路，以及 Agent / Skill 规范。风格与独立试用页一致。</p>
+            <div style="display:flex;gap:14px;align-items:center;margin-top:18px;flex-wrap:wrap">
+              <a class="card-link" href="/docs/">打开文档中心
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+              <a class="card-link" style="color:var(--text-faint)" href="/docs/agents">Agent 与路由
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -1923,8 +2224,8 @@
             <h4>产品</h4>
             <ul>
               <li><a href="/agent">工作站</a></li>
-              <li><a href="/skill-dashboard.html">Skill 生态</a></li>
-              <li><a href="/docs/agents">Agent 工作逻辑</a></li>
+              <li><a href="/skills/">Skill 试用</a></li>
+              <li><a href="/docs/">业务架构</a></li>
             </ul>
           </div>
           <div class="footer-col">
@@ -1938,7 +2239,7 @@
           <div class="footer-col">
             <h4>项目</h4>
             <ul>
-              <li><a href="https://github.com/" target="_blank" rel="noopener">GitHub</a></li>
+              <li><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">GitHub</a></li>
               <li><a href="/about">关于</a></li>
               <li>
                 <span class="status">
@@ -1952,7 +2253,7 @@
         <div class="footer-bottom">
           <span>© 2026 グリッドユニバース研究所 · 研究用途，仅供参考 · 感谢 SSSS.GRIDMAN / SSSS.DYNAZENON / EVANGELION 提供灵感</span>
           <div class="social">
-            <a class="icon-btn" href="https://github.com/" target="_blank" rel="noopener" aria-label="GitHub">
+            <a class="icon-btn" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.17c-3.2.7-3.87-1.38-3.87-1.38-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.34.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.97 10.97 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.66.41.36.77 1.05.77 2.12v3.15c0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
               </svg>
@@ -2173,7 +2474,6 @@
         };
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          if (!input.value.trim()) return;
           go();
         });
         document.querySelectorAll('.hero-suggest button').forEach((b) => {

@@ -122,15 +122,28 @@ class FinancialDomainRequest(DomainRequest):
     ] = Field(default_factory=set)
     instruments: list[FinancialInstrument] = Field(default_factory=list)
     requires_financial_snapshot: bool = False
+    proposed_amount: float | None = Field(default=None, ge=0)
+    proposed_weight_pct: float | None = Field(default=None, ge=0, le=100)
 
     @model_validator(mode="after")
     def validate_finance_request(self) -> FinancialDomainRequest:
         # 重写 §6.2：允许多标的对比（instruments >= 1）；每个涉及标的的 Goal
         # 必须最终有已解析 instrument（运行时由 resolve 闭包保证）。
         if (
-            self.financial_intent in {FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY}
-            and not self.instruments
-        ):
+            self.financial_intent
+            in {
+                FinancialIntent.STOCK_RESEARCH,
+                FinancialIntent.SUITABILITY,
+            }
+            or (
+                self.requires_financial_snapshot
+                and self.financial_intent
+                not in {
+                    FinancialIntent.PORTFOLIO_IMPACT,
+                    FinancialIntent.GOAL_PLANNING,
+                }
+            )
+        ) and not self.instruments:
             raise ValueError(f"{self.financial_intent} requires at least one instrument")
         return self
 
@@ -247,8 +260,15 @@ class FinancialSnapshot(DomainContractModel):
     risk_profile: RiskProfile | None = None
     goals: list[FinancialGoal] = Field(default_factory=list)
     liquidity: LiquiditySnapshot | None = None
+    # 已确认拟投入（金额或配置比例）；仅 APPROVED 规则集可达 SUITABLE
+    proposed_amount: float | None = Field(default=None, ge=0)
+    proposed_weight_pct: float | None = Field(default=None, ge=0, le=100)
     completeness: Literal["COMPLETE", "PARTIAL", "LIMITED", "UNKNOWN"] = "UNKNOWN"
     limitations: list[str] = Field(default_factory=list)
+
+    @property
+    def proposed_allocation_confirmed(self) -> bool:
+        return self.proposed_amount is not None or self.proposed_weight_pct is not None
 
     @model_validator(mode="after")
     def validate_data_mode(self) -> FinancialSnapshot:
@@ -495,8 +515,9 @@ class MarketRiskProxyThresholds(DomainContractModel):
 class SuitabilityV0RuleSet(DomainContractModel):
     """七条固定规则的版本化政策契约。
 
-    该模型只描述和校验规则配置，不代表配置已经获批。运行时只允许加载带审批引用的
-    ``APPROVED`` 实例；当前 ADR-004 仍为 ``REVIEW_CHANGES_REQUIRED``。
+    - ``DRAFT``：可跑风险匹配筛查，**不得**产出 ``SUITABLE``；
+    - ``APPROVED``：须带 approval_ref/approved_at；在已确认拟投入时可产出 ``SUITABLE``；
+    - ``REVIEW_CHANGES_REQUIRED``：禁止装配进生产引擎。
     """
 
     version: str = Field(min_length=1)

@@ -33,6 +33,28 @@ def test_health_is_liveness_only(monkeypatch):
     assert client.get("/health").status_code == 200
 
 
+def test_ready_fails_when_deep_research_enabled_without_bailian(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
+    )
+    client = TestClient(
+        _app(
+            java_api_base_url="http://127.0.0.1:8081",
+            java_data_internal_token="token",
+            jwt_secret="test-jwt-secret-with-at-least-thirty-two-bytes",
+            auth_required=True,
+            deep_research_enabled=True,
+            bailian_web_search_api_key=None,
+        )
+    )
+    response = client.get("/api/v1/ready")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "NOT_READY"
+    assert any(item["name"] == "deep_research.bailian" and not item["ok"] for item in body["checks"])
+
+
 def test_ready_ok_when_java_probe_passes(monkeypatch):
     monkeypatch.setattr(
         "bdlh_runtime.runtime.readiness.probe_java_data_plane",
@@ -124,3 +146,52 @@ def test_production_requires_internal_token():
             ),
             registry_snapshot=seeded_snapshot(),
         )
+
+
+def test_development_startup_fails_when_java_actuator_down(monkeypatch):
+    """G3：development 与 production 一样，Java 不可达则拒绝启动。"""
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.dependency_probes.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
+    )
+    with pytest.raises(ConfigurationError, match="Java Data Plane 不可达"):
+        create_application(
+            Settings(
+                environment="development",
+                java_api_base_url="http://java.example",
+                java_data_internal_token="token",
+                auth_required=False,
+            ),
+            registry_snapshot=seeded_snapshot(),
+        )
+
+
+def test_ready_503_when_development_missing_internal_token(monkeypatch):
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
+    )
+    settings = Settings(
+        environment="development",
+        java_api_base_url="http://java.example",
+        auth_required=False,
+    )
+    app = create_application(
+        Settings(environment="test", auth_required=False),
+        registry_snapshot=seeded_snapshot(),
+    )
+    from types import SimpleNamespace
+
+    from bdlh_runtime.runtime.readiness import evaluate_readiness
+
+    report = evaluate_readiness(
+        SimpleNamespace(
+            settings=settings,
+            capability_registry=app.capability_registry,
+            cognitive_application=app.cognitive_application,
+        )
+    )
+    assert report.ready is False
+    assert any(
+        item.name == "config.java_data_internal_token" and not item.ok for item in report.checks
+    )

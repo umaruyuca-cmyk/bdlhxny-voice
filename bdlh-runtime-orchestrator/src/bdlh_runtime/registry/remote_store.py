@@ -1,4 +1,4 @@
-"""Java Data Plane backed, read-only Registry snapshot store."""
+"""Java Data Plane backed, read-only Registry snapshot store（最终八表）。"""
 
 from __future__ import annotations
 
@@ -7,15 +7,11 @@ from typing import Any
 from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
 
 from .models import (
-    BudgetRecord,
     CapabilityRecord,
-    EntitlementRecord,
-    FastpathRouteRecord,
     OperationRecord,
     RegistrySnapshot,
     SkillRecord,
     ToolsetRecord,
-    TopicCapabilityRecord,
 )
 
 
@@ -58,25 +54,6 @@ def _snapshot(payload: dict[str, Any]) -> RegistrySnapshot:
         skill_capabilities.setdefault(str(row["skill_id"]), set()).add(
             (str(row["capability_name"]), bool(row["required"]))
         )
-    routes = {
-        str(row["name"]): FastpathRouteRecord(
-            name=str(row["name"]),
-            score_threshold=float(row["score_threshold"]),
-            disposition=str(row["disposition"]),
-            response=row.get("response"),
-        )
-        for row in _rows(payload, "fastpathRoutes")
-    }
-    for row in _rows(payload, "fastpathUtterances"):
-        route = routes.get(str(row["route_name"]))
-        if route is not None:
-            routes[route.name] = FastpathRouteRecord(
-                name=route.name,
-                score_threshold=route.score_threshold,
-                disposition=route.disposition,
-                response=route.response,
-                utterances=route.utterances + (str(row["utterance"]),),
-            )
     return RegistrySnapshot(
         operations=frozenset(
             OperationRecord(code=str(row["code"]), description=str(row["description"]))
@@ -96,9 +73,7 @@ def _snapshot(payload: dict[str, Any]) -> RegistrySnapshot:
                 requires_authenticated_user=bool(row["requires_authenticated_user"]),
                 required_arguments=frozenset(row.get("required_arguments") or []),
                 depends_on=frozenset(row.get("depends_on") or []),
-                output_schema=str(row["output_schema"]),
                 timeout_seconds=int(row["timeout_seconds"]),
-                cost=int(row["cost"]),
                 enabled=bool(row["enabled"]),
                 operations=frozenset(capability_operations.get(str(row["name"]), set())),
                 toolsets=frozenset(capability_toolsets.get(str(row["name"]), set())),
@@ -112,30 +87,9 @@ def _snapshot(payload: dict[str, Any]) -> RegistrySnapshot:
                 domain=str(row["domain"]),
                 status=str(row["status"]),
                 enabled=bool(row["enabled"]),
-                side_effects_empty=bool(row["side_effects_empty"]),
                 operations=frozenset(skill_operations.get(str(row["skill_id"]), set())),
                 capabilities=frozenset(skill_capabilities.get(str(row["skill_id"]), set())),
             )
             for row in _rows(payload, "skills")
-        ),
-        runtime_allowlist=frozenset(str(row["operation_code"]) for row in _rows(payload, "runtimeAllowlist")),
-        entitlements=frozenset(
-            EntitlementRecord(account_id=str(row["account_id"]), operation_code=str(row["operation_code"]))
-            for row in _rows(payload, "entitlements")
-        ),
-        fastpath_routes=frozenset(routes.values()),
-        budgets=frozenset(
-            BudgetRecord(
-                profile=str(row["profile"]),
-                react_round_limit=int(row["react_round_limit"]),
-                tool_call_limit=int(row["tool_call_limit"]),
-                subgraph_timeout_seconds=int(row["subgraph_timeout_seconds"]),
-                request_timeout_seconds=int(row["request_timeout_seconds"]),
-            )
-            for row in _rows(payload, "budgets")
-        ),
-        topic_capabilities=frozenset(
-            TopicCapabilityRecord(topic=str(row["topic"]), capability_name=str(row["capability_name"]))
-            for row in _rows(payload, "topicCapabilities")
         ),
     )

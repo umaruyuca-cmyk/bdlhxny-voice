@@ -3,37 +3,61 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <title>Skill 接入规范 · グリッドユニバース研究所</title>
-<link rel="stylesheet" href="docs.css">
+<link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <div class="docs-top">
   <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
-  <span class="crumb">DOCS / SKILL</span>
+  <div class="docs-top-links">
+    <a href="/skills/">Skills 试用</a>
+    <a href="/agent">工作站</a>
+  </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
 <div class="docs-layout">
   <nav class="docs-nav" id="docsNav">
-    <h4>开始</h4>
+    <h4>文档</h4>
     <ul>
-      <li><a href="/docs/">文档中心</a></li>
-    </ul>
-    <h4>系统</h4>
-    <ul>
-      <li><a href="/docs/agents">Agent 与路由</a></li>
-      <li><a href="/docs/skill" class="active">Skill 接入规范</a></li>
-    </ul>
-    <h4>研究入口</h4>
-    <ul>
-      <li><a href="/agent">Agent 工作站</a></li>
-      <li><a href="/skill-dashboard.html">Skill 生态</a></li>
+      <li>
+        <a href="/docs/">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/#modules">业务模块</a></li>
+          <li><a href="/docs/#architecture">整体架构</a></li>
+          <li><a href="/docs/#flow">请求链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents">Agent 与路由</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/agents#roles">角色分工</a></li>
+          <li><a href="/docs/agents#domain">领域分析</a></li>
+          <li><a href="/docs/agents#route">路由判断</a></li>
+          <li><a href="/docs/agents#sse">对话输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill" class="active">Skill 接入规范</a>
+        <ul class="nav-sub">
+          <li><a href="#stock-skill">Stock Skill</a></li>
+          <li><a href="#web-search-skill">DeepSearch</a></li>
+          <li><a href="#errors">错误与重试</a></li>
+          <li><a href="#checklist">接入清单</a></li>
+        </ul>
+      </li>
     </ul>
   </nav>
   <main class="docs-main">
     <a class="back-link" href="/docs/">← 文档中心</a>
     <h1>Skill 接入规范</h1>
     <p class="lead">当前平台由 BDLH Agent Runtime 统一编排领域 Skill 与外部能力：Finance Analysis Skill 负责确定性分析，Web Search Skill 负责外部搜索证据。</p>
+
+    <div class="lite-actions" style="margin:0 0 20px">
+      <a class="btn" href="/skills/">前往 Skills 试用中心</a>
+      <a class="btn ghost" href="/skills/#stock">试用 Stock Skill</a>
+      <a class="btn ghost" href="/skills/#deepsearch">试用 DeepSearch</a>
+    </div>
 
     <div class="note"><strong>使用边界：</strong>Skill 由平台后端统一调用，前端和普通用户不直接访问 Skill 服务，也不需要管理 Skill 注册或服务 Token。</div>
 
@@ -117,7 +141,7 @@
     </table>
     <p>服务端认证使用 <code>X-Agent-ID</code> 与 <code>X-Search-Token</code>。浏览器不得直接调用该服务，搜索结果需要经过 Agent 编排、来源整理和不确定性说明。</p>
 
-    <h2>5 · 错误、超时和重试</h2>
+    <h2 id="errors">5 · 错误、超时和重试</h2>
     <table>
       <tr><th>状态</th><th>含义</th><th>处理</th></tr>
       <tr><td>400</td><td>参数校验失败（INVALID_SYMBOL / INVALID_JSON / INVALID_POSITIONS 等）</td><td>修正请求，无需重试</td></tr>
@@ -147,7 +171,7 @@
       <li>内部能力不监听公网管理端口，仅暴露必要的服务间接口。</li>
     </ul>
 
-    <h2>8 · 接入检查清单</h2>
+    <h2 id="checklist">8 · 接入检查清单</h2>
     <ul class="checklist">
       <li>健康检查 <code>GET /health</code> 返回 UP</li>
       <li>就绪检查 <code>GET /ready</code> 返回 READY</li>

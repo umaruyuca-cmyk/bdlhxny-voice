@@ -69,8 +69,18 @@ def test_authorized_capabilities_include_deep_research_when_enabled() -> None:
             ),
         ]
     )
-    caps = authorized_capabilities_from_registry(registry, deep_research_enabled=True)
+    caps = authorized_capabilities_from_registry(
+        registry,
+        deep_research_enabled=True,
+        deep_research_infra_ready=True,
+    )
     assert DEEP_SEARCH_CAPABILITY in caps
+    blocked = authorized_capabilities_from_registry(
+        registry,
+        deep_research_enabled=True,
+        deep_research_infra_ready=False,
+    )
+    assert DEEP_SEARCH_CAPABILITY not in blocked
 
 
 def test_application_wires_non_empty_capability_whitelist() -> None:

@@ -26,5 +26,9 @@ class NoOpMemoryStore:
         return []
 
     async def add(self, content: str, user_id: str, *, metadata: dict[str, Any] | None = None) -> None:
-        """降级语义：静默丢弃记忆沉淀请求，仅记一条 debug 日志。"""
-        logger.debug("记忆降级模式：丢弃 add 请求 (user_id=%s, content_len=%d)", user_id, len(content))
+        """显式 noop：不投递、不假装已写入 Outbox。"""
+        from .writer import MemoryWriteResult
+
+        del content, user_id, metadata
+        logger.debug("记忆 noop：跳过 add")
+        return MemoryWriteResult(attempted=False, enqueued=False, skipped_reason="noop")  # type: ignore[return-value]

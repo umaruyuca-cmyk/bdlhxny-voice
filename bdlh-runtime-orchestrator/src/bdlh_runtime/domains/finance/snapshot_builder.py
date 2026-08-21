@@ -17,7 +17,6 @@ from .contracts import (
     FinancialDataReference,
     FinancialDomainRequest,
     FinancialGoal,
-    FinancialIntent,
     FinancialSnapshot,
     LiquiditySnapshot,
     PortfolioPosition,
@@ -211,8 +210,8 @@ class FinancialSnapshotBuilder:
         observations: list[Observation],
         execution_environment: ExecutionEnvironment,
     ) -> FinancialSnapshot:
-        if request.financial_intent != FinancialIntent.SUITABILITY:
-            raise FinancialSnapshotError("FinancialSnapshotBuilder only accepts SUITABILITY requests")
+        if not request.requires_financial_snapshot:
+            raise FinancialSnapshotError("FinancialSnapshotBuilder only accepts requires_financial_snapshot requests")
         if execution_environment not in {"production", "development", "test"}:
             raise FinancialSnapshotError("Unsupported execution environment")
 
@@ -374,8 +373,8 @@ class FinancialSnapshotBuilder:
 
         if data_mode == FinancialDataMode.MOCK:
             limitations.append("MOCK user data cannot support personalization")
-        if data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment == "production":
-            limitations.append("TEST_FIXTURE user data is forbidden in production")
+        if data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment != "test":
+            limitations.append("TEST_FIXTURE user data is forbidden outside explicit test environment")
 
         critical_missing = bool(limitations)
         if missing_capabilities or not usable:
@@ -385,7 +384,7 @@ class FinancialSnapshotBuilder:
         else:
             completeness = "COMPLETE"
         if data_mode in {FinancialDataMode.MOCK, FinancialDataMode.UNAVAILABLE} or (
-            data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment == "production"
+            data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment != "test"
         ):
             completeness = "LIMITED"
 
@@ -405,6 +404,8 @@ class FinancialSnapshotBuilder:
             risk_profile=risk_profile,
             goals=goals,
             liquidity=liquidity,
+            proposed_amount=request.proposed_amount,
+            proposed_weight_pct=request.proposed_weight_pct,
             completeness=completeness,
             limitations=list(dict.fromkeys(limitations)),
         )

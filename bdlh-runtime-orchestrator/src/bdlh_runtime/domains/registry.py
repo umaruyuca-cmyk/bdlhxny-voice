@@ -73,13 +73,14 @@ class DomainRegistry:
         """返回该 domain 的描述符；未注册 descriptor 时返回 ``None``。"""
         return self._descriptors.get(domain)
 
-    def is_intent_enabled(self, domain: str, intent: str) -> bool:
-        """查询某 domain 是否启用了某 intent（ADR-010 §5 路由判定）。
-
-        无 descriptor 的域视为「不启用任何 intent」，调用方应返回
-        ``ACTION_NOT_ENABLED``。有 descriptor 的域以 ``enabled_intents`` 为准。
-        """
+    def is_skill_enabled(self, domain: str, skill_id: str) -> bool:
+        """查询某 domain 是否投影出且启用了某 Skill（Registry Skill.enabled）。"""
         descriptor = self._descriptors.get(domain)
         if descriptor is None:
             return False
-        return intent in descriptor.enabled_intents
+        return any(skill.skill_id == skill_id and skill.enabled for skill in descriptor.skills)
+
+    def is_intent_enabled(self, domain: str, intent: str) -> bool:
+        """已废弃：intent 不再用于业务分流；恒为 False。"""
+        del domain, intent
+        return False

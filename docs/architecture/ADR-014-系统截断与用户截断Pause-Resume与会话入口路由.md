@@ -3,7 +3,7 @@
 > 状态：APPROVED  
 > 批准人：项目 owner  
 > 日期：2026-08-11  
-> 实现状态（2026-08-17）：Turn Router、`pending_*`、Pause API / Console Esc **已接线**；**真实 checkpoint 断点续跑尚未关闭**（统一架构 §3 记为 `CURRENT`/`TARGET`，实施 Prompt 缺口 **G1**）。仅重放用户 objective 的 resume **不算**本 ADR 完成。  
+> 实现状态（2026-08-17）：Turn Router、`pending_*`、Pause API / Console Esc **已接线**；**L0 CognitiveCheckpoint 断点续跑已关闭（G1）**——Pause/ASK_USER 写入非空 `checkpoint_id`，Resume 从快照恢复 goals 与行动游标，不再仅重放用户 objective。  
 > 依赖：架构 §8.1 标识符、§9.2 运行状态、§12 API；Chat Session `pending_*`  
 > 影响：[00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) §2.1、§8.1、§8.3、§9、§12；[00-BDLH-Agent-Runtime生产开发实施Prompt.md](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md)  
 > 依据：桌面《系统截断与用户截断-Resume方案》与现网 `interrupt` + `pending_*` + `/resume` 路径的合成

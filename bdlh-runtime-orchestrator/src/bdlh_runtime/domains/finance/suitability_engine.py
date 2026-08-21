@@ -2,7 +2,9 @@
 
 输入同轮 StockResearchResult + FinancialSnapshot，按 SuitabilityV0RuleSet 评估。
 对外定位是个性化风险匹配筛查，不是法定适当性、也不是买卖建议。
-v0 永不输出 SUITABLE（缺少已确认拟投入金额/配置时一律封顶 CONDITIONALLY_SUITABLE）。
+
+``SUITABLE`` 仅当规则集 ``status=APPROVED`` 且已确认拟投入金额/配置；
+``DRAFT`` 可产出个性化 ``CONDITIONALLY_SUITABLE`` / ``CURRENTLY_NOT_SUITABLE``，但不得 ``SUITABLE``。
 """
 
 from __future__ import annotations
@@ -33,7 +35,12 @@ class SuitabilityEngine:
     """纯函数式规则引擎：无 I/O、无 LLM、无时钟。"""
 
     def __init__(self, rule_set: SuitabilityV0RuleSet | None = None) -> None:
-        self._rule_set = rule_set or default_suitability_v0_rule_set()
+        resolved = rule_set or default_suitability_v0_rule_set()
+        if resolved.status == "REVIEW_CHANGES_REQUIRED":
+            raise ValueError(
+                "SUITABILITY_RULE_SET_BLOCKED: REVIEW_CHANGES_REQUIRED rule sets cannot be assembled"
+            )
+        self._rule_set = resolved
 
     @property
     def rule_set(self) -> SuitabilityV0RuleSet:
@@ -60,7 +67,12 @@ class SuitabilityEngine:
             self._rule_goal_horizon(snapshot, proxy, evidence),
         ]
 
-        result, required, reasons, limitations = self._aggregate(evaluations)
+        proposed_confirmed = snapshot.proposed_allocation_confirmed
+        result, required, reasons, limitations = self._aggregate(
+            evaluations,
+            proposed_allocation_confirmed=proposed_confirmed,
+        )
+        status_label = self._rule_set.status
         limitations = list(
             dict.fromkeys(
                 limitations
@@ -68,7 +80,10 @@ class SuitabilityEngine:
                 + list(research.limitations)
                 + list(proxy.limitations)
                 + [
-                    "本结果为内部风险匹配筛查（suitability-v0.1 DRAFT），不是法定适当性评估或投资建议",
+                    (
+                        f"本结果为内部风险匹配筛查（{self._rule_set.version} / {status_label}），"
+                        "不是法定适当性评估或投资建议"
+                    ),
                 ]
             )
         )
@@ -125,7 +140,7 @@ class SuitabilityEngine:
             result=result,
             market_risk_proxy=proxy,
             rule_evaluations=evaluations,
-            proposed_allocation_confirmed=False,
+            proposed_allocation_confirmed=proposed_confirmed,
             portfolio_impact=portfolio_impact,
             liquidity_impact=liquidity_impact,
             concentration_conflicts=concentration_conflicts,
@@ -137,6 +152,8 @@ class SuitabilityEngine:
     def _aggregate(
         self,
         evaluations: list[SuitabilityRuleEvaluation],
+        *,
+        proposed_allocation_confirmed: bool,
     ) -> tuple[
         Literal[
             "SUITABLE",
@@ -152,6 +169,27 @@ class SuitabilityEngine:
         limitations = [lim for item in evaluations for lim in item.limitations]
 
         if any(item.critical and item.outcome == "UNKNOWN" for item in evaluations):
+            authenticity = next(
+                (item for item in evaluations if item.rule_id == "SUIT-DATA-AUTHENTICITY-001"),
+                None,
+            )
+            if (
+                authenticity is not None
+                and authenticity.outcome == "UNKNOWN"
+                and authenticity.reason_code == "DATA_AUTHENTICITY_INSUFFICIENT"
+            ):
+                return (
+                    "INSUFFICIENT_INFORMATION",
+                    [
+                        SuitabilityCondition(
+                            condition_id="USER_FACTS_CONFIRMATION_REQUIRED",
+                            description="用户金融事实未确认或不可用，请打开金融资料确认后再评估",
+                            verification_source="user_financial_profile_confirmation",
+                        )
+                    ],
+                    reasons or ["用户金融事实真实性不足"],
+                    limitations,
+                )
             return (
                 "INSUFFICIENT_INFORMATION",
                 [
@@ -184,17 +222,45 @@ class SuitabilityEngine:
                 reasons,
                 limitations,
             )
-        # v0：即使全 PASS 也封顶，缺少已确认拟投入金额/配置
-        return (
-            "CONDITIONALLY_SUITABLE",
-            [
+
+        required: list[SuitabilityCondition] = []
+        if self._rule_set.status != "APPROVED":
+            required.append(
+                SuitabilityCondition(
+                    condition_id="SUITABILITY_RULE_SET_APPROVAL_REQUIRED",
+                    description="规则集尚未业务/风险批准，不能给出适合配置结论",
+                    verification_source="adr_004_approval",
+                )
+            )
+        if (
+            self._rule_set.suitable_requires_confirmed_proposed_allocation
+            and not proposed_allocation_confirmed
+        ):
+            required.append(
                 SuitabilityCondition(
                     condition_id="SUITABILITY_PROPOSED_AMOUNT_REQUIRED",
                     description="缺少已确认的拟投入金额或拟配置比例，不能给出适合配置结论",
                     verification_source="user_confirmed_proposed_allocation",
                 )
+            )
+        if (
+            self._rule_set.status == "APPROVED"
+            and proposed_allocation_confirmed
+            and not required
+        ):
+            return (
+                "SUITABLE",
+                [],
+                ["规则均通过，且已确认拟投入，给出适合配置结论"],
+                limitations,
+            )
+        return (
+            "CONDITIONALLY_SUITABLE",
+            required,
+            reasons
+            or [
+                "规则均通过，但规则集未批准或缺少拟投入确认，封顶为有条件匹配",
             ],
-            ["规则均通过，但 v0 在缺少拟投入确认时封顶为有条件匹配"],
             limitations,
         )
 

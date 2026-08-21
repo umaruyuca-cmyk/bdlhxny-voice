@@ -23,12 +23,15 @@ from .contracts import (
     FinancialDomainOutcome,
     FinancialDomainRequest,
     FinancialIntent,
+    GoalImpact,
     InstrumentResolutionOutcome,
     InstrumentResolutionRequest,
+    PortfolioImpact,
     StockResearchResult,
     SuitabilityAssessment,
     SuitabilityCondition,
 )
+from .impact_builder import build_goal_impact, build_portfolio_impact, impact_evidence_refs
 from .instrument_resolver import FinanceInstrumentResolver
 from .planner import FinancePlanner
 from .research_builder import StockResearchResultBuilder
@@ -46,8 +49,7 @@ from .suitability_engine import SuitabilityEngine
 from .suitability_v0_ruleset import RULE_IDS, default_suitability_v0_rule_set
 from .valuation_builder import PortfolioValuationBuilder, PortfolioValuationError, PortfolioValuationInput
 
-ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
-_ENABLED_INTENTS = frozenset({FinancialIntent.STOCK_RESEARCH, FinancialIntent.SUITABILITY})
+_IMPACT_INTENTS = frozenset({FinancialIntent.PORTFOLIO_IMPACT, FinancialIntent.GOAL_PLANNING})
 
 
 class FinanceCapabilityExecutor(Protocol):
@@ -63,7 +65,7 @@ class FinanceCapabilityExecutor(Protocol):
 
 
 class ApplicationFinanceCapabilityExecutor:
-    """把稳定 Capability 分派给 MCP/Web/Java/本地分析 Adapter。"""
+    """把稳定 Capability 分派给 MCP/Web/Java/Deep Research/本地分析 Adapter。"""
 
     def __init__(
         self,
@@ -73,6 +75,7 @@ class ApplicationFinanceCapabilityExecutor:
         analysis_capability: Any,
         java_adapter: Any | None = None,
         valuation_builder: PortfolioValuationBuilder | None = None,
+        deep_research_executor: Any | None = None,
     ) -> None:
         self._gateway = gateway_adapter
         self._web_search = web_search_adapter
@@ -81,6 +84,7 @@ class ApplicationFinanceCapabilityExecutor:
         self._valuation_builder = valuation_builder or PortfolioValuationBuilder()
         self._normalizer = ObservationNormalizer()
         self._user_normalizer = UserFinancialObservationNormalizer()
+        self._deep_research = deep_research_executor
 
     async def execute(
         self,
@@ -95,21 +99,23 @@ class ApplicationFinanceCapabilityExecutor:
             observation = await self._web_search.execute(capability, arguments)
             return self._normalizer.normalize(observation, request_arguments=arguments)
         if capability == "research.deep_search":
-            return Observation(
-                observation_id=str(uuid4()),
-                capability=capability,
-                status="UNAVAILABLE",
-                data=None,
-                data_quality=DataQuality(
-                    quality_status="INVALID",
-                    known_unavailable=[capability],
-                ),
-                error_code="DEEP_RESEARCH_NOT_ENABLED",
-                error_message=(
-                    "Finance runtime does not execute research.deep_search on the "
-                    "default path; use research.web_search or enable Deep Research Flag"
-                ),
-            )
+            if self._deep_research is None or not getattr(self._deep_research, "enabled", False):
+                return Observation(
+                    observation_id=str(uuid4()),
+                    capability=capability,
+                    status="UNAVAILABLE",
+                    data=None,
+                    data_quality=DataQuality(
+                        quality_status="INVALID",
+                        known_unavailable=[capability],
+                    ),
+                    error_code="DEEP_RESEARCH_NOT_ENABLED",
+                    error_message=(
+                        "research.deep_search is gated (ADR-016/G6): enable Flag and configure "
+                        "Bailian atomic search before using Deep Research"
+                    ),
+                )
+            return await self._deep_research.execute(capability, arguments)
         if capability in USER_SNAPSHOT_CAPABILITIES:
             if self._java is None:
                 raise ValueError("Finance executor has no Java user-data adapter")
@@ -166,7 +172,7 @@ class FinanceRuntime:
         instrument_resolver: FinanceInstrumentResolver | None = None,
         snapshot_builder: FinancialSnapshotBuilder | None = None,
         suitability_engine: SuitabilityEngine | None = None,
-        execution_environment: ExecutionEnvironment = "development",
+        execution_environment: ExecutionEnvironment = "production",
     ) -> None:
         self._planner = planner
         self._authorization = authorization
@@ -200,13 +206,6 @@ class FinanceRuntime:
                     limitations=["Finance instrument resolver is not configured"],
                 )
             return await self._instrument_resolver.resolve(request)
-        if request.financial_intent not in _ENABLED_INTENTS:
-            return self._failed(
-                request,
-                ACTION_NOT_ENABLED,
-                f"Finance Runtime does not enable financial intent {request.financial_intent}",
-            )
-
         try:
             plan = self._planner.plan(request)
         except ValueError as exc:
@@ -222,7 +221,7 @@ class FinanceRuntime:
             request.authorized_operations,
         )
         missing_required = list(decision.missing_required)
-        if not self._authorization.is_allowed(
+        if plan.analysis_capability and not self._authorization.is_allowed(
             plan.analysis_capability,
             request.authorized_operations,
         ):
@@ -240,7 +239,8 @@ class FinanceRuntime:
             limitations=[f"Optional capability not authorized: {name}" for name in decision.skipped_optional],
         )
         executable = list(decision.allowed_requirements)
-        required_calls = sum(item.required for item in executable) + 1
+        analysis_calls = 1 if plan.analysis_capability else 0
+        required_calls = sum(item.required for item in executable) + analysis_calls
         if required_calls > request.budget.tool_call_limit:
             return self._limited(
                 request,
@@ -282,9 +282,29 @@ class FinanceRuntime:
                         )
                     state.observations.append(result)
                     state.tool_calls_used += 1
+                    if (
+                        requirement.capability == "research.deep_search"
+                        and isinstance(result.data, dict)
+                        and (
+                            (result.data.get("usage") or {}).get("budget_exhausted")
+                            or "DEEP_RESEARCH_BUDGET_EXHAUSTED" in list(result.data.get("limitations") or [])
+                        )
+                    ):
+                        return self._limited(
+                            request,
+                            "DEEP_RESEARCH_BUDGET_EXHAUSTED",
+                            "Deep Research 内部预算已耗尽，已停止新增检索",
+                            retryable=True,
+                        )
 
-                if request.financial_intent == FinancialIntent.SUITABILITY:
+                if (
+                    request.requires_financial_snapshot
+                    or request.financial_intent in _IMPACT_INTENTS
+                ):
                     await self._try_append_portfolio_valuation(state)
+
+                if plan.analysis_capability is None:
+                    return self._impact_outcome(state)
 
                 state.analysis_input = assemble_analysis_input(
                     analysis_id=request.request_id,
@@ -328,8 +348,9 @@ class FinanceRuntime:
         request = state.request
         if any(item.capability == PORTFOLIO_VALUATION_CAPABILITY for item in state.observations):
             return
-        # 预留 analysis 一跳；估值本身至少再占一跳
-        remaining = request.budget.tool_call_limit - state.tool_calls_used - 1
+        # 研究路径预留 analysis 一跳；影响路径无 analysis，可把剩余预算全用于估值
+        reserve_analysis = 0 if request.financial_intent in _IMPACT_INTENTS else 1
+        remaining = request.budget.tool_call_limit - state.tool_calls_used - reserve_analysis
         if remaining < 1:
             state.limitations.append("Portfolio valuation skipped by budget")
             return
@@ -412,6 +433,91 @@ class FinanceRuntime:
                 missing.append(symbol)
         return missing
 
+    def _impact_outcome(self, state: FinanceRunState) -> FinancialDomainOutcome:
+        """PORTFOLIO_IMPACT / GOAL_PLANNING：快照 + 估值证据，无研究文案假装。"""
+        request = state.request
+        errors = [
+            DomainError(
+                code=item.error_code or "CAPABILITY_UNAVAILABLE",
+                message=item.error_message or f"{item.capability} is unavailable",
+                retryable=True,
+            )
+            for item in state.observations
+            if item.status in {"FAILED", "UNAVAILABLE"}
+        ]
+        try:
+            snapshot = self._snapshot_builder.build(
+                request=request,
+                observations=state.observations,
+                execution_environment=self._execution_environment,
+            )
+        except (FinancialSnapshotError, ValueError) as exc:
+            message = str(exc) or type(exc).__name__
+            return FinancialDomainOutcome(
+                request_id=request.request_id,
+                status="LIMITED",
+                financial_intent=request.financial_intent,
+                portfolio_impact=(
+                    PortfolioImpact(rule_ids=["PORTFOLIO-EXPOSURE-001"])
+                    if request.financial_intent == FinancialIntent.PORTFOLIO_IMPACT
+                    else None
+                ),
+                goal_impact=(
+                    GoalImpact(
+                        impact_level="NONE",
+                        reasons=["无法构建可审计金融快照，目标规划未能完成"],
+                    )
+                    if request.financial_intent == FinancialIntent.GOAL_PLANNING
+                    else None
+                ),
+                confidence=ConfidenceAssessment(
+                    level="LOW",
+                    reasons=[message],
+                    coverage_status="LIMITED",
+                ),
+                errors=errors,
+                limitations=list(dict.fromkeys([*state.limitations, message])),
+            )
+
+        evidence = impact_evidence_refs(snapshot, state.observations)
+        limitations = list(dict.fromkeys([*state.limitations, *snapshot.limitations]))
+        portfolio_impact = None
+        goal_impact = None
+        if request.financial_intent == FinancialIntent.PORTFOLIO_IMPACT:
+            portfolio_impact = build_portfolio_impact(snapshot)
+            if not portfolio_impact.current_exposure:
+                limitations.append("持仓权重不足，组合暴露面仅能给出空结果")
+        else:
+            goal_impact = build_goal_impact(snapshot)
+            if not snapshot.goals:
+                limitations.append("缺少已确认投资目标")
+
+        status: str
+        if snapshot.completeness == "COMPLETE" and (
+            (portfolio_impact and portfolio_impact.current_exposure)
+            or (goal_impact and goal_impact.affected_goal_ids)
+        ):
+            status = "COMPLETE"
+        elif snapshot.completeness == "LIMITED" or errors:
+            status = "LIMITED"
+        else:
+            status = "PARTIAL"
+
+        return FinancialDomainOutcome(
+            request_id=request.request_id,
+            status=status,  # type: ignore[arg-type]
+            financial_intent=request.financial_intent,
+            portfolio_impact=portfolio_impact,
+            goal_impact=goal_impact,
+            confidence=ConfidenceAssessment(
+                level="MEDIUM" if status == "COMPLETE" else "LOW",
+                reasons=[f"impact evidence: {', '.join(evidence[:8])}"],
+                coverage_status="COMPLETE" if status == "COMPLETE" else "LIMITED",
+            ),
+            errors=errors,
+            limitations=limitations,
+        )
+
     def _outcome(self, state: FinanceRunState) -> FinancialDomainOutcome:
         assert state.analysis_result is not None
         result = state.analysis_result
@@ -452,7 +558,7 @@ class FinanceRuntime:
         state.stock_research_result = research
         limitations = list(dict.fromkeys(state.limitations + result.limitations + research.limitations))
         suitability = None
-        if state.request.financial_intent == FinancialIntent.SUITABILITY:
+        if state.request.requires_financial_snapshot:
             suitability = self._evaluate_suitability(state=state, research=research)
             limitations = list(dict.fromkeys(limitations + list(suitability.limitations)))
             state.suitability = suitability
@@ -570,17 +676,25 @@ def create_finance_runtime(
     web_search_adapter: Any,
     analysis_capability: Any,
     java_adapter: Any | None = None,
-    execution_environment: ExecutionEnvironment = "development",
+    deep_research_executor: Any | None = None,
+    deep_research_enabled: bool = False,
+    execution_environment: ExecutionEnvironment = "production",
 ) -> FinanceRuntime:
-    """使用现有 Application 组件装配 Finance Runtime（研究 + Suitability Preflight）。"""
+    """使用现有 Application 组件装配 Finance Runtime（研究 + Suitability）。"""
 
-    planner = FinancePlanner(topic_capabilities)
+    deep_ready = bool(
+        deep_research_enabled
+        and deep_research_executor is not None
+        and getattr(deep_research_executor, "enabled", False)
+    )
+    planner = FinancePlanner(topic_capabilities, deep_research_enabled=deep_ready)
     authorization = FinanceCapabilityAuthorizationPolicy(capability_registry)
     executor = ApplicationFinanceCapabilityExecutor(
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,
         analysis_capability=analysis_capability,
         java_adapter=java_adapter,
+        deep_research_executor=deep_research_executor,
     )
     return FinanceRuntime(
         planner=planner,

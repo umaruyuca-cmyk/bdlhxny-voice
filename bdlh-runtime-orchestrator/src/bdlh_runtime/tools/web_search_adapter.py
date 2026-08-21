@@ -1,20 +1,18 @@
 """bdlh-web-search-adapter 适配器。
 
-网络搜索必须经由 bdlh-web-search-adapter 服务读取（架构文档 v3.1 §13.4）：
+网络搜索必须经由 bdlh-web-search-adapter 服务读取（架构文档 §13.4）：
 Python 不允许绕过 wrapper 直接调用 SearXNG 或搜索引擎。
 
 设计原则（与 Java adapter、MCP adapter 一致）：
 - 统一能力 research.web_search → bdlh-web-search-adapter HTTP API 的翻译在 Adapter 内完成；
 - wrapper 返回结果转换为 Observation，不允许 Graph 节点直接拼接搜索 JSON；
-- 降级：wrapper 服务不可用（未部署/超时）时返回 mock 搜索结果，保证开发环境
-  和测试可跑通完整流程。mock 数据带 is_mock 标记，不伪装成真实搜索结果。
+- **禁止 mock 降级**（G3）：未配置或调用失败一律返回 UNAVAILABLE；
 - **只处理 research.web_search**。``research.deep_search`` 是独立复合 Capability
   （ADR-016），不得在本 Adapter 内静默升档或转发。
 
 与 Java adapter 的差异（bdlh-web-search-adapter 接口特性）：
 - 鉴权：双 header（x-agent-id + x-search-token）而非 Bearer；
-- 请求体：批量 tasks 结构 {schemaVersion, tasks:[{taskId, query, ...}]}，
-  需把统一参数 {query} 包装成 tasks；
+- 请求体：批量 tasks 结构 {schemaVersion, tasks:[{taskId, query, ...}]}；
 - 超时：20s（wrapper 内部已有 10s 上游超时，外层给余量）。
 """
 
@@ -54,11 +52,7 @@ _WRAPPER_SCHEMA_VERSION = "1.0"
 class HttpWebSearchAdapter:
     """通过 HTTP 调用 bdlh-web-search-adapter 服务的实现。
 
-    降级策略（与 Java adapter 一致）：
-    - 开发环境（production=False）：服务未配置或调用失败时，降级为
-      mock 搜索结果（带 is_mock 标记），保证开发/测试可跑通完整流程；
-    - 生产环境（production=True）：**禁止 mock 降级**——服务不可用时返回
-      UNAVAILABLE 状态，宁可如实标记不可用也不伪造搜索结论。
+    服务未配置或调用失败时返回 UNAVAILABLE，永不 mock（实施 Prompt 缺口 G3）。
     """
 
     def __init__(
@@ -66,14 +60,11 @@ class HttpWebSearchAdapter:
         base_url: str | None = None,
         timeout_seconds: float = 20.0,
         *,
-        production: bool = False,
         agent_id: str | None = None,
         token: str | None = None,
     ):
-        """base_url 为 wrapper 根地址（如 http://bdlh-web-search-adapter:3002）；None 时开发环境走 mock 降级。"""
         self._base_url = base_url
         self._timeout = timeout_seconds
-        self._production = production
         self._agent_id = agent_id
         self._token = token
 
@@ -81,26 +72,23 @@ class HttpWebSearchAdapter:
         if capability not in WEB_CAPABILITIES:
             return self._failed_observation(capability, f"web-search 白名单外能力: {capability}")
 
-        # wrapper 服务未配置 → 开发环境 mock 降级，生产环境 UNAVAILABLE
         if not self._base_url:
-            if self._production:
-                return self._unavailable_observation(capability, "web-search 服务未配置，生产环境不允许 mock 降级")
-            return self._mock_observation(capability, arguments)
+            return self._unavailable_observation(capability, "web-search 服务未配置，不允许 mock 降级")
 
-        # 真实调用 wrapper API（显式路径映射，不拼 capability）
         path = _WEB_API_PATHS.get(capability)
         if path is None:
             return self._failed_observation(capability, f"web-search 无对应契约路径: {capability}")
 
-        # 鉴权 header（双 header，非 Bearer；wrapper auth.js 用 timingSafeEqual 校验）
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._agent_id:
             headers["x-agent-id"] = self._agent_id
         if self._token:
             headers["x-search-token"] = self._token
 
-        # 把统一参数翻译成 wrapper 的 tasks 批量结构（contract.js 校验）
-        body = self._build_request_body(arguments)
+        try:
+            body = self._build_request_body(arguments)
+        except ValueError as exc:
+            return self._failed_observation(capability, str(exc))
 
         try:
             import httpx
@@ -116,10 +104,7 @@ class HttpWebSearchAdapter:
                 return self._wrap_success(capability, data)
         except Exception as exc:
             logger.warning("web-search 调用失败 (capability=%s): %s", capability, exc)
-            # 生产环境：不降级 mock，返回 UNAVAILABLE（如实标记）
-            if self._production:
-                return self._unavailable_observation(capability, f"web-search 调用失败: {exc}")
-            return self._mock_observation(capability, arguments)
+            return self._unavailable_observation(capability, f"web-search 调用失败: {exc}")
 
     # ── 请求体构造 ──
 
@@ -199,44 +184,7 @@ class HttpWebSearchAdapter:
             ],
         )
 
-    # ── mock 降级实现（开发环境/测试用，带 is_mock 标记）──
-
-    @staticmethod
-    def _mock_observation(capability: str, arguments: dict) -> Observation:
-        """mock 搜索结果，确定性，测试用。"""
-        query = arguments.get("query", "")
-        mock_data = {
-            "schemaVersion": _WRAPPER_SCHEMA_VERSION,
-            "requestId": "mock-request",
-            "provider": "mock",
-            "results": [
-                {
-                    "resultId": "mock-result-1",
-                    "taskId": "default",
-                    "purposeCode": "MOCK",
-                    "title": f"[mock] 与「{query}」相关的示例结果",
-                    "url": "https://example.com/mock",
-                    "domain": "example.com",
-                    "snippet": "这是开发环境降级返回的 mock 搜索结果，不代表真实搜索内容。",
-                    "sourceType": "WEB",
-                    "provider": "mock",
-                    "publishedAt": None,
-                    "retrievedAt": _now_iso(),
-                    "relevanceScore": 1.0,
-                    "is_mock": True,
-                }
-            ],
-            "errors": [],
-            "is_mock": True,
-        }
-        return Observation(
-            observation_id=str(uuid4()),
-            capability=capability,
-            status="SUCCESS",
-            data=mock_data,
-            data_quality=DataQuality(completeness=0.6, quality_status="PARTIAL"),  # mock 数据标记 PARTIAL
-            provenance=[ProvenanceRecord(source="mock-web-search", tool=capability, retrieved_at=_now_iso())],
-        )
+    # ── 错误 Observation ──
 
     @staticmethod
     def _failed_observation(capability: str, message: str) -> Observation:
@@ -253,7 +201,6 @@ class HttpWebSearchAdapter:
 
     @staticmethod
     def _unavailable_observation(capability: str, message: str) -> Observation:
-        """生产环境服务不可用：UNAVAILABLE 状态，明确无数据。"""
         return Observation(
             observation_id=str(uuid4()),
             capability=capability,
@@ -270,19 +217,18 @@ def create_web_search_adapter(
     base_url: str | None = None,
     timeout_seconds: float = 20.0,
     *,
-    production: bool = False,
     agent_id: str | None = None,
     token: str | None = None,
+    production: bool | None = None,
 ) -> WebSearchAdapter:
     """工厂函数：创建 HttpWebSearchAdapter。
 
-    base_url 来自配置 WEB_SEARCH_BASE_URL；未配置时开发环境自动 mock 降级，
-    生产环境返回 UNAVAILABLE（不伪造搜索结果）。
+    ``production`` 参数已废弃（G3）；行为始终 fail-closed，不 mock。
     """
+    del production
     return HttpWebSearchAdapter(
         base_url=base_url,
         timeout_seconds=timeout_seconds,
-        production=production,
         agent_id=agent_id,
         token=token,
     )

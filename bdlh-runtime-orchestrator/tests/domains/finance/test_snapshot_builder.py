@@ -46,7 +46,8 @@ def _request(user_id: str = "7") -> FinancialDomainRequest:
         request_id="m3-foundation",
         authenticated_user_id=user_id,
         objective="评估单一标的是否适合当前用户",
-        financial_intent=FinancialIntent.SUITABILITY,
+        financial_intent=FinancialIntent.STOCK_RESEARCH,
+        requires_financial_snapshot=True,
         instruments=[FinancialInstrument(symbol="600519", name="贵州茅台")],
         authorized_operations={
             DomainOperation.READ_MARKET_DATA,
@@ -626,3 +627,21 @@ async def test_application_executor_rejects_untrusted_local_valuation_input() ->
             },
             request_id="m3-local-valuation",
         )
+
+
+def test_snapshot_builder_carries_proposed_allocation_from_request() -> None:
+    raw = _complete_raw_observations()
+    for observation in raw:
+        observation.data["metadata"]["data_mode"] = "USER_CONFIRMED"
+        observation.data["metadata"]["data_time"] = "2026-08-10T10:00:00+08:00"
+        observation.data["metadata"]["confirmation_ref"] = f"confirm-{observation.observation_id}"
+    request = _request()
+    request = request.model_copy(update={"proposed_amount": 25_000.0, "proposed_weight_pct": 10.0})
+    snapshot = FinancialSnapshotBuilder().build(
+        request=request,
+        observations=_normalize_all(raw),
+        execution_environment="test",
+    )
+    assert snapshot.proposed_amount == 25_000.0
+    assert snapshot.proposed_weight_pct == 10.0
+    assert snapshot.proposed_allocation_confirmed is True

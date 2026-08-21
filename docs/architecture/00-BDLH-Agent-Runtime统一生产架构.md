@@ -185,23 +185,26 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 | Cognitive Orchestrator | `CURRENT` | 唯一顶层业务编排入口（`cognitive_finance`） | 保持为唯一默认路径 |
 | DomainRequest / Outcome | `CURRENT` | Cognitive ↔ Finance 跨层接口 | 继续作为唯一跨层契约 |
 | Domain Dispatcher | `CURRENT` | `DomainRegistry` 已提供 domain→runtime 唯一映射、拒绝重复注册，并携带 `DomainDescriptor` 支持 intent 启用查询 | 继续作为路由与拒绝的唯一入口；新增 Domain 只需注册 |
-| SkillManifest / DomainDescriptor | `REWRITE_REQUIRED` | 仍存在 Python 目录字段和能力声明 | 改为数据库 Registry 的运行时投影，不保存第二份 Capability/Operation 清单 |
+| SkillManifest / DomainDescriptor | `CURRENT` | 仅从 Registry Snapshot 投影；无第二份 Capability/Operation/Toolset 清单；`accepted_intents` 不再路由 | 保持投影与种子一致 |
 | 内核纯净度门禁 | `CURRENT` | `tests/architecture/test_kernel_purity.py` 静态断言内核不依赖领域实现 | 保持常绿，随内核目录变化同步更新 |
 | Finance Runtime | `CURRENT` | 由 Cognitive Dispatcher 调用的唯一默认 Domain | 继续隔离金融业务逻辑；不恢复旧 Root Graph |
 | StockResearchResult | `CURRENT` | Finance Runtime 客观研究输出契约已接线 | 继续强化字段来源与 provenance |
-| Financial User Facts v2 | `FOUNDATION` | Java 已提供鉴权确认入口、版本与幂等控制、审计记录及只读查询元数据；Python 已按事实来源归一化 | 作为账户、持仓与风险事实的唯一权威来源，禁止旧记录被推断为实时数据 |
-| PortfolioValuationBuilder | `FOUNDATION` | 确定性估值核心已实现（`quantity × price` 重算市值/权重、sha256 内容寻址、fail-closed 校验）；能力 `portfolio.build_current_valuation` 已注册，但 `portfolio-health` Skill 默认关闭，未进入默认 `allowed` | 使用权威持仓和受预算约束的市场报价生成可追溯估值快照 |
-| SuitabilityEngine | `CURRENT` | v0 DRAFT 规则集已接线；缺输入 → `INSUFFICIENT_INFORMATION`；v0 封顶无 `SUITABLE` | 阈值可 PR 调整；法定适当性另议 |
-| Capability Registry | `REWRITE_REQUIRED` | 已经由 Java Snapshot API 加载，但当前 schema/DTO 仍含单行配置表、快路径表、窗口结构和无消费字段 | 收敛为八张目录表；数据库是唯一真源，Python 只做快照校验和菜单算法 |
-| Toolset Registry | `REWRITE_REQUIRED` | Java Snapshot 与 Python 快照中均有目录，但仍存在代码描述清单 | 描述和关联只来自数据库，不维护第二份清单 |
+| Financial User Facts v2 | `CURRENT` | Java 鉴权确认入口、版本/幂等/审计与只读元数据；Python 按事实来源归一化；无 confirmation 不得抬升 LIVE/USER_CONFIRMED（G5） | 作为账户、持仓与风险事实的唯一权威来源 |
+| PortfolioValuationBuilder | `CURRENT` | 确定性估值核心已实现；`portfolio-health` 默认启用并进入登录用户 `allowed`；PORTFOLIO_IMPACT / GOAL_PLANNING 经证据链产出（G8） | 保持权威持仓 × 受预算约束行情的可追溯估值 |
+| SuitabilityEngine | `CURRENT` | v0 `DRAFT` 规则集已接线；缺输入 → `INSUFFICIENT_INFORMATION`；`DRAFT` 封顶无 `SUITABLE`；`APPROVED`+拟投入确认可达 `SUITABLE`（G4） | 阈值可 PR 调整；法定适当性另议 |
+| Capability Registry | `CURRENT` | 最终八表；Java Snapshot；Python `eligible→allowed`；Manifest 投影同源 | 维持启动 fail-fast |
+| Toolset Registry | `FOUNDATION` | 八表内 toolset 为唯一分组真源；快路径/预算/entitlement 已迁出 DB | 描述与关联只来自数据库，不维护第二份清单 |
+| 运行时去环境双轨（G3） | `CURRENT` | Java/Web Adapter 无 mock 降级；非 `test` 强制 internal token + Java 可达；ready 同标准 | 保持产品路径与生产契约一致，禁止再引入 env 分叉 |
+| Deep Research（G6） | `CURRENT` | Flag+百炼门禁；Finance 默认可执行 `research.deep_search`；超预算 ADR-014 Pause；禁止假 COMPLETE | 默认 Flag 关闭；打开前须配 Key 且 `/ready` 通过 |
+| 入口 Goal / 资格菜单（G2） | `CURRENT` | LLM Understand→Goal；`requires_financial_snapshot` 替代 FinancialIntent 业务分流；Manifest 投影收敛 | 无 |
 | 四时点 Guardrails | `CURRENT` | Default* 已接线；能力白名单、`guardrail.blocked` SSE、Data-quality freshness/provenance 已落地 | 继续补供应商冲突 / over-read 等 §11 余项 |
 | Observation / Coverage | `CURRENT` | 已有标准化与覆盖判断 | 进入所有外部数据路径 |
 | Java Data Plane | `CURRENT` | 认证、L4 用户事实、Run/Chat/History/Task/Registry/Outbox API；Orchestrator 经 `JAVA_API_BASE_URL` 远程访问 | 保持结构化数据唯一访问边界，并完成 Registry 最终契约 |
-| Memory Service / Mem0 | `FOUNDATION` / `TARGET` | 独立服务与 remote 客户端已存在；默认 `BDLH_MEMORY_MODE=noop` | 生产切 `remote` 并完成 Outbox→MQ→消费闭环 |
-| RocketMQ | `FOUNDATION` | Compose/客户端与 Outbox Relay 代码已有；默认 `ROCKETMQ_ENABLED=false` | 打开开关前完成主题初始化和消息闭环验收 |
+| Memory Service / Mem0 | `CURRENT` | remote 客户端 + Chat 召回/Writer；Java MemoryCandidate Outbox→Relay→MQ；失败 degraded 不污染 L4（G7） | 生产切 `BDLH_MEMORY_MODE=remote` 并打开 `ROCKETMQ_ENABLED` / `MEMORY_ROCKETMQ_ENABLED` |
+| RocketMQ | `CURRENT` | Outbox Relay 在 `ROCKETMQ_ENABLED=true` 时投递（含 `bdlh.memory.commands`）；禁用时不静默宣称已发布 | 打开前完成 Broker/主题初始化 |
 | Context 组装 | `CURRENT` / `TARGET` | Cognitive / Finance 路径组装上下文；旧 Root Graph `ContextBuilder` 已删除 | 对齐 ADR-015：purpose/budget、窗口主路径、dropped 可观测；不另起第二套组装语义 |
-| 系统 ASK_USER + pending resume | `CURRENT` / `TARGET` | Chat 写 `pending_*`；同会话下一句经 Turn Router，禁止盲目 resume；**真实 checkpoint 续跑仍为 TARGET（ADR-014）** | 关闭缺口：Pause 写入非空 `checkpoint_id`，Resume 从断点续跑，禁止仅重放 objective |
-| 用户 Pause（Esc） | `CURRENT` | `POST .../pause` + PauseAck；Console Esc=abort+/pause；协作式停点在 Cognitive 步骤边界 | 与真实 checkpoint 对齐后，长调用中途停止可增强 |
+| 系统 ASK_USER + pending resume | `CURRENT` | Chat 写 `pending_*`；Turn Router；**L0 `checkpoint_id` + CognitiveCheckpoint 断点续跑已接线（G1）** | 保持书签与 Run State 一致 |
+| 用户 Pause（Esc） | `CURRENT` | `POST .../pause` 返回非空 `checkpointId`；协作式停点 + L0 快照 | 与长调用中途停止增强对齐 |
 | Turn Router | `CURRENT` | `resume` / `new_turn` / `ask_which` 已接线 `/chat/stream` | 持续校准强/弱信号词典 |
 | Chat Session | `CURRENT` | 经 Java Data Plane 远程持久化（单元测试可显式注入内存替身） | 启动路径禁止无 Java 内存兜底 |
 | Run Registry | `CURRENT` | 经 Java Data Plane 远程持久化；Python 内存实现仅允许测试显式注入 | 上线必须配置 Java 并保证 `/ready` 通过 |
@@ -231,7 +234,7 @@ flowchart TB
 
     PYAPI --> REDIS[("Redis 可选缓存/限流")]
     PYAPI -->|"同步 L3 search"| MEM["Python Memory Service / Mem0"]
-    PYAPI --> LLM["DeepSeek / Approved LLM"]
+    PYAPI --> LLM["GLM-4.7 / Approved LLM"]
 
     JAVA --> PG
     MEM --> PG
@@ -1033,7 +1036,9 @@ MEMORY_SERVICE_BASE_URL=http://127.0.0.1:8091
 MEMORY_SERVICE_INTERNAL_TOKEN=...
 ROCKETMQ_ENDPOINTS=127.0.0.1:8080
 ROCKETMQ_NAMESPACE=bdlh
-DEEPSEEK_API_KEY=...
+LLM_API_KEY=...
+LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+LLM_MODEL=glm-4.7
 AKSHARE_ONE_MCP_ENDPOINT=http://127.0.0.1:8083/mcp
 CN_FINANCIAL_MCP_ENDPOINT=http://127.0.0.1:8000/sse
 WEB_SEARCH_BASE_URL=http://127.0.0.1:3002
@@ -1058,7 +1063,7 @@ WEB_SEARCH_TOKEN=...
 2. **入口与菜单全量重写**：按 01 号专项 Prompt 删除 `analysis_type`，实现 Goal、数据库 Registry 和 `eligible → allowed`。
 3. **Java Data Plane 完整化**：Chat、Run、History、Task、Registry、Outbox、Inbox 和运行状态只经用例级内部 API 访问。
 4. **数据库全量脚本**：根目录 `db/` 从空库创建最终 schema 和 seed；服务启动不执行任何 DDL 或 seed。
-5. **运行时去双轨**：装配与 Adapter 禁止 development mock 降级；缺依赖拒启或 ready 失败（见实施 Prompt §2.1 / 缺口 G3）。
+5. **运行时去双轨（G3 CLOSED）**：装配与 Adapter 禁止 development mock 降级；缺依赖拒启或 ready 失败（见实施 Prompt §2.1）。
 6. **ADR-014 真恢复**：Cognitive 安全点 checkpoint + `pending_*` + Resume 断点续跑（缺口 G1）；Turn Router 常绿。
 7. **RocketMQ 闭环**：单节点 NameServer + Broker/Proxy，Transactional Outbox、Relay、Consumer Inbox、Retry/DLQ 可测试。
 8. **Memory Service 闭环**：独立服务只访问 `memory` schema，经事件消费写入 Mem0，失败不得污染业务真源。
@@ -1168,7 +1173,7 @@ WEB_SEARCH_TOKEN=...
 
 | ADR | 主题 | 状态 |
 |---|---|---|
-| [ADR-004](./ADR-004-Suitability-v0规则阈值与校准.md) | Suitability v0 规则阈值与校准 | `PROPOSED`；未由业务/风险负责人批准前，生产规则集装配必须失败关闭，禁止使用示例阈值 |
+| [ADR-004](./ADR-004-Suitability-v0规则阈值与校准.md) | Suitability v0 规则阈值与校准 | `DRAFT_IN_RUNTIME`：工程草案阈值已装配；**未业务批准前不得产出 `SUITABLE`**；批准后带 `approval_ref` 且确认拟投入才可 `SUITABLE` |
 
 ### 23.3 待补 ADR
 

@@ -21,8 +21,8 @@ class ScriptedCognitive:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
-        del observer
+    async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
+        del observer, checkpoint
         self.calls += 1
         asking = self.calls == 1 and "分析" in event.message
         return CognitiveExecution(

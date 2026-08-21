@@ -24,9 +24,9 @@ def test_default_toolsets_cover_all_capabilities_without_copying_specs() -> None
 
     # 重写：目录与视图均来自同一 RegistrySnapshot（名字级一致即同源）
     assert sorted(c.name for c in toolsets.capability_registry.list()) == sorted(c.name for c in capabilities.list())
-    assert len(toolsets.list()) == 7
-    # 种子含 17 项能力（含 ADR-016 research.deep_search；M7 探针来自库表种子）。
-    assert len(grouped) == 17
+    assert len(toolsets.list()) == 6
+    # 业务种子 16 项能力（含 ADR-016 research.deep_search；不含 M7 probe）
+    assert len(grouped) == 16
     assert all(len(spec.toolsets) == 1 for spec in capabilities.list())
 
 
@@ -37,18 +37,16 @@ def test_default_toolset_membership_is_stable_and_business_facing() -> None:
         ToolsetName.MARKET_READ: 4,
         ToolsetName.FUNDAMENTAL_READ: 3,
         ToolsetName.NEWS_READ: 3,
-        # PORTFOLIO_READ 含 build_current_valuation（确定性重算，adapter=local）
         ToolsetName.PORTFOLIO_READ: 4,
         ToolsetName.FINANCIAL_PROFILE_READ: 1,
         ToolsetName.PLANNING_COMPUTE: 1,
-        ToolsetName.PLUGIN_PROBE_COMPUTE: 1,
     }
 
 
 def test_selection_manifest_does_not_expand_all_capabilities() -> None:
     manifest = toolset_registry_from_snapshot(seeded_snapshot()).selection_manifest()
 
-    assert len(manifest) == 7
+    assert len(manifest) == 6
     assert all(set(item) == {"name", "description", "capability_count"} for item in manifest)
     assert all("mcp" not in str(item).lower() for item in manifest)
 

@@ -142,7 +142,27 @@ textarea:focus,input:focus{outline:none}
 }
 .mobile-menu{display:none}
 
+.chat-stage{
+  flex:1;min-height:0;display:flex;flex-direction:column;
+  position:relative;
+}
 .scroll{flex:1;min-height:0;overflow-y:auto;scroll-behavior:smooth}
+
+/* 空对话：问候语 + 输入框垂直居中 */
+.view.is-empty .chat-stage{
+  justify-content:center;
+  align-items:center;
+  padding:24px 0 40px;
+}
+.view.is-empty .scroll{
+  flex:none;overflow:visible;width:100%;
+}
+.view.is-empty .composer-wrap{
+  width:min(720px,calc(100% - 44px));
+  margin:18px auto 0;
+  padding:0;
+}
+.view.is-empty .to-bottom{display:none}
 
 /* ===== 空状态（GPT 式问候 + Skill chips） ===== */
 .hero{
@@ -150,6 +170,7 @@ textarea:focus,input:focus{outline:none}
   display:flex;flex-direction:column;align-items:center;text-align:center;
   animation:hero-in .45s cubic-bezier(.2,.7,.3,1) both;
 }
+.view.is-empty .hero{padding:0 24px 8px}
 @keyframes hero-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .hero.hidden{display:none}
 .hero h1{
@@ -345,6 +366,7 @@ textarea:focus,input:focus{outline:none}
   margin:0 auto;padding:8px 0 16px;
 }
 .plugin-tray{display:flex;align-items:center;gap:8px;padding:0 4px 10px}
+.plugin-tray[hidden]{display:none!important}
 .plugin-chip{
   display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
   border:1px solid var(--line);border-radius:999px;background:#fff;
@@ -638,9 +660,11 @@ textarea:focus,input:focus{outline:none}
   .topbar{padding:0 14px}
   .topbar-model{display:none}
   .hero{padding:10vh 18px 24px}
+  .view.is-empty .hero{padding:0 18px 8px}
   .messages{padding:18px 14px 12px}
   .msg.user .text{max-width:88%}
   .composer-wrap{width:calc(100% - 24px);padding:8px 0 10px}
+  .view.is-empty .composer-wrap{width:calc(100% - 24px);margin-top:14px;padding:0}
   .to-bottom{right:14px;bottom:112px}
   .qnav{display:none}
   .qpanel{display:none!important}

@@ -1,35 +1,37 @@
 """内核快路径路由：只做分流，不出现任何 Domain / Skill 名称。
 
-路由真源是库表 ``bdlh_runtime_fastpath_*``（经 RegistrySnapshot 加载）；
-``kernel_routes()`` 硬编码已删除（重写 §6.1）。
+样句真源是 ``fastpath_data.py``（非 Registry 八表）。
 """
 
 from __future__ import annotations
 
 from .contracts import Route, RouteDisposition
 from .encoder import Encoder
+from .fastpath_data import FASTPATH_ROUTES
 from .router import SemanticRouter
 
 
-def fastpath_routes_from_snapshot(snapshot) -> list[Route]:
-    """从已通过启动校验的快照构建 Route（DB 真源）。"""
+def fastpath_routes() -> list[Route]:
     dispositions = {"RESPOND": RouteDisposition.RESPOND, "BLOCK": RouteDisposition.BLOCK}
-    routes = []
-    for record in sorted(snapshot.fastpath_routes, key=lambda item: item.name):
-        routes.append(
-            Route(
-                name=record.name,
-                score_threshold=record.score_threshold,
-                disposition=dispositions[record.disposition],
-                response=record.response,
-                utterances=record.utterances,
-            )
+    return [
+        Route(
+            name=item.name,
+            score_threshold=item.score_threshold,
+            disposition=dispositions[item.disposition],
+            response=item.response,
+            utterances=item.utterances,
         )
-    return routes
+        for item in FASTPATH_ROUTES
+    ]
+
+
+def fastpath_routes_from_snapshot(snapshot=None) -> list[Route]:
+    """兼容旧调用名；快路径不再来自 Registry 快照。"""
+    del snapshot
+    return fastpath_routes()
 
 
 def build_kernel_router(*, snapshot=None, encoder: Encoder | None = None) -> SemanticRouter:
-    """装配内核语义路由；snapshot 必须显式注入（禁止内置样句兜底）。"""
-    if snapshot is None:
-        raise ValueError("build_kernel_router requires a registry snapshot (fastpath routes come from DB)")
-    return SemanticRouter(fastpath_routes_from_snapshot(snapshot), encoder=encoder)
+    """装配内核语义路由（样句来自 fastpath_data）。"""
+    del snapshot
+    return SemanticRouter(fastpath_routes(), encoder=encoder)

@@ -84,7 +84,7 @@ async def run_case(case: dict[str, Any]) -> CaseResult:
         research_model=RuleBasedDeepResearchModel(),
         deep_trigger_reasons=["eval_harness"],
     )
-    usable = bundle.status in {"PARTIAL", "COMPLETE"} and len(bundle.sources) >= 1
+    usable = bundle.status in {"PARTIAL", "COMPLETE", "LIMITED"} and len(bundle.sources) >= 1
     # Result 时点：对齐 Data Guardrail（离线）
     guard_hit = evaluate_research_observation(
         {

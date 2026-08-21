@@ -33,6 +33,7 @@ from bdlh_runtime.tools.deep_research.contracts import (
     ResearchSource,
 )
 from bdlh_runtime.tools.deep_research.executor import DeepResearchToolExecutor
+from bdlh_runtime.tools.deep_research.factory import create_deep_research_executor, deep_research_infra_ready
 from bdlh_runtime.tools.deep_research.graph import build_deep_research_graph
 from bdlh_runtime.tools.deep_research.models import (
     LangchainDeepResearchModel,
@@ -61,6 +62,8 @@ __all__ = [
     "RuleBasedDeepResearchModel",
     "assemble_research_bundle",
     "build_deep_research_graph",
+    "create_deep_research_executor",
+    "deep_research_infra_ready",
     "evaluate_deep_research_trigger",
     "parse_bailian_search_payload",
     "run_deep_research",

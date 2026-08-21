@@ -13,7 +13,11 @@ class MemoryApplication:
     async def search(self, request: SearchRequest) -> list[MemoryRecord]:
         try:
             return await self._gateway.search(request.user_id, request.query, request.top_k)
-        except Exception:
+        except Exception as exc:
+            # L3 degraded：空结果，不得抛到编排层伪装成「召回成功有数据」
+            import logging
+
+            logging.getLogger("bdlh_memory").warning("memory_search_degraded err=%s", type(exc).__name__)
             return []
 
     async def consume(self, candidate: MemoryCandidate) -> bool:

@@ -38,8 +38,8 @@ def _events(response) -> list[dict]:
 
 
 class KnowledgeCognitive:
-    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
-        del observer
+    async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
+        del observer, checkpoint
         return CognitiveExecution(
             state=CognitiveState(event=event),
             response=PublicResponse(
@@ -52,8 +52,8 @@ class KnowledgeCognitive:
 
 
 class ClarifyingCognitive:
-    async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
-        del observer
+    async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
+        del observer, checkpoint
         asking = "分析" in event.message and "600000" not in event.message
         return CognitiveExecution(
             state=CognitiveState(event=event),

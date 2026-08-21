@@ -237,6 +237,10 @@ class FinanceCognitiveSelector:
                 reason=_knowledge_answer(message),
             )
 
+        impact_action = self._impact_action(event, message)
+        if impact_action is not None:
+            return impact_action
+
         selected_candidate = self._entity_store.select_candidate(event, message)
         if selected_candidate is not None:
             self._entity_store.put(
@@ -316,6 +320,47 @@ class FinanceCognitiveSelector:
             domain_request=request,
         )
 
+    @staticmethod
+    def _impact_action(event: InputEvent, message: str) -> CognitiveAction | None:
+        """组合健康 / 目标规划可不依赖标的解析，直接走 Finance 影响意图。"""
+        if _is_goal_planning_request(message):
+            intent = FinancialIntent.GOAL_PLANNING
+            reason_code = "GOAL_PLANNING"
+            objective = "基于已确认目标与用户金融快照评估目标规划影响"
+            ops = {
+                DomainOperation.READ_PORTFOLIO,
+                DomainOperation.READ_PROFILE,
+                DomainOperation.READ_FINANCIAL_GOALS,
+                DomainOperation.READ_MARKET_DATA,
+            }
+        elif _is_portfolio_impact_request(message):
+            intent = FinancialIntent.PORTFOLIO_IMPACT
+            reason_code = "PORTFOLIO_IMPACT"
+            objective = "基于权威持仓与估值评估组合暴露面"
+            ops = {
+                DomainOperation.READ_PORTFOLIO,
+                DomainOperation.READ_PROFILE,
+                DomainOperation.READ_MARKET_DATA,
+            }
+        else:
+            return None
+        request = FinancialDomainRequest(
+            request_id=f"{event.event_id}:{intent.value.lower()}",
+            authenticated_user_id=event.user_id,
+            objective=objective,
+            authorized_operations=ops,
+            budget=DomainBudget(tool_call_limit=12, runtime_seconds=60, model_call_limit=0),
+            financial_intent=intent,
+            instruments=[],
+            requires_financial_snapshot=True,
+        )
+        return CognitiveAction(
+            action_type=CognitiveActionType.INVOKE_DOMAIN,
+            reason_code=reason_code,
+            reason=objective,
+            domain_request=request,
+        )
+
     def _extract_mention(self, event: InputEvent) -> InstrumentMention | None:
         message = event.message.strip()
         code_match = _CODE_PATTERN.search(message)
@@ -350,47 +395,43 @@ class FinanceCognitiveSelector:
 
     @staticmethod
     def _research_action(event: InputEvent, candidate: InstrumentCandidate) -> CognitiveAction:
-        if _is_suitability_only_request(event.message):
-            request = FinancialDomainRequest(
-                request_id=f"{event.event_id}:suitability",
-                authenticated_user_id=event.user_id,
-                objective="对已验证证券标的执行 fail-closed 个性化风险匹配筛查前置",
-                authorized_operations={
-                    DomainOperation.READ_MARKET_DATA,
-                    DomainOperation.READ_PUBLIC_RESEARCH,
-                    DomainOperation.READ_PORTFOLIO,
-                    DomainOperation.READ_PROFILE,
-                    DomainOperation.RUN_ANALYSIS,
-                },
-                budget=DomainBudget(tool_call_limit=16, runtime_seconds=90, model_call_limit=0),
-                financial_intent=FinancialIntent.SUITABILITY,
-                instruments=[candidate.instrument],
-                requires_financial_snapshot=True,
-            )
-            return CognitiveAction(
-                action_type=CognitiveActionType.INVOKE_DOMAIN,
-                reason_code="SUITABILITY",
-                reason="对已验证标的执行适配性前置评估（ADR-004 未批准前仅 fail-closed）",
-                domain_request=request,
-            )
+        needs_snapshot = _is_suitability_only_request(event.message)
+        authorized = {
+            DomainOperation.READ_MARKET_DATA,
+            DomainOperation.READ_PUBLIC_RESEARCH,
+            DomainOperation.RUN_ANALYSIS,
+        }
+        if needs_snapshot:
+            authorized |= {
+                DomainOperation.READ_PORTFOLIO,
+                DomainOperation.READ_PROFILE,
+            }
         request = FinancialDomainRequest(
-            request_id=f"{event.event_id}:research",
+            request_id=f"{event.event_id}:{'suitability' if needs_snapshot else 'research'}",
             authenticated_user_id=event.user_id,
-            objective="对已验证证券标的执行只读客观研究",
-            authorized_operations={
-                DomainOperation.READ_MARKET_DATA,
-                DomainOperation.READ_PUBLIC_RESEARCH,
-                DomainOperation.RUN_ANALYSIS,
-            },
-            budget=DomainBudget(tool_call_limit=12, runtime_seconds=60, model_call_limit=0),
+            objective=(
+                "对已验证证券标的执行 fail-closed 个性化风险匹配筛查前置"
+                if needs_snapshot
+                else "对已验证证券标的执行只读客观研究"
+            ),
+            authorized_operations=authorized,
+            budget=DomainBudget(
+                tool_call_limit=16 if needs_snapshot else 12,
+                runtime_seconds=90 if needs_snapshot else 60,
+                model_call_limit=0,
+            ),
             financial_intent=FinancialIntent.STOCK_RESEARCH,
             instruments=[candidate.instrument],
-            requires_financial_snapshot=False,
+            requires_financial_snapshot=needs_snapshot,
         )
         return CognitiveAction(
             action_type=CognitiveActionType.INVOKE_DOMAIN,
-            reason_code="STOCK_RESEARCH",
-            reason="对已验证标的执行客观研究",
+            reason_code="SUITABILITY" if needs_snapshot else "STOCK_RESEARCH",
+            reason=(
+                "对已验证标的执行适配性前置评估（ADR-004 未批准前仅 fail-closed）"
+                if needs_snapshot
+                else "对已验证标的执行客观研究"
+            ),
             domain_request=request,
         )
 
@@ -426,7 +467,10 @@ class FinanceCognitiveContinuation:
             ]
             if user_actionable:
                 next_steps = [item.description for item in user_actionable]
-                if assessment.result == "INSUFFICIENT_INFORMATION":
+                needs_facts = any(
+                    item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in user_actionable
+                ) or assessment.result == "INSUFFICIENT_INFORMATION"
+                if needs_facts:
                     next_steps.extend(
                         [
                             "打开金融资料确认",
@@ -486,7 +530,57 @@ class FinanceCognitiveContinuation:
                 risk_disclosures=list(assessment.reasons),
                 next_steps=["可继续追问该标的客观研究，或补充风险偏好与持仓后再做适配筛查"],
             )
+        if isinstance(outcome, FinancialDomainOutcome) and (
+            outcome.portfolio_impact is not None or outcome.goal_impact is not None
+        ):
+            return _impact_communication_plan(outcome)
         return None
+
+
+def _impact_communication_plan(outcome: FinancialDomainOutcome) -> CommunicationPlan:
+    evidence = [
+        reason.removeprefix("impact evidence: ").strip()
+        for reason in outcome.confidence.reasons
+        if reason.startswith("impact evidence:")
+    ]
+    evidence_refs = [part for chunk in evidence for part in chunk.split(", ") if part]
+    sections: list[CommunicationSection] = []
+    if outcome.portfolio_impact is not None:
+        exposure = outcome.portfolio_impact.current_exposure
+        items = [f"{key}={value:.2f}%" for key, value in sorted(exposure.items())] or ["暂无可用持仓权重"]
+        sections.append(
+            CommunicationSection(section_type="FINDINGS", title="组合暴露", items=items)
+        )
+        summary = "已完成组合暴露面评估。"
+        structure = "PORTFOLIO_IMPACT"
+    else:
+        assert outcome.goal_impact is not None
+        items = list(outcome.goal_impact.reasons) or ["暂无目标影响结论"]
+        if outcome.goal_impact.affected_goal_ids:
+            items = [
+                f"影响目标：{', '.join(outcome.goal_impact.affected_goal_ids)}",
+                f"影响级别：{outcome.goal_impact.impact_level}",
+                *items,
+            ]
+        sections.append(
+            CommunicationSection(section_type="FINDINGS", title="目标规划影响", items=items)
+        )
+        summary = f"目标规划影响级别：{outcome.goal_impact.impact_level}。"
+        structure = "GOAL_PLANNING"
+    if outcome.limitations:
+        sections.append(
+            CommunicationSection(section_type="LIMITATIONS", title="限制", items=list(outcome.limitations))
+        )
+    kind = "ANSWER" if outcome.status == "COMPLETE" else "LIMITED"
+    return CommunicationPlan(
+        response_kind=kind,  # type: ignore[arg-type]
+        response_structure=structure,
+        summary=summary,
+        sections=sections,
+        evidence_refs=evidence_refs,
+        limitations=list(outcome.limitations),
+        next_steps=["打开金融资料确认", "换一个新问题"],
+    )
 
 
 def _candidate_name(message: str) -> str | None:
@@ -521,10 +615,19 @@ def _knowledge_answer(message: str) -> str:
     return "这个问题属于稳定金融知识，可从定义、适用条件、局限和常见误区四个方面理解；如需实时标的数据，请同时给出公司名称、简称或证券代码。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
 
 
+
 def _is_suitability_only_request(message: str) -> bool:
     """含适配意图即走 Suitability；研究词不再一刀切排除（可并存）。"""
 
     return bool(re.search(r"(?:适合我|适不适合|是否适合|匹配我的风险)", message))
+
+
+def _is_portfolio_impact_request(message: str) -> bool:
+    return bool(re.search(r"(?:持仓|组合健康|组合暴露|仓位集中|我的组合|组合风险|仓位结构)", message))
+
+
+def _is_goal_planning_request(message: str) -> bool:
+    return bool(re.search(r"(?:目标规划|理财目标|投资目标|财务目标|目标期限|规划一下目标)", message))
 
 
 def _is_stable_knowledge_question(message: str) -> bool:

@@ -1,34 +1,29 @@
 # 数据库脚本目录
 
-本目录是仓库唯一的数据库脚本位置。这里按“新项目全量建库”维护，
-不保留 Flyway 自动迁移。所有脚本均需由开发人员或
-数据库管理员显式执行；任何应用服务启动时都不会自动建表、写入种子数据或执行迁移。
+本目录是仓库唯一的数据库脚本位置。按「空库全量」维护；应用启动不执行 DDL/seed/迁移。
 
-## 目录说明
+## 怎么执行
 
-- `postgresql/bootstrap.sql`：角色和 Schema 的前置初始化脚本，使用数据库管理员角色执行。
-- `postgresql/schema/`：当前 Java Data Plane 与 Memory Service 所需的全量表、索引和约束。
-- `postgresql/seed/registry.sql`：当前 Registry 的全量种子；仅在执行完对应 Schema 后执行。
-- `postgresql/upgrades/`：已有库的手工增量 ALTER（按文件名日期执行）；新库不要跑 upgrades，直接用 schema 全量。
-- `mysql/user_schema.sql`：认证和用户模块的全量表与初始角色权限数据。
+1. 打开 [execution/](./execution/) —— **按日期追加的执行说明**
+2. 以其中**最新一份**为当前基线（见 [execution/README.md](./execution/README.md)）
+3. 用**一个超级管理员**按该文件顺序跑 SQL
 
-## 开发环境全量重建顺序
+**当前基线：** [execution/20260817_SQL字段注释整理.md](./execution/20260817_SQL字段注释整理.md)
 
-1. 清空并重新创建目标开发数据库。
-2. 使用管理员角色执行 `postgresql/bootstrap.sql`。
-3. 使用 `bdlh_runtime_data` 角色执行 `postgresql/schema/platform_contract.sql`、`runtime_core.sql`、`task_messaging.sql`、`notifications.sql`、`run_projection.sql`、`registry.sql` 和 `financial_user_data.sql`。
-4. 使用 `bdlh_memory_service` 角色执行 `postgresql/schema/memory_service.sql`。
-5. 使用 `bdlh_runtime_data` 角色执行 `postgresql/seed/registry.sql`。
-6. 如需认证和用户模块，再按需要执行 `mysql/user_schema.sql`。
+## 目录结构
 
-## 已有库增量
+| 路径 | 用途 |
+|---|---|
+| `execution/` | 每次 DB 更新追加一份执行说明（管理入口） |
+| `postgresql/bootstrap.sql` | 角色与 Schema 初始化 |
+| `postgresql/schema/` | 全量表结构 |
+| `postgresql/seed/` | 全量种子（当前仅 Registry） |
+| `mysql/user_schema.sql` | 认证/用户模块（独立 MySQL，可选） |
 
-若云库已有 `runtime.chat_session` 但缺少暂停/实体列，手工执行：
+已删除：`postgresql/upgrades/`（全量约定下不再使用增量脚本）。
 
-`postgresql/upgrades/20260817_chat_session_pause_and_entity.sql`
+## 以后每次改库
 
-若缺少用户金融资料表，手工执行：
-
-`postgresql/schema/financial_user_data.sql`（`CREATE IF NOT EXISTS`，可重复执行）
-
-应用仅假定上述数据库对象已经存在；缺表或缺少权限时应直接报错，不在启动期修复。
+1. 改 `schema/` / `seed/`（必要时 `bootstrap.sql`）
+2. 在 `execution/` **新增** `YYYYMMDD_说明.md`（不要改旧文件）
+3. 把本 README「当前基线」链接改到最新文件

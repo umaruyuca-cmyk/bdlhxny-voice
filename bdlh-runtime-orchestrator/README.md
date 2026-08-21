@@ -35,7 +35,7 @@ Domain Dispatcher 进入 Finance Runtime；知识问答可走直接回答，领�
   Mem0 记忆降级、Java 数据适配（生产禁 mock）、交易日历、确定性分析引擎；
 - 未实现：Letta 对比 Runtime（主版本稳定后启动）、真实下单/撤单、Node Skill 独立部署评估；
 - Mock 数据只用于流程测试（带 is_mock 标记），不能用于任何真实市场结论；
-- 运行环境：需配置 `JAVA_API_BASE_URL`、`JAVA_DATA_INTERNAL_TOKEN`、`DEEPSEEK_API_KEY` 和两个 MCP endpoint。
+- 运行环境：需配置 `JAVA_API_BASE_URL`、`JAVA_DATA_INTERNAL_TOKEN`、`LLM_API_KEY`（默认 GLM-4.7）和两个 MCP endpoint。
 
 ## 本地运行
 

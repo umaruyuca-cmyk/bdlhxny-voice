@@ -85,6 +85,25 @@ class FakeFinanceExecutor:
             data = {"items": [{"title": "公司公告"}]}
         elif capability == "research.web_search":
             data = {"results": [{"title": "公开资料", "url": "https://example.com"}]}
+        elif capability == "research.deep_search":
+            data = {
+                "schema_version": "research-bundle.v1",
+                "request_id": request_id,
+                "question": "q",
+                "status": "PARTIAL",
+                "findings": [{"finding_id": "f1", "statement": "公开讨论", "source_ids": ["s1"]}],
+                "sources": [
+                    {
+                        "source_id": "s1",
+                        "title": "公开资料",
+                        "url": "https://example.com",
+                        "retrieved_at": "2026-08-11T00:00:00+00:00",
+                    }
+                ],
+                "conflicts": [],
+                "limitations": [],
+                "usage": {"budget_exhausted": False},
+            }
         elif capability in {
             "portfolio.get_current_positions",
             "portfolio.get_account_snapshot",
@@ -150,9 +169,10 @@ def build_runtime(executor: FakeFinanceExecutor) -> FinanceRuntime:
 
 
 def _topic_map() -> dict[str, list[str]]:
-    snapshot = seeded_snapshot()
+    from bdlh_runtime.cognitive.topic_hints import topic_capabilities_for
+
     return {
-        topic: snapshot.topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")
+        topic: topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")
     }
 
 
@@ -186,20 +206,33 @@ def request_for(
     intent: FinancialIntent = FinancialIntent.STOCK_RESEARCH,
     operations: set[DomainOperation] | None = None,
     tool_call_limit: int = 20,
+    requires_financial_snapshot: bool | None = None,
+    objective: str = "执行兼容股票研究",
 ) -> FinancialDomainRequest:
+    snapshot = (
+        requires_financial_snapshot
+        if requires_financial_snapshot is not None
+        else intent == FinancialIntent.SUITABILITY
+    )
+    default_ops = {
+        DomainOperation.READ_MARKET_DATA,
+        DomainOperation.READ_PUBLIC_RESEARCH,
+        DomainOperation.RUN_ANALYSIS,
+    }
+    if snapshot:
+        default_ops |= {
+            DomainOperation.READ_PORTFOLIO,
+            DomainOperation.READ_PROFILE,
+        }
     return FinancialDomainRequest(
         request_id=request_id,
         authenticated_user_id="user-1",
-        objective="执行兼容股票研究",
-        financial_intent=intent,
+        objective=objective,
+        financial_intent=FinancialIntent.STOCK_RESEARCH if snapshot else intent,
         requested_topics=requested_topics or set(),
         instruments=[FinancialInstrument(symbol="600519", name="贵州茅台")],
-        authorized_operations=operations
-        or {
-            DomainOperation.READ_MARKET_DATA,
-            DomainOperation.READ_PUBLIC_RESEARCH,
-            DomainOperation.RUN_ANALYSIS,
-        },
+        requires_financial_snapshot=snapshot,
+        authorized_operations=operations or default_ops,
         budget=DomainBudget(
             tool_call_limit=tool_call_limit,
             runtime_seconds=10,
@@ -209,13 +242,26 @@ def request_for(
 
 
 @pytest.mark.asyncio
-async def test_explicit_topics_attach_to_any_research_request() -> None:
-    """重写语义：topic 附加无类型门槛（类型白名单已删），随时可请求。"""
+async def test_web_research_prefers_deep_search_when_enabled_and_triggered() -> None:
     executor = FakeFinanceExecutor()
-    outcome = await build_runtime(executor).run(request_for(requested_topics={"news", "money_flow"}))
-    assert outcome.status in {"COMPLETE", "PARTIAL"}
-    assert "market.get_news" in executor.calls
-    assert "market.get_money_flow" in executor.calls
+    registry = load_capability_registry(seeded_snapshot())
+    runtime = FinanceRuntime(
+        planner=FinancePlanner(
+            topic_capabilities=_TOPIC_CAPABILITIES,
+            deep_research_enabled=True,
+        ),
+        authorization=FinanceCapabilityAuthorizationPolicy(registry),
+        executor=executor,
+    )
+    outcome = await runtime.run(
+        request_for(
+            objective="请深度研究贵州茅台并交叉验证冲突观点",
+            requested_topics={"web_research"},
+        )
+    )
+    assert outcome.status in {"COMPLETE", "PARTIAL", "LIMITED", "FAILED"}
+    assert "research.deep_search" in executor.calls
+    assert "research.web_search" not in executor.calls
 
 
 @pytest.mark.parametrize(
@@ -350,11 +396,18 @@ async def test_builder_failure_returns_stable_error_and_preserves_analysis_resul
     ],
 )
 @pytest.mark.asyncio
-async def test_disabled_intents_have_stable_errors(intent: FinancialIntent) -> None:
+async def test_impact_intents_require_portfolio_ops(intent: FinancialIntent) -> None:
+    """G8：影响意图不再 ACTION_NOT_ENABLED；缺授权时仍 fail-closed。"""
     disabled_executor = FakeFinanceExecutor()
-    disabled = await build_runtime(disabled_executor).run(request_for(intent=intent))
-    assert disabled.status == "FAILED"
-    assert disabled.errors[0].code == "ACTION_NOT_ENABLED"
+    denied = await build_runtime(disabled_executor).run(
+        request_for(
+            intent=intent,
+            tool_call_limit=12,
+            operations={DomainOperation.READ_MARKET_DATA, DomainOperation.RUN_ANALYSIS},
+        )
+    )
+    assert denied.status == "FAILED"
+    assert denied.errors[0].code == "REQUIRED_CAPABILITY_NOT_AUTHORIZED"
     assert disabled_executor.calls == []
 
 

@@ -32,6 +32,7 @@ class AgentRuntimeApplication:
     direct_response_model: Any | None = None
     analysis_capability: Any | None = None
     web_search_adapter: Any | None = None
+    deep_research_executor: Any | None = None
     history_store: Any | None = None
     run_registry: Any | None = None
     chat_session_store: Any | None = None
@@ -56,15 +57,16 @@ def create_application(
     """从 Settings 装配完整应用。
 
     装配顺序：LLM → Memory → Gateway → Agents → Finance → Cognitive。
-    每一步都可能降级（无 Key/无依赖），降级信息记日志但不阻断启动。
+    产品路径按生产标准 fail-closed（G3）：缺 Java/凭证则拒绝启动，不走 mock。
+    仅 ``environment=test`` 允许注入 snapshot / 假依赖。
     """
     settings = settings or Settings.from_environment()
     if settings.auth_required and not settings.jwt_secret:
         raise ConfigurationError("启用用户隔离时必须配置 JWT_SECRET")
     if settings.environment != "test" and not settings.java_api_base_url:
         raise ConfigurationError("当前终态要求配置 JAVA_API_BASE_URL；不再支持 Python 本地数据存储回退")
-    if settings.environment == "production" and not settings.java_data_internal_token:
-        raise ConfigurationError("生产环境必须配置 JAVA_DATA_INTERNAL_TOKEN")
+    if settings.environment != "test" and not settings.java_data_internal_token:
+        raise ConfigurationError("非测试环境必须配置 JAVA_DATA_INTERNAL_TOKEN；不允许无凭证 Java 调用")
     if settings.financial_task_worker_enabled and settings.financial_task_poll_seconds <= 0:
         raise ConfigurationError("M6 Worker 轮询间隔必须大于 0 秒")
 
@@ -72,9 +74,9 @@ def create_application(
 
     assert_java_reachable_for_startup(settings, registry_snapshot=registry_snapshot)
 
-    # ── 1. LLM（有 DeepSeek Key 用真实，无则 None 触发各 Agent 降级）──
+    # ── 1. LLM（有 Key 用真实模型，无则 None 触发各 Agent 降级）──
     llm = create_llm(
-        api_key=settings.deepseek_api_key,
+        api_key=settings.llm_api_key,
         base_url=settings.mem0.llm_base_url,
         model=settings.mem0.llm_model,
     )
@@ -91,12 +93,20 @@ def create_application(
     # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
     java_adapter = _create_java_adapter(
         settings.java_api_base_url,
-        production=(settings.environment == "production"),
         token=settings.java_data_internal_token,
     )
 
     # ── 4.5b web-search 适配器（网络搜索，HTTP 非 MCP）──
     web_search_adapter = _create_web_search_adapter(settings)
+
+    # ── 4.5c Deep Research（ADR-016/G6：Flag + 百炼原子搜索门禁）──
+    from bdlh_runtime.tools.deep_research.factory import (
+        create_deep_research_executor,
+        deep_research_infra_ready,
+    )
+
+    deep_infra_ready = deep_research_infra_ready(settings)
+    deep_research_executor = create_deep_research_executor(settings, llm=llm)
 
     # ── 4.6 注册表快照（DB 真源；测试显式注入，禁止默认清单兜底）──
     registry_snapshot = _load_registry_snapshot(settings, registry_snapshot=registry_snapshot)
@@ -108,23 +118,32 @@ def create_application(
     analysis_capability = create_analysis_capability()
 
     # ── 4.6b Finance Runtime ──
+    from bdlh_runtime.cognitive.topic_hints import topic_capabilities_for
     from bdlh_runtime.domains.finance.runtime import create_finance_runtime
     from bdlh_runtime.domains.registry import DomainRegistry
+    from bdlh_runtime.registry.menu import (
+        allowed_capabilities,
+        apply_feature_gates,
+        effective_operations,
+        eligible_capabilities,
+    )
 
     finance_runtime = create_finance_runtime(
         capability_registry=capability_registry,
         topic_capabilities={
-            topic: registry_snapshot.topic_capabilities_for(topic)
+            topic: topic_capabilities_for(topic)
             for topic in ("news", "money_flow", "industry", "web_research")
         },
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,
         analysis_capability=analysis_capability,
         java_adapter=java_adapter,
+        deep_research_executor=deep_research_executor,
+        deep_research_enabled=settings.deep_research_enabled and deep_infra_ready,
         execution_environment=(
             settings.environment
             if settings.environment in {"production", "development", "test"}
-            else "development"
+            else "production"
         ),
     )
     domain_registry = DomainRegistry()
@@ -136,12 +155,13 @@ def create_application(
         validate_descriptor_against_registry,
     )
 
-    finance_descriptor = build_finance_descriptor(capability_registry)
+    finance_descriptor = build_finance_descriptor(registry_snapshot)
     domain_registry.register_descriptor("finance", finance_descriptor)
     validate_descriptor_against_registry(finance_descriptor, capability_registry)
 
-    # ── 4.6c.1 M7 第二 Domain 插件契约探针（实验性、非用户入口）──
+    # ── 4.6c.1 M7 第二 Domain 插件契约探针（实验性、非用户入口；不在业务种子中）──
     from bdlh_runtime.domains.plugin_probe import (
+        PLUGIN_PROBE_CAPABILITY,
         PLUGIN_PROBE_DESCRIPTOR,
         PluginProbeRuntime,
     )
@@ -151,10 +171,11 @@ def create_application(
         PluginProbeRuntime(capability_registry),
     )
     domain_registry.register_descriptor("plugin_probe", PLUGIN_PROBE_DESCRIPTOR)
-    validate_descriptor_against_registry(
-        PLUGIN_PROBE_DESCRIPTOR,
-        capability_registry,
-    )
+    if capability_registry.contains(PLUGIN_PROBE_CAPABILITY):
+        validate_descriptor_against_registry(
+            PLUGIN_PROBE_DESCRIPTOR,
+            capability_registry,
+        )
 
     # ── 4.6d Cognitive Application（唯一产品编排路径）──
     from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
@@ -162,6 +183,7 @@ def create_application(
         SemanticRouteSelector,
         build_kernel_router,
     )
+    from bdlh_runtime.cognitive.understand import create_understand_model
     from bdlh_runtime.domains.dispatcher import DomainDispatcher
     from bdlh_runtime.domains.finance.cognitive_adapter import (
         FinanceCognitiveContinuation,
@@ -169,14 +191,26 @@ def create_application(
         InMemoryVerifiedEntityStore,
     )
 
-    from bdlh_runtime.guardrails.assembly import authorized_capabilities_from_registry
-
     from .run_control import RunControlPlane
+
+    menu_ops = effective_operations(
+        registry_snapshot,
+        runtime_allowed=settings.runtime_allowed_operations,
+        entitlement=settings.default_entitlement_operations,
+    )
+    menu_eligible = eligible_capabilities(registry_snapshot, menu_ops)
+    # 装配期白名单取登录态上限；未登录能力仍靠 requires_authenticated_user 与 Gateway 拦截
+    menu_allowed = apply_feature_gates(
+        allowed_capabilities(menu_eligible, authenticated=True),
+        deep_research_enabled=settings.deep_research_enabled,
+        deep_research_infra_ready=deep_infra_ready,
+    )
 
     run_control = RunControlPlane()
     verified_entities = InMemoryVerifiedEntityStore()
+    understand_model = create_understand_model(llm)
     cognitive_selector = SemanticRouteSelector(
-        build_kernel_router(snapshot=registry_snapshot),
+        build_kernel_router(),
         fallback=FinanceCognitiveSelector(verified_entities),
         knowledge_responder=direct_response_model,
     )
@@ -185,21 +219,10 @@ def create_application(
         dispatcher=DomainDispatcher(domain_registry),
         continuation=FinanceCognitiveContinuation(verified_entities),
         enabled_domains=frozenset({"finance"}),
-        authorized_operations=frozenset(
-            {
-                "READ_MARKET_DATA",
-                "READ_PUBLIC_RESEARCH",
-                "READ_PORTFOLIO",
-                "READ_PROFILE",
-                "READ_FINANCIAL_GOALS",
-                "RUN_ANALYSIS",
-            }
-        ),
-        authorized_capabilities=authorized_capabilities_from_registry(
-            capability_registry,
-            deep_research_enabled=settings.deep_research_enabled,
-        ),
+        authorized_operations=frozenset(menu_ops),
+        authorized_capabilities=frozenset(cap.name for cap in menu_allowed),
         pause_check=run_control.is_pause_requested,
+        understand=understand_model,
     )
 
     # ── 4.6e 运行持久化：Java Data Plane 是唯一运行时写源 ──
@@ -214,7 +237,6 @@ def create_application(
         history_store, run_registry, chat_session_store = create_remote_runtime_stores(
             base_url=settings.java_api_base_url,
             internal_token=settings.java_data_internal_token,
-            production=(settings.environment == "production"),
         )
         run_state_reader = create_remote_run_state_store(
             base_url=settings.java_api_base_url,
@@ -271,6 +293,7 @@ def create_application(
         direct_response_model=direct_response_model,
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
+        deep_research_executor=deep_research_executor,
         history_store=history_store,
         run_registry=run_registry,
         chat_session_store=chat_session_store,
@@ -302,7 +325,10 @@ def _load_registry_snapshot(settings: Settings, *, registry_snapshot: Any | None
         base_url=settings.java_api_base_url,
         internal_token=settings.java_data_internal_token,
     )
-    return load_and_validate(store)
+    return load_and_validate(
+        store,
+        runtime_allowed_operations=settings.runtime_allowed_operations,
+    )
 
 
 def _create_memory(settings: Settings) -> Any:
@@ -313,9 +339,7 @@ def _create_memory(settings: Settings) -> Any:
         return NoOpMemoryStore()
     if settings.memory_mode == "remote":
         if not settings.memory_service_base_url or not settings.memory_service_internal_token:
-            if settings.environment == "production":
-                raise ConfigurationError("生产 Remote Memory Service 需要地址和独立服务凭证")
-            return NoOpMemoryStore()
+            raise ConfigurationError("Remote Memory Service 需要 MEMORY_SERVICE_BASE_URL 与 MEMORY_SERVICE_INTERNAL_TOKEN")
         from bdlh_runtime.memory.remote import RemoteMemoryStore
         from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
 
@@ -329,7 +353,7 @@ def _create_memory(settings: Settings) -> Any:
                 internal_token=settings.java_data_internal_token,
             ),
         )
-    if settings.memory_mode == "embedded-test" and settings.environment != "production":
+    if settings.memory_mode == "embedded-test" and settings.environment == "test":
         from bdlh_runtime.memory.mem0.mem0_store import create_memory_store
 
         return create_memory_store(
@@ -340,43 +364,34 @@ def _create_memory(settings: Settings) -> Any:
             mem0_embedder_api_key=settings.mem0.embedder_api_key,
             mem0_embedder_base_url=settings.mem0.embedder_base_url,
         )
-    raise ConfigurationError("BDLH_MEMORY_MODE 只允许 noop、remote 或 embedded-test（非生产）")
+    raise ConfigurationError("BDLH_MEMORY_MODE 只允许 noop、remote；embedded-test 仅 environment=test")
 
 
 def _create_gateway(settings: Settings) -> Any:
     """创建 MCP Gateway Adapter。
 
-    即使云端 MCP 不在线也允许启动（调用时才失败）。这与"降级不阻断启动"
-    原则一致——Gateway 只是把 client 创建出来，连接探测发生在首次调用。
+    Gateway 客户端在启动时装配；首次调用再探测连通性。
+    MCP 不可达不得 mock 成功 Observation（G3）。
     """
     from bdlh_runtime.integrations.mcp.adapter import create_adapter_from_settings
 
     return create_adapter_from_settings(settings)
 
 
-def _create_java_adapter(base_url: str | None, *, production: bool, token: str | None) -> Any:
-    """创建 Java 数据适配器（Phase 4，审查文档 §5.3）。
-
-    base_url 未配置时：开发环境 mock 降级（带 is_mock 标记），生产环境
-    返回 UNAVAILABLE（不伪造持仓结论）。
-    """
+def _create_java_adapter(base_url: str | None, *, token: str | None) -> Any:
+    """创建 Java 数据适配器。未配置或失败一律 UNAVAILABLE，不 mock（G3）。"""
     from bdlh_runtime.tools.java_data_adapter import create_java_adapter
 
-    return create_java_adapter(base_url=base_url, production=production, token=token)
+    return create_java_adapter(base_url=base_url, token=token)
 
 
 def _create_web_search_adapter(settings: Settings) -> Any:
-    """创建 web-search 适配器（架构文档 §13.4）。
-
-    base_url 未配置时：开发环境 mock 降级（带 is_mock 标记），生产环境
-    返回 UNAVAILABLE（不伪造搜索结果）。
-    """
+    """创建 web-search 适配器。未配置或失败一律 UNAVAILABLE，不 mock（G3）。"""
     from bdlh_runtime.tools.web_search_adapter import create_web_search_adapter
 
     return create_web_search_adapter(
         base_url=settings.web_search_base_url,
         timeout_seconds=settings.web_search_timeout_seconds,
-        production=(settings.environment == "production"),
         agent_id=settings.web_search_agent_id,
         token=settings.web_search_token,
     )

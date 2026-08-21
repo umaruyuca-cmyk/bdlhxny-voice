@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Skills 试用 · グリッドユニバース研究所</title>
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> Skills 试用</a>
+  <div class="docs-top-links">
+    <a href="/docs/">文档中心</a>
+    <a href="/agent">工作站</a>
+  </div>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>Skills 试用</h4>
+    <ul>
+      <li><a href="#stock" class="active" data-skill-tab="stock">Stock Skill</a></li>
+      <li><a href="#deepsearch" data-skill-tab="deepsearch">DeepSearch</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/">← 返回首页</a>
+    <div id="trialAuthBanner" class="trial-auth" hidden>
+      <span>当前为访客试用。登录后可同步会话与金融资料；也可继续匿名调用。</span>
+      <a class="btn ghost" href="/agent">前往登录</a>
+    </div>
+
+    <section class="panel-view" data-skill-panel="stock" id="stock">
+      <div class="crumb-inline">Skills <span>/</span> Stock Skill</div>
+      <h1>Stock Skill · 金融分析试用</h1>
+      <p class="lead">在本页直接调用 Runtime 流式接口。模型只做解释，不替代指标与风险计算。</p>
+
+      <h2>快速试用</h2>
+      <form class="trial-form" id="stockTrialForm">
+        <input id="stockTrialInput" type="text" maxlength="200" placeholder="例如：帮我分析 600519 的近期走势与风险" />
+        <button type="submit" id="stockTrialBtn">开始试用</button>
+      </form>
+      <div class="trial-chips" id="stockTrialChips">
+        <button type="button" data-q="帮我分析 600519 的近期走势、估值与主要风险">个股研究 · 600519</button>
+        <button type="button" data-q="帮我做一次组合健康检查，并指出集中度风险">组合健康</button>
+        <button type="button" data-q="帮我评估当前持仓与我的风险偏好是否匹配">适配性评估</button>
+        <button type="button" data-q="帮我比较白酒板块近期资金流与热度变化">板块热度</button>
+      </div>
+
+      <div class="trial-result" id="stockResult" data-skill="stock">
+        <div class="trial-result-head">
+          <span class="status" data-role="status">等待输入</span>
+          <button type="button" data-role="stop" hidden>停止</button>
+        </div>
+        <div class="trial-result-body placeholder" data-role="body">提交问题后，流式结果会显示在这里。</div>
+      </div>
+
+      <div class="trial-meta">
+        <div><span>能力</span><strong>stock-research / portfolio-health</strong></div>
+        <div><span>入口</span><strong>POST /api/v1/chat/stream</strong></div>
+        <div><span>边界</span><strong>只读 · 不下单</strong></div>
+      </div>
+
+      <div class="lite-actions">
+        <a class="btn ghost" href="/docs/skill#stock-skill">阅读 Stock Skill 规范</a>
+        <a class="btn ghost" href="/agent?name=stock">打开完整工作站</a>
+      </div>
+    </section>
+
+    <section class="panel-view" data-skill-panel="deepsearch" id="deepsearch" hidden>
+      <div class="crumb-inline">Skills <span>/</span> DeepSearch</div>
+      <h1>DeepSearch · 外部证据试用</h1>
+      <p class="lead">在本页直接调用 Runtime。结果先转为 Observation，再进入编排与核验，不直接当最终结论。</p>
+
+      <h2>快速试用</h2>
+      <form class="trial-form" id="deepTrialForm">
+        <input id="deepTrialInput" type="text" maxlength="200" placeholder="例如：搜索并核验新能源汽车近期政策变化" />
+        <button type="submit" id="deepTrialBtn">开始试用</button>
+      </form>
+      <div class="trial-chips" id="deepTrialChips">
+        <button type="button" data-q="帮我搜索并核验新能源汽车近期的重要政策变化">政策核验</button>
+        <button type="button" data-q="帮我整理白酒行业近一周的舆情与讨论度证据">行业舆情</button>
+        <button type="button" data-q="帮我检索关于半导体出口管制的最新公开报道，并标注来源">新闻证据</button>
+        <button type="button" data-q="帮我搜索并对比两家券商对某板块的公开观点差异">观点对比</button>
+      </div>
+
+      <div class="trial-result" id="deepResult" data-skill="deepsearch">
+        <div class="trial-result-head">
+          <span class="status" data-role="status">等待输入</span>
+          <button type="button" data-role="stop" hidden>停止</button>
+        </div>
+        <div class="trial-result-body placeholder" data-role="body">提交问题后，流式结果会显示在这里。</div>
+      </div>
+
+      <div class="trial-meta">
+        <div><span>能力</span><strong>web.search / news.search</strong></div>
+        <div><span>服务</span><strong>bdlh-web-search-adapter</strong></div>
+        <div><span>边界</span><strong>证据补充 · 可降级</strong></div>
+      </div>
+
+      <div class="note"><strong>说明：</strong>浏览器不直连搜索服务。本页通过 Runtime 统一入口调用 DeepSearch。</div>
+
+      <div class="lite-actions">
+        <a class="btn ghost" href="/docs/skill#web-search-skill">阅读 DeepSearch 规范</a>
+        <a class="btn ghost" href="/agent?name=general">打开完整工作站</a>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  (function () {
+    const AUTH_TOKEN_KEY = "bdlh_runtime.auth.token.v1";
+    const MOCK = new URLSearchParams(location.search).has("mock");
+    const STEP_LABEL = {
+      classifying: "理解你的问题",
+      searching_web: "联网检索资料",
+      reading_sources: "整理检索来源",
+      stock_validating: "校验分析标的",
+      skill_executing: "执行深度分析",
+      route_executing: "执行深度分析",
+      searching_vector: "检索知识库",
+      retrieval_result: "整理检索结果",
+      direct_chat: "组织回答",
+      react_planning: "规划分析步骤"
+    };
+
+    const menuBtn = document.getElementById("menuBtn");
+    const docsNav = document.getElementById("docsNav");
+    const authBanner = document.getElementById("trialAuthBanner");
+    menuBtn.addEventListener("click", () => docsNav.classList.toggle("open"));
+
+    const tabs = Array.from(document.querySelectorAll("[data-skill-tab]"));
+    const panels = Array.from(document.querySelectorAll("[data-skill-panel]"));
+    let controller = null;
+    let activeSkill = null;
+
+    function hasToken() {
+      return !!localStorage.getItem(AUTH_TOKEN_KEY);
+    }
+
+    function refreshAuthBanner() {
+      // 仅提示访客身份，不阻止试用
+      authBanner.hidden = MOCK || hasToken();
+    }
+
+    function showPanel(key) {
+      const id = key === "deepsearch" ? "deepsearch" : "stock";
+      tabs.forEach((tab) => tab.classList.toggle("active", tab.getAttribute("data-skill-tab") === id));
+      panels.forEach((panel) => {
+        panel.hidden = panel.getAttribute("data-skill-panel") !== id;
+      });
+      docsNav.classList.remove("open");
+    }
+
+    function sessionIdFor(skill) {
+      const key = "bdlh.skills.trial.session." + skill;
+      let id = sessionStorage.getItem(key);
+      if (!id) {
+        id = "trial_" + skill + "_" + Date.now().toString(36);
+        sessionStorage.setItem(key, id);
+      }
+      return id;
+    }
+
+    function resultRefs(skill) {
+      const root = document.getElementById(skill === "deepsearch" ? "deepResult" : "stockResult");
+      return {
+        root,
+        status: root.querySelector('[data-role="status"]'),
+        stop: root.querySelector('[data-role="stop"]'),
+        body: root.querySelector('[data-role="body"]'),
+        btn: document.getElementById(skill === "deepsearch" ? "deepTrialBtn" : "stockTrialBtn")
+      };
+    }
+
+    function setStatus(refs, text, kind) {
+      refs.status.textContent = text;
+      refs.status.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function setBusy(refs, busy) {
+      if (refs.btn) refs.btn.disabled = busy;
+      refs.stop.hidden = !busy;
+    }
+
+    async function consumeSse(response, onEvent) {
+      if (!response.body) throw new Error("浏览器不支持流式响应");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done }).replace(/\r\n/g, "\n");
+        let boundary;
+        while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+          const frame = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const payload = frame
+            .split("\n")
+            .filter((line) => line.indexOf("data:") === 0)
+            .map((line) => line.slice(5).replace(/^\s+/, ""))
+            .join("\n");
+          if (payload) {
+            const keep = onEvent(JSON.parse(payload));
+            if (keep === false) {
+              await reader.cancel();
+              return;
+            }
+          }
+        }
+        if (done) return;
+      }
+    }
+
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function mockStream(skill, query, refs) {
+      const stock = skill === "stock";
+      const reply = stock
+        ? "【演示】已按 Stock Skill 路径处理你的问题：\n\n「" + query + "」\n\n结论仅供演示：标的研究会输出结构化证据与风险披露；模型只负责解释，不替代确定性计算。\n\n以上为 mock 演示，不构成投资建议。"
+        : "【演示】已按 DeepSearch 路径处理你的问题：\n\n「" + query + "」\n\n结论仅供演示：外部证据会整理为 Observation，并标注来源与不确定性，不直接当作最终研判。";
+      setStatus(refs, stock ? "执行深度分析…" : "联网检索资料…", "running");
+      await delay(500);
+      refs.body.className = "trial-result-body";
+      refs.body.textContent = "";
+      for (let i = 0; i < reply.length; i += 3) {
+        if (controller && controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+        refs.body.textContent += reply.slice(i, i + 3);
+        await delay(16);
+      }
+      setStatus(refs, "完成", "done");
+    }
+
+    async function runTrial(skill, query) {
+      const text = (query || "").trim();
+      if (!text) return;
+      const refs = resultRefs(skill);
+
+      if (controller) controller.abort();
+      controller = new AbortController();
+      activeSkill = skill;
+      setBusy(refs, true);
+      setStatus(refs, "连接中…", "running");
+      refs.body.className = "trial-result-body placeholder";
+      refs.body.textContent = "正在调用 Runtime…";
+      refreshAuthBanner();
+
+      let streamText = "";
+      try {
+        if (MOCK) {
+          await mockStream(skill, text, refs);
+          return;
+        }
+
+        const headers = {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream"
+        };
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        if (token) headers.Authorization = "Bearer " + token;
+
+        const response = await fetch("/api/v1/chat/stream", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            sessionId: sessionIdFor(skill),
+            mode: "general",
+            message: text,
+            instrument: null,
+            regenerate: false,
+            enabledSkillIds: skill === "stock" ? ["finance.stock-research"] : []
+          }),
+          signal: controller.signal
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          refreshAuthBanner();
+          throw new Error("当前服务要求登录，或登录已失效。请点击「前往登录」，或将后端 AUTH_REQUIRED 设为 false。");
+        }
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || ("HTTP " + response.status));
+        }
+
+        await consumeSse(response, (data) => {
+          const type = data.type;
+          if (type === "status") {
+            const label = STEP_LABEL[data.step] || data.step || "处理中";
+            setStatus(refs, label + "…", "running");
+          } else if (type === "token") {
+            const tok = data.content || "";
+            streamText += tok;
+            refs.body.className = "trial-result-body";
+            refs.body.textContent = streamText;
+          } else if (type === "clarification" || type === "ask") {
+            const ask = data.message || data.prompt || data.content || "需要补充更多信息。";
+            streamText = streamText ? streamText + "\n\n" + ask : ask;
+            refs.body.className = "trial-result-body";
+            refs.body.textContent = streamText;
+          } else if (type === "error") {
+            refs.body.className = "trial-result-body error";
+            refs.body.textContent = data.message || data.error || "调用失败";
+            setStatus(refs, "失败", "error");
+            return false;
+          } else if (type === "done") {
+            if (!streamText) {
+              refs.body.className = "trial-result-body";
+              refs.body.textContent = "本轮已结束，但没有返回文本内容。";
+            }
+            setStatus(refs, "完成", "done");
+          }
+          return true;
+        });
+
+        if (refs.status.classList.contains("running")) {
+          setStatus(refs, streamText ? "完成" : "结束", streamText ? "done" : "error");
+        }
+      } catch (err) {
+        if (err.name === "AbortError") {
+          setStatus(refs, "已停止", "error");
+          if (!streamText) {
+            refs.body.className = "trial-result-body placeholder";
+            refs.body.textContent = "已停止本次试用。";
+          }
+        } else {
+          setStatus(refs, "调用失败", "error");
+          refs.body.className = "trial-result-body error";
+          refs.body.textContent = err.message || "暂时无法连接研究服务，请确认后端已启动后重试。";
+        }
+      } finally {
+        setBusy(refs, false);
+        if (activeSkill === skill) {
+          controller = null;
+          activeSkill = null;
+        }
+      }
+    }
+
+    function bindTrial(skill, formId, inputId, chipsId) {
+      const form = document.getElementById(formId);
+      const input = document.getElementById(inputId);
+      const chips = document.getElementById(chipsId);
+      const refs = resultRefs(skill);
+      if (!form || !input) return;
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        runTrial(skill, input.value);
+      });
+      refs.stop.addEventListener("click", () => {
+        if (controller) controller.abort();
+      });
+      if (chips) {
+        chips.querySelectorAll("button[data-q]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const q = btn.getAttribute("data-q") || "";
+            input.value = q;
+            runTrial(skill, q);
+          });
+        });
+      }
+    }
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", (e) => {
+        e.preventDefault();
+        const key = tab.getAttribute("data-skill-tab");
+        const mockQuery = MOCK ? "?mock=1" : "";
+        history.replaceState(null, "", mockQuery + "#" + key);
+        showPanel(key);
+      });
+    });
+
+    const hash = (location.hash || "#stock").slice(1);
+    showPanel(hash);
+    window.addEventListener("hashchange", () => showPanel((location.hash || "#stock").slice(1)));
+    refreshAuthBanner();
+    bindTrial("stock", "stockTrialForm", "stockTrialInput", "stockTrialChips");
+    bindTrial("deepsearch", "deepTrialForm", "deepTrialInput", "deepTrialChips");
+  })();
+</script>
+</body>
+</html>

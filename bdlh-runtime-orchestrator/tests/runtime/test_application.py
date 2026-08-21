@@ -3,6 +3,7 @@ from tests.helpers_registry import seeded_snapshot
 
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
+from bdlh_runtime.runtime.dependency_probes import ProbeResult
 from bdlh_runtime.runtime.errors import ConfigurationError
 
 
@@ -18,23 +19,21 @@ def test_development_requires_java_data_plane() -> None:
         create_application(Settings(environment="development"), registry_snapshot=seeded_snapshot())
 
 
-def test_test_environment_assembles_with_graceful_degradation():
-    """开发环境（无 API Key）应正常装配，所有组件降级为规则/NoOp 版。
+def test_test_environment_assembles_with_injected_fakes():
+    """仅 environment=test 允许无 Java 装配；缺 LLM 时用确定性降级组件。
 
-    验证核心原则：外部依赖不可用时不阻断启动，只是质量降级。
-    Cognitive 是唯一产品编排路径。
+    G3：产品路径（development/production）不得靠 mock 假成功启动。
     """
     app = create_application(Settings(environment="test"), registry_snapshot=seeded_snapshot())
     assert app.cognitive_application is not None
     assert not hasattr(app, "graph")
     assert not hasattr(app, "traffic_router")
     assert not hasattr(app, "rollout_metrics")
-    # 无 DeepSeek Key → LLM 为 None → direct_response 降级为确定性版
     assert app.llm is None
     assert app.direct_response_model is not None
     assert not hasattr(app, "query_agent")
     assert not hasattr(app, "summary_model")
-    assert app.gateway_adapter is not None  # Gateway 创建成功（连接探测延迟到调用时）
+    assert app.gateway_adapter is not None
     assert app.domain_registry.get("finance") is app.finance_runtime
     assert app.finance_runtime is not None
     assert app.analysis_capability is not None
@@ -59,6 +58,14 @@ def test_test_environment_keeps_in_memory_m0_stores():
     assert isinstance(app.history_store, InMemoryAnalysisHistoryStore)
 
 
+def test_development_requires_internal_token():
+    with pytest.raises(ConfigurationError, match="JAVA_DATA_INTERNAL_TOKEN"):
+        create_application(
+            Settings(environment="development", java_api_base_url="http://java.example"),
+            registry_snapshot=seeded_snapshot(),
+        )
+
+
 def test_java_api_base_url_selects_remote_stores(monkeypatch):
     sentinel_history = object()
     sentinel_registry = object()
@@ -66,15 +73,19 @@ def test_java_api_base_url_selects_remote_stores(monkeypatch):
     sentinel_tasks = object()
     sentinel_outbox = object()
 
-    def _fake_remote(*, base_url, internal_token, production):
+    def _fake_remote(*, base_url, internal_token, production=None):
         assert base_url == "http://java.example"
-        assert production is False
+        assert internal_token == "token"
         return sentinel_history, sentinel_registry, sentinel_chat
 
     def _fake_remote_tasks(*, base_url, internal_token):
         assert base_url == "http://java.example"
         return sentinel_tasks, sentinel_outbox
 
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.dependency_probes.probe_java_data_plane",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "ok"),
+    )
     monkeypatch.setattr(
         "bdlh_runtime.runtime.remote_runtime_data.create_remote_runtime_stores",
         _fake_remote,
@@ -89,6 +100,7 @@ def test_java_api_base_url_selects_remote_stores(monkeypatch):
             environment="development",
             java_api_base_url="http://java.example",
             java_data_internal_token="token",
+            auth_required=False,
         ),
         registry_snapshot=seeded_snapshot(),
     )
