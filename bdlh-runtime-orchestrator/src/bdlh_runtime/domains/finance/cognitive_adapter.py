@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 from bdlh_runtime.cognitive.contracts import (
     CognitiveAction,
@@ -53,10 +53,23 @@ class VerifiedInstrumentEntity:
     verified_turn: int
 
 
-class InMemoryVerifiedEntityStore:
-    """M4 开发入口的进程内实体表；不冒充持久化 Checkpoint。"""
+class VerifiedEntityPersistence(Protocol):
+    """会话实体快照读写；由 Chat Session Data Plane 实现，不冒充 L0 Checkpoint。"""
 
-    def __init__(self, *, max_reference_turn_gap: int = 6) -> None:
+    def load(self, *, user_id: str, session_id: str) -> dict[str, Any] | None: ...
+
+    def save(self, *, user_id: str, session_id: str, state: dict[str, Any] | None) -> None: ...
+
+
+class InMemoryVerifiedEntityStore:
+    """受控会话实体表：进程内热缓存；可挂 Chat Session 持久化以跨重启继承指代。"""
+
+    def __init__(
+        self,
+        *,
+        max_reference_turn_gap: int = 6,
+        persistence: VerifiedEntityPersistence | None = None,
+    ) -> None:
         if max_reference_turn_gap < 1:
             raise ValueError("max_reference_turn_gap must be positive")
         self._entities: dict[tuple[str, str], VerifiedInstrumentEntity] = {}
@@ -64,12 +77,20 @@ class InMemoryVerifiedEntityStore:
         self._turns: dict[tuple[str, str], int] = {}
         self._active_event: dict[tuple[str, str], str] = {}
         self._max_reference_turn_gap = max_reference_turn_gap
+        self._persistence = persistence
+
+    def attach_persistence(self, persistence: VerifiedEntityPersistence) -> None:
+        self._persistence = persistence
 
     def begin_turn(self, event: InputEvent) -> int:
         key = (event.user_id, event.session_id)
         if self._active_event.get(key) != event.event_id:
+            # 进程内首次见到该 session 时从 Data Plane 灌入；同进程后续轮次以本地热缓存为准。
+            if key not in self._active_event:
+                self._hydrate(key)
             self._turns[key] = self._turns.get(key, 0) + 1
             self._active_event[key] = event.event_id
+            self._flush(key)
         return self._turns[key]
 
     def put(
@@ -88,6 +109,7 @@ class InMemoryVerifiedEntityStore:
             verified_turn=turn,
         )
         self._pending.pop((event.user_id, event.session_id), None)
+        self._flush((event.user_id, event.session_id))
         return entity_ref
 
     def latest(self, event: InputEvent) -> VerifiedInstrumentEntity | None:
@@ -98,9 +120,12 @@ class InMemoryVerifiedEntityStore:
         return entity
 
     def put_candidates(self, event: InputEvent, candidates: list[InstrumentCandidate]) -> None:
+        self.begin_turn(event)
         self._pending[(event.user_id, event.session_id)] = tuple(candidates[:5])
+        self._flush((event.user_id, event.session_id))
 
     def select_candidate(self, event: InputEvent, message: str) -> InstrumentCandidate | None:
+        self.begin_turn(event)
         pending = self._pending.get((event.user_id, event.session_id), ())
         normalized = message.strip().upper()
         matches = [
@@ -111,6 +136,87 @@ class InMemoryVerifiedEntityStore:
             or (item.instrument.name and item.instrument.name in message)
         ]
         return matches[0] if len(matches) == 1 else None
+
+    def export_state(self, *, user_id: str, session_id: str) -> dict[str, Any] | None:
+        key = (user_id, session_id)
+        entity = self._entities.get(key)
+        pending = self._pending.get(key, ())
+        turn = self._turns.get(key)
+        if entity is None and not pending and not turn:
+            return None
+        payload: dict[str, Any] = {"schema_version": "verified-entity.v1", "turn": int(turn or 0)}
+        if entity is not None:
+            payload["entity"] = {
+                "entity_ref": entity.entity_ref,
+                "confirmation_status": entity.confirmation_status,
+                "verified_turn": entity.verified_turn,
+                "candidate": entity.candidate.model_dump(mode="json"),
+            }
+        if pending:
+            payload["pending_candidates"] = [item.model_dump(mode="json") for item in pending]
+        return payload
+
+    def _hydrate(self, key: tuple[str, str]) -> None:
+        if self._persistence is None:
+            return
+        user_id, session_id = key
+        try:
+            snapshot = self._persistence.load(user_id=user_id, session_id=session_id)
+        except Exception:
+            return
+        if not isinstance(snapshot, dict):
+            return
+        turn = snapshot.get("turn")
+        if isinstance(turn, int) and turn >= 0:
+            self._turns[key] = turn
+        entity_payload = snapshot.get("entity")
+        if isinstance(entity_payload, dict):
+            try:
+                candidate = InstrumentCandidate.model_validate(entity_payload.get("candidate"))
+                status = entity_payload.get("confirmation_status") or "SOURCE_VALIDATED"
+                if status not in {"SOURCE_VALIDATED", "USER_SELECTED"}:
+                    status = "SOURCE_VALIDATED"
+                verified_turn = int(entity_payload.get("verified_turn") or turn or 0)
+                entity_ref = str(
+                    entity_payload.get("entity_ref")
+                    or f"instrument:{candidate.canonical_symbol}@{candidate.exchange}"
+                )
+                self._entities[key] = VerifiedInstrumentEntity(
+                    candidate=candidate,
+                    entity_ref=entity_ref,
+                    confirmation_status=status,  # type: ignore[arg-type]
+                    verified_turn=verified_turn,
+                )
+            except Exception:
+                self._entities.pop(key, None)
+        pending_payload = snapshot.get("pending_candidates")
+        if isinstance(pending_payload, list):
+            restored: list[InstrumentCandidate] = []
+            for item in pending_payload[:5]:
+                try:
+                    restored.append(InstrumentCandidate.model_validate(item))
+                except Exception:
+                    continue
+            if restored:
+                self._pending[key] = tuple(restored)
+            else:
+                self._pending.pop(key, None)
+        else:
+            self._pending.pop(key, None)
+
+    def _flush(self, key: tuple[str, str]) -> None:
+        if self._persistence is None:
+            return
+        user_id, session_id = key
+        try:
+            self._persistence.save(
+                user_id=user_id,
+                session_id=session_id,
+                state=self.export_state(user_id=user_id, session_id=session_id),
+            )
+        except Exception:
+            # 持久化失败不得阻断本轮 Cognitive；下一轮可再试。
+            return
 
 
 class FinanceCognitiveSelector:
@@ -315,11 +421,20 @@ class FinanceCognitiveContinuation:
                 if item.condition_id
                 not in {
                     "SUITABILITY_RULE_SET_APPROVAL_REQUIRED",
-                    "SUITABILITY_INPUT_GAP",
                     "SUITABILITY_CONDITIONS_PRESENT",
                 }
             ]
             if user_actionable:
+                next_steps = [item.description for item in user_actionable]
+                if assessment.result == "INSUFFICIENT_INFORMATION":
+                    next_steps.extend(
+                        [
+                            "打开金融资料确认",
+                            "换一个新问题",
+                        ]
+                    )
+                else:
+                    next_steps.extend(["继续", "换一个新问题"])
                 return CommunicationPlan(
                     response_kind="ASK_USER",
                     response_structure="SUITABILITY",
@@ -328,7 +443,7 @@ class FinanceCognitiveContinuation:
                     evidence_refs=list(outcome.suitability.evidence_refs),
                     limitations=list(outcome.limitations) + list(outcome.suitability.limitations),
                     risk_disclosures=list(outcome.suitability.reasons),
-                    next_steps=[item.description for item in user_actionable],
+                    next_steps=list(dict.fromkeys(next_steps)),
                 )
             summary = f"个性化风险匹配筛查结果：{assessment.result}。"
             sections = [

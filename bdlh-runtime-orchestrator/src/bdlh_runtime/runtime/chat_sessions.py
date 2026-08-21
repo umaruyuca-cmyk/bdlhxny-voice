@@ -33,6 +33,7 @@ class ChatSession:
     pending_runtime_path: str | None = None
     pause_reason: str | None = None  # system_interrupt | user_pause | null
     awaiting_route_confirm: bool = False
+    verified_entity_state: dict | None = None
 
 
 class ChatSessionStore(Protocol):
@@ -57,6 +58,12 @@ class ChatSessionStore(Protocol):
         runtime_path: str | None = None,
         pause_reason: str | None = None,
         awaiting_route_confirm: bool = False,
+    ) -> None: ...
+
+    def get_verified_entity_state(self, session_id: str, user_id: str | None) -> dict | None: ...
+
+    def set_verified_entity_state(
+        self, session_id: str, user_id: str | None, state: dict | None
     ) -> None: ...
 
     def delete(self, session_id: str, user_id: str | None) -> bool: ...
@@ -150,6 +157,24 @@ class InMemoryChatSessionStore:
                 session.awaiting_route_confirm = bool(awaiting_route_confirm)
             session.updated_at = datetime.now(UTC)
 
+    def get_verified_entity_state(self, session_id: str, user_id: str | None) -> dict | None:
+        with self._lock:
+            session = self._sessions.get(self._key(session_id, user_id))
+            if session is None:
+                return None
+            state = session.verified_entity_state
+            return dict(state) if isinstance(state, dict) else None
+
+    def set_verified_entity_state(
+        self, session_id: str, user_id: str | None, state: dict | None
+    ) -> None:
+        with self._lock:
+            session = self._sessions.get(self._key(session_id, user_id))
+            if session is None:
+                raise KeyError(f"chat session not found: {session_id}")
+            session.verified_entity_state = dict(state) if isinstance(state, dict) else None
+            session.updated_at = datetime.now(UTC)
+
     def delete(self, session_id: str, user_id: str | None) -> bool:
         with self._lock:
             return self._sessions.pop(self._key(session_id, user_id), None) is not None
@@ -161,3 +186,16 @@ def create_chat_session_store(*, environment: str = "test") -> ChatSessionStore:
     if environment != "test":
         raise ConfigurationError("Python 内存聊天会话目录仅允许测试环境")
     return InMemoryChatSessionStore()
+
+
+class ChatSessionVerifiedEntityPersistence:
+    """把受控实体快照落到 Chat Session（内存或 Java Data Plane）。"""
+
+    def __init__(self, store: ChatSessionStore) -> None:
+        self._store = store
+
+    def load(self, *, user_id: str, session_id: str) -> dict | None:
+        return self._store.get_verified_entity_state(session_id, user_id)
+
+    def save(self, *, user_id: str, session_id: str, state: dict | None) -> None:
+        self._store.set_verified_entity_state(session_id, user_id, state)

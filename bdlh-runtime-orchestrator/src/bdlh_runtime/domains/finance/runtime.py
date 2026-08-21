@@ -93,7 +93,7 @@ class ApplicationFinanceCapabilityExecutor:
             return self._analysis.analyze(AnalysisInput.model_validate(arguments))
         if capability == "research.web_search":
             observation = await self._web_search.execute(capability, arguments)
-            return self._normalizer.normalize(observation)
+            return self._normalizer.normalize(observation, request_arguments=arguments)
         if capability == "research.deep_search":
             return Observation(
                 observation_id=str(uuid4()),
@@ -132,7 +132,7 @@ class ApplicationFinanceCapabilityExecutor:
                 arguments,
                 run_id=request_id,
             )
-            return self._normalizer.normalize(observation)
+            return self._normalizer.normalize(observation, request_arguments=arguments)
         raise ValueError(f"Finance executor does not support capability: {capability}")
 
 

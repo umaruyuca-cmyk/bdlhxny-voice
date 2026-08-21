@@ -15,7 +15,7 @@
 
 定位说明见 [01-BDLH-Agent-Runtime定位与Skill扩展说明.md](docs/architecture/01-BDLH-Agent-Runtime定位与Skill扩展说明.md)，权威架构见 [00-BDLH-Agent-Runtime统一生产架构.md](docs/architecture/00-BDLH-Agent-Runtime统一生产架构.md)。
 
-**当前实施状态：迁移进行中（Data Plane / Memory / M0 门禁），但默认用户编排路径已是 Cognitive + Finance；旧 Root Graph 与灰度双路径已删除，不得恢复。** 准确状态见架构文档 §3 与 §20，不要把本文当作已全部生产放行的证明。
+**当前实施状态：默认用户编排路径已是 Cognitive + Finance；Java Data Plane、Memory Service 与 RocketMQ 基础代码已存在。入口与 Registry 正按开发阶段全量重写，旧 Root Graph、旧字段和双路径不得恢复。** 准确状态见架构文档 §3 与 §20。
 
 ## 技术栈
 
@@ -126,7 +126,7 @@ BDLH Agent Runtime/
 ├── bdlh-runtime-data/           # Java：认证与用户金融数据服务（对 Agent 只读）
 ├── bdlh-runtime-console/          # 独立 Nginx 静态前端与前端契约测试
 ├── bdlh-web-search-adapter/          # 公开资料检索封装
-├── db/                          # schema 与迁移脚本
+├── db/                          # 空库全量 schema 与初始 seed；应用启动不执行
 ├── deploy/                      # Docker Compose、Nginx 与部署手册
 ```
 

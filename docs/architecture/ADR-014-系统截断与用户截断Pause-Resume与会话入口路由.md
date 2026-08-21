@@ -1,21 +1,22 @@
 # ADR-014：系统截断与用户截断（Pause / Resume）与会话入口路由
 
-> 状态：APPROVED
-> 批准人：项目 owner
-> 日期：2026-08-11
-> 依赖：架构 §8.1 标识符、§9.2 Checkpoint、§12 API；既有 Chat Session `pending_*`
-> 影响：[00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) §2.1、§8.1、§8.3、§9、§12；[00-BDLH-Agent-Runtime生产开发实施Prompt.md](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) §11、§16、§17
+> 状态：APPROVED  
+> 批准人：项目 owner  
+> 日期：2026-08-11  
+> 实现状态（2026-08-17）：Turn Router、`pending_*`、Pause API / Console Esc **已接线**；**真实 checkpoint 断点续跑尚未关闭**（统一架构 §3 记为 `CURRENT`/`TARGET`，实施 Prompt 缺口 **G1**）。仅重放用户 objective 的 resume **不算**本 ADR 完成。  
+> 依赖：架构 §8.1 标识符、§9.2 运行状态、§12 API；Chat Session `pending_*`  
+> 影响：[00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) §2.1、§8.1、§8.3、§9、§12；[00-BDLH-Agent-Runtime生产开发实施Prompt.md](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md)  
 > 依据：桌面《系统截断与用户截断-Resume方案》与现网 `interrupt` + `pending_*` + `/resume` 路径的合成
 
 ## 1. 决策目标
 
 把「停下来」统一建模为可恢复暂停，并冻结同 `session_id` 下一条消息的入口路由规则：
 
-1. **系统主动截断**（Graph `interrupt()` / 策略等待点）与 **用户主动截断**（Esc → Pause）共用同一套 checkpoint + `pending_*` 恢复协议；
+1. **系统主动截断**（Graph `interrupt()` / 策略等待点）与 **用户主动截断**（Esc → Pause）共用同一套 Java Run State + `pending_*` 恢复协议；
 2. 主交互保持普通打字，不依赖「继续 / 换题」专用按钮面板；
 3. 有 `pending` 时**禁止默认盲目 resume**——必须经 Turn Router 判定 `resume` / `new_turn` / `ask_which`。
 
-本 ADR 不改变 §18 的 M0–M6 主线顺序；实现可挂在 M0（持久化/隔离）、M4（Cognitive 入口）或独立内核切片，但契约一旦落地不得回退到「仅前端砍流假装可恢复」。
+本 ADR 的实现按统一架构 §18 落到当前唯一运行路径；运行时行为按生产标准，不保留「开发可降级」或仅前端截流的旧恢复路径。
 
 ## 2. 背景：现状缺口
 
@@ -38,7 +39,7 @@
 | `user_id` | 认证用户 | **仅 JWT `sub`**；禁止请求体冒充 |
 | `session_id` | 前端会话目录 | 同会话换方向不换 `session_id` |
 | `thread_id`（公开） | Chat 路径上等于 `session_id` | 前端可不感知内部 key |
-| `thread_id`（内部） | Checkpointer key：`user:{user_id}:thread:{public}` | 仅服务端 |
+| `thread_id`（内部） | Run State key：`user:{user_id}:thread:{public}` | 仅服务端 |
 | `run_id` | 单次 Graph/API 执行 | 与 `thread_id` 不得混用 |
 | `pending_*` | 可恢复书签 | `pending_run_id` / `pending_thread_id` / `pending_checkpoint_id` |
 
@@ -61,7 +62,7 @@ ChatSession.pending_* ──► 当前可恢复的那一次 run（默认同时�
 
 落点：
 
-1. Checkpointer 形成可恢复 checkpoint；
+1. Java Data Plane 持久化可恢复 Run State；
 2. Run 状态 → `WAITING_USER`；
 3. `ChatSession.set_pending(...)`；`pause_reason=system_interrupt`；
 4. SSE 发出等待类事件（如 `clarification` / `run.interrupted`）并以 `done` 结束本轮流。
@@ -110,7 +111,7 @@ WAITING_USER / PAUSED_BY_USER ──abandon──► CANCELLED/ABANDONED
 任意非终态 ──不可恢复错误──► FAILED
 ```
 
-`ChatSession` 逻辑投影（权威进度仍在 Run Registry + Checkpointer）：
+`ChatSession` 逻辑投影（权威进度仍在 Java Run State + Run Registry）：
 
 ```text
 active_run_id?
@@ -170,8 +171,8 @@ SSE 建议增加或对齐：`run.interrupted`、`run.paused`、`run.resumed`；�
 
 ## 8. 与 Memory / Context 的边界
 
-- 执行进度与可否 resume：**只认** Checkpointer + Run Registry + `pending_*`（ADR-011 的 L0 工作记忆与 L1 会话书签投影）；
-- **禁止**用 Mem0「记住停在哪一步」替代 checkpoint；
+- 执行进度与可否 resume：**只认** Java Run State + Run Registry + `pending_*`（ADR-011 的 L0 工作记忆与 L1 会话书签投影）；
+- **禁止**用 Mem0「记住停在哪一步」替代 Run State；
 - Context 组装（ADR-015）在 Turn Router 判定之后执行；`ask_which` 可用极简上下文，不召回大量 L3。
 
 ## 9. 实施与验收要点
@@ -186,4 +187,4 @@ SSE 建议增加或对齐：`run.interrupted`、`run.paused`、`run.resumed`；�
 
 正面：补齐产品级可恢复暂停，并堵住「有 pending 就误 resume」的行为洞。
 
-代价：需实现协作式停止与入口路由；旧「有 pending 直接 resume」路径必须迁移并加回归测试。
+代价：需实现协作式停止与入口路由；“有 pending 直接 resume”的错误路径必须直接删除并补回归测试。

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.bdlh.runtime.dto.FinancialProfileConfirmationResponse;
 import com.bdlh.runtime.dto.FinancialProfileUpdateRequest;
+import com.bdlh.runtime.dto.FinancialProfileViewResponse;
 import com.bdlh.runtime.dto.PortfolioPositionsUpdateRequest;
 import com.bdlh.runtime.entity.FinancialProfileConfirmation;
 import com.bdlh.runtime.entity.PortfolioPosition;
@@ -109,6 +110,48 @@ public class FinancialProfileCommandService {
                 confirmedAt);
         confirmationMapper.insert(confirmation);
         return response(confirmation);
+    }
+
+    public FinancialProfileViewResponse getFinancialProfile(long userId) {
+        requireUser(userId);
+        UserConfig config = configMapper.selectById(userId);
+        long version = config == null || config.getProfileVersion() == null
+                ? 0L
+                : config.getProfileVersion();
+        List<PortfolioPosition> positions = positionMapper.selectList(
+                new LambdaQueryWrapper<PortfolioPosition>()
+                        .eq(PortfolioPosition::getUserId, userId)
+                        .eq(PortfolioPosition::getActive, true)
+                        .orderByAsc(PortfolioPosition::getCode));
+        List<FinancialProfileViewResponse.PositionView> positionViews = positions.stream()
+                .map(item -> new FinancialProfileViewResponse.PositionView(
+                        item.getCode(),
+                        item.getName(),
+                        item.getAssetType(),
+                        item.getShares(),
+                        item.getAvgCost(),
+                        item.getExchange(),
+                        item.getCurrency(),
+                        item.getTargetWeight()))
+                .toList();
+        String dataMode = config != null
+                && config.getConfirmationRef() != null
+                && !config.getConfirmationRef().isBlank()
+                ? USER_CONFIRMED
+                : null;
+        return new FinancialProfileViewResponse(
+                userId,
+                version,
+                config == null ? null : config.getCurrency(),
+                config == null ? null : config.getCash(),
+                config == null ? null : config.getRiskTolerance(),
+                config == null ? null : config.getMaxLossTolerancePct(),
+                config == null ? null : config.getLiquidAssets(),
+                config == null ? null : config.getNearTermCashNeeds(),
+                config == null ? null : config.getNearTermCashNeedsHorizonDays(),
+                dataMode,
+                config == null ? null : config.getConfirmationRef(),
+                positionViews);
     }
 
     @Transactional

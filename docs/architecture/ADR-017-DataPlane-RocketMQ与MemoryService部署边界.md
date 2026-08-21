@@ -18,7 +18,7 @@
 - 服务在逻辑上独立，数据库在物理上允许共享单一 PostgreSQL 实例；
 - 以后增加数据库或 Broker 副本时，不改变应用层契约。
 
-本 ADR 决定的是稳定边界和迁移方向，不声明相关代码已经完成。
+本 ADR 决定稳定边界和开发目标；实现状态以统一架构 §3 与当前测试为准。
 
 ## 2. 背景与约束
 
@@ -61,10 +61,9 @@ Orchestrator 负责：
 - LangGraph Cognitive Orchestrator；
 - Domain Dispatcher、Capability Gateway、Observation 与 Guardrails；
 - Context Service 与 Communication；
-- 通过内部 API 调用 Data Plane 和 Memory Service；
-- 通过 LangGraph 官方 Checkpointer 直连专属 PostgreSQL schema。
+- 通过内部 API 调用 Data Plane 和 Memory Service。
 
-除 Checkpointer 外，目标态 Orchestrator 不直接读写业务表、运行记录表、Outbox、Memory 向量表或 Registry 表。
+Orchestrator 不直接读写业务表、运行记录表、Outbox、Memory 向量表或 Registry 表。可恢复运行状态也通过 Java Data Plane 用例 API 持久化。
 
 ### 3.2 Java Data Plane Service
 
@@ -88,12 +87,13 @@ messaging
 - L4 用户、账户、持仓、风险画像和确认记录；
 - L1 会话与消息；
 - Run Registry、Analysis History、Capability Audit；
+- 可恢复运行状态与 Pause/Resume 书签；
 - Financial Task、Notification Outbox 和消费幂等 Inbox；
 - Capability / Skill / Policy Registry 的持久化与快照查询；
 - 所有上述数据的手工全量建库脚本；
 - Outbox Relay 和 RocketMQ Java Producer/Consumer 适配。
 
-现有身份数据若仍在 MySQL，继续由该服务封装；本 ADR 不授权无迁移方案地强行合并 MySQL。PostgreSQL 单实例约束适用于 runtime、finance、checkpoint、memory 和 registry 数据。
+身份数据继续由 Java Data Plane 封装。当前 MySQL 与 PostgreSQL 各自按全量 schema 建立，不在本阶段合并。PostgreSQL 单实例约束适用于 runtime、business、messaging、memory 和 registry 数据。
 
 ### 3.3 Python Memory Service
 
@@ -107,16 +107,9 @@ messaging
 
 Memory Service 不负责 L4 结构化用户画像。当前 `MemoryStore.get_profile()` 的职责必须迁往 Java User Data API / Context Service 的 L4 读取路径；Memory Port 最终只保留 L3 语义能力。
 
-### 3.4 Checkpointer 例外
+### 3.4 可恢复运行状态
 
-LangGraph Checkpointer 不经过 Java Data Plane 或 Memory Service。原因是它具有高频、低时延、Pause/Resume 和 Saver 协议强绑定特征。
-
-要求：
-
-- 使用专属 `checkpoint` schema 和最小权限账号；
-- Key 至少隔离 `user_id + thread_id + namespace`；
-- 禁止存 Token、完整账户数据和原始大载荷；
-- Orchestrator 的该数据库账号不得访问其他 schema。
+Run State、Pause/Resume 书签与幂等状态由 Java Data Plane 的用例级 API 管理。Key 至少隔离 `user_id + thread_id + namespace`，禁止存 Token、完整账户数据和原始大载荷。Orchestrator 不保留数据库直连例外。
 
 ## 4. 单实例 PostgreSQL 边界
 
@@ -127,20 +120,19 @@ LangGraph Checkpointer 不经过 Java Data Plane 或 Memory Service。原因是�
 | `business` | Java Data Plane | finance 业务事实与确认审计 |
 | `runtime` | Java Data Plane | 会话、Run、History、Task、Outbox、Inbox |
 | `registry` | Java Data Plane | Capability、Skill、Policy 与目录快照 |
-| `checkpoint` | Python Orchestrator | LangGraph Checkpoint |
 | `memory` | Python Memory Service | Mem0 元数据与 pgvector 向量 |
 
 约束：
 
 - 每个服务使用独立数据库 Role；
 - 默认拒绝跨 schema 权限；
-- 数据库 migration 必须由所属服务显式执行，应用业务代码不得在启动时临时建表；
+- 数据库全量 schema 与 seed 必须由开发或部署人员显式执行，应用业务代码不得在启动时建表或写种子；
 - `vector` 等扩展按数据库级运维步骤安装，Memory Service 只验证，不自行提权安装；
 - 配置连接池、查询超时、锁超时、慢查询和连接泄漏指标；
 - 单实例是已接受的可用性风险，必须以持久卷、异机备份、恢复演练和磁盘监控补偿；
 - 当前不引入分布式事务。
 
-未来拆分物理数据库时，以 schema 所有权为搬迁单元，服务 API 和事件契约保持不变。
+若未来另行批准拆分物理数据库，应以 schema 所有权为边界重新设计；当前代码不预留拆分分支。
 
 ## 5. RocketMQ 部署与可靠性
 
@@ -249,7 +241,7 @@ USER_MEMORY_DELETE_REQUESTED
 
 - Topic 中只使用已登记的消息类型；
 - 事件 payload 最小化，敏感金融数据优先传 ID、版本和引用，不复制完整账本；
-- Schema 演进默认向后兼容；破坏性变更必须新增 `schema_version` 或 Topic；
+- 开发阶段发生事件 Schema 破坏性变更时，Producer、Consumer、测试和 Topic 配置同时全量修改；不保留旧版本消费分支；
 - `trace_id / correlation_id` 必须贯穿 HTTP、Outbox、RocketMQ 与消费者日志。
 
 ## 8. Memory 读写治理
@@ -289,21 +281,21 @@ Memory Service 不可用时，读取返回空语义记忆并标记 degraded；�
 | 消息 | RocketMQ 5.x 客户端协议；Java 优先使用 Apache 官方客户端/Spring 集成 |
 | 可观测性 | Actuator/Micrometer + Python 结构化指标，统一 trace/correlation 字段 |
 
-本 ADR 不要求为了“主流”改用 JPA/Hibernate，也不引入 Go。现有 Java 17 可以继续使用；JDK 或 Spring Boot 升级作为独立兼容性任务处理。
+本 ADR 不要求为了“主流”改用 JPA/Hibernate，也不引入 Go。现有 Java 17 可以继续使用；JDK 或 Spring Boot 升级作为独立工程任务处理。
 
-## 10. 迁移原则
+## 10. 开发阶段全量构建原则
 
-开发环境按新项目全量建库执行，不保留增量迁移或兼容切换：
+开发环境按新项目全量建库执行：
 
 1. 清空并重建开发数据库；
 2. 手工执行 `db/postgresql/bootstrap.sql`；
 3. 手工执行 `db/postgresql/schema/` 下当前领域的全量建表脚本；
 4. 手工执行 `db/postgresql/seed/registry.sql`；
 5. 启动服务后仅允许业务读写，不允许服务自行建表、补表或写入种子；
-6. 每个数据集只允许一个写入真源，禁止双写和影子读取。
-9. 未通过故障注入、幂等、恢复和回滚测试，不得删除旧读路径。
+6. 每个数据集只允许一个读写真源，禁止双写和影子读取；
+7. 删除旧读写路径后同步修改所有调用方与测试，不保留运行时回退。
 
-详细执行阶段和验收门禁见生产实施 Prompt 的 `PLATFORM-P0`～`PLATFORM-P7`。
+具体实现顺序和验收见统一架构 §18 与当前开发实施 Prompt。
 
 ## 11. 明确不做
 
@@ -314,7 +306,7 @@ Memory Service 不可用时，读取返回空语义记忆并标记 degraded；�
 - 用 RocketMQ 替代 Checkpoint、Task Store 或业务真源；
 - 用 Mem0 替代 Chat、Run、Task、审计或 L4 用户事实；
 - 为 Runtime Data 再启动第二个 Java JVM（当前阶段保持模块化单体）；
-- 无迁移方案地合并或删除现有 MySQL 身份数据。
+- 在本阶段合并 MySQL 与 PostgreSQL 的身份数据边界。
 
 ## 12. 后果
 
@@ -331,6 +323,6 @@ Memory Service 不可用时，读取返回空语义记忆并标记 degraded；�
 
 - 单 PostgreSQL 和单 Broker 都是单点故障；
 - Orchestrator 到 Data Plane / Memory Service 增加内网调用；
-- 数据迁移和切换期需要严格处理唯一写源；
+- 所有调用方必须同时切到唯一写源，不能遗留第二访问路径；
 - 需要新增 Outbox/Inbox、DLQ 补偿和跨服务契约测试；
 - 一个 Java 进程承载多个数据模块，必须依靠包边界和架构测试防止重新耦合。

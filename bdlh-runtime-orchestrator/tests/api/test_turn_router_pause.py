@@ -82,6 +82,8 @@ def test_chat_clarification_resumes_same_run_for_symbol_answer():
         json={"message": "请做技术分析", "mode": "general"},
     )
     first_events = _events(first)
+    clarify = next(event for event in first_events if event["type"] == "clarification")
+    assert clarify["options"] == [{"label": "请提供名称或代码", "message": "请提供名称或代码"}]
     first_run = next(event["runId"] for event in first_events if event["type"] == "agent_run")
     session_id = next(event["sessionId"] for event in first_events if event["type"] == "agent_run")
 
@@ -250,6 +252,43 @@ def test_pause_endpoint_sets_pending_and_is_resumable():
     assert application.run_control.is_pause_requested(run_id) is True
 
     session = application.chat_session_store.get(thread_id, "7")
+    assert session is not None
+    assert session.pending_run_id == run_id
+    assert session.pause_reason == "user_pause"
+
+
+def test_pause_requested_during_run_keeps_pending_after_answer():
+    """执行中收到 pause 请求时，ANSWER 完成路径仍保留 pending。"""
+
+    holder: dict[str, Any] = {}
+
+    class PauseThenAnswerCognitive:
+        async def run(self, event: InputEvent, *, observer: Any = None) -> CognitiveExecution:
+            del observer
+            control = holder["control"]
+            control.request_pause(event.run_id)
+            return CognitiveExecution(
+                state=CognitiveState(event=event),
+                response=PublicResponse(
+                    response_kind="ANSWER",
+                    response_structure="KNOWLEDGE",
+                    message="分析完成。",
+                    audit_codes=["TEST_ANSWER"],
+                ),
+            )
+
+    client, application = _client(cognitive=PauseThenAnswerCognitive())
+    holder["control"] = application.run_control
+    response = client.post(
+        "/api/v1/chat/stream",
+        headers=_headers(9),
+        json={"message": "分析600519"},
+    )
+    assert response.status_code == 200
+    events = _events(response)
+    run_id = events[0]["runId"]
+    session_id = events[0]["sessionId"]
+    session = application.chat_session_store.get(session_id, "9")
     assert session is not None
     assert session.pending_run_id == run_id
     assert session.pause_reason == "user_pause"

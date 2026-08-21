@@ -2,11 +2,13 @@ package com.bdlh.runtime.api;
 
 import com.bdlh.runtime.dto.FinancialProfileConfirmationResponse;
 import com.bdlh.runtime.dto.FinancialProfileUpdateRequest;
+import com.bdlh.runtime.dto.FinancialProfileViewResponse;
 import com.bdlh.runtime.dto.PortfolioPositionsUpdateRequest;
 import com.bdlh.runtime.security.SingleUserContext;
 import com.bdlh.runtime.service.FinancialProfileCommandService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -31,6 +33,13 @@ public class FinancialProfileSettingsController {
             FinancialProfileCommandService commandService) {
         this.userContext = userContext;
         this.commandService = commandService;
+    }
+
+    @Operation(summary = "读取当前金融资料摘要与版本号")
+    @GetMapping("/financial-profile")
+    public FinancialProfileViewResponse getFinancialProfile() {
+        long userId = userContext.requireAuthenticatedUserId();
+        return commandService.getFinancialProfile(userId);
     }
 
     @Operation(summary = "完整替换并确认账户、风险和流动性资料")

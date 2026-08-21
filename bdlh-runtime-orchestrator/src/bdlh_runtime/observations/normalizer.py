@@ -38,7 +38,12 @@ class ObservationNormalizer:
     4. 解析失败 → FAILED（不伪装成功）。
     """
 
-    def normalize(self, observation: Observation) -> Observation:
+    def normalize(
+        self,
+        observation: Observation,
+        *,
+        request_arguments: dict[str, Any] | None = None,
+    ) -> Observation:
         """标准化单个 Observation（不修改原始对象）。"""
         if observation.status not in {"SUCCESS", "PARTIAL"}:
             return observation
@@ -56,6 +61,13 @@ class ObservationNormalizer:
         if not raw_text:
             # 无 raw_text 的 dict data 已是结构化业务形态（本地/测试替身/适配器
             # 预解析结果），无需再走 parser——禁止把已结构化数据误判 PARSE_ERROR。
+            if observation.capability == "market.get_realtime_quote":
+                enriched = _enrich_quote_identity(
+                    data,
+                    fallback_symbol=_request_symbol(request_arguments),
+                    fallback_as_of=_provenance_retrieved_at(observation),
+                )
+                return observation.model_copy(update={"data": enriched}, deep=True)
             return observation
 
         # ── 服务端吞错识别（error=true 藏在正常响应里）──
@@ -72,6 +84,12 @@ class ObservationNormalizer:
 
         try:
             parsed = parser(raw_text)
+            if observation.capability == "market.get_realtime_quote" and isinstance(parsed, dict):
+                parsed = _enrich_quote_identity(
+                    parsed,
+                    fallback_symbol=_request_symbol(request_arguments),
+                    fallback_as_of=_provenance_retrieved_at(observation),
+                )
             return Observation(
                 observation_id=observation.observation_id,
                 capability=observation.capability,
@@ -212,20 +230,84 @@ def _parse_quote(raw: str) -> dict[str, Any]:
     if not items:
         raise ValueError("quote 响应为空")
     item = items[0] if isinstance(items[0], dict) else {}
-    return {
-        "symbol": item.get("symbol"),
-        "exchange": item.get("exchange"),
-        "currency": item.get("currency"),
-        "price": item.get("price", item.get("close")),
-        "change": item.get("change"),
-        "pct_change": item.get("pct_change", item.get("涨跌幅")),
-        "volume": item.get("volume", item.get("成交量")),
-        "trade_date": item.get("date", item.get("trade_date")),
-        "as_of": item.get(
-            "as_of",
-            item.get("timestamp", item.get("datetime", item.get("date", item.get("trade_date")))),
-        ),
-    }
+    symbol = item.get("symbol", item.get("code"))
+    if isinstance(symbol, str):
+        symbol = symbol.strip()
+    trade_date = item.get("date", item.get("trade_date"))
+    as_of = item.get(
+        "as_of",
+        item.get("timestamp", item.get("datetime", trade_date)),
+    )
+    return _enrich_quote_identity(
+        {
+            "symbol": symbol,
+            "exchange": item.get("exchange"),
+            "currency": item.get("currency"),
+            "price": item.get("price", item.get("close")),
+            "change": item.get("change"),
+            "pct_change": item.get("pct_change", item.get("涨跌幅")),
+            "volume": item.get("volume", item.get("成交量")),
+            "trade_date": trade_date,
+            "as_of": as_of,
+        }
+    )
+
+
+def _enrich_quote_identity(
+    data: dict[str, Any],
+    *,
+    fallback_symbol: str | None = None,
+    fallback_as_of: str | None = None,
+) -> dict[str, Any]:
+    """为估值补齐 (symbol, exchange, currency) 与可校验 as_of。"""
+
+    enriched = dict(data)
+    symbol = enriched.get("symbol") or fallback_symbol
+    if isinstance(symbol, str):
+        symbol = symbol.strip() or None
+    if symbol:
+        enriched["symbol"] = symbol
+
+    exchange = enriched.get("exchange")
+    if not (isinstance(exchange, str) and exchange.strip()):
+        exchange = _infer_cn_exchange(symbol)
+    elif isinstance(exchange, str):
+        exchange = exchange.strip()
+    if exchange:
+        enriched["exchange"] = exchange
+
+    currency = enriched.get("currency")
+    if not (isinstance(currency, str) and currency.strip()) and exchange in {"SSE", "SZSE"}:
+        enriched["currency"] = "CNY"
+    elif isinstance(currency, str):
+        enriched["currency"] = currency.strip()
+
+    if not enriched.get("as_of"):
+        enriched["as_of"] = (
+            enriched.get("trade_date")
+            or enriched.get("timestamp")
+            or enriched.get("datetime")
+            or enriched.get("date")
+            or fallback_as_of
+        )
+    return enriched
+
+
+def _request_symbol(arguments: dict[str, Any] | None) -> str | None:
+    if not isinstance(arguments, dict):
+        return None
+    symbol = arguments.get("symbol")
+    if isinstance(symbol, str) and symbol.strip():
+        return symbol.strip()
+    return None
+
+
+def _provenance_retrieved_at(observation: Observation) -> str | None:
+    for item in observation.provenance or []:
+        retrieved = getattr(item, "retrieved_at", None)
+        if isinstance(retrieved, str) and retrieved.strip():
+            return retrieved.strip()
+    return None
 
 
 def _parse_historical(raw: str) -> list[dict[str, Any]]:

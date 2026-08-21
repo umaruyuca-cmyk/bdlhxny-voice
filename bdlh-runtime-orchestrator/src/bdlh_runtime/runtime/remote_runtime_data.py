@@ -176,6 +176,23 @@ class RemoteChatSessionStore:
             },
         )
 
+    def get_verified_entity_state(self, session_id: str, user_id: str | None) -> dict[str, Any] | None:
+        session = self.get(session_id, user_id)
+        if session is None:
+            return None
+        state = session.verified_entity_state
+        return dict(state) if isinstance(state, dict) else None
+
+    def set_verified_entity_state(
+        self, session_id: str, user_id: str | None, state: dict[str, Any] | None
+    ) -> None:
+        self._client.call(
+            "PUT",
+            f"/internal/v1/runtime/sessions/{session_id}/verified-entity",
+            user_id,
+            payload={"verifiedEntityState": state},
+        )
+
     def delete(self, session_id: str, user_id: str | None) -> bool:
         return (
             self._client.call(
@@ -283,6 +300,7 @@ def _numeric_user_id(user_id: str | None) -> int:
 
 
 def _chat_session(data: dict[str, Any], user_id: str | None) -> ChatSession:
+    verified = data.get("verifiedEntityState")
     return ChatSession(
         session_id=str(data["sessionId"]),
         user_id=user_id,
@@ -296,6 +314,7 @@ def _chat_session(data: dict[str, Any], user_id: str | None) -> ChatSession:
         pending_runtime_path=data.get("pendingRuntimePath"),
         pause_reason=data.get("pauseReason"),
         awaiting_route_confirm=bool(data.get("awaitingRouteConfirm") or False),
+        verified_entity_state=dict(verified) if isinstance(verified, dict) else None,
         updated_at=_timestamp(data["updatedAt"]),
     )
 

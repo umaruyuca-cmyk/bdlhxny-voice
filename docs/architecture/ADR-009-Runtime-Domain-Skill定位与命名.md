@@ -10,7 +10,7 @@
 
 把产品身份从「只读金融助手生产系统」升级为「通用 Agent Runtime / 编排内核 + 领域 Skill 插件」，并冻结内核、Domain、Skill 三层的职责与命名规则。
 
-本 ADR 只改变定位、命名与扩展面。它不改变 §18 的 M0–M6 迁移主线、阶段门禁、退出条件，也不改变任何已有跨层契约的字段语义。
+本 ADR 只定义 Runtime、Domain、Skill 和 Toolset 的定位与命名。开发实施顺序以统一架构 §18 为准；与当前入口重写冲突的历史字段约定不再生效。
 
 ## 2. 背景：为什么不需要重做架构
 
@@ -43,7 +43,7 @@
 - Skill 名使用 `{业务动作}` 或 `{对象}-{动作}` 形式（如 `stock-research`），不含阶段号；
 - 领域语义枚举保持在该领域私有契约中，例如 `FinancialIntent` 不上提到内核层；
 - 新增 Toolset 使用 `{domain}_{scope}_{read|compute}` 命名；现有六个金融 Toolset 名保持不变，不做回改；
-- `CapabilitySpec.analysis_types` 的语义应理解为「Skill 适用范围（skill scope）」而非金融专有分析类型；重命名列为后续可选项，本 ADR 不触发改名。
+- `analysis_type` 已从当前架构删除，不得在 Capability、Skill、请求契约或路由中恢复。Skill 与 Capability 的适用关系由数据库 Registry 关联表直接表达。
 
 ### 3.3 内核纯净度
 
@@ -63,34 +63,34 @@ observations/
 
 四时点 Guardrails 是横切治理，不是主线上的某一层。任何新增 Skill 自动继承，不得自带私有 Guardrail，也不得绕过 Response Guardrail 直接对外表达。
 
-## 4. 明确不改变的内容
+## 4. 当前固定内容
 
 - 生产 Runtime 继续 LangGraph；Letta 仍只限隔离实验环境；
-- M0–M6 编号、范围、退出门槛与 `RELEASE_BLOCKED` 规则不变；当前 M3 切片顺序不受影响；
-- `DomainRequest / DomainOutcome / FinancialDomainRequest / StockResearchResult / SuitabilityAssessment` 既有字段语义不变；
+- 开发实施顺序以统一架构 §18 为准；
+- `DomainRequest / DomainOutcome / FinancialDomainRequest / StockResearchResult / SuitabilityAssessment` 必须与当前 Goal/Observation 契约一致；
 - 不新增第二套 Capability / Toolset / Observation / Guardrail / 预算 / 审计模型；
 - 不新增 API 路由或 SSE 事件类型；
-- 不做目录重命名（`domain/` 与 `domains/`、`runtime/` 与 `runtimes/` 的收敛仍按架构 §7 延后）。
+- 目录若违反依赖边界，直接同步重构代码、导入和测试，不保留旧导入别名。
 
 ## 5. 后果
 
 正面：
 
 - 新增 Skill 或 Domain 只需注册，不需要改内核；
-- 内核部分可独立于金融场景描述与迁移；
+- 内核部分可独立于金融场景描述与实现；
 - 「内核 vs 域」的判定标准明确，评审有据可依。
 
 代价与风险：
 
 - 文档中「Finance Runtime」既是领域边界又是 Skill 宿主实例，需要读者理解双重身份；
-- 在 `SkillManifest` 与 `DomainDescriptor` 落地前（见 ADR-010），Skill 声明仍靠文档约束，缺少启动时校验；
+- `SkillManifest` 与 `DomainDescriptor` 的运行时内容必须来自数据库 Registry 投影，并在启动时校验；
 - 内核纯净度在 import 测试落地前仍可能被一次提交破坏。
 
 ## 6. 后续 ADR
 
 | ADR | 主题 | 状态 |
 |---|---|---|
-| [ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md) | Skill Manifest 与 Domain Dispatcher 契约 | `APPROVED`（字段表已冻结，descriptor/manifest 切片已落地；零对外行为变更） |
+| [ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md) | Registry 驱动的 Skill 描述与 Domain Dispatcher 契约 | `APPROVED`（数据库目录唯一真源） |
 | [ADR-011](./ADR-011-Memory分层与晋升边界.md) | Memory 分层与晋升边界 | `APPROVED` |
 | [ADR-012](./ADR-012-多Skill与多Agent演进门槛.md) | 多 Skill 与多 Agent 演进门槛 | `APPROVED` |
 | [ADR-013](./ADR-013-RAG作为可插拔KnowledgeSkill的边界.md) | RAG 作为可插拔 Knowledge Skill 的边界 | `APPROVED`（边界生效，实施未排期） |

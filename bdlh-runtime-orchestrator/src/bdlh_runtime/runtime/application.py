@@ -228,6 +228,9 @@ def create_application(
         chat_session_store = create_chat_session_store(environment=settings.environment)
         run_state_reader = InMemoryRunStateReader()
 
+    from .chat_sessions import ChatSessionVerifiedEntityPersistence
+
+    verified_entities.attach_persistence(ChatSessionVerifiedEntityPersistence(chat_session_store))
     # ── 4.6g M6 最小持续任务（价格条件观察）──
     from .scheduler import (
         FinancialTaskScheduler,

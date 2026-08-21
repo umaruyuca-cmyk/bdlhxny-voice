@@ -30,6 +30,8 @@ def test_quote_parsed_to_business_object():
     assert result.data["symbol"] == "600519"
     assert result.data["price"] == 1302.77
     assert result.data["pct_change"] == -0.28
+    assert result.data["exchange"] == "SSE"
+    assert result.data["currency"] == "CNY"
     # 原始 JSON 不得留在业务 data 里（只留解析后结构）
     assert "raw_text" not in result.data
 
@@ -37,10 +39,25 @@ def test_quote_parsed_to_business_object():
 def test_quote_cn_financial_form_parsed():
     """实时行情（cn-financial K线风格）也兼容。"""
     raw = json.dumps([{"date": "2026-08-05T00:00:00.000", "open": 1328.36, "close": 1306.45, "volume": 4268859.0}])
-    result = ObservationNormalizer().normalize(_obs("market.get_realtime_quote", raw))
+    result = ObservationNormalizer().normalize(
+        _obs("market.get_realtime_quote", raw),
+        request_arguments={"symbol": "600519"},
+    )
     assert result.status == "SUCCESS"
     assert result.data["price"] == 1306.45
     assert result.data["trade_date"] == "2026-08-05T00:00:00.000"
+    assert result.data["symbol"] == "600519"
+    assert result.data["exchange"] == "SSE"
+    assert result.data["currency"] == "CNY"
+    assert result.data["as_of"] == "2026-08-05T00:00:00.000"
+
+
+def test_quote_infers_szse_identity_for_shenzhen_code():
+    raw = json.dumps([{"symbol": "000001", "price": 10.5}])
+    result = ObservationNormalizer().normalize(_obs("market.get_realtime_quote", raw))
+    assert result.data["exchange"] == "SZSE"
+    assert result.data["currency"] == "CNY"
+    assert result.data["as_of"] == "2026-08-06T00:00:00Z"
 
 
 def test_historical_prices_parsed_to_bars():

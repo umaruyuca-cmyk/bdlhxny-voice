@@ -94,7 +94,12 @@ function apiTarget(pathname) {
   if (pathname.startsWith("/api/v1/auth/")) {
     return backendUrl;
   }
-  if (pathname.startsWith("/api/v1/chat/") || pathname.startsWith("/api/v1/conversations")) {
+  // Python Orchestrator：聊天、会话目录、Pause/Cancel 控制面。
+  if (
+    pathname.startsWith("/api/v1/chat/")
+    || pathname.startsWith("/api/v1/conversations")
+    || pathname.startsWith("/api/v1/agent-runs")
+  ) {
     return analysisUrl;
   }
   return backendUrl;

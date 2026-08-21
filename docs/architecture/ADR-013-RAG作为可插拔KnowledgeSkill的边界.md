@@ -9,7 +9,7 @@
 
 ## 1. 为什么现在就写
 
-RAG 不在当前迁移计划内，但它是最容易在「顺手加一下」的情况下滑进内核的组件：一旦认知层被允许直接检索并把命中文本当作结论，Observation、Evidence、Provenance 三层治理会被整体旁路，Prompt Injection 面直通模型。
+RAG 不在当前实现范围内，但它是最容易在「顺手加一下」的情况下滑进内核的组件：一旦认知层被允许直接检索并把命中文本当作结论，Observation、Evidence、Provenance 三层治理会被整体旁路，Prompt Injection 面直通模型。
 
 本 ADR 的作用是**先把边界钉死**，使未来任何 RAG 提案只能沿受控路径落地。它不描述实现方案，也不构成开工许可。
 
@@ -44,7 +44,7 @@ Cognitive Runtime
 
 - 不把 RAG 作为系统卖点或架构中心；
 - 不为 RAG 新建第二套 Observation、Guardrail、预算或审计链；
-- 不在 M0–M6 之间插入 RAG 阶段；如需实施，只能作为 M7 之后的独立立项；
+- 如需实施，必须基于真实 Knowledge Skill 需求单独立项；当前代码不预留 RAG 半成品路径；
 - 不用 RAG 掩盖数据缺失：缺行情、缺用户事实时的正确行为仍是 `LIMITED` 或 `INSUFFICIENT_INFORMATION`。
 
 ## 3. 与历史文档的关系

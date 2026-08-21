@@ -1,9 +1,9 @@
-# BDLH Agent Runtime Runtime 定位与 Skill 扩展说明
+# BDLH Agent Runtime 定位与 Skill 扩展说明
 
 > **文档性质：定位与扩展面说明，用于对外表述与新人理解**
 > **权威声明：本文不是生产决策来源。发生冲突时以 [00-BDLH-Agent-Runtime统一生产架构.md](./00-BDLH-Agent-Runtime统一生产架构.md) 为准；已生效的定位决策见 [ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)、[ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md)、[ADR-011](./ADR-011-Memory分层与晋升边界.md)、[ADR-012](./ADR-012-多Skill与多Agent演进门槛.md)、[ADR-013](./ADR-013-RAG作为可插拔KnowledgeSkill的边界.md)、[ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)、[ADR-015](./ADR-015-Context组装服务与压缩策略.md)**
-> **版本：v1.2　日期：2026-08-11**
-> **本文不重复 00 号文档的分层正文、契约定义与迁移计划**
+> **版本：v1.3　日期：2026-08-17**
+> **本文不重复 00 号文档的分层正文、契约定义与开发实施顺序**
 
 ## 1. 一句话定位
 
@@ -32,8 +32,8 @@ BDLH Agent Runtime 是一个**通用 Agent Runtime / 编排内核**：它把「�
 | 数据真实性不能被伪装 | `LIVE / USER_CONFIRMED / TEST_FIXTURE / MOCK / UNAVAILABLE` 分级，测试数据不得进入真实结论 |
 | 每一步都要能被拦下来 | 四时点治理：规划时、行动时、数据返回时、表达前 |
 | 记忆不是账本 | 记忆分五层（ADR-011），业务真源独立于记忆，且记忆不能自行晋升为真源；进模由 Context 组装器按预算裁剪（ADR-015），存储 ≠ 上下文 |
-| 暂停可恢复、换题不串跑 | 系统截断与用户 Pause 共用 pending/checkpoint；同 session 经 Turn Router 决定 resume / 新 run / 先确认（ADR-014） |
-| 失败要可预期 | 依赖分级、预算与截止时间、幂等键、结构化错误、可回滚的迁移 |
+| 暂停可恢复、换题不串跑 | 系统截断与用户 Pause 共用 pending/run state；同 session 经 Turn Router 决定 resume / 新 run / 先确认（ADR-014） |
+| 失败要可预期 | 依赖分级、预算与截止时间、幂等键、结构化错误和可恢复状态 |
 
 这些关注点不含任何金融语义，因此更换业务领域时不需要重写。
 
@@ -43,15 +43,15 @@ BDLH Agent Runtime 是一个**通用 Agent Runtime / 编排内核**：它把「�
 
 | 想加的东西 | 挂在哪 | 需要写什么 |
 |---|---|---|
-| 同领域的新业务能力 | 现有 Domain Runtime 内新增 Skill | 一份 `SkillManifest` + 业务实现 |
-| 一个全新业务领域 | 注册新 Domain 到 Dispatcher | `DomainDescriptor` + Skill + 该领域的确定性计算模块 |
+| 同领域的新业务能力 | 现有 Domain Runtime 内新增 Skill | Registry 目录记录 + 业务实现 |
+| 一个全新业务领域 | 注册新 Domain 到 Dispatcher | Registry 记录 + Domain Runtime + 该领域的确定性计算模块 |
 | 检索增强（RAG） | 某领域下的检索类 Skill | 检索结果转 Observation 后作为证据候选 |
 | 多角色协作 | 认知层内部的角色子图 | 角色声明与预算切分，不新增部署单元 |
 
 四条边界（对应 ADR-009、ADR-010、ADR-012）：
 
 1. 认知层与领域调度层不依赖任何具体领域的枚举、契约或计算模块，由一条常绿的 import 测试保证；
-2. Skill 是编译期注册的一等对象，启动时对能力真源逐项校验，不一致即启动失败；
+2. Skill 目录来自数据库 Registry，启动时对执行路由逐项校验，不一致即启动失败；
 3. 新增 Skill、Domain 或角色只允许注册与复用，不允许复制能力真源、观察层、治理层、预算模型或审计链；
 4. 多 Agent 的价值来自隔离，不是角色扮演；无隔离需求时用子图实现。
 
@@ -66,7 +66,7 @@ BDLH Agent Runtime 是一个**通用 Agent Runtime / 编排内核**：它把「�
 
 ## 5. 术语与目录对照
 
-代码目录名保留了历史演进痕迹，阅读时按下表对照（目录收敛按 00 号文档 §7 延后处理，不影响逻辑边界）：
+代码目录与逻辑层按下表对照；若目录与依赖边界冲突，开发阶段直接同步重构代码和测试：
 
 | 逻辑概念 | 当前目录 | 备注 |
 |---|---|---|
@@ -74,7 +74,8 @@ BDLH Agent Runtime 是一个**通用 Agent Runtime / 编排内核**：它把「�
 | 领域调度 | `domains/registry.py`、`domains/contracts.py` | Dispatcher 与跨层契约 |
 | 领域实现（Skill 宿主） | `domains/finance/` | 当前唯一领域 |
 | 确定性计算 | `domain/` | 与 `domains/` 是两个不同层，名称相近属历史遗留 |
-| 能力真源与网关 | `tools/` | Registry 唯一真源，Toolset 为派生视图 |
+| 能力目录 | Java Data Plane + PostgreSQL `registry` schema | Capability、Operation、Toolset、Skill 唯一真源 |
+| 能力网关 | `tools/` | 执行与校验，不维护业务目录 |
 | 供应商适配 | `integrations/` | 隔离协议与凭证 |
 | 观察标准化 | `observations/`、`contracts/observation.py` | 统一来源、质量、时间与错误 |
 | 治理 | `guardrails/` | 四时点 |
@@ -82,4 +83,4 @@ BDLH Agent Runtime 是一个**通用 Agent Runtime / 编排内核**：它把「�
 
 ## 6. 当前状态
 
-不要把本文当成「已经全部落地」的证明。截至 2026-08-11：默认对外路径仍是旧编排图；领域运行时与结构化研究输出已完成开发但受发布门禁约束；认知编排、治理策略实现、适配性规则引擎仍在迁移计划中。准确的状态标记与阻塞项见 00 号文档 §3 与 §20。
+不要把本文当成「已经全部落地」的证明。截至 2026-08-17，默认对外路径已收敛到 Cognitive + Finance，Java Data Plane 已承接结构化数据访问。入口、Registry 和菜单仍需按 01 号专项 Prompt 完成全量重写。准确状态见 00 号文档 §3 与 §20。

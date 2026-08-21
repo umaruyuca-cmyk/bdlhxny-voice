@@ -25,12 +25,12 @@
 | `README.md` | 入口 | `ACTIVE` | 定位、技术栈与文档导航；只做索引，不承载决策 |
 | `docs/` | 文档 | — | 全部架构、Prompt、评审与本索引 |
 | `bdlh-runtime-orchestrator/` | 代码 | `ACTIVE` | Python + LangGraph，Agent 编排唯一实现 |
-| `bdlh-runtime-data/` | 代码 | `ACTIVE` | Java Data Plane：当前认证与用户金融事实；按 ADR-017 渐进承载 Runtime Data、Registry、Outbox 与 RocketMQ 适配；不承载 Agent、LLM、Mem0 或领域编排 |
+| `bdlh-runtime-data/` | 代码 | `ACTIVE` | Java Data Plane：认证、用户事实、Runtime Data、Registry、Outbox 与 RocketMQ 适配；不承载 Agent、LLM、Mem0 或领域编排 |
 | `bdlh-runtime-console/` | 代码 | `ACTIVE` | 独立 Nginx 静态前端与契约测试 |
 | `bdlh-web-search-adapter/` | 代码 | `ACTIVE` | 公开资料检索封装，经 Capability Gateway 调用 |
 | `stock-wrapper/` | — | `RETIRED`（已移出仓库） | 旧 Node HTTP 包装层；勿恢复目录，勿配置 `STOCK_WRAPPER_*` |
 | `skills/` | — | `RETIRED`（目录已清空） | 历史 CLI Skill 宿主已删除；当前可插拔 Skill 在 `bdlh-runtime-orchestrator/domains/finance/` |
-| `db/` | 运维 | `ACTIVE` | schema 与迁移脚本 |
+| `db/` | 运维 | `ACTIVE` | 面向空库的全量 schema 与初始 seed；应用启动不得执行 |
 | `deploy/` | 运维 | `ACTIVE` | Compose、Nginx 与部署手册 |
 
 ## 2. `docs/`（重点）
@@ -48,12 +48,13 @@ docs/
 │   ├── ADR-011-Memory分层与晋升边界.md                    APPROVED
 │   ├── ADR-012-多Skill与多Agent演进门槛.md                APPROVED
 │   ├── ADR-013-RAG作为可插拔KnowledgeSkill的边界.md        APPROVED（实施未排期）
-│   ├── ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md  APPROVED（Pause/Turn Router 按切片落地）
+│   ├── ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md  APPROVED（Turn Router/Pause 已接线；真 checkpoint 续跑未关闭）
 │   ├── ADR-015-Context组装服务与压缩策略.md               APPROVED（挂靠 ADR-011；禁止第二套 L 编号）
 │   ├── ADR-016-固定复合DeepResearchTool.md               APPROVED（固定 Tool，非 Skill/Domain；生产切流仍受门禁）
 │   └── ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md APPROVED（单 PG、Java Data Plane、单节点 MQ、独立 Memory Service）
 ├── prompts/
-│   └── 00-BDLH-Agent-Runtime生产开发实施Prompt.md    AUTHORITATIVE  唯一生产开发执行 Prompt
+│   ├── 00-BDLH-Agent-Runtime生产开发实施Prompt.md    AUTHORITATIVE  全局实施 Prompt：生产唯一运行标准、完成定义、相对架构缺口清单
+│   └── 01-入口理解与资格菜单重写-实施Prompt.md         ACTIVE         专项：Registry / Goal / eligible→allowed 全量重写
 ├── reviews/                        审查与阶段报告
 │   ├── 00-BDLH-Agent-Runtime生产审查规范.md          AUTHORITATIVE  审查门禁与判定规则
 │   ├── 01-BDLH-Agent-Runtime当前生产就绪审查报告.md  ACTIVE         最新一次全局审查快照
@@ -132,9 +133,9 @@ bdlh-runtime-orchestrator/
 |---|---|---|
 | `api/`、`security/`、`config/`、`handler/`、`entity/`、`mapper/`、`dto/`、`service/` | `ACTIVE` | 认证、用户金融数据、只读查询与确认入口；Java 不承载 Agent、LLM、记忆或外部工具调用 |
 
-Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用户资料的写入走独立认证 API，不是 Agent Capability。旧 Java Agent 链路已从仓库删除。ADR-017 目标态下，现有单 JVM 还会按模块化单体承载 L1/Run/History/Task/Registry、Transactional Outbox 和 RocketMQ 适配，但仍禁止承载 Agent、LLM、Mem0 或领域编排。
+Java 侧是用户事实和结构化 Runtime Data 的权威访问边界，Agent 只能通过用例级内部 API 消费；用户资料写入走独立认证 API，不是 Agent Capability。当前单 JVM 按模块化单体承载 L1/Run/History/Task/Registry、Transactional Outbox 和 RocketMQ 适配，仍禁止承载 Agent、LLM、Mem0 或领域编排。
 
-`bdlh-memory-service/` 在 PLATFORM-P5 创建前不存在；创建后只承载 Python/FastAPI/Mem0 的 L3 语义记忆服务，目录结构和文件归属以 ADR-017 与生产 Prompt §26.11 为准。
+`bdlh-memory-service/` 只承载 Python/FastAPI/Mem0 的 L3 语义记忆服务，目录结构和文件归属以 ADR-017 与当前开发 Prompt 为准。
 
 ### 3.3 `bdlh-runtime-console/`
 
@@ -195,12 +196,12 @@ Java 侧是用户事实的权威存储（L4），Agent 只能只读消费；用�
 
 ## 7. 已知混乱点与处置状态
 
-以下项目中，文档归档类已于 2026-08-11 执行完毕（历史版本、旧图、旧提案移入 `docs/archive/`，重复 PNG 删除，空目录清除）。剩余为代码改名项，仍排在 M3 收尾之后：
+以下项目中，文档归档类已于 2026-08-11 执行完毕。其余冲突在当前开发阶段直接全量修改，不按历史阶段延后：
 
 | 问题 | 现状影响 | 处置 | 状态 |
 |---|---|---|---|
-| `domain/` 与 `domains/`、`runtime/` 与 `runtimes/` 仅靠单复数区分 | 新人和 Agent 极易 import 错模块 | 重命名为 `finance_engine/`、`app/`、`orchestration/` 一类无歧义名 | 未执行（代码改名，排 M3 后） |
-| `CapabilitySpec.analysis_types` 名不符实 | 字段实际表达 Skill 适用范围 | 改名为 `skill_scopes` | 未执行（04 号文档 P2 登记） |
+| `domain/` 与 `domains/`、`runtime/` 与 `runtimes/` 仅靠单复数区分 | 新人和 Agent 极易 import 错模块 | 若违反依赖边界则一次性重命名并同步修改导入和测试 | 待执行 |
+| `analysis_type` 残留 | 与 Goal + Registry 菜单架构冲突 | 字段和所有分支物理删除，不改名保留 | 待专项重写完成 |
 | ~~`docs/migration/` 是空目录~~ | — | 已删除 | ✅ 已执行 |
 | ~~`diagrams/` 与 `docs/architecture/` 都有架构图~~ | — | 旧图移入 `docs/archive/diagrams/` | ✅ 已执行 |
 | ~~`skill-result-display-flow` 有两份 PNG~~ | — | 重复 PNG 已删除 | ✅ 已执行 |

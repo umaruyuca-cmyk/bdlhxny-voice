@@ -37,7 +37,7 @@
 | 工程职责（原桌面称呼） | ADR-011 层 / 组件 | 权威载体 | 回答的问题 |
 |---|---|---|---|
 | Dialog Store | **L1 会话记录** | PostgreSQL Chat Session / Messages | 这个 session 完整说了什么？ |
-| Run State / Pause 书签 | **L0 工作记忆** + Run Registry + `pending_*` | Checkpointer / Registry / Session 投影 | 任务做到哪？能否 resume？ |
+| Run State / Pause 书签 | **L0 工作记忆** + Run Registry + `pending_*` | Java Run State / Registry / Session 投影 | 任务做到哪？能否 resume？ |
 | User Facts / 账本 | **L4 业务真源**（不是记忆） | Java 用户事实 v2 / 业务库 | 确认过的档案与持仓是什么？ |
 | Semantic Memory（Mem0） | **L3 长期语义** | Mem0 | 跨会话偏好与确认软知识？ |
 | RAG 检索知识 | **L2**（Skill，见 ADR-013） | 向量/文档源 → Observation | 可引用的检索证据候选？ |
@@ -62,7 +62,7 @@
 - 从 ADR-011 各层与本轮 scratch **取料**；
 - 按 `purpose` 与 `budget` **裁剪**；
 - 输出 `ContextBundle`（可带 `context_id` 审计快照）；
-- **不**写入 L1 权威消息、L0 checkpoint、L4 字段，**不**直接 `Mem0.add`，**不做** Turn Router，**不**执行领域主逻辑。
+- **不**写入 L1 权威消息、L0 Run State、L4 字段，**不**直接 `Mem0.add`，**不做** Turn Router，**不**执行领域主逻辑。
 
 现有 `ContextBuilder` 七块组装是合法实现起点；本 ADR 将其提升为明确边界与压缩/预算规则，而不是推翻重写。
 

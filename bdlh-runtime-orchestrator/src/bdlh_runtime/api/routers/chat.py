@@ -262,7 +262,8 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         "schema_version": "1.0",
                         "type": "clarification",
                         "prompt": response.message,
-                        "options": response.next_steps,
+                        "responseStructure": response.response_structure,
+                        "options": _clarification_options(response.next_steps),
                     },
                 )
                 yield encode_event(
@@ -308,14 +309,30 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 )
                 await asyncio.sleep(0)
             chat_sessions.add_message(session.session_id, user_id, "assistant", answer)
-            chat_sessions.set_pending(
-                session.session_id,
-                user_id,
-                run_id=None,
-                thread_id=None,
-                checkpoint_id=None,
-                runtime_path=None,
+            # Esc pause 可能已写入 pending；完成路径不得盲目清掉可恢复书签。
+            pause_requested = (
+                application.run_control is not None and application.run_control.is_pause_requested(run_id)
             )
+            if pause_requested:
+                chat_sessions.set_pending(
+                    session.session_id,
+                    user_id,
+                    run_id=run_id,
+                    thread_id=session.session_id,
+                    checkpoint_id=None,
+                    runtime_path=COGNITIVE_RUNTIME_PATH,
+                    pause_reason="user_pause",
+                    awaiting_route_confirm=False,
+                )
+            else:
+                chat_sessions.set_pending(
+                    session.session_id,
+                    user_id,
+                    run_id=None,
+                    thread_id=None,
+                    checkpoint_id=None,
+                    runtime_path=None,
+                )
             if application.run_control is not None:
                 application.run_control.clear(run_id)
             yield encode_event(
@@ -388,3 +405,16 @@ async def _ask_which_stream(
             "resumable": True,
         },
     )
+
+
+def _clarification_options(next_steps: list[str] | None) -> list[dict[str, str]]:
+    """把 PublicResponse.next_steps 投影为 Console ask-card 可点击选项。"""
+
+    options: list[dict[str, str]] = []
+    for step in next_steps or []:
+        text = str(step or "").strip()
+        if not text:
+            continue
+        label = text if len(text) <= 28 else text[:27] + "…"
+        options.append({"label": label, "message": text})
+    return options

@@ -30,6 +30,11 @@
       新对话
     </button>
 
+    <button class="nav-item" id="navProfile" type="button">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0"/></svg>
+      金融资料
+    </button>
+
     <button class="nav-item" id="navPlugins" type="button">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 8h3v3H8zM13 8h3v3h-3zM8 13h3v3H8zM13 13h3v3h-3z"/></svg>
       插件
@@ -178,6 +183,65 @@
         <button id="authRegister" type="button">注册账号</button>
       </div>
     </div>
+  </section>
+</div>
+
+<div class="auth-overlay" id="profileModal" hidden>
+  <section class="auth-modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+    <h2 id="profileTitle">确认金融资料</h2>
+    <p class="profile-hint">写入服务端受控确认后，才能做「适不适合我」的真实性匹配。不会伪装成 LIVE 券商同步。</p>
+    <form id="profileForm">
+      <input type="hidden" id="profileVersion" value="0">
+      <div class="profile-grid">
+        <label>风险承受
+          <select id="profileRisk" required>
+            <option value="conservative">保守</option>
+            <option value="moderate">稳健</option>
+            <option value="balanced" selected>平衡</option>
+            <option value="aggressive">积极</option>
+          </select>
+        </label>
+        <label>最大可承受亏损 %
+          <input id="profileMaxLoss" type="number" min="0" max="100" step="1" value="20" required>
+        </label>
+        <label>币种
+          <input id="profileCurrency" value="CNY" maxlength="8" required>
+        </label>
+        <label>现金
+          <input id="profileCash" type="number" min="0" step="0.01" value="10000" required>
+        </label>
+        <label>流动资产
+          <input id="profileLiquid" type="number" min="0" step="0.01" value="50000" required>
+        </label>
+        <label>近期现金需求
+          <input id="profileCashNeeds" type="number" min="0" step="0.01" value="5000" required>
+        </label>
+        <label>现金需求天数
+          <input id="profileHorizon" type="number" min="1" step="1" value="90" required>
+        </label>
+      </div>
+      <fieldset class="profile-positions">
+        <legend>可选持仓（留空则仅确认风险/账户）</legend>
+        <div class="profile-grid">
+          <label>代码 <input id="posSymbol" placeholder="600519" maxlength="16"></label>
+          <label>名称 <input id="posName" placeholder="贵州茅台" maxlength="64"></label>
+          <label>数量 <input id="posQty" type="number" min="0" step="0.01"></label>
+          <label>成本价 <input id="posCost" type="number" min="0" step="0.01"></label>
+          <label>交易所
+            <select id="posExchange">
+              <option value="SSE">SSE</option>
+              <option value="SZSE">SZSE</option>
+            </select>
+          </label>
+          <label>目标权重(0-1) <input id="posWeight" type="number" min="0" max="1" step="0.01" value="0.1"></label>
+        </div>
+      </fieldset>
+      <p class="auth-error" id="profileError"></p>
+      <div class="auth-actions">
+        <button class="auth-primary" id="profileSave" type="submit">确认并继续评估</button>
+        <button id="profileCancel" type="button">取消</button>
+      </div>
+    </form>
   </section>
 </div>
 

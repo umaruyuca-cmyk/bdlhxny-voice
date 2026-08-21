@@ -53,6 +53,10 @@ class FinanceDispatcher:
     def __init__(self, *, ambiguous: bool = False) -> None:
         self.ambiguous = ambiguous
         self.requests: list[object] = []
+        self.suitability_condition_id = "SUITABILITY_RULE_SET_APPROVAL_REQUIRED"
+        self.suitability_condition_description = (
+            "Suitability rules require an approved ADR-004 rule set"
+        )
 
     async def dispatch(self, request: object) -> DomainOutcome:
         self.requests.append(request)
@@ -95,8 +99,8 @@ class FinanceDispatcher:
                     result="INSUFFICIENT_INFORMATION",
                     required_conditions=[
                         SuitabilityCondition(
-                            condition_id="SUITABILITY_RULE_SET_APPROVAL_REQUIRED",
-                            description="Suitability rules require an approved ADR-004 rule set",
+                            condition_id=self.suitability_condition_id,
+                            description=self.suitability_condition_description,
                             verification_source="ADR-004 approval record",
                         )
                     ],
@@ -285,6 +289,24 @@ async def test_knowledge_prefix_with_issuer_name_still_resolves() -> None:
         FinancialDomainRequest,
     ]
     assert result.response.response_kind == "DOMAIN_RESULT"
+
+
+@pytest.mark.asyncio
+async def test_suitability_input_gap_asks_user_with_actionable_next_steps() -> None:
+    store = InMemoryVerifiedEntityStore()
+    dispatcher = FinanceDispatcher()
+    dispatcher.suitability_condition_id = "SUITABILITY_INPUT_GAP"
+    dispatcher.suitability_condition_description = "请确认风险偏好与持仓后再做适配筛查"
+    app = _app(dispatcher, store)
+    await app.run(_event("贵州茅台今天怎么样", event_id="event-1"))
+    dispatcher.requests.clear()
+
+    result = await app.run(_event("它适合我吗", event_id="event-2"))
+
+    assert result.response.response_kind == "ASK_USER"
+    assert result.response.response_structure == "SUITABILITY"
+    assert "请确认风险偏好与持仓后再做适配筛查" in result.response.message
+    assert "打开金融资料确认" in result.response.next_steps
 
 
 @pytest.mark.asyncio

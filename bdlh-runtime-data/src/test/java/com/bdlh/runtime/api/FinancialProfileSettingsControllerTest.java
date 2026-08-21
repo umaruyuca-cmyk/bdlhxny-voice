@@ -2,6 +2,7 @@ package com.bdlh.runtime.api;
 
 import com.bdlh.runtime.dto.FinancialProfileConfirmationResponse;
 import com.bdlh.runtime.dto.FinancialProfileUpdateRequest;
+import com.bdlh.runtime.dto.FinancialProfileViewResponse;
 import com.bdlh.runtime.security.SingleUserContext;
 import com.bdlh.runtime.service.FinancialProfileCommandService;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,12 +14,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -65,6 +68,24 @@ class FinancialProfileSettingsControllerTest {
                 .andExpect(jsonPath("$.confirmation_ref").value("server-ref"));
 
         verify(commandService).replaceFinancialProfile(eq(7L), eq("profile-1"), any());
+    }
+
+    @Test
+    void shouldReturnFinancialProfileViewForAuthenticatedUser() throws Exception {
+        when(userContext.requireAuthenticatedUserId()).thenReturn(7L);
+        when(commandService.getFinancialProfile(7L)).thenReturn(
+                new FinancialProfileViewResponse(
+                        7L, 1L, "CNY", new BigDecimal("20000"), "balanced",
+                        new BigDecimal("25"), new BigDecimal("50000"),
+                        new BigDecimal("10000"), 90, "USER_CONFIRMED", "ref-1", List.of()));
+
+        mvc.perform(get("/api/v1/user/financial-profile"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user_id").value(7))
+                .andExpect(jsonPath("$.profile_version").value(1))
+                .andExpect(jsonPath("$.risk_tolerance").value("balanced"));
+
+        verify(commandService).getFinancialProfile(7L);
     }
 
     @Test

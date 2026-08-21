@@ -11,6 +11,7 @@ import com.bdlh.runtime.runtime.RuntimeDataDtos.RunProjectionResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveHistoryRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveRunProjectionRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.UpsertRunRequest;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.VerifiedEntityRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -136,6 +137,24 @@ public class RuntimeDataService {
                 request.runId() != null
                         && !request.runId().isBlank()
                         && Boolean.TRUE.equals(request.awaitingRouteConfirm()),
+                userId,
+                id);
+        return requireSession(userId, id);
+    }
+
+    @Transactional
+    public ChatSessionResponse setVerifiedEntity(
+            long userId, String sessionId, VerifiedEntityRequest request) {
+        String id = requiredValue(sessionId, "session_id");
+        requireSession(userId, id);
+        JsonNode state = request == null ? null : request.verifiedEntityState();
+        if (state != null && state.isNull()) {
+            state = null;
+        }
+        jdbcTemplate.update(
+                "UPDATE runtime.chat_session SET verified_entity_state = ?::jsonb, "
+                        + "updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND session_id = ?",
+                state == null ? null : writeJson(state),
                 userId,
                 id);
         return requireSession(userId, id);
@@ -271,7 +290,8 @@ public class RuntimeDataService {
     private ChatSessionResponse findSession(long userId, String sessionId) {
         List<SessionRow> results = jdbcTemplate.query(
                 "SELECT session_id, title, pending_run_id, pending_thread_id, pending_checkpoint_id, "
-                        + "pending_runtime_path, pause_reason, awaiting_route_confirm, updated_at "
+                        + "pending_runtime_path, pause_reason, awaiting_route_confirm, "
+                        + "verified_entity_state, updated_at "
                         + "FROM runtime.chat_session "
                         + "WHERE user_id = ? AND session_id = ?",
                 (rs, rowNum) -> new SessionRow(
@@ -283,6 +303,7 @@ public class RuntimeDataService {
                         rs.getString("pending_runtime_path"),
                         rs.getString("pause_reason"),
                         rs.getBoolean("awaiting_route_confirm"),
+                        readJsonNullable(rs.getString("verified_entity_state")),
                         rs.getObject("updated_at", OffsetDateTime.class)),
                 userId,
                 sessionId);
@@ -309,6 +330,7 @@ public class RuntimeDataService {
                 row.pendingRuntimePath(),
                 row.pauseReason(),
                 row.awaitingRouteConfirm(),
+                row.verifiedEntityState(),
                 row.updatedAt());
     }
 
@@ -423,6 +445,13 @@ public class RuntimeDataService {
         }
     }
 
+    private JsonNode readJsonNullable(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return readJson(value);
+    }
+
     private static String requiredValue(String value, String field) {
         String normalized = normalizedNullable(value);
         if (normalized == null) {
@@ -456,6 +485,7 @@ public class RuntimeDataService {
             String pendingRuntimePath,
             String pauseReason,
             boolean awaitingRouteConfirm,
+            JsonNode verifiedEntityState,
             OffsetDateTime updatedAt) {
     }
 }

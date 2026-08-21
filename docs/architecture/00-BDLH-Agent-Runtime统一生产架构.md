@@ -1,10 +1,9 @@
 # BDLH Agent Runtime 统一生产架构
 
 > **文档状态：生产架构唯一权威基线**  
-> **架构版本：v1.12**
-> **生效日期：2026-08-16**
+> **生效日期：2026-08-17**
 > **适用范围：`bdlh-runtime-orchestrator`、Java 用户数据服务、前端/API Gateway、外部数据服务及生产基础设施**  
-> **当前实施状态：默认产品路径为 Cognitive Orchestrator（`cognitive_finance`）+ Finance Domain。Orchestrator 提供 `/health`（存活）与 `/ready`（就绪，含 Java Actuator / Registry / 条件 Memory）。Chat 有 pending 时经 Turn Router（`resume`/`new_turn`/`ask_which`）；支持 `POST .../pause` 与 Console Esc。Suitability 已走 fail-closed Preflight（ADR-004 未批前仅 `INSUFFICIENT_INFORMATION`）。Chat/Run/History/Task/Registry 经 Java Data Plane；M0 发布证据与 PLATFORM 默认开关仍可能阻塞完整生产放行。**
+> **当前实施状态：默认产品路径为 Cognitive Orchestrator（`cognitive_finance`）+ Finance Domain。Chat/Run/History/Task/Registry 经 Java Data Plane，Memory 为独立服务，RocketMQ 为异步投递基础设施。入口与 Registry 仍需按 01 号专项 Prompt 完成全量重写：物理删除 `analysis_type`，收敛数据库目录真源和 `eligible → allowed`。运行时行为一律按生产标准实现，不接受「开发宽松 / 生产严格」双轨产品路径；相对本文与 ADR 的缺口必须以状态表与实施 Prompt §5 显式登记，不得用短链路切片冒充完成。**
 > **配套架构图：[00-BDLH-Agent-Runtime生产架构.drawio](./00-BDLH-Agent-Runtime生产架构.drawio)**
 
 ## 产品身份（定位声明，不编号）
@@ -20,7 +19,7 @@ BDLH Agent Runtime 的产品身份是**通用 Agent Runtime / 编排内核**：�
 | 内核（Runtime） | 描述不含任何金融词汇也能成立 | 影响所有现有与未来 Skill，变更门槛最高 |
 | 域（Domain / Skill） | 描述依赖金融语义、金融契约或金融数据源 | 只影响该 Domain，可独立演进 |
 
-定位相关的增量决策见 [ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)；升级依据与未执行条目见 [04-Runtime定位升级修改意见](../reviews/04-Runtime定位升级修改意见.md)。本声明只改变叙事与扩展面，不改变 §18 的 M0–M6 迁移主线、门禁和退出条件。
+定位与命名规则见 [ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md)。历史修改意见只用于追溯；当前实现顺序和完成标准以本文及当前专项 Prompt 为准。
 
 ## 0. 文档治理
 
@@ -43,7 +42,7 @@ BDLH Agent Runtime 的产品身份是**通用 Agent Runtime / 编排内核**：�
 - V3 历史档案保留 LangGraph、MCP、Observation、预算和确定性计算经验；
 - 本文保留 Cognitive Kernel 的生产目标模型；
 - 本文保留 Finance Runtime、Stock Research 和 Suitability 的生产领域模型；
-- 本文统一处理三者之间的生产边界、部署方式和迁移顺序。
+- 本文统一处理三者之间的生产边界、部署方式和开发实施顺序。
 
 ### 0.2 文档中的状态标记
 
@@ -51,37 +50,15 @@ BDLH Agent Runtime 的产品身份是**通用 Agent Runtime / 编排内核**：�
 |---|---|
 | `CURRENT` | 当前代码已进入默认运行路径并有测试覆盖 |
 | `FOUNDATION` | 契约或骨架已存在，但尚未进入默认运行路径 |
-| `TARGET` | 已冻结的生产目标，需要按迁移计划实现 |
+| `TARGET` | 已冻结但尚未实现的目标 |
 | `EXPERIMENTAL` | 不得进入生产关键路径 |
-| `RETIRED` | 不得新增依赖，按计划退出 |
-| `TRANSITION` | 已进入运行路径但处于迁移过渡期（如新路径已装配未接默认流量） |
-| `DEVELOPMENT_COMPLETE` | 实现已完成但被生产门禁阻塞，未进入默认运行路径 |
-| `RELEASE_BLOCKED` | 实现完成但因 §19.2 release-blocking 条件未满足而无法发布 |
+| `REWRITE_REQUIRED` | 当前实现与冻结需求冲突，必须直接全量修改 |
 
 对于 Capability Registry、Domain Dispatcher、SkillManifest、Observation Normalizer 等
-基础设施级组件，`CURRENT` 表示已完成应用装配、启动校验并有测试覆盖；它不等于已经进入
-默认用户流量。默认切流仍由 `TRANSITION`、`DEVELOPMENT_COMPLETE`、`RELEASE_BLOCKED`
-和 M5 灰度门禁共同判断。
+基础设施级组件，`CURRENT` 表示已完成应用装配、启动校验并有测试覆盖。`REWRITE_REQUIRED`
+不得通过别名、双写或旧路径开关降级为 `CURRENT`。
 
 任何设计说明都必须明确其状态，禁止把目标架构描述成已经落地。
-
-### 0.3 版本记录
-
-| 版本 | 日期 | 变更 |
-|---|---|---|
-| v1.0 | 2026-08-10 | 统一生产架构首个权威基线 |
-| v1.1 | 2026-08-11 | 定位升级（ADR-009 ~ ADR-012）：产品身份声明、§1 主线标注内核/域、§2 拆分内核范围与首个 Domain、§5.4 引用 `SkillManifest`、§9.1 引用 Memory 分层 |
-| v1.2 | 2026-08-11 | 文档面收口（ADR-013）：§0.3 新增版本记录；§3/§7 登记 Domain Dispatcher、manifest 契约与内核纯净度门禁；§18 M1 改名并追加可选 M7；§19.1 登记架构边界测试；§22 补录 README 与图纸处置；§23 拆出「已起草未批准」并登记 ADR-004；配套架构图标签对齐 |
-| v1.3 | 2026-08-11 | §22 登记新增的 `docs/00-BDLH-Agent-Runtime仓库文件管理树.md`（文件归属索引，非决策来源） |
-| v1.4 | 2026-08-11 | 文档与代码现状对齐 + 通用化沉淀：§0.2 补登记 `TRANSITION`/`DEVELOPMENT_COMPLETE`/`RELEASE_BLOCKED`；§3 更新 Dispatcher（已带 descriptor）、SkillManifest（已落地 ADR-010 §6.1）、PortfolioValuationBuilder（M3 完成）、Toolset/能力计数；§4 拓扑图插入 Domain Dispatcher 节点并与 §1 主线对齐；§4.2 内核行去金融词；§10.1 补 Toolset 命名规则、§10.2 标注为 finance 实例；§13.2/§15.3 拆分为通用内核规则 + finance 域实例标注 |
-| v1.5 | 2026-08-11 | 修正实施状态残留：统一 ADR-010 已落地、PortfolioValuationBuilder 已完成但尚未发布的表述；同步 M3、§20、§23.1 与 01 号说明的术语和 Skill 状态 |
-| v1.6 | 2026-08-11 | 收口文档治理与状态语义：更新 §0.1 的历史文档称呼；补充基础设施级 `CURRENT` 不等于默认切流的说明；§19.1 登记 manifest/descriptor 启动校验测试 |
-| v1.7 | 2026-08-11 | 合成桌面 Resume/记忆草案与现网契约：§2.1/§8/§9/§12 吸收 [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md)（系统/用户截断同构、Turn Router）与 [ADR-015](./ADR-015-Context组装服务与压缩策略.md)（Context 组装挂靠 ADR-011，禁止第二套 L 编号）；§23.1 登记两份 ADR |
-| v1.10 | 2026-08-16 | P0 就绪：Orchestrator `/health`+`/ready`；Java Actuator 启动探测；§3 对齐 Java 远程持久化与退役 Checkpointer |
-| v1.11 | 2026-08-16 | P1：ADR-014 Turn Router + Pause（`/chat/stream` 分流、`POST .../pause`、Console Esc）；§3 状态表更新 |
-| v1.12 | 2026-08-16 | P1：Suitability fail-closed 垂直切片（Cognitive→SUITABILITY→Preflight；ADR-004 前无个性化结论） |
-
-版本号只反映本文的表述与登记变化；阶段范围、契约字段语义与发布门禁的任何调整必须另有 ADR。
 
 ## 1. 执行摘要
 
@@ -119,7 +96,7 @@ Nginx / API Gateway                                  [内核]
 11. **状态、会话、运行索引、历史和任务必须持久化**，生产实例不得依赖进程内存保存关键状态。
 12. **单一产品编排路径**。默认流量只走 Cognitive + Finance；旧 Root Graph 与双路径回退已退役，不得恢复。
 13. **内核与领域分离**。Cognitive Orchestrator 与 Domain Dispatcher 是领域无关内核，不得依赖任何具体领域的枚举、契约或计算模块；领域语义（如 `FinancialIntent`）只存在于对应 Domain 的私有契约中。新增 Skill 或 Domain 只允许注册，不允许复制 Capability Registry、Observation、Guardrail、预算或审计链。
-14. **数据平面、消息和语义记忆分离**。结构化数据、事务与 Outbox 由 Java Data Plane 管理；Mem0 由独立 Python Memory Service 管理；RocketMQ 只传播异步事件；当前 PostgreSQL 保持单实例并按 schema/Role 隔离；LangGraph Checkpointer 是 Orchestrator 唯一允许保留的数据库直连例外（见 ADR-017）。
+14. **数据平面、消息和语义记忆分离**。结构化数据、运行状态、事务与 Outbox 由 Java Data Plane 管理；Mem0 由独立 Python Memory Service 管理；RocketMQ 只传播异步事件；当前 PostgreSQL 保持单实例并按 schema/Role 隔离；Orchestrator 不直连数据库。
 
 ## 2. 业务范围
 
@@ -202,38 +179,35 @@ Skill 与 Domain 的自描述契约见 [ADR-010](./ADR-010-SkillManifest与Domai
 
 | 能力 | 状态 | 当前事实 | 生产目标 |
 |---|---|---|---|
-| FastAPI / SSE / Agent Run API | `CURRENT` | `/api/v1/chat/*`、`agent-runs*` 只走 Cognitive | 保持兼容并统一错误与事件契约 |
+| FastAPI / SSE / Agent Run API | `CURRENT` | `/api/v1/chat/*`、`agent-runs*` 只走 Cognitive | 统一错误与事件契约 |
 | JWT 身份绑定 | `CURRENT` | Python 验签，Java 提供用户数据 | 生产强制开启，禁止信任请求体 `user_id` |
-| 旧 Root Graph | `RETIRED` | 代码与默认流量均已删除；不得恢复 | 仅作历史档案，禁止再接线 |
 | CognitiveAction | `CURRENT` | 已进入默认 Cognitive 执行路径 | 继续收敛行动集合与审计字段 |
 | Cognitive Orchestrator | `CURRENT` | 唯一顶层业务编排入口（`cognitive_finance`） | 保持为唯一默认路径 |
 | DomainRequest / Outcome | `CURRENT` | Cognitive ↔ Finance 跨层接口 | 继续作为唯一跨层契约 |
 | Domain Dispatcher | `CURRENT` | `DomainRegistry` 已提供 domain→runtime 唯一映射、拒绝重复注册，并携带 `DomainDescriptor` 支持 intent 启用查询 | 继续作为路由与拒绝的唯一入口；新增 Domain 只需注册 |
-| SkillManifest / DomainDescriptor | `CURRENT` | 已落地（ADR-010 §6.1）：通用模型 `domains/manifests.py` + finance 一份 descriptor + 三份 manifest 声明现状；启动时对 Capability Registry 逐项校验，不一致则 fail-fast | 继续作为 Skill 自描述的唯一契约真源 |
+| SkillManifest / DomainDescriptor | `REWRITE_REQUIRED` | 仍存在 Python 目录字段和能力声明 | 改为数据库 Registry 的运行时投影，不保存第二份 Capability/Operation 清单 |
 | 内核纯净度门禁 | `CURRENT` | `tests/architecture/test_kernel_purity.py` 静态断言内核不依赖领域实现 | 保持常绿，随内核目录变化同步更新 |
 | Finance Runtime | `CURRENT` | 由 Cognitive Dispatcher 调用的唯一默认 Domain | 继续隔离金融业务逻辑；不恢复旧 Root Graph |
 | StockResearchResult | `CURRENT` | Finance Runtime 客观研究输出契约已接线 | 继续强化字段来源与 provenance |
 | Financial User Facts v2 | `FOUNDATION` | Java 已提供鉴权确认入口、版本与幂等控制、审计记录及只读查询元数据；Python 已按事实来源归一化 | 作为账户、持仓与风险事实的唯一权威来源，禁止旧记录被推断为实时数据 |
-| PortfolioValuationBuilder | `DEVELOPMENT_COMPLETE` / `RELEASE_BLOCKED` | M3 切片已完成：以 `quantity × price` 重算市值/权重，sha256 内容寻址，fail-closed 校验；能力 `portfolio.build_current_valuation` 已注册；尚未因发布门禁进入默认流量 | 使用权威持仓和受预算约束的市场报价生成可追溯估值快照 |
+| PortfolioValuationBuilder | `FOUNDATION` | 确定性估值核心已实现（`quantity × price` 重算市值/权重、sha256 内容寻址、fail-closed 校验）；能力 `portfolio.build_current_valuation` 已注册，但 `portfolio-health` Skill 默认关闭，未进入默认 `allowed` | 使用权威持仓和受预算约束的市场报价生成可追溯估值快照 |
 | SuitabilityEngine | `CURRENT` | v0 DRAFT 规则集已接线；缺输入 → `INSUFFICIENT_INFORMATION`；v0 封顶无 `SUITABLE` | 阈值可 PR 调整；法定适当性另议 |
-| Capability Registry | `CURRENT` | 15 个统一只读能力（含 M3 `portfolio.build_current_valuation` 确定性重算） | 继续作为唯一能力真源 |
-| Toolset Registry | `CURRENT` | 六个 finance 域派生分组已存在并接入 Finance Planner；PORTFOLIO_READ 含估值重算能力 | 继续分层暴露能力并服务后续 Research/Suitability |
+| Capability Registry | `REWRITE_REQUIRED` | 已经由 Java Snapshot API 加载，但当前 schema/DTO 仍含单行配置表、快路径表、窗口结构和无消费字段 | 收敛为八张目录表；数据库是唯一真源，Python 只做快照校验和菜单算法 |
+| Toolset Registry | `REWRITE_REQUIRED` | Java Snapshot 与 Python 快照中均有目录，但仍存在代码描述清单 | 描述和关联只来自数据库，不维护第二份清单 |
 | 四时点 Guardrails | `CURRENT` | Default* 已接线；能力白名单、`guardrail.blocked` SSE、Data-quality freshness/provenance 已落地 | 继续补供应商冲突 / over-read 等 §11 余项 |
 | Observation / Coverage | `CURRENT` | 已有标准化与覆盖判断 | 进入所有外部数据路径 |
-| Java Data Plane | `CURRENT` / `TRANSITION` | 认证、L4 用户事实、Run/Chat/History/Task/Registry/Outbox API；Orchestrator 经 `JAVA_API_BASE_URL` 远程访问，启动与 `/ready` 探测 Actuator | 继续按 ADR-017 收敛模块化单体与 MQ 中继 |
+| Java Data Plane | `CURRENT` | 认证、L4 用户事实、Run/Chat/History/Task/Registry/Outbox API；Orchestrator 经 `JAVA_API_BASE_URL` 远程访问 | 保持结构化数据唯一访问边界，并完成 Registry 最终契约 |
 | Memory Service / Mem0 | `FOUNDATION` / `TARGET` | 独立服务与 remote 客户端已存在；默认 `BDLH_MEMORY_MODE=noop` | 生产切 `remote` 并完成 Outbox→MQ→消费闭环 |
-| RocketMQ | `FOUNDATION` | Compose/客户端与 Outbox Relay 代码已有；默认 `ROCKETMQ_ENABLED=false` | 打开开关前完成迁移与主题初始化验收 |
+| RocketMQ | `FOUNDATION` | Compose/客户端与 Outbox Relay 代码已有；默认 `ROCKETMQ_ENABLED=false` | 打开开关前完成主题初始化和消息闭环验收 |
 | Context 组装 | `CURRENT` / `TARGET` | Cognitive / Finance 路径组装上下文；旧 Root Graph `ContextBuilder` 已删除 | 对齐 ADR-015：purpose/budget、窗口主路径、dropped 可观测；不另起第二套组装语义 |
-| 系统 ASK_USER + pending resume | `CURRENT` | Chat 写 `pending_*`；同会话下一句经 Turn Router，禁止盲目 resume | 继续叠加真实 checkpoint / L0 恢复 |
-| 用户 Pause（Esc） | `CURRENT` | `POST .../pause` + PauseAck；Console Esc=abort+/pause；协作式停点在 Cognitive 步骤边界 | 长 LLM 调用中途更细粒度停止可增强 |
+| 系统 ASK_USER + pending resume | `CURRENT` / `TARGET` | Chat 写 `pending_*`；同会话下一句经 Turn Router，禁止盲目 resume；**真实 checkpoint 续跑仍为 TARGET（ADR-014）** | 关闭缺口：Pause 写入非空 `checkpoint_id`，Resume 从断点续跑，禁止仅重放 objective |
+| 用户 Pause（Esc） | `CURRENT` | `POST .../pause` + PauseAck；Console Esc=abort+/pause；协作式停点在 Cognitive 步骤边界 | 与真实 checkpoint 对齐后，长调用中途停止可增强 |
 | Turn Router | `CURRENT` | `resume` / `new_turn` / `ask_which` 已接线 `/chat/stream` | 持续校准强/弱信号词典 |
-| Checkpointer | `RETIRED` | 默认产品路径不再依赖 Python Postgres Checkpointer | 运行状态由 Java Data Plane 持有 |
-| Chat Session | `CURRENT` | 经 Java Data Plane 远程持久化（无 Java 仅测试内存） | 继续用户隔离与保留策略 |
-| Run Registry | `CURRENT` | 经 Java Data Plane 远程持久化；Python 仅保留测试内存实现 | 上线必须配置 Java 并保证 `/ready` 通过 |
+| Chat Session | `CURRENT` | 经 Java Data Plane 远程持久化（单元测试可显式注入内存替身） | 启动路径禁止无 Java 内存兜底 |
+| Run Registry | `CURRENT` | 经 Java Data Plane 远程持久化；Python 内存实现仅允许测试显式注入 | 上线必须配置 Java 并保证 `/ready` 通过 |
 | Analysis History | `CURRENT` | 经 Java Data Plane 远程持久化 | 保证幂等与保留期 |
 | Task / Scheduler | `FOUNDATION` | 远程 Task/Outbox 客户端与 Worker 循环已有；默认 Worker 关闭 | 打开 `BDLH_FINANCIAL_TASK_WORKER_ENABLED` 前完成通知闭环验收 |
 | Letta | `EXPERIMENTAL` | 无生产实现 | 仅隔离研究，不进入部署拓扑 |
-| Node Stock Skill / Wrapper | `RETIRED` | `skills/stock-analysis-skill` 与 stock-wrapper 均已退出仓库；勿配置 `STOCK_WRAPPER_*` / `LEGACY_JAVA_*` | 禁止恢复旧 CLI Skill 或旧 Java Agent 链路 |
 
 ## 4. 系统上下文与生产拓扑
 
@@ -255,7 +229,6 @@ flowchart TB
     CAP --> JAVA
     CAP --> ENGINE["Deterministic Domain Engine"]
 
-    PYAPI -->|"LangGraph Checkpointer only"| PG[("单实例 PostgreSQL")]
     PYAPI --> REDIS[("Redis 可选缓存/限流")]
     PYAPI -->|"同步 L3 search"| MEM["Python Memory Service / Mem0"]
     PYAPI --> LLM["DeepSeek / Approved LLM"]
@@ -269,7 +242,7 @@ flowchart TB
     SCHED["Scheduler / Wake-up Worker"] --> JAVA
 ```
 
-> **拓扑说明：** Domain Dispatcher 为内核组件（§1 主线、ADR-009），当前路由到唯一实例 Finance Runtime。新增 Domain 只需向 Dispatcher 注册 descriptor，不新增内核节点、不新增第二套 Capability Gateway 或 Observation 链。数据平面、RocketMQ、Memory Service 与 Checkpointer 例外以 ADR-017 为准；单实例 PostgreSQL 是当前物理部署，不等于共享表所有权。
+> **拓扑说明：** Domain Dispatcher 为内核组件（§1 主线、ADR-009），当前路由到唯一实例 Finance Runtime。新增 Domain 只需向 Dispatcher 注册 descriptor，不新增内核节点、不新增第二套 Capability Gateway 或 Observation 链。数据平面、RocketMQ 与 Memory Service 的所有权以 ADR-017 为准；单实例 PostgreSQL 是当前物理部署，不等于共享表所有权。
 
 ### 4.1 公网边界
 
@@ -517,7 +490,7 @@ Scheduler 不缓存上次结论，不自行调用 LLM，不自行生成通知内
 | Observation | `observations/`、`contracts/observation.py` | 统一来源、质量、时间和错误 |
 | Deterministic Engine | `domain/` | 纯计算，不依赖 Agent 框架 |
 | Memory | `memory/` | 可选增强，不是事实源 |
-| Persistence | `runtime/*store`，后续收敛到 `persistence/` | 生产必须持久化 |
+| Persistence | Java Data Plane API 客户端；Memory 使用独立存储端口 | Orchestrator 不直连结构化数据库 |
 
 禁止依赖：
 
@@ -528,7 +501,7 @@ Scheduler 不缓存上次结论，不自行调用 LLM，不自行生成通知内
 - API → 供应商 Adapter；
 - Model 输出 → 直接执行未经 Policy 校验的动作。
 
-为降低迁移风险，本阶段不强制重命名现有 `domain/` 与 `domains/`；新代码必须遵守上述逻辑边界，待运行路径稳定后再单独执行目录重构。
+目录和依赖若与本表冲突，开发阶段直接一次性重构，并同步修改引用和测试；不得保留转发模块或旧导入别名。
 
 ## 8. 稳定契约
 
@@ -613,9 +586,9 @@ LIVE / USER_CONFIRMED / TEST_FIXTURE / MOCK / UNAVAILABLE
 
 | 数据 | 权威存储 | 是否进入 Graph State |
 |---|---|---|
-| 用户身份、账户、持仓 | Java Data Plane / `business` schema（现有 MySQL 身份数据在专项迁移前保持原所有权） | 仅最小只读快照或引用 |
-| Cognitive State | LangGraph PostgreSQL Checkpointer / `checkpoint` schema | 是，最小化；Orchestrator 唯一数据库直连例外 |
-| Finance Run State | 独立 Checkpoint namespace 或同步子图 | 是，不复制完整账本 |
+| 用户身份、账户、持仓 | Java Data Plane / `business` schema | 仅最小只读快照或引用 |
+| Cognitive State | Java Data Plane / `runtime` schema | 是，最小化；Orchestrator 通过内部 API 访问 |
+| Finance Run State | Java Data Plane / `runtime` schema | 是，不复制完整账本 |
 | Chat Session / Messages | Java Data Plane / `runtime` schema | State 仅保存必要上下文 |
 | Run Registry | Java Data Plane / `runtime` schema | State 保存 `run_id` |
 | Analysis / Decision History | Java Data Plane / `runtime` schema | State 保存引用 |
@@ -629,14 +602,14 @@ Memory 的分层模型（L0 工作记忆 / L1 会话记录 / L2 检索知识 / L
 
 **禁止**在文档或代码中并行维护与 ADR-011 冲突的另一套 L0–L4 编号。工程职责（Dialog / Run / Facts / Mem0 / 组装）到 ADR-011 层的唯一映射见 [ADR-015](./ADR-015-Context组装服务与压缩策略.md) §3。
 
-### 9.2 Checkpoint 隔离
+### 9.2 运行状态隔离
 
-- Checkpoint key 至少包含 `user_id + thread_id + namespace`；
+- 运行状态 key 至少包含 `user_id + thread_id + namespace`；
 - Cognitive 与 Finance 子图不得共享同一无区分 State；
 - 多轮运行必须记录本轮 Observation 起始位置；
 - 恢复时校验 `run_id`、`thread_id` 和认证用户一致；
-- Checkpoint 不保存 Token、密钥或完整原始账户数据；
-- 大型行情数据持久化到独立存储或摘要后再引用，避免 Checkpoint 膨胀。
+- 运行状态不保存 Token、密钥或完整原始账户数据；
+- 大型行情数据持久化到独立存储或摘要后再引用，避免状态膨胀。
 
 ### 9.3 生产持久化要求
 
@@ -645,11 +618,10 @@ Memory 的分层模型（L0 工作记忆 / L1 会话记录 / L2 检索知识 / L
 - Run Registry；
 - Analysis History；
 - Chat Session；
-- Checkpointer；
 - Task Store；
 - 幂等记录。
 
-ADR-017 目标态下，除 LangGraph Checkpointer 外，上述结构化 Store 必须经 Java Data Plane 的用例级内部 API 访问；禁止把 Data Plane 实现成任意 SQL/CRUD 代理。迁移期每个数据集只允许一个写入真源，可短期 shadow read 对比，禁止长期双写。
+上述结构化 Store 必须经 Java Data Plane 的用例级内部 API 访问；禁止把 Data Plane 实现成任意 SQL/CRUD 代理。每个数据集只允许一个读写真源，不实现影子读取或双写。
 
 ### 9.4 Context 组装与压缩
 
@@ -685,21 +657,19 @@ ADR-017 目标态下，除 LangGraph Checkpointer 外，上述结构化 Store �
 
 ### 10.1 唯一能力真源
 
-`CapabilityRegistry` 是唯一真源，记录：
+PostgreSQL `registry` schema 是 Capability / Operation / Toolset / Skill 目录的唯一真源。Java Data Plane 提供只读 Snapshot API；Orchestrator 只加载和校验快照。Capability 记录：
 
 - 稳定名称；
 - 描述；
 - 领域；
 - Adapter 类型；
-- 输入 Schema；
-- 输出 Schema；
 - 是否只读；
+- 是否要求认证用户；
+- 必需参数与 `depends_on`；
 - 超时；
-- 成本；
-- 支持的 Skill 适用范围（字段名仍为 `analysis_types`，语义按 ADR-009 §3.2 理解为 skill scope；改名列为后续可选项，本版不触发回改）；
 - 所属 Toolset。
 
-Toolset 由 Capability Registry 动态派生，不维护第二套清单。Toolset 名遵循 `{domain}_{scope}_{read|compute}` 命名模式（ADR-009 §3.2）；新增 Domain 的 Toolset 必须以其 domain 前缀命名，避免跨域同名。
+Skill 与 Capability、Operation 的关系通过 Registry 关联表表达。`analysis_type` 已从目录契约删除，不得用别名恢复同一语义。Toolset 描述和关联也只存数据库，不维护第二套代码清单。
 
 ### 10.2 finance 域 Toolset 实例（首个 Domain）
 
@@ -868,7 +838,7 @@ run.failed
 
 | 等级 | 依赖 | 失败行为 |
 |---|---|---|
-| 启动关键 | JWT 配置、生产 Checkpointer、Java Data Plane | 启动失败，禁止降级内存 |
+| 启动关键 | JWT 配置、Java Data Plane、Registry Snapshot | 启动失败，禁止降级内存或内置目录 |
 | 请求关键 | LLM（模型任务）、目标 Capability | 返回结构化失败或有限结果 |
 | 场景关键 | Java Data API（个性化）、MCP（行情研究） | 降级为非个性化或 `LIMITED` |
 | 异步关键 | RocketMQ | 同步业务事务不回滚；事件留在 Outbox 等待恢复，异步能力显示 backlog/degraded |
@@ -1013,7 +983,7 @@ run.failed
 - 只读根文件系统，临时目录单独挂载；
 - 健康检查区分 liveness 和 readiness；
 - 配置通过环境变量或 Secret Manager 注入；
-- 数据库迁移作为显式发布步骤；
+- 根目录 `db/` 的全量建库与种子脚本由开发或部署人员显式执行，应用启动不得执行 DDL 或 seed；
 - Nginx 对 SSE 关闭代理缓冲并设置合理长连接超时；
 - 生产禁止使用 `latest` 镜像标签；
 - MCP 和外部 LLM 版本、模型名进入发布清单。
@@ -1024,12 +994,9 @@ run.failed
 
 ### 16.2 多副本条件
 
-Python Analysis 横向扩容前必须完成：
+Orchestrator 横向扩容前必须完成：
 
-- PostgreSQL Checkpointer；
-- PostgreSQL Chat Session Store；
-- PostgreSQL Run Registry；
-- PostgreSQL Analysis History；
+- Java Data Plane 中的 Chat Session、Run Registry、Analysis History 和运行状态持久化；
 - 分布式幂等控制；
 - 分布式限流或边缘限流；
 - SSE 重连可按 `run_id` 恢复；
@@ -1040,16 +1007,18 @@ Python Analysis 横向扩容前必须完成：
 `liveness` 只证明进程可服务 HTTP；`readiness` 必须检查：
 
 - 配置合法；
-- PostgreSQL 可用；
-- Checkpointer 已初始化；
-- Chat/Run/History Store 已初始化；
+- Java Data Plane 可用；
+- Registry Snapshot 已加载并通过校验；
+- Chat/Run/History/Run State 内部 API 可用；
 - 必需的内部服务凭证存在。
 
 RocketMQ readiness 影响异步发布/消费但不否定已提交的同步数据库事务；积压必须由 Outbox 指标暴露。MCP、Web Search、Memory Service/Mem0 和外部 LLM 的短时不可用不应让 Orchestrator 反复重启，但必须让相关能力显示 degraded。
 
 ## 17. 生产配置基线
 
-生产至少要求：
+运行时配置一律按生产契约校验；**不设「开发环境可 mock 成功」的产品分支**。本地联调应通过隧道或真实依赖满足下列变量，而不是降低行为标准。
+
+至少要求：
 
 ```text
 BDLH_RUNTIME_ENV=production
@@ -1074,121 +1043,29 @@ WEB_SEARCH_TOKEN=...
 
 要求：
 
-- 生产启动时校验必需配置；
-- 禁止使用仓库中的开发默认 JWT Secret；
-- 禁止在生产自动创建 mock Java/Web 数据；
+- 启动时校验必需配置；缺 Java Data Plane / Registry / 身份凭证则拒启或 `/ready` 失败；
+- 禁止使用仓库中的开发默认 JWT Secret 冒充已认证生产身份；
+- 禁止自动创建 mock Java/Web 数据并当作 SUCCESS Observation；
 - 配置变更记录到发布审计；
-- Secret 不出现在日志、异常或 `/health` 响应中。
+- Secret 不出现在日志、异常或 `/health` 响应中；
+- Feature Flag（如 Deep Research）只控制能力是否进入菜单，不得用于掩盖基础设施缺失。
 
-## 18. 迁移计划
+## 18. 开发实施顺序
 
-> **2026-08-16 路径收敛：** 默认编排已切换为 Cognitive + Finance，旧 Root Graph 与灰度双路径代码已删除。本节 M1–M5 中“保留旧路径 / 影子对照 / 灰度回退旧图”等表述仅作历史计划存档；当前不得恢复第二套编排路径。仍有效的是 M0 持久化/readiness、Suitability 规则批准、PLATFORM 轨道与运维证据等未关闭门禁。
+当前项目按目标态直接实现，不维护旧方案到新方案的运行时切换，也**不维护测试/生产双轨产品行为**。以下编号表示依赖顺序，不是「可分批上线的不完整切片」：
 
-每个阶段独立开发、测试、发布和回滚。除纯契约阶段外，不合并跨阶段实施。
+1. **架构边界收敛**：保持 Cognitive → Domain Dispatcher → Finance 唯一产品路径；删除旧图、旧导入和旧装配。
+2. **入口与菜单全量重写**：按 01 号专项 Prompt 删除 `analysis_type`，实现 Goal、数据库 Registry 和 `eligible → allowed`。
+3. **Java Data Plane 完整化**：Chat、Run、History、Task、Registry、Outbox、Inbox 和运行状态只经用例级内部 API 访问。
+4. **数据库全量脚本**：根目录 `db/` 从空库创建最终 schema 和 seed；服务启动不执行任何 DDL 或 seed。
+5. **运行时去双轨**：装配与 Adapter 禁止 development mock 降级；缺依赖拒启或 ready 失败（见实施 Prompt §2.1 / 缺口 G3）。
+6. **ADR-014 真恢复**：Cognitive 安全点 checkpoint + `pending_*` + Resume 断点续跑（缺口 G1）；Turn Router 常绿。
+7. **RocketMQ 闭环**：单节点 NameServer + Broker/Proxy，Transactional Outbox、Relay、Consumer Inbox、Retry/DLQ 可测试。
+8. **Memory Service 闭环**：独立服务只访问 `memory` schema，经事件消费写入 Mem0，失败不得污染业务真源。
+9. **业务能力闭环**：Stock Research、Suitability（含用户事实确认）和持续任务分别满足确定性、证据、权限和幂等要求。
+10. **发布验证**：在代码结构与 §3/实施 Prompt §5 缺口关闭后，再执行真实基础设施、备份恢复、性能、安全与运维验证。
 
-M0–M6 是主线，编号、范围与退出门槛不再变动；M7 为后续追加的可选阶段，只能排在主线末尾。禁止在 M0–M6 之间插入新编号。
-
-ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`PLATFORM-P7` 轨道。它是生产基础设施迁移，不重排 M0–M7 业务阶段；每次只能执行一个最小切片，不得借平台改造跨阶段实现业务能力。
-
-### M0：生产基线修复
-
-目标：先让当前路径具备可生产运行的基础。
-
-- 持久化 Run Registry；
-- 持久化 Analysis History；
-- 统一 Nginx Python 路由；
-- 完成 readiness；
-- 明确生产禁用 mock；
-- 补充结构化日志和关键指标；
-- 修复部署文件中 Python 新链路与遗留 Wrapper 的冲突。
-
-退出门槛：单副本重启后 run、thread、conversation 和 history 均可恢复。
-
-### M1：领域边界接线（= Skill / Domain 插件边界的第一次落地）
-
-- 将现有 `DomainRequest / Outcome` 和金融契约接入 Application；
-- 实现 Finance Runtime 薄适配层；
-- 抽取旧 Root Graph 中可复用的纯核心逻辑；
-- 使用“核心函数 + 旧节点包装 + 新领域包装”，禁止复制两套业务逻辑；
-- 隔离 Cognitive 与 Finance Checkpoint namespace。
-
-退出门槛：新 Finance Runtime 能在不改变旧默认路径的情况下完成一次兼容股票分析。
-
-### M2：股票研究下沉
-
-- 实现 `StockResearchResult` 构建器；
-- 建立字段来源映射；
-- 将证据、冲突、覆盖率和可信度纳入输出；
-- 禁止股票子图直接生成聊天文案；
-- 完成旧 AnalysisResult 与新 StockResearchResult 对照测试。
-
-退出门槛：相同 fixture 下结果字段可追溯、计算一致、限制不减少。
-
-### M3：Suitability v0
-
-- 已完成 Java Financial User Facts v2：鉴权确认、版本/幂等、审计和读取元数据；
-- 已完成 Python 用户事实归一化：旧记录不自动升级为 LIVE，确认事实必须具备服务端确认引用；
-- 已完成 `PortfolioValuationBuilder`，基于持仓与市场事实生成可追溯估值快照；
-- 下一步在估值快照之上建立最小 Financial Snapshot；
-- 实现确定性 Suitability 规则；
-- 输出 Rule ID 和证据；
-- 区分 LIVE、USER_CONFIRMED、TEST_FIXTURE、MOCK 和 UNAVAILABLE；
-- 跑通“股票是否适合当前用户”的垂直场景。
-
-退出门槛：缺关键用户数据时稳定返回 `INSUFFICIENT_INFORMATION`，不存在伪个性化结论。
-
-### M4：Cognitive Graph 与 Communication
-
-- 实现最小 Cognitive State；
-- 接入 RESPOND、ASK_USER、INVOKE_DOMAIN；
-- 实现四时点 Guardrails；
-- 实现 Communication Plan 和 Response Verification；
-- 与旧 Root Graph 进行影子流量和同输入对照。
-
-退出门槛：安全覆盖矩阵无 P0/P1 缺口，故障注入和回退边界通过。
-
-### M5：灰度切换
-
-- 按内部用户、小比例、全量逐步灰度；
-- 观察错误率、LIMITED 比例、数据覆盖、响应时间和 Guardrail 命中；
-- 保留一键停止新流量能力（历史；现已无第二路径可回切）。
-
-退出门槛：达到 SLO，完成回滚演练，owner 批准默认路径切换。
-
-### M6：持续任务
-
-- 只实现一种真实观察任务；
-- 建立 Task Store、Scheduler 和 Notification Outbox；
-- 支持查看、取消、过期和审计；
-- 唤醒后重新取数和判断；
-- 通知发送具备幂等性。
-
-### M7：插件契约验证（可选，排在主线末尾）
-
-目标只有一个：用「新增第二个 Skill 或 Domain」证明 ADR-010 的既有契约足以支撑「只写业务、内核不动」。
-
-说明：`SkillManifest` / `DomainDescriptor` 的字段表与首个 finance 切片已在 ADR-010 §6.1 落地（§3 登记为 `CURRENT`）。M7 **不是**再实现一遍 manifest，而是新增一个最小 Skill/Domain，验证这些既有真源可被复用且不复制 Capability Registry、Observation、Guardrail、预算或审计链。
-
-- 只验证插件契约可用，不设业务价值目标，不承诺任何领域功能；
-- 不得提前到 M6 之前执行，也不得抢占 M0–M6 的任何门禁；
-- 演进阶梯与准入条件以 ADR-012 为准：当前位置是 S1（单 Domain 多 Skill），S3 / S4 不在本计划内。
-
-退出门槛：新增一个最小 Skill 或 Domain 的过程中，Capability Registry、Observation、Guardrail、预算模型与审计链均未出现第二份实现。
-
-### PLATFORM：Data Plane、RocketMQ 与 Memory Service（正交专项）
-
-详细实施指令和逐阶段验收见生产开发实施 Prompt §26，决策真源为 ADR-017：
-
-1. `PLATFORM-P0`：事实审计、契约与迁移基线；
-2. `PLATFORM-P1`：单 PostgreSQL schema/Role、手工全量建库脚本与连接池；
-3. `PLATFORM-P2`：Java Runtime Data 模块与用例级内部 API；
-4. `PLATFORM-P3`：Task + Transactional Outbox 原子事务、Inbox 幂等；
-5. `PLATFORM-P4`：单节点 RocketMQ、Relay、Retry/DLQ 与故障注入；
-6. `PLATFORM-P5`：独立 Python Memory Service；
-7. `PLATFORM-P6`：Orchestrator Remote Adapter 切换，仅保留 Checkpointer 直连；
-8. `PLATFORM-P7`：灰度、备份恢复、性能、安全与旧直连退役。
-
-每阶段必须保留可回滚边界；一个数据集同时只能有一个写入真源。
+每项修改必须同步更新生产代码、测试、全量 SQL 和当前文档。删除的字段、表和路径在完成后必须全仓搜索为零；历史归档中的文字不构成例外。缺口关闭必须回写 §3 状态表与 [实施 Prompt §5](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md)。
 
 ## 19. 测试与发布门禁
 
@@ -1203,44 +1080,37 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 - API 测试：JWT、用户隔离、SSE 和错误模型；
 - 持久化测试：重启恢复、多副本和幂等；
 - 故障注入：超时、429、5xx、数据库瞬断和供应商冲突；
-- 对照测试：旧路径 vs 新路径；
+- Registry 契约测试：全量 schema、Java Snapshot、Python 模型和菜单算法一致；
 - 安全测试：跨用户访问、Prompt Injection、敏感日志；
 - 负载测试：SSE 并发、连接池、外部依赖限额。
 
 ### 19.2 必须阻断发布的条件
 
-- 生产仍使用内存 Checkpointer、Run Registry、History 或 Chat Store；
+- 生产仍使用内存 Run State、Run Registry、History 或 Chat Store；
 - `auth_required=false`；
 - mock 数据能进入真实个性化结论；
 - 四时点 Guardrails 未接入但新 Cognitive 路径被设为默认；
 - Nginx 未将 Python Agent API 路由到 Python 服务；
 - 外部失败被包装为成功；
-- Checkpoint 恢复存在跨用户访问；
-- 数据库迁移不可回滚或未验证；
+- 运行状态恢复存在跨用户访问；
+- 空库全量建库脚本与当前代码契约不一致；
 - 关键 Secret 使用默认值；
-- 新路径发生写入后仍可能自动回退并重复执行。
+- 关键写入发生后仍存在第二写源或自动切换到另一执行路径。
 
-## 20. 当前生产阻塞项
+## 20. 当前开发缺口
 
-根据 2026-08-10 代码审计，以下问题必须在生产架构切换前解决：
+当前代码仍有以下结构与冻结需求不一致，必须直接修改：
 
-| 阻塞项 | 当前状态 | 目标阶段 |
-|---|---|---|
-| Run Registry 仍为内存 | 未完成 | M0 |
-| Analysis History 仍为内存 | 未完成 | M0 |
-| Nginx 未统一代理全部 Python Agent Run 路径 | 需核对/修复 | M0 |
-| 本地 Compose 的生产 Nginx/路由门禁仍需对齐 | 与目标不一致 | M0 |
-| Cognitive Graph 未实现 | 未完成 | M4 |
-| Finance Runtime 尚未进入默认流量 | M1 独立开发完成；受 M0 发布门禁阻塞 | M5 |
-| StockResearchResult 尚未进入默认流量 | M2 Builder 开发与回归完成；受 M0/M5 发布门禁阻塞 | M5 |
-| PortfolioValuationBuilder 尚未进入默认生产路径 | M3 切片已完成，能力已注册；仍需完成最小 Financial Snapshot、SuitabilityEngine 及对应发布门禁 | M3/M5 |
-| SuitabilityEngine 未实现 | 依赖估值快照与最小 Financial Snapshot，规则尚未实现 | M3 |
-| 四时点 Guardrail 只有接口骨架 | 未完成 | M4 |
-| Toolset 尚未覆盖 Suitability Planner | M1/M2 Research Planner 已接入；M3 用户事实读取与元数据已落地，估值及 Planner/Runtime 尚未接入 | M3 |
-| Task/Scheduler 未实现 | 未完成 | M6 |
-| 生产多副本幂等与 SSE 恢复未验证 | 未完成 | M0/M5 |
+| 缺口 | 完成标准 |
+|---|---|
+| `analysis_type` 仍存在于契约、路由、Planner 或测试 | 生产源码、当前测试、SQL 和 Prompt 搜索为零 |
+| Registry 仍含单行配置表、快路径表、topic 映射和无消费字段 | 收敛为八张目录表；配置和快路径数据各自只有一份 |
+| Python Registry 仍含 ToolWindow 或旧 DTO | 只保留远程快照模型、校验、`eligible → allowed` 和依赖闭包 |
+| Manifest/Authorization 仍维护能力映射 | 改为数据库 Registry 投影，不保留第二清单 |
+| 当前文档仍引用历史阶段或旧文件路径 | 当前架构与 Prompt 只描述最终目标；历史报告不参与执行 |
+| 真实基础设施验证尚未执行 | 代码结构完成后单独进行 PostgreSQL、RocketMQ、Memory 和恢复验证 |
 
-这些阻塞项不影响现有代码作为开发和迁移基线，但在完成前不得宣称最新目标架构已经生产落地。
+这些缺口是待实现项，不是保留旧结构的理由。
 
 ## 21. 生产完成定义
 
@@ -1258,23 +1128,24 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 10. 最终回答引用证据并披露限制；
 11. 身份、用户隔离和只读边界通过安全测试；
 12. Checkpoint、会话、运行索引和历史全部持久化；
-13. 故障注入、灰度/回滚演练与生产证据完成（不再要求新旧编排路径对照）；
-14. API/SSE 保持兼容；
+13. 故障注入、停止/恢复演练与生产证据完成；
+14. API/SSE 契约与当前前端调用一致；
 15. SLO、日志、指标和告警已上线；
 16. 旧 Root Graph 已删除且默认流量只走 Cognitive；
 17. Letta 和 Node Stock Skill 不在生产关键路径；
-18. 运维手册、数据迁移、回滚步骤和 owner 已记录。
+18. 运维手册、全量建库、备份恢复步骤和 owner 已记录。
 
 ## 22. 历史文档处置
 
 | 文件 | 新定位 |
 |---|---|
 | [`docs/archive/`](../archive/README.md) | 历史档案归档（5 个历史架构版本、7 个旧 Java 链路时期图、3 个旧提案）；只用于追溯，不指导开发 |
-| [`00-BDLH-Agent-Runtime生产开发实施Prompt.md`](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) | 唯一生产开发执行 Prompt，不能覆盖本文生产决策 |
+| [`00-BDLH-Agent-Runtime生产开发实施Prompt.md`](../prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) | 当前全局开发执行 Prompt，不能覆盖本文架构决策 |
 | [`04-Runtime定位升级修改意见.md`](../reviews/04-Runtime定位升级修改意见.md) | 定位升级的修改意见与待执行清单，不是权威架构；已批准结论以 ADR 形式生效，冲突时以本文为准 |
-| [`01-BDLH-Agent-Runtime定位与Skill扩展说明.md`](./01-BDLH-Agent-Runtime定位与Skill扩展说明.md) | 定位与扩展面说明，用于对外表述与新人理解；不是生产决策来源，不得重复或覆盖本文分层与迁移计划 |
+| [`01-BDLH-Agent-Runtime定位与Skill扩展说明.md`](./01-BDLH-Agent-Runtime定位与Skill扩展说明.md) | 定位与扩展面说明，用于对外表述与新人理解；不是生产决策来源，不得覆盖本文分层与开发顺序 |
 | `README.md`（仓库根） | 入口导航与技术栈概览，2026-08-11 已按本文定位重写；只做索引，不承载决策 |
 | [`00-BDLH-Agent-Runtime仓库文件管理树.md`](../00-BDLH-Agent-Runtime仓库文件管理树.md) | 文件归属与落盘规则的唯一索引；只管文件位置，不产生架构决策，冲突时以本文为准 |
+| [`00-BDLH-Agent-Runtime统一生产架构-变更记录.md`](./00-BDLH-Agent-Runtime统一生产架构-变更记录.md) | 本文档的版本变更历史；只用于追溯，不参与开发执行 |
 
 历史档案和实施 Prompt 不得再以“唯一有效生产架构”指导开发。新增生产架构决策应更新本文或新增 ADR，并在本文登记。
 
@@ -1285,13 +1156,13 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 | ADR | 主题 | 状态 |
 |---|---|---|
 | [ADR-009](./ADR-009-Runtime-Domain-Skill定位与命名.md) | Runtime / Domain / Skill 三层定位与命名 | `APPROVED` |
-| [ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md) | Skill Manifest 与 Domain Dispatcher 契约 | `APPROVED`（字段表已冻结，descriptor/manifest 切片已落地；零对外行为变更） |
+| [ADR-010](./ADR-010-SkillManifest与DomainDispatcher契约.md) | Registry 驱动的 Skill 描述与 Domain Dispatcher 契约 | `APPROVED`（数据库目录唯一真源） |
 | [ADR-011](./ADR-011-Memory分层与晋升边界.md) | Memory 五层分层与记忆晋升边界 | `APPROVED` |
 | [ADR-012](./ADR-012-多Skill与多Agent演进门槛.md) | 多 Skill 与多 Agent 演进门槛 | `APPROVED` |
 | [ADR-013](./ADR-013-RAG作为可插拔KnowledgeSkill的边界.md) | RAG 作为可插拔 Knowledge Skill 的边界 | `APPROVED`（边界生效，实施未排期） |
-| [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md) | 系统/用户截断 Pause·Resume 与 Turn Router | `APPROVED`（契约生效；Pause API / 入口路由按切片落地） |
+| [ADR-014](./ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md) | 系统/用户截断 Pause·Resume 与 Turn Router | `APPROVED`（契约生效；Turn Router / Pause API 已接线；**真实 checkpoint 续跑仍为未关闭缺口**） |
 | [ADR-015](./ADR-015-Context组装服务与压缩策略.md) | Context 组装服务与压缩策略（挂靠 ADR-011） | `APPROVED`（禁止第二套 L 编号；ContextBuilder 为合法起点） |
-| [ADR-017](./ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md) | Java Data Plane、单实例 PostgreSQL、单节点 RocketMQ 与独立 Memory Service | `APPROVED`（按 PLATFORM-P0～P7 渐进实施） |
+| [ADR-017](./ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md) | Java Data Plane、单实例 PostgreSQL、单节点 RocketMQ 与独立 Memory Service | `APPROVED`（开发阶段按最终边界全量实现） |
 
 ### 23.2 已起草未批准 ADR
 
@@ -1303,9 +1174,6 @@ ADR-017 的数据平面/消息/Memory 服务化使用独立的 `PLATFORM-P0`～`
 
 以下决策需要在对应实现阶段补充独立 ADR，但不得阻塞本文作为总体生产基线：
 
-1. ADR-001：PostgreSQL Run Registry 与 Analysis History 表结构；
-2. ADR-002：Cognitive/Finance Checkpoint namespace；
-3. ADR-003：Capability Execution 幂等键；
-4. ADR-006：服务间认证从共享 Token 升级到短期 JWT 或 mTLS；
-5. ADR-007：多副本 SSE 恢复与事件存储；
-6. ADR-008：旧 Root Graph 退役门槛和删除计划。
+1. ADR-003：Capability Execution 幂等键；
+2. ADR-006：服务间认证从共享 Token 升级到短期 JWT 或 mTLS；
+3. ADR-007：多副本 SSE 恢复与事件存储。

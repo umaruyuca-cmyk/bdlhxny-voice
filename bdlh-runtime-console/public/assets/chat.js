@@ -609,12 +609,20 @@ function handleEvent(data,row){
     text.classList.add("streaming");
     scrollBottom();
   }else if(type==="clarification"){
-    var options=(data.options||[]).filter(function(o){return o.label&&o.message;});
+    var options=(data.options||[]).map(function(o){
+      if(typeof o==="string"){
+        var text=String(o||"").trim();
+        return text?{label:text,message:text}:null;
+      }
+      if(o&&o.label&&o.message)return o;
+      if(o&&o.message)return {label:o.label||o.message,message:o.message};
+      return null;
+    }).filter(Boolean);
     if($(".typing",text))text.textContent="";
     clearStatus(row);
     addAskCard(row,data.prompt||"请补充完成分析所需的信息。",options.map(function(o,i){
       return {label:o.label,primary:i===0,message:o.message};
-    }));
+    }),data.responseStructure||"");
     scrollBottom();
     input.focus();
     // clarification 已由 Graph interrupt 持久化；立即结束本次读取，解除发送锁，
@@ -646,7 +654,7 @@ function handleEvent(data,row){
 }
 
 /* ---------- 澄清选项卡 ---------- */
-function addAskCard(row,promptText,options){
+function addAskCard(row,promptText,options,responseStructure){
   var body=$(".body",row);
   var old=$(".ask-card",body);
   if(old)old.remove();
@@ -654,6 +662,7 @@ function addAskCard(row,promptText,options){
   card.className="ask-card";
   card.innerHTML='<div class="ask-title">需要确认</div><div class="ask-text">'+esc(promptText)+'</div><div class="ask-options"></div>';
   var wrap=$(".ask-options",card);
+  var structure=String(responseStructure||"");
   options.forEach(function(opt){
     var btn=document.createElement("button");
     btn.type="button";
@@ -661,11 +670,26 @@ function addAskCard(row,promptText,options){
     btn.textContent=opt.label;
     btn.addEventListener("click",function(){
       card.remove();
+      if(isOpenProfileAction(opt.message)||(structure==="SUITABILITY"&&isOpenProfileAction(opt.label))){
+        void openProfileModal({resumeAfter:true});
+        return;
+      }
       send(opt.message);
     });
     wrap.appendChild(btn);
   });
-  if(!options.length){
+  if(structure==="SUITABILITY"&&!options.some(function(o){return isOpenProfileAction(o.message||o.label);})){
+    var profileBtn=document.createElement("button");
+    profileBtn.type="button";
+    profileBtn.className="ask-btn primary";
+    profileBtn.textContent="填写并确认金融资料";
+    profileBtn.addEventListener("click",function(){
+      card.remove();
+      void openProfileModal({resumeAfter:true});
+    });
+    wrap.insertBefore(profileBtn,wrap.firstChild);
+  }
+  if(!options.length&&structure!=="SUITABILITY"){
     var hint=document.createElement("span");
     hint.className="ask-hint";
     hint.textContent="请在下方输入框补充后继续";
@@ -673,6 +697,132 @@ function addAskCard(row,promptText,options){
   }
   body.appendChild(card);
 }
+
+function isOpenProfileAction(text){
+  var value=String(text||"");
+  return value.indexOf("打开金融资料")>=0||value.indexOf("确认金融资料")>=0||value.indexOf("填写并确认")>=0;
+}
+
+/* ---------- 金融资料确认 ---------- */
+var profileModal=document.getElementById("profileModal");
+var profileForm=document.getElementById("profileForm");
+var profileError=document.getElementById("profileError");
+var PROFILE_RESUME_MESSAGE="我已确认风险偏好与持仓，请继续评估适不适合我";
+
+async function openProfileModal(opts){
+  if(!AUTH.ready){showAuth();return;}
+  profileError.textContent="";
+  profileModal.dataset.resumeAfter=opts&&opts.resumeAfter?"1":"0";
+  try{
+    var res=await apiFetch("/api/v1/user/financial-profile");
+    if(res.ok){
+      var data=await res.json();
+      document.getElementById("profileVersion").value=String(data.profile_version||0);
+      if(data.currency)document.getElementById("profileCurrency").value=data.currency;
+      if(data.cash!=null)document.getElementById("profileCash").value=data.cash;
+      if(data.risk_tolerance)document.getElementById("profileRisk").value=data.risk_tolerance;
+      if(data.max_loss_tolerance_pct!=null)document.getElementById("profileMaxLoss").value=data.max_loss_tolerance_pct;
+      if(data.liquid_assets!=null)document.getElementById("profileLiquid").value=data.liquid_assets;
+      if(data.near_term_cash_needs!=null)document.getElementById("profileCashNeeds").value=data.near_term_cash_needs;
+      if(data.near_term_cash_needs_horizon_days!=null)document.getElementById("profileHorizon").value=data.near_term_cash_needs_horizon_days;
+      var first=(data.positions||[])[0];
+      if(first){
+        document.getElementById("posSymbol").value=first.symbol||"";
+        document.getElementById("posName").value=first.name||"";
+        document.getElementById("posQty").value=first.quantity!=null?first.quantity:"";
+        document.getElementById("posCost").value=first.cost_price!=null?first.cost_price:"";
+        if(first.exchange)document.getElementById("posExchange").value=first.exchange;
+        if(first.target_weight!=null)document.getElementById("posWeight").value=first.target_weight;
+      }
+    }else{
+      document.getElementById("profileVersion").value="0";
+    }
+  }catch(err){
+    document.getElementById("profileVersion").value="0";
+  }
+  profileModal.hidden=false;
+}
+
+function closeProfileModal(){
+  profileModal.hidden=true;
+  profileError.textContent="";
+}
+
+function idempotencyKey(prefix){
+  return prefix+"-"+Date.now()+"-"+Math.random().toString(36).slice(2,10);
+}
+
+profileForm.addEventListener("submit",async function(e){
+  e.preventDefault();
+  if(!AUTH.ready){showAuth();return;}
+  profileError.textContent="";
+  var saveBtn=document.getElementById("profileSave");
+  saveBtn.disabled=true;
+  try{
+    var expected=Number(document.getElementById("profileVersion").value||0);
+    var profileBody={
+      expected_profile_version:expected,
+      currency:document.getElementById("profileCurrency").value.trim()||"CNY",
+      cash:Number(document.getElementById("profileCash").value),
+      risk_tolerance:document.getElementById("profileRisk").value,
+      max_loss_tolerance_pct:Number(document.getElementById("profileMaxLoss").value),
+      liquid_assets:Number(document.getElementById("profileLiquid").value),
+      near_term_cash_needs:Number(document.getElementById("profileCashNeeds").value),
+      near_term_cash_needs_horizon_days:Number(document.getElementById("profileHorizon").value)
+    };
+    var profileRes=await apiFetch("/api/v1/user/financial-profile",{
+      method:"PUT",
+      headers:{"Content-Type":"application/json","Idempotency-Key":idempotencyKey("profile")},
+      body:JSON.stringify(profileBody)
+    });
+    if(!profileRes.ok){
+      var profileErr=await profileRes.json().catch(function(){return {};});
+      throw new Error(profileErr.message||profileErr.detail||("资料确认失败 HTTP "+profileRes.status));
+    }
+    var profileData=await profileRes.json();
+    var nextVersion=Number(profileData.profile_version||expected+1);
+    var symbol=document.getElementById("posSymbol").value.trim();
+    if(symbol){
+      var qty=Number(document.getElementById("posQty").value);
+      var cost=Number(document.getElementById("posCost").value);
+      if(!(qty>0)||!(cost>=0))throw new Error("填写持仓时请提供有效数量与成本价");
+      var positionsBody={
+        expected_profile_version:nextVersion,
+        positions:[{
+          symbol:symbol,
+          name:document.getElementById("posName").value.trim()||symbol,
+          asset_type:"stock",
+          quantity:qty,
+          cost_price:cost,
+          buy_date:new Date().toISOString().slice(0,10),
+          target_weight:Number(document.getElementById("posWeight").value||0),
+          sector:null,
+          risk_role:null,
+          exchange:document.getElementById("posExchange").value,
+          currency:document.getElementById("profileCurrency").value.trim()||"CNY"
+        }]
+      };
+      var posRes=await apiFetch("/api/v1/user/portfolio-positions",{
+        method:"PUT",
+        headers:{"Content-Type":"application/json","Idempotency-Key":idempotencyKey("positions")},
+        body:JSON.stringify(positionsBody)
+      });
+      if(!posRes.ok){
+        var posErr=await posRes.json().catch(function(){return {};});
+        throw new Error(posErr.message||posErr.detail||("持仓确认失败 HTTP "+posRes.status));
+      }
+    }
+    var resume=profileModal.dataset.resumeAfter==="1";
+    closeProfileModal();
+    toast("金融资料已确认");
+    if(resume)send(PROFILE_RESUME_MESSAGE);
+  }catch(err){
+    profileError.textContent=err&&err.message?err.message:"确认失败，请稍后重试";
+  }finally{
+    saveBtn.disabled=false;
+  }
+});
+document.getElementById("profileCancel").addEventListener("click",closeProfileModal);
 
 /* ---------- 发送 ---------- */
 async function send(preset,regenerateExisting){
@@ -1072,35 +1222,28 @@ async function requestCancelRun(){
 
 async function requestPauseAndAbort(){
   var runId=ST.activeRunId;
+  // 先请求 pause 再 abort：避免 SSE 断开后服务端完成路径清掉 pending。
+  if(runId&&!MOCK){
+    try{
+      var response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/pause",{
+        method:"POST",
+        headers:{"Accept":"application/json"}
+      });
+      if(response.ok){
+        var ack=await response.json();
+        ST.pauseAcked=!!(ack.resumable||ack.resumable===undefined);
+        toast(ST.pauseAcked?"已暂停，可回复「继续」恢复":"已请求暂停");
+      }
+    }catch(err){
+      toast("暂停请求失败，请稍后重试");
+    }
+  }
   var controller=ST.controller;
   if(controller){
     try{controller.abort();}catch(err){}
   }
-  if(!runId||MOCK){
-    ST.sending=false;
-    sendBtn.disabled=false;
-    return;
-  }
-  try{
-    var response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/pause",{
-      method:"POST",
-      headers:{"Accept":"application/json"}
-    });
-    if(response.ok){
-      var ack=await response.json();
-      ST.pauseAcked=!!(ack.resumable||ack.resumable===undefined);
-      toast(ST.pauseAcked?"已暂停，可回复「继续」恢复":"已请求暂停");
-    }
-  }catch(err){
-    toast("暂停请求失败，请稍后重试");
-  }
-}
-
-function toast(msg){
-  if(!toastEl)return;
-  toastEl.textContent=msg;
-  toastEl.classList.add("on");
-  setTimeout(function(){toastEl.classList.remove("on");},2200);
+  ST.sending=false;
+  sendBtn.disabled=false;
 }
 
 composer.addEventListener("submit",function(e){
@@ -1129,6 +1272,8 @@ function bindGotoPlugins(id){
 bindGotoPlugins("skillGotoPlugins");
 bindGotoPlugins("dockPlugins");
 bindGotoPlugins("navPlugins");
+var navProfile=document.getElementById("navProfile");
+if(navProfile)navProfile.addEventListener("click",function(){void openProfileModal({resumeAfter:false});});
 var btnBackChat=document.getElementById("btnBackChat");
 if(btnBackChat)btnBackChat.addEventListener("click",function(){showPage("chat");});
 var btnBackChat2=document.getElementById("btnBackChat2");

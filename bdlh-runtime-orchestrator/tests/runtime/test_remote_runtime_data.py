@@ -65,6 +65,48 @@ def test_remote_chat_delete_treats_204_as_success() -> None:
     assert store.delete("session-1", "7") is True
 
 
+def test_remote_chat_verified_entity_round_trip() -> None:
+    calls: list[dict[str, Any]] = []
+    state = {
+        "schema_version": "verified-entity.v1",
+        "turn": 1,
+        "entity": {"entity_ref": "instrument:600519@SSE"},
+    }
+
+    def request(**kwargs):
+        calls.append(kwargs)
+        method = kwargs["method"]
+        if method == "PUT":
+            return _Response(200, {})
+        return _Response(
+            200,
+            {
+                "sessionId": "session-1",
+                "title": "新的对话",
+                "messages": [],
+                "pendingRunId": None,
+                "pendingThreadId": None,
+                "pendingCheckpointId": None,
+                "pendingRuntimePath": None,
+                "pauseReason": None,
+                "awaitingRouteConfirm": False,
+                "verifiedEntityState": state,
+                "updatedAt": "2026-08-17T00:00:00Z",
+            },
+        )
+
+    store = RemoteChatSessionStore(
+        RuntimeDataClient(base_url="http://java", internal_token="internal", request=request)
+    )
+    store.set_verified_entity_state("session-1", "7", state)
+    loaded = store.get_verified_entity_state("session-1", "7")
+
+    assert calls[0]["method"] == "PUT"
+    assert calls[0]["path"] == "/internal/v1/runtime/sessions/session-1/verified-entity"
+    assert calls[0]["json"]["verifiedEntityState"] == state
+    assert loaded == state
+
+
 def test_remote_history_preserves_python_contract_payload() -> None:
     calls: list[dict[str, Any]] = []
 

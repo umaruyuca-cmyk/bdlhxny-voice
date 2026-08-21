@@ -10,6 +10,7 @@ import com.bdlh.runtime.runtime.RuntimeDataDtos.RunProjectionResponse;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveHistoryRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.SaveRunProjectionRequest;
 import com.bdlh.runtime.runtime.RuntimeDataDtos.UpsertRunRequest;
+import com.bdlh.runtime.runtime.RuntimeDataDtos.VerifiedEntityRequest;
 import com.bdlh.runtime.runtime.RuntimeDataService;
 import com.bdlh.runtime.security.JavaDataAccessGuard;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -87,6 +88,15 @@ public class RuntimeDataController {
             @PathVariable String sessionId,
             @RequestBody PendingRunRequest request) {
         return runtimeDataService.setPending(accessGuard.resolveUserId(requestedUserId), sessionId, request);
+    }
+
+    @PutMapping("/sessions/{sessionId}/verified-entity")
+    public ChatSessionResponse setVerifiedEntity(
+            @RequestParam(name = "user_id", required = false) Long requestedUserId,
+            @PathVariable String sessionId,
+            @RequestBody VerifiedEntityRequest request) {
+        return runtimeDataService.setVerifiedEntity(
+                accessGuard.resolveUserId(requestedUserId), sessionId, request);
     }
 
     @DeleteMapping("/sessions/{sessionId}")

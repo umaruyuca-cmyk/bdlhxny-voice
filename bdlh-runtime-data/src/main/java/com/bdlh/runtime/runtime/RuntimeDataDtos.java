@@ -26,6 +26,9 @@ public final class RuntimeDataDtos {
             Boolean awaitingRouteConfirm) {
     }
 
+    public record VerifiedEntityRequest(JsonNode verifiedEntityState) {
+    }
+
     public record ChatMessageResponse(String role, String content, OffsetDateTime createdAt) {
     }
 
@@ -39,6 +42,7 @@ public final class RuntimeDataDtos {
             String pendingRuntimePath,
             String pauseReason,
             Boolean awaitingRouteConfirm,
+            JsonNode verifiedEntityState,
             OffsetDateTime updatedAt) {
     }
 

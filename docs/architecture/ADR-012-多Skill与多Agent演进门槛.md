@@ -17,9 +17,9 @@
 
 | 级 | 形态 | 进入门槛 | 明确禁止 |
 |---|---|---|---|
-| S1 | 单 Domain 多 Skill（当前所处位置） | `SkillManifest` 契约就位（ADR-010）；M3、M4 完成 | 为新 Skill 复制 Capability Registry、Observation、Guardrail 或审计链 |
+| S1 | 单 Domain 多 Skill（当前所处位置） | Registry 驱动的 Skill 契约完成（ADR-010）；入口与菜单重写完成 | 为新 Skill 复制 Capability Registry、Observation、Guardrail 或审计链 |
 | S2 | 多 Domain（第二个非金融 Domain） | Dispatcher 携带 `DomainDescriptor`；内核纯净度 import 测试常绿 | 第二个 Domain 自建 Adapter 层、自建观测字段或自建幂等机制 |
-| S3 | Cognitive 内多角色子图（Planner / Executor / Critic） | 单角色路径已通过 M5 灰度并稳定；预算可按角色切分且由 Runtime 统一计数 | 角色各自持有工具；角色间自由对话；任一角色输出绕过 Response Guardrail |
+| S3 | Cognitive 内多角色子图（Planner / Executor / Critic） | 单角色路径完成真实环境验证；预算可按角色切分且由 Runtime 统一计数 | 角色各自持有工具；角色间自由对话；任一角色输出绕过 Response Guardrail |
 | S4 | 真正的多 Agent（独立进程或信任域） | 出现真实的隔离需求（见 §3） | 第二套 Tool / Capability / 观测链；Agent 直连 MCP 或 Java；用多 Agent 掩盖单 Runtime 的编排缺陷 |
 
 当前位置是 S1。S2 属于可选扩展，S3、S4 不在第一阶段与第二阶段范围内。
@@ -39,8 +39,8 @@
 
 | 单一真源 | 位置 |
 |---|---|
-| Capability Registry（能力真源） | `tools/capabilities.py` |
-| Toolset 派生视图 | `tools/toolsets.py` |
+| Capability / Skill / Toolset Registry | PostgreSQL `registry` schema + Java Snapshot API |
+| 菜单算法与能力网关 | `registry/menu.py`、`tools/` |
 | Observation 标准化与覆盖判断 | `observations/` |
 | 四时点 Guardrail | `guardrails/` |
 | 预算模型 `DomainBudget` | `domains/contracts.py` |
@@ -50,11 +50,11 @@
 
 新增 Skill、Domain、角色或 Agent 只允许**注册与复用**上述真源，不允许派生第二份实现。违反此条的提案一律拒绝，无论其业务收益。
 
-## 5. 与既有阶段的关系
+## 5. 实施约束
 
-- 本 ADR 不新增 M0–M6 之间的阶段编号；
-- S2 的骨架验证如需独立阶段，只允许追加为主线末尾的 M7，且目标限定为「验证插件契约可用」，不得设业务 KPI；该阶段已按此约束登记在架构 §18（可选，排在 M6 之后）；
-- S3、S4 不进入当前迁移计划，出现需求时另行立项。
+- 当前只实现 S1。
+- S2 需要真实第二 Domain 需求和独立验收，不创建纯占位插件。
+- S3、S4 出现真实需求时另立 ADR；当前代码不预留半成品角色或第二进程。
 
 ## 6. 后果
 
