@@ -53,7 +53,8 @@ class Selector:
     def __init__(self, action: CognitiveAction) -> None:
         self.action = action
 
-    async def select(self, event: InputEvent) -> CognitiveAction:
+    async def select(self, event: InputEvent, *, understood=None) -> CognitiveAction:
+        del understood
         return self.action
 
 

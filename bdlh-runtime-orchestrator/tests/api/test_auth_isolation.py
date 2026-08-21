@@ -4,11 +4,26 @@ import jwt
 from fastapi.testclient import TestClient
 
 from bdlh_runtime.api.routes import create_api_app
+from bdlh_runtime.cognitive.contracts import CognitiveState, InputEvent, PublicResponse
+from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
 from tests.helpers_registry import seeded_snapshot
 
 SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes"
+
+
+class _GuestCognitive:
+    async def run(self, event: InputEvent, **_kwargs: object) -> CognitiveExecution:
+        return CognitiveExecution(
+            state=CognitiveState(event=event),
+            response=PublicResponse(
+                response_kind="ANSWER",
+                response_structure="KNOWLEDGE",
+                message="guest-ok",
+                audit_codes=["GUEST_OK"],
+            ),
+        )
 
 
 def _token(user_id: int, *, expired: bool = False) -> str:
@@ -32,18 +47,35 @@ def _client():
     return application, TestClient(create_api_app(application))
 
 
-def test_agent_runs_require_a_valid_java_issued_jwt():
+def test_agent_runs_allow_guest_but_reject_invalid_jwt():
+    """缺 Token → 游客可对话；伪造/过期 Token 仍 401。"""
     _, client = _client()
 
-    missing = client.post("/api/v1/agent-runs", json={"message": "什么是市盈率？"})
+    guest = client.post("/api/v1/agent-runs", json={"message": "什么是市盈率？"})
     expired = client.post(
         "/api/v1/agent-runs",
         headers={"Authorization": f"Bearer {_token(7, expired=True)}"},
         json={"message": "什么是市盈率？"},
     )
 
-    assert missing.status_code == 401
+    assert guest.status_code == 200
+    assert guest.json()["run_id"]
     assert expired.status_code == 401
+
+
+def test_chat_stream_allows_guest_without_login():
+    application = create_application(
+        Settings(environment="test", auth_required=True, jwt_secret=SECRET),
+        registry_snapshot=seeded_snapshot(),
+    )
+    application.cognitive_application = _GuestCognitive()
+    client = TestClient(create_api_app(application))
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={"message": "你好", "enabledSkillIds": []},
+    )
+    assert response.status_code == 200
+    assert "data:" in response.text
 
 
 def test_jwt_subject_overrides_untrusted_payload_user_id():

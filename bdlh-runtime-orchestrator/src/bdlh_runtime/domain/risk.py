@@ -34,17 +34,6 @@ def maximum_drawdown(values: Sequence[float]) -> float | None:
     return drawdown
 
 
-def drawdown_series(values: Sequence[float]) -> list[float]:
-    """逐日回撤序列（每点是相对截至当时峰值的回撤，无未来函数）。"""
-
-    result: list[float] = []
-    peak: float | None = None
-    for value in values:
-        peak = value if peak is None else max(peak, value)
-        result.append(value / peak - 1.0 if peak > 0 else 0.0)
-    return result
-
-
 def annualized_volatility(returns: Sequence[float]) -> float | None:
     """年化波动率：日收益率标准差 × sqrt(244)。
 

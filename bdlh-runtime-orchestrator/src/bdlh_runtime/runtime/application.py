@@ -159,25 +159,8 @@ def create_application(
     domain_registry.register_descriptor("finance", finance_descriptor)
     validate_descriptor_against_registry(finance_descriptor, capability_registry)
 
-    # ── 4.6c.1 M7 第二 Domain 插件契约探针（实验性、非用户入口；不在业务种子中）──
-    from bdlh_runtime.domains.plugin_probe import (
-        PLUGIN_PROBE_CAPABILITY,
-        PLUGIN_PROBE_DESCRIPTOR,
-        PluginProbeRuntime,
-    )
-
-    domain_registry.register(
-        "plugin_probe",
-        PluginProbeRuntime(capability_registry),
-    )
-    domain_registry.register_descriptor("plugin_probe", PLUGIN_PROBE_DESCRIPTOR)
-    if capability_registry.contains(PLUGIN_PROBE_CAPABILITY):
-        validate_descriptor_against_registry(
-            PLUGIN_PROBE_DESCRIPTOR,
-            capability_registry,
-        )
-
     # ── 4.6d Cognitive Application（唯一产品编排路径）──
+    from bdlh_runtime.cognitive.goal_action_selector import GoalActionSelector
     from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
     from bdlh_runtime.cognitive.semantic_router import (
         SemanticRouteSelector,
@@ -209,13 +192,20 @@ def create_application(
     run_control = RunControlPlane()
     verified_entities = InMemoryVerifiedEntityStore()
     understand_model = create_understand_model(llm)
-    cognitive_selector = SemanticRouteSelector(
+    finance_selector = FinanceCognitiveSelector(
+        verified_entities,
+        knowledge_responder=direct_response_model,
+    )
+    cognitive_fastpath = SemanticRouteSelector(
         build_kernel_router(),
-        fallback=FinanceCognitiveSelector(verified_entities),
         knowledge_responder=direct_response_model,
     )
     cognitive_application = CognitiveOrchestrator(
-        selector=cognitive_selector,
+        selector=GoalActionSelector(
+            finance=finance_selector,
+            respond=direct_response_model,
+        ),
+        fastpath=cognitive_fastpath,
         dispatcher=DomainDispatcher(domain_registry),
         continuation=FinanceCognitiveContinuation(verified_entities),
         enabled_domains=frozenset({"finance"}),

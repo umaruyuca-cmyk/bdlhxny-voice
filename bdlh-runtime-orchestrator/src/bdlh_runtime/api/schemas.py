@@ -1,26 +1,27 @@
 """HTTP API 输入输出契约。
 
-HTTP 层只负责请求校验和响应序列化；业务状态结构由 graph/state.py 管理。
+HTTP 层只负责请求校验和响应序列化。
 """
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+#: 会话级 Skill id（Registry 裸 id 或「域.id」形式，如 finance.stock-research）
+_SKILL_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
 class RunRequest(BaseModel):
-    """创建一次股票分析运行的请求。"""
+    """创建一次 Cognitive 运行的请求。"""
 
     message: str
-    symbol: str | None = None
     # 仅供无鉴权的本地测试；启用 JWT 后必须与 Token subject 一致，不能作为身份来源。
     user_id: str | None = None
-    thread_id: str | None = None  # v2.1 P0-7：传入则延续已有会话，否则新建
-    require_confirmation: bool = False
-    scope: str | None = None
+    thread_id: str | None = None
 
 
 class ResumeRequest(BaseModel):
@@ -53,13 +54,28 @@ class CancelAckResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    """统一聊天页面请求；用户身份只来自 JWT，mode 不参与业务路由。"""
+    """统一聊天页面请求；用户身份只来自 JWT / 游客归一。"""
 
     session_id: str | None = Field(default=None, alias="sessionId", max_length=128)
-    mode: str = Field(default="general", max_length=32)
     message: str = Field(min_length=1, max_length=20_000)
-    instrument: dict[str, Any] | None = None
     regenerate: bool = False
+    # 会话级 Skill 开关快照：None=未提供，[]=本对话全部关闭。
+    enabled_skill_ids: list[str] | None = Field(
+        default=None, alias="enabledSkillIds", max_length=32
+    )
+
+    @field_validator("enabled_skill_ids")
+    @classmethod
+    def _validate_enabled_skill_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        if len(set(value)) != len(value):
+            raise ValueError("enabledSkillIds 不得重复")
+        for item in value:
+            text = str(item).strip()
+            if not text or not _SKILL_ID_PATTERN.fullmatch(text):
+                raise ValueError(f"非法 enabledSkillIds 项: {item!r}")
+        return [str(item).strip() for item in value]
 
 
 class RunResponse(BaseModel):

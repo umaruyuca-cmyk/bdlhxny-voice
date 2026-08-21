@@ -30,13 +30,26 @@
       新对话
     </button>
 
-    <button class="nav-item" id="navProfile" type="button">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0"/></svg>
-      金融资料
-    </button>
+    <div class="nav-block">
+      <div class="nav-block-label">工作台</div>
+      <button class="nav-item" id="navProfile" type="button">
+        <span class="nav-ico" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>
+        </span>
+        <span class="nav-txt">金融资料</span>
+      </button>
+      <button class="nav-item" id="navPlugins" type="button">
+        <span class="nav-ico" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4v5h5V3Zm11 0h-5v5h5V3ZM9 14H4v5h5v-5Zm11 0h-5v5h5v-5Z"/></svg>
+        </span>
+        <span class="nav-txt">管理插件</span>
+      </button>
+    </div>
 
-    <div class="sessions-label">聊天</div>
-    <div class="sessions" id="sessionList"></div>
+    <div class="sessions-panel">
+      <div class="sessions-label">聊天</div>
+      <div class="sessions" id="sessionList"></div>
+    </div>
 
     <div class="sidebar-foot">
       <button class="account-chip foot-account" id="accountButton" type="button">登录</button>
@@ -85,7 +98,7 @@
           <form class="composer" id="composer">
             <textarea id="input" rows="1" placeholder="有问题，尽管问…" autofocus></textarea>
             <div class="composer-bar">
-              <span class="composer-tip">Enter 发送 · Shift + Enter 换行</span>
+              <span class="composer-tip">Enter 发送 · Esc 停止并回填 · Shift + Enter 换行</span>
               <button class="send" id="sendBtn" type="submit" aria-label="发送">
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
               </button>

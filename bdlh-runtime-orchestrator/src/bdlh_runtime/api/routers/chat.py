@@ -44,7 +44,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
     ) -> StreamingResponse:
         """单助手页面入口：鉴权后经 Turn Router，再交给 Cognitive。"""
 
-        user_id = ctx.request_user_id(authorization)
+        user_id = ctx.chat_user_id(authorization)
         message = payload.message.strip()
         if not message:
             raise HTTPException(status_code=422, detail="message 不能为空")
@@ -227,6 +227,11 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         user_id=str(user_id),
                         session_id=session.session_id,
                         message=cognitive_message,
+                        enabled_skills=(
+                            frozenset(payload.enabled_skill_ids)
+                            if payload.enabled_skill_ids is not None
+                            else None
+                        ),
                     ),
                     observer=CognitiveExecutionObserverAdapter(progress),
                     checkpoint=resume_checkpoint,

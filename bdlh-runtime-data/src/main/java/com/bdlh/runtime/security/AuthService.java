@@ -1,6 +1,7 @@
 package com.bdlh.runtime.security;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
+import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.bdlh.runtime.entity.User;
 import com.bdlh.runtime.mapper.UserMapper;
@@ -13,8 +14,11 @@ import java.util.regex.Pattern;
 
 /**
  * 用户认证服务：注册、登录。密码使用 BCrypt 加盐哈希，不存储明文。
+ * 必须走 MySQL：若仅在 Mapper 上标 @DS，而本类 @Transactional 先开了主库（PG）事务，
+ * 动态数据源无法切换，会误查 PostgreSQL 并报 relation "users" does not exist。
  */
 @Service
+@DS("mysql")
 public class AuthService {
 
     private static final int BCRYPT_COST = 12;

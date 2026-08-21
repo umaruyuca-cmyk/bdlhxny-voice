@@ -1,13 +1,8 @@
-"""领域运行时注册表（31 号统一开发实施 Prompt §7.1；ADR-010 §5/§6）。
+"""领域运行时注册表（ADR-010）。
 
-M1 已将 ``FinanceRuntime`` 注册为 ``finance`` 领域；现有 Root Graph 仍是默认
-执行入口，后续认知层可通过本注册表显式路由到领域运行时。
-
-ADR-010 升级后，注册表同时携带每个域的 ``DomainDescriptor``（声明支持哪些意图、
-当前启用哪些、挂载哪些 Skill）。注册表本身**不做跨层校验**——descriptor 的
-Capability/Toolset 一致性校验由 ``runtime/manifest_validation.py`` 在启动时
-对 Capability Registry 逐项执行（ADR-010 §3.1.2 fail-fast）。这样注册表保持
-「只存只查」的纯净，不依赖 ``tools`` 或任何领域实现（ADR-009 §3.3）。
+产品默认注册 ``FinanceRuntime``（``finance``）；后续 Domain 通过本注册表挂载。
+注册表同时携带 ``DomainDescriptor``；Capability/Toolset 一致性由
+``runtime/manifest_validation.py`` 在启动期 fail-fast 校验。
 """
 
 from __future__ import annotations
@@ -79,8 +74,3 @@ class DomainRegistry:
         if descriptor is None:
             return False
         return any(skill.skill_id == skill_id and skill.enabled for skill in descriptor.skills)
-
-    def is_intent_enabled(self, domain: str, intent: str) -> bool:
-        """已废弃：intent 不再用于业务分流；恒为 False。"""
-        del domain, intent
-        return False

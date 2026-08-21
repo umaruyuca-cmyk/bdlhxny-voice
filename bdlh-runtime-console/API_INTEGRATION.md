@@ -18,7 +18,7 @@
 | 文档中心 | `http://127.0.0.1:8082/docs` | 用户与开发者文档索引 |
 | Skill 接入规范 | `http://127.0.0.1:8082/docs/skill` | 通用 Skill 接入文档 |
 | Agent 与路由 | `http://127.0.0.1:8082/docs/agents` | 领域分析说明 |
-| Skill 生态 | `http://127.0.0.1:8082/skill-dashboard.html` | 多 Skill 服务目录 |
+| Skill 试用 | `http://127.0.0.1:8082/skills/` | 正式 Skill 试用入口（读 `registry.json`） |
 | API 联调页（开发工具） | `http://127.0.0.1:8082/api-console.html` | 仅开发人员测试 SSE 与运行记录 |
 
 ### 页面联动参数

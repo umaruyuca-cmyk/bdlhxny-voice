@@ -35,22 +35,20 @@
   <h2>页面联动入口</h2>
   <div class="card links">
     <a href="/">首页</a>
-    <a href="/agent?name=general">智能问答</a>
-    <a href="/agent?name=stock">股市分析</a>
-    <a href="/skill-dashboard.html">Skill 目录</a>
+    <a href="/agent">智能问答</a>
+    <a href="/agent?name=stock">股市分析（开金融 Skill）</a>
+    <a href="/skills/">Skill 目录</a>
     <a href="/docs/skill">Skill 接入规范</a>
   </div>
 
   <h2>1 · 流式对话 SSE <span class="badge">POST /api/v1/chat/stream</span></h2>
   <div class="card">
-    <label>mode</label>
-    <select id="mode"><option value="general">general</option><option value="stock">stock</option></select>
     <label>sessionId（留空自动生成）</label>
     <input id="sid" placeholder="自动生成">
     <label>message</label>
     <textarea id="msg">今天哪些行业板块最强？请展示热度组成。</textarea>
-    <label>instrument（stock 模式可选）</label>
-    <input id="inst" placeholder='{"symbol":"588200","assetType":"ETF"} 或留空'>
+    <label>enabledSkillIds（逗号分隔；留空=不传字段）</label>
+    <input id="skills" placeholder="finance.stock-research">
     <button class="btn" id="streamBtn">发送并接收 SSE</button>
     <button class="btn sec" id="streamStop">中止</button>
     <pre id="streamOut">等待请求…</pre>
@@ -80,15 +78,17 @@
     $("streamBtn").addEventListener("click", async () => {
       const out=$("streamOut");
       out.textContent="连接中…\n"; out.className="sselive";
-      const instrumentText=$("inst").value.trim();
-      let instrument=null;
-      if(instrumentText){try{instrument=JSON.parse(instrumentText);}catch(e){out.textContent+="instrument JSON 无效\n";return}}
+      const skillsText=$("skills").value.trim();
+      const body={sessionId:$("sid").value, message:$("msg").value};
+      if(skillsText){
+        body.enabledSkillIds=skillsText.split(",").map(s=>s.trim()).filter(Boolean);
+      }
       aborter=new AbortController();
       try{
         const res=await fetch("/api/v1/chat/stream",{
           method:"POST",
           headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
-          body:JSON.stringify({sessionId:$("sid").value, mode:$("mode").value, message:$("msg").value, instrument}),
+          body:JSON.stringify(body),
           signal:aborter.signal
         });
         out.textContent+="HTTP "+res.status+" "+res.statusText+"\n";

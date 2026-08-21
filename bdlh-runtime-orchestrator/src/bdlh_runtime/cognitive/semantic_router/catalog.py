@@ -25,13 +25,6 @@ def fastpath_routes() -> list[Route]:
     ]
 
 
-def fastpath_routes_from_snapshot(snapshot=None) -> list[Route]:
-    """兼容旧调用名；快路径不再来自 Registry 快照。"""
-    del snapshot
-    return fastpath_routes()
-
-
-def build_kernel_router(*, snapshot=None, encoder: Encoder | None = None) -> SemanticRouter:
+def build_kernel_router(*, encoder: Encoder | None = None) -> SemanticRouter:
     """装配内核语义路由（样句来自 fastpath_data）。"""
-    del snapshot
     return SemanticRouter(fastpath_routes(), encoder=encoder)

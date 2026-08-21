@@ -65,7 +65,7 @@
     <p>金融领域分析由 Python Runtime 内部的 Finance Analysis Skill 执行。外部数据通过 <strong>akshare-one MCP</strong>、<strong>cn-financial MCP</strong> 或其他已注册能力获取；Skill 只负责确定性计算、数据校验和结构化总结。历史 <strong>stock-wrapper</strong> 与 Node Skill 已标记为 RETIRED，不再进入默认运行链路。</p>
 
     <h2>1 · 30 秒快速理解</h2>
-    <p>用户请求先进入 Runtime，由 LangGraph 根据当前状态选择领域能力；模型负责理解、规划和表达，确定性计算由 Skill 完成。</p>
+    <p>用户请求先进入 Cognitive Orchestrator（快路径 → Understand → GoalAction）；有金融信号且用户开启 Skill 时才交接 Finance Domain；模型负责理解与表达，确定性计算由 Skill 完成。</p>
     <div class="flow">调用方（Agent / 程序）
   → Runtime 选择 Capability
   → MCP Adapter 获取并标准化 Observation

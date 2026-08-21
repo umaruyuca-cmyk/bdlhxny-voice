@@ -142,7 +142,7 @@ def test_comprehensive_objective_research_does_not_read_portfolio_context():
 
 
 def test_legacy_comprehensive_keeps_portfolio_compatibility() -> None:
-    """未选择 M2 方法配置时，旧 Root Graph 的计算行为保持不变。"""
+    """未选择方法配置时，分析引擎默认计算行为保持不变。"""
     result = analyze(
         AnalysisInput(
             analysis_id="t-comprehensive-legacy",
@@ -193,16 +193,10 @@ def test_invalid_quality_is_limited():
 # ── 分析工具封装 ──
 
 
-def test_analysis_tool_registered_and_callable():
-    """analysis.run_analysis 工具注册后可调用并返回 AnalysisResult。"""
-    from bdlh_runtime.tools.analysis_tool import register_analysis_tools
-    from bdlh_runtime.tools.registry import ToolRegistry
+def test_analysis_capability_callable():
+    """分析能力适配器可对 AnalysisInput 返回 AnalysisResult。"""
+    from bdlh_runtime.tools.analysis_capability import create_analysis_capability
 
-    registry = ToolRegistry()
-    register_analysis_tools(registry)
-    tool = registry.get("analysis.run_analysis")
-    assert tool.read_only is True
-
-    result = tool.handler(_make_input().model_dump())
-    assert result["status"] == "SUCCESS"
-    assert "ma5" in result["calculated_indicators"]
+    result = create_analysis_capability().analyze(_make_input())
+    assert result.status == "SUCCESS"
+    assert "ma5" in result.calculated_indicators

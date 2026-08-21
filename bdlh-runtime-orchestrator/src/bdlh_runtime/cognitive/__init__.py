@@ -1,6 +1,4 @@
-"""最小深层认知内核（标记：``SW31-P1-COGNITIVE-ACTION``）。
-
-M4 提供独立、非默认流量的认知契约与受控编排。
+"""认知内核：契约与受控编排（产品唯一主路径）。
 """
 
 from .contracts import (
@@ -15,6 +13,8 @@ from .contracts import (
     InputEventType,
     PublicResponse,
 )
+from .goal_action_selector import GoalActionSelector, wants_finance_plugin
+from .plugin_gates import finance_skill_enabled
 from .policy import ActionPolicyResult, DefaultActionPolicy
 from .semantic_router import (
     LexicalEncoder,
@@ -35,6 +35,7 @@ __all__ = [
     "CommunicationSection",
     "DefaultActionPolicy",
     "CommunicationPlan",
+    "GoalActionSelector",
     "InputEvent",
     "InputEventType",
     "LexicalEncoder",
@@ -44,4 +45,6 @@ __all__ = [
     "SemanticRouteSelector",
     "SemanticRouter",
     "build_kernel_router",
+    "finance_skill_enabled",
+    "wants_finance_plugin",
 ]

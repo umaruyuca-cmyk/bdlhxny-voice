@@ -121,11 +121,11 @@ bdlh-runtime-orchestrator/
 | `domain/` | 金融确定性计算引擎（指标、风险、回测） | 领域边界 |
 | `domains/` | 领域边界与 Domain Runtime（含 `finance/`） | 计算引擎 |
 | `runtime/` | 应用装配与生产基础设施（配置、持久化、预算） | Agent Runtime 实现 |
-| `runtimes/` | 具体编排框架装配（`langgraph/`、`letta/` 占位） | 应用装配 |
+| `runtimes/` | 具体编排框架装配（当前仅 `langgraph/`） | 应用装配 |
 
 单复数是唯一区分。收敛方案见 §7，未执行前请按本表理解，不要凭直觉猜。
 
-`runtimes/letta/` 只有 `.gitkeep`：生产禁止 Letta（架构 §1 决策 1），该目录不得填充实现。
+生产禁止 Letta（架构 §1 决策 1）；`runtimes/letta/` 占位目录已删除，不得再新增。
 
 ### 3.2 `bdlh-runtime-data/`（Java）
 

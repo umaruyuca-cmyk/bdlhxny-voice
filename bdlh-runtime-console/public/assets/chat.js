@@ -26,11 +26,13 @@ var AUTH_TOKEN_KEY="bdlh_runtime.auth.token.v1";
 var MOCK_VER_KEY="grid.chat.mock.ver";
 var MOCK_DATA_VERSION=3; /* mock 演示数据有变更时递增，旧缓存自动重建 */
 var MAX_SESSIONS=30;
-var MODE="general"; // 后端协议字段，单助手固定值
 var STOCK_SKILL="finance.stock-research";
 var NATIVE_FETCH=window.fetch.bind(window);
 var AUTH={ready:MOCK,user:MOCK?{userId:"mock",username:"演示模式"}:null};
 var AUTH_MODE="login";
+/** 首页跳转带入：?q=问题&name=stock|general */
+var ENTRY_Q="";
+var ENTRY_STOCK=false;
 
 var ST={
   sessions:[],
@@ -41,8 +43,15 @@ var ST={
   activeRunId:null,
   pauseAcked:false,
   loadingEarlier:false,
-  page:"chat"
+  page:"chat",
+  pendingPrompt:"",
+  abortReason:null,
+  activeAgentRow:null,
+  regenerating:false
 };
+
+var SEND_ICON='<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+var STOP_ICON='<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 
 var STEP_LABEL={
   classifying:"理解你的问题",
@@ -70,6 +79,85 @@ function toast(msg){
 }
 function scrollBottom(){scrollBox.scrollTop=scrollBox.scrollHeight;}
 function storageKey(){return STORAGE_BASE+"."+(AUTH.user?AUTH.user.userId:"anonymous");}
+
+/** 发送中：发送钮变成停止（Cursor 式中断）。 */
+function setSendingUi(on){
+  ST.sending=!!on;
+  if(!sendBtn)return;
+  if(on){
+    sendBtn.disabled=false;
+    sendBtn.type="button";
+    sendBtn.classList.add("stopping");
+    sendBtn.setAttribute("aria-label","停止生成");
+    sendBtn.title="停止生成";
+    sendBtn.innerHTML=STOP_ICON;
+  }else{
+    sendBtn.type="submit";
+    sendBtn.classList.remove("stopping");
+    sendBtn.setAttribute("aria-label","发送");
+    sendBtn.title="";
+    sendBtn.innerHTML=SEND_ICON;
+    sendBtn.disabled=false;
+  }
+}
+
+/** 中断后把原问题回填到输入框。 */
+function restoreInterruptedPrompt(prompt){
+  var text=(prompt||ST.pendingPrompt||"").trim();
+  if(!text)return;
+  input.value=text;
+  autoGrow();
+  try{input.focus();}catch(e){}
+  try{
+    var len=input.value.length;
+    input.setSelectionRange(len,len);
+  }catch(e){}
+}
+
+/**
+ * 撤回未完成的一轮：去掉进行中的助手气泡；
+ * 非「重新回答」时同步撤回对应的用户提问，避免回填后再发送重复。
+ */
+function rollbackInterruptedTurn(agentRow){
+  var row=agentRow||ST.activeAgentRow;
+  if(row&&row.parentNode)row.parentNode.removeChild(row);
+  var s=activeSession();
+  if(!ST.regenerating){
+    var userRows=messages.querySelectorAll(".msg.user");
+    var lastUser=userRows[userRows.length-1];
+    if(lastUser&&lastUser.parentNode)lastUser.parentNode.removeChild(lastUser);
+    if(s&&s.messages&&s.messages.length){
+      if(s.messages[s.messages.length-1].role==="assistant")s.messages.pop();
+      if(s.messages.length&&s.messages[s.messages.length-1].role==="user")s.messages.pop();
+    }
+  }else if(s&&s.messages&&s.messages.length&&s.messages[s.messages.length-1].role==="assistant"){
+    s.messages.pop();
+  }
+  if(s){
+    s.updatedAt=now();
+    persist();
+    renderSessionList();
+    chatTitle.textContent=s.messages&&s.messages.length?s.title:"新的对话";
+  }
+  if(!s||!s.messages||!s.messages.length){
+    hero.classList.remove("hidden");
+    var viewChat=document.getElementById("viewChat");
+    if(viewChat)viewChat.classList.add("is-empty");
+  }
+  rebuildQnav();
+  updateLastAi();
+}
+
+/** Cursor 式手动中断：停流 + 取消 run（若有）。 */
+function interruptGeneration(){
+  if(!ST.sending&&!ST.controller&&!ST.activeRunId)return;
+  ST.abortReason="cancel";
+  if(ST.controller){
+    try{ST.controller.abort();}catch(err){}
+  }
+  void requestCancelRun();
+}
+
 async function apiFetch(resource,options){
   var next=Object.assign({},options||{});
   next.headers=new Headers(next.headers||{});
@@ -108,9 +196,6 @@ function ensureSessionSkills(s){
   if(!s)return;
   if(!Array.isArray(s.enabledSkills))s.enabledSkills=[];
 }
-function isStockQuestion(q){
-  return /分析|估值|研报|股票|个股|市盈率|市净率|标的|ETF|基金|板块|\d{6}|588200|科创|芯片|茅台|600519/.test(String(q||""));
-}
 function skillEnabled(id){
   var s=activeSession();
   if(!s)return false;
@@ -141,6 +226,7 @@ function syncPluginUi(){
   var chip=document.getElementById("chipEnabled");
   var ro=document.getElementById("roTag");
   var statusTag=document.getElementById("statusTag");
+  var navPlugins=document.getElementById("navPlugins");
   if(toggle){
     toggle.classList.toggle("on",on);
     toggle.setAttribute("aria-checked",on?"true":"false");
@@ -152,6 +238,7 @@ function syncPluginUi(){
     statusTag.textContent=on?"本对话已启用":"未启用";
     statusTag.className="tag "+(on?"ok":"off");
   }
+  if(navPlugins)navPlugins.classList.toggle("on",ST.page==="plugins");
 }
 function showPage(name){
   ST.page=name==="plugins"?"plugins":"chat";
@@ -166,41 +253,6 @@ function showPage(name){
   }else{
     rebuildQnav();
   }
-}
-function showEnableNudge(question){
-  hero.classList.add("hidden");
-  var viewChat=document.getElementById("viewChat");
-  if(viewChat)viewChat.classList.remove("is-empty");
-  chatTitle.textContent=activeSession()?activeSession().title:"新的对话";
-  var row=document.createElement("div");
-  row.className="msg user";
-  row.innerHTML='<div class="body"><div class="text">'+esc(question)+"</div></div>";
-  messages.appendChild(row);
-  var ai=document.createElement("div");
-  ai.className="msg";
-  ai.innerHTML='<div class="avatar">G</div><div class="body">'+
-    '<div class="text">要做标的深度研究，需要先启用「股票分析」插件。</div>'+
-    '<div class="nudge"><div class="t">前往插件页启用</div>'+
-    '<div class="d">启用后回到对话继续提问。也可以一键启用并继续。</div>'+
-    '<div class="acts">'+
-    '<button class="btn primary" type="button" data-act="enable-continue">启用并继续</button>'+
-    '<button class="btn" type="button" data-act="open-plugins">打开插件页</button>'+
-    "</div></div></div>";
-  messages.appendChild(ai);
-  rebuildQnav();
-  scrollBottom();
-  ai.addEventListener("click",function(e){
-    var btn=e.target.closest("[data-act]");
-    if(!btn)return;
-    var act=btn.getAttribute("data-act");
-    if(act==="open-plugins"){showPage("plugins");return;}
-    if(act==="enable-continue"){
-      setSkillEnabled(STOCK_SKILL,true,"on");
-      ai.remove();
-      row.remove();
-      send(question,false);
-    }
-  });
 }
 function adoptServerSessionId(serverId){
   var s=activeSession();
@@ -222,11 +274,36 @@ function groupLabel(t){
   if(diff<30)return "30 天内";
   return "更早";
 }
+function relativeTime(t){
+  var diff=Math.max(0,Date.now()-Number(t||0));
+  var m=Math.floor(diff/60000);
+  if(m<1)return "刚刚";
+  if(m<60)return m+" 分钟前";
+  var h=Math.floor(m/60);
+  if(h<24)return h+" 小时前";
+  var d=Math.floor(h/24);
+  if(d===1)return "昨天";
+  if(d<7)return d+" 天前";
+  var dt=new Date(t);
+  return (dt.getMonth()+1)+"/"+dt.getDate();
+}
 var GROUP_ORDER=["今天","昨天","7 天内","30 天内","更早"];
 function renderSessionList(){
   sessionList.innerHTML="";
+  var labelEl=document.querySelector(".sessions-label");
+  if(labelEl){
+    labelEl.innerHTML=ST.sessions.length
+      ?('聊天<span class="sessions-count">'+ST.sessions.length+'</span>')
+      :"聊天";
+  }
   if(!ST.sessions.length){
-    sessionList.innerHTML='<div class="sessions-empty">还没有对话，从下方输入框开始</div>';
+    sessionList.innerHTML=
+      '<div class="sessions-empty">'+
+        '<div class="sessions-empty-ico" aria-hidden="true">'+
+          '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'+
+        '</div>'+
+        '<p>还没有对话</p><span>从输入框开始提问</span>'+
+      '</div>';
     return;
   }
   var sorted=ST.sessions.slice().sort(function(a,b){return b.updatedAt-a.updatedAt;});
@@ -240,12 +317,20 @@ function renderSessionList(){
       label.textContent=g;
       sessionList.appendChild(label);
     }
-    var item=document.createElement("div");
+    var item=document.createElement("button");
+    item.type="button";
     item.className="session"+(s.id===ST.activeId?" active":"");
-    item.innerHTML='<span>'+esc(s.title)+'</span>'+
-      '<button class="del" type="button" aria-label="删除对话">'+
-      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13h8l1-13"/></svg>'+
-      '</button>';
+    item.innerHTML=
+      '<span class="session-ico" aria-hidden="true">'+
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'+
+      '</span>'+
+      '<span class="session-main">'+
+        '<span class="session-title">'+esc(s.title||"未命名对话")+'</span>'+
+        '<span class="session-meta">'+esc(relativeTime(s.updatedAt))+'</span>'+
+      '</span>'+
+      '<span class="del" role="button" tabindex="-1" aria-label="删除对话">'+
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13h8l1-13"/></svg>'+
+      '</span>';
     item.addEventListener("click",function(){switchSession(s.id);});
     $(".del",item).addEventListener("click",function(e){
       e.stopPropagation();
@@ -833,17 +918,11 @@ async function send(preset,regenerateExisting){
   var value=(preset||input.value).trim();
   if(!value||ST.sending)return;
 
-  /* 股票深度问题：未启用 Skill 时先引导，不静默进入研究链路 */
-  if(!regenerateExisting&&isStockQuestion(value)&&!skillEnabled(STOCK_SKILL)){
-    input.value="";
-    autoGrow();
-    showPage("chat");
-    showEnableNudge(value);
-    return;
-  }
-
-  ST.sending=true;
-  sendBtn.disabled=true;
+  /* 股票类问题不再前端拦截：Skill 只是允许项，未启用时仍走普通对话 */
+  ST.pendingPrompt=value;
+  ST.abortReason=null;
+  ST.regenerating=!!regenerateExisting;
+  setSendingUi(true);
   input.value="";
   autoGrow();
 
@@ -869,13 +948,27 @@ async function send(preset,regenerateExisting){
   if(!regenerateExisting)appendMessage("user",value,true);
   rebuildQnav();
   var row=createAgentRow();
+  ST.activeAgentRow=row;
   ST.streamText="";
 
   if(MOCK){
+    var mockController=new AbortController();
+    ST.controller=mockController;
     try{await mockFlow(value,row);}
+    catch(err){
+      if(err&&err.name==="AbortError"&&ST.abortReason==="cancel"){
+        rollbackInterruptedTurn(row);
+        restoreInterruptedPrompt(value);
+        toast("已中断，可修改后重新发送");
+      }
+    }
     finally{
-      ST.sending=false;
-      sendBtn.disabled=false;
+      ST.controller=null;
+      ST.activeAgentRow=null;
+      ST.pendingPrompt="";
+      ST.abortReason=null;
+      ST.regenerating=false;
+      setSendingUi(false);
       renderSessionList();
       rebuildQnav();
       syncPluginUi();
@@ -894,9 +987,7 @@ async function send(preset,regenerateExisting){
       headers:{"Content-Type":"application/json","Accept":"text/event-stream"},
       body:JSON.stringify({
         sessionId:s.id,
-        mode:MODE,
         message:value,
-        instrument:null,
         regenerate:!!regenerateExisting,
         enabledSkillIds:s.enabledSkills.slice()
       }),
@@ -905,7 +996,13 @@ async function send(preset,regenerateExisting){
     if(!response.ok)throw new Error(await response.text()||("HTTP "+response.status));
     await consumeSse(response,function(data){return handleEvent(data,row);});
   }catch(err){
-    if(err.name!=="AbortError"){
+    if(err.name==="AbortError"){
+      if(ST.abortReason==="cancel"){
+        rollbackInterruptedTurn(row);
+        restoreInterruptedPrompt(value);
+        toast("已中断，可修改后重新发送");
+      }
+    }else{
       var text=$(".text",row);
       if($(".typing",text))text.textContent="";
       clearStatus(row);
@@ -917,8 +1014,12 @@ async function send(preset,regenerateExisting){
     }
   }finally{
     ST.controller=null;
-    ST.sending=false;
-    sendBtn.disabled=false;
+    ST.activeAgentRow=null;
+    ST.pendingPrompt="";
+    ST.abortReason=null;
+    ST.activeRunId=null;
+    ST.regenerating=false;
+    setSendingUi(false);
     renderSessionList();
     rebuildQnav();
     syncPluginUi();
@@ -926,7 +1027,22 @@ async function send(preset,regenerateExisting){
 }
 
 /* ---------- Mock 演示（?mock=1，不依赖后端） ---------- */
-function delay(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function delay(ms){
+  return new Promise(function(resolve,reject){
+    var timer=setTimeout(resolve,ms);
+    var signal=ST.controller&&ST.controller.signal;
+    if(!signal)return;
+    if(signal.aborted){
+      clearTimeout(timer);
+      reject(Object.assign(new Error("Aborted"),{name:"AbortError"}));
+      return;
+    }
+    signal.addEventListener("abort",function(){
+      clearTimeout(timer);
+      reject(Object.assign(new Error("Aborted"),{name:"AbortError"}));
+    },{once:true});
+  });
+}
 
 var MOCK_ANSWERS={
   stock:"科创芯片ETF（588200）跟踪上证科创板芯片指数，前三大权重股为中芯国际、海光信息、寒武纪，合计占比约 30%，行业集中在芯片设计与制造环节。\n\n估值方面，指数当前市盈率约 58 倍，处于近三年 60% 分位——不算便宜，但相比 2021 年高点 90% 分位已明显消化。市销率约 7.2 倍，处于 55% 分位。\n\n从驱动因素看：\n· 国产替代是中期主线，先进制程扩产带动设备与材料订单\n· 短期波动主要来自海外管制消息与板块轮动，近一月振幅约 12%\n· 成分股一季报整体营收同比 +18%，盈利端处于修复通道\n\n结论：估值中性偏贵，适合分批而非一次性介入；若作为卫星仓位，建议控制在组合的 10% 以内。\n\n以上仅供研究参考，不构成投资建议。",
@@ -1041,7 +1157,7 @@ function initMockTools(){
 /* ---------- 远端会话同步（静默失败） ---------- */
 async function syncRemoteSessions(){
   try{
-    var res=await apiFetch("/api/v1/conversations?mode="+MODE+"&limit="+MAX_SESSIONS);
+    var res=await apiFetch("/api/v1/conversations?limit="+MAX_SESSIONS);
     if(!res.ok)return;
     var remote=await res.json();
     if(!Array.isArray(remote))return;
@@ -1092,10 +1208,17 @@ function showAuth(message){
   setAuthMode(AUTH_MODE);
   setTimeout(function(){document.getElementById("authUsername").focus();},0);
 }
+/** 关闭登录弹层（不改访客态、不清会话）。 */
+function closeAuth(){
+  var modal=document.getElementById("authModal");
+  if(!modal||modal.hidden)return;
+  modal.hidden=true;
+  document.getElementById("authError").textContent="";
+}
 function enterGuest(){
   AUTH.ready=true;
   AUTH.user=null;
-  document.getElementById("authModal").hidden=true;
+  closeAuth();
   resetForUser();
 }
 function setAuthMode(mode){
@@ -1112,7 +1235,9 @@ function updateAccount(){
   document.getElementById("accountButton").textContent=AUTH.user?AUTH.user.username:"登录";
 }
 function resetForUser(){
-  ST.sessions=[];ST.activeId=null;ST.sending=false;ST.streamText="";ST.controller=null;
+  ST.sessions=[];ST.activeId=null;ST.streamText="";ST.controller=null;
+  ST.pendingPrompt="";ST.abortReason=null;ST.activeAgentRow=null;
+  setSendingUi(false);
   restore();
   renderSessionList();
   renderMessages();
@@ -1127,6 +1252,15 @@ function completeAuth(data){
   document.getElementById("authModal").hidden=true;
   resetForUser();
   input.focus();
+  // 首页带入的问题：登录完成后自动发送
+  if(ENTRY_Q){
+    var q=ENTRY_Q;
+    var stock=ENTRY_STOCK;
+    ENTRY_Q="";
+    ENTRY_STOCK=false;
+    if(stock)setSkillEnabled(STOCK_SKILL,true);
+    setTimeout(function(){void send(q);},40);
+  }
 }
 async function initializeAuth(){
   if(MOCK){
@@ -1174,6 +1308,19 @@ async function login(){
 document.getElementById("authLogin").addEventListener("click",login);
 document.getElementById("authRegister").addEventListener("click",function(){setAuthMode(AUTH_MODE==="register"?"login":"register");});
 document.getElementById("authPassword").addEventListener("keydown",function(e){if(e.key==="Enter")login();});
+document.getElementById("authModal").addEventListener("click",function(e){
+  if(e.target===this)closeAuth();
+});
+document.getElementById("authModal").querySelector(".auth-modal").addEventListener("click",function(e){
+  e.stopPropagation();
+});
+if(profileModal){
+  profileModal.addEventListener("click",function(e){
+    if(e.target===this)closeProfileModal();
+  });
+  var profileDialog=profileModal.querySelector(".auth-modal");
+  if(profileDialog)profileDialog.addEventListener("click",function(e){e.stopPropagation();});
+}
 document.getElementById("accountButton").addEventListener("click",function(){
   if(!AUTH.user){showAuth();return;}
   if(MOCK)return;
@@ -1198,24 +1345,26 @@ input.addEventListener("keydown",function(e){
 });
 document.addEventListener("keydown",function(e){
   if(e.key!=="Escape")return;
-  if(!ST.sending&&!ST.activeRunId&&!ST.pauseAcked)return;
-  e.preventDefault();
-  if(e.shiftKey){
-    if(ST.controller){try{ST.controller.abort();}catch(err){}}
-    requestCancelRun();
+  var authEl=document.getElementById("authModal");
+  if(authEl&&!authEl.hidden){
+    e.preventDefault();
+    closeAuth();
     return;
   }
-  if(!ST.sending||!ST.controller)return;
-  requestPauseAndAbort();
+  if(profileModal&&!profileModal.hidden){
+    e.preventDefault();
+    closeProfileModal();
+    return;
+  }
+  if(!ST.sending&&!ST.activeRunId&&!ST.pauseAcked)return;
+  e.preventDefault();
+  // Esc / Shift+Esc：统一 Cursor 式中断（停止并回填问题）
+  interruptGeneration();
 });
 
 async function requestCancelRun(){
   var runId=ST.activeRunId;
-  if(!runId||MOCK){
-    ST.sending=false;
-    sendBtn.disabled=false;
-    return;
-  }
+  if(!runId||MOCK)return;
   try{
     var response=await apiFetch("/api/v1/agent-runs/"+encodeURIComponent(runId)+"/cancel",{
       method:"POST",
@@ -1224,10 +1373,9 @@ async function requestCancelRun(){
     if(response.ok){
       ST.pauseAcked=false;
       ST.activeRunId=null;
-      toast("已取消当前分析");
     }
   }catch(err){
-    toast("取消请求失败，请稍后重试");
+    /* 前端已本地中断；取消接口失败不阻断回填 */
   }
 }
 
@@ -1253,15 +1401,23 @@ async function requestPauseAndAbort(){
   if(controller){
     try{controller.abort();}catch(err){}
   }
-  ST.sending=false;
-  sendBtn.disabled=false;
+  setSendingUi(false);
 }
 
 composer.addEventListener("submit",function(e){
   e.preventDefault();
+  if(ST.sending){
+    interruptGeneration();
+    return;
+  }
   send();
 });
 
+sendBtn.addEventListener("click",function(e){
+  if(!ST.sending)return;
+  e.preventDefault();
+  interruptGeneration();
+});
 /* ---------- 建议卡片 / Skill chips ---------- */
 document.querySelectorAll(".suggest").forEach(function(btn){
   btn.addEventListener("click",function(){
@@ -1272,6 +1428,10 @@ document.querySelectorAll(".suggest").forEach(function(btn){
 var skillGotoPlugins=document.getElementById("skillGotoPlugins");
 if(skillGotoPlugins){
   skillGotoPlugins.addEventListener("click",function(){showPage("plugins");});
+}
+var navPlugins=document.getElementById("navPlugins");
+if(navPlugins){
+  navPlugins.addEventListener("click",function(){showPage("plugins");});
 }
 var chipEnabled=document.getElementById("chipEnabled");
 if(chipEnabled){
@@ -1346,7 +1506,31 @@ toBottom.addEventListener("click",function(){
 });
 
 /* ---------- 启动 ---------- */
-void initializeAuth();
+function readEntryParams(){
+  var params=new URLSearchParams(location.search);
+  ENTRY_Q=(params.get("q")||"").trim();
+  var name=(params.get("name")||"").trim().toLowerCase();
+  ENTRY_STOCK=name==="stock"||name==="finance"||/\d{6}/.test(ENTRY_Q);
+  var keep=new URLSearchParams();
+  if(params.has("mock"))keep.set("mock",params.get("mock")||"1");
+  var next=keep.toString();
+  var clean=location.pathname+(next?"?"+next:"")+location.hash;
+  if(location.search.slice(1)!==next){
+    try{history.replaceState({}, "", clean);}catch(e){}
+  }
+}
+async function applyEntryParams(){
+  if(ENTRY_STOCK)setSkillEnabled(STOCK_SKILL,true);
+  if(!ENTRY_Q)return;
+  // 游客也可直接发（后端归一为 user_id=0）；登录仅绑定账号侧能力。
+  var q=ENTRY_Q;
+  ENTRY_Q="";
+  ENTRY_STOCK=false;
+  await send(q);
+}
+
+readEntryParams();
+void initializeAuth().then(function(){return applyEntryParams();});
 autoGrow();
 syncPluginUi();
 

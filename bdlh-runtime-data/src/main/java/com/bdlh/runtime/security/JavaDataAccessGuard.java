@@ -34,7 +34,8 @@ public class JavaDataAccessGuard {
 
     public long resolveUserId(Long requestedUserId) {
         if (hasValidInternalToken()) {
-            if (requestedUserId == null || requestedUserId <= 0) {
+            // 0 = 游客（与 Python GUEST_USER_ID 对齐）；负值仍非法。
+            if (requestedUserId == null || requestedUserId < 0) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "内部服务调用必须指定有效 user_id");
             }

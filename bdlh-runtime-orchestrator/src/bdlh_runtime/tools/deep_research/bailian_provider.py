@@ -199,7 +199,7 @@ def parse_bailian_search_payload(text: str) -> list[AtomicSearchHit]:
             or page.get("body")
             or ""
         ).strip()
-        summary = _sanitize_snippet(summary)
+        summary = sanitize_snippet(summary)
         domain = str(page.get("domain") or page.get("site") or "").strip()
         if not domain:
             domain = urlparse(url).netloc
@@ -281,8 +281,3 @@ def sanitize_snippet(text: str) -> str:
     for pattern in _INJECTION_PATTERNS:
         cleaned = pattern.sub("[filtered]", cleaned)
     return cleaned
-
-
-def _sanitize_snippet(text: str) -> str:
-    """兼容旧名；新代码请用 sanitize_snippet。"""
-    return sanitize_snippet(text)

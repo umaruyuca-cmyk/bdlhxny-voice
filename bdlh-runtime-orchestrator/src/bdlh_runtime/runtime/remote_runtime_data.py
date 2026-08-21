@@ -282,9 +282,7 @@ def create_remote_runtime_stores(
     *,
     base_url: str | None,
     internal_token: str | None,
-    production: bool | None = None,
 ) -> tuple[RemoteAnalysisHistoryStore, RemoteRunRegistry, RemoteChatSessionStore]:
-    del production  # G3：远程 Store 一律要求凭证，不再按环境放宽
     if not base_url:
         raise ConfigurationError("远程 Runtime Store 需要 JAVA_API_BASE_URL")
     if not internal_token:
@@ -294,8 +292,9 @@ def create_remote_runtime_stores(
 
 
 def _numeric_user_id(user_id: str | None) -> int:
+    """登录用户为正整数；游客为 0（与 api.identity.GUEST_USER_ID 对齐）。"""
     value = str(user_id or "").strip()
-    if not value.isdigit() or int(value) <= 0:
+    if not value.isdigit() or int(value) < 0:
         raise ConfigurationError("Java Runtime Data API 需要可信的数字 user_id")
     return int(value)
 

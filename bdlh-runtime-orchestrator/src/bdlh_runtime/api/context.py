@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from bdlh_runtime.runtime.run_state import RunStateStore
 
 from .auth import AuthenticationError, JwtAuthenticator
+from .identity import effective_user_id
 
 
 class ApiContext:
@@ -33,7 +34,11 @@ class ApiContext:
         self.authenticator = authenticator
 
     def request_user_id(self, authorization: str | None, claimed_user_id: str | None = None) -> str | None:
-        """返回 JWT 中的可信 user_id；开发模式才允许无 Token 的显式 user_id。"""
+        """返回 JWT 中的可信 user_id；无 Token 时为 ``None``（游客）。
+
+        开发模式才允许无 Token 的显式 ``claimed_user_id``；生产有 Token 时
+        claim 必须与 JWT subject 一致。
+        """
 
         try:
             authenticated_user_id = self.authenticator.authenticate(authorization)
@@ -42,12 +47,21 @@ class ApiContext:
         normalized_claim = str(claimed_user_id).strip() if claimed_user_id is not None else None
         if authenticated_user_id is not None and normalized_claim not in {None, authenticated_user_id}:
             raise HTTPException(status_code=403, detail="请求 user_id 与登录用户不一致")
-        return authenticated_user_id or normalized_claim
+        if authenticated_user_id is not None:
+            return authenticated_user_id
+        # 无 JWT：仅在未强制鉴权时接受 body 中的 claimed_user_id（测试/本地）
+        if normalized_claim and not self.application.settings.auth_required:
+            return normalized_claim
+        return None
+
+    def chat_user_id(self, authorization: str | None, claimed_user_id: str | None = None) -> str:
+        """对话主路径身份：登录用户或游客 ``0``。"""
+        return effective_user_id(self.request_user_id(authorization, claimed_user_id))
 
     def authenticated_task_user(self, authorization: str | None) -> str:
         user_id = self.request_user_id(authorization)
         if user_id is None:
-            raise HTTPException(status_code=401, detail="持续任务需要已认证用户")
+            raise HTTPException(status_code=401, detail="请先登录")
         return user_id
 
     def authorize_run(self, run_id: str, requester_user_id: str | None, state: dict[str, Any]) -> None:

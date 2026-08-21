@@ -1,13 +1,11 @@
-"""GoalCoverage：确定性覆盖判定控制器（重写 §4）。
+"""GoalCoverage：确定性覆盖判定控制器。
 
 无 LLM。三分支判定：
-1. ``needs_account / needs_profile`` 标记真 → 账户/画像 Goal 专用判定
-   （全部无证 BLOCKED；有证须 portfolio.*/user.* Observation，市场行情不能顶）；
-2. 有 topic → 主题能力 OR 覆盖（一条成功即 COVERED，provider 挂一条不 BLOCKED）；
+1. ``needs_account / needs_profile`` 标记真 → 账户/画像 Goal 专用判定；
+2. 有 topic → 主题能力 OR 覆盖；
 3. 无 topic 未标记 → 需要至少一条非纯 resolve 的业务数据 Observation。
 
-规则降级兜底（「任一非空 Observation 即 COVERED」）只属于无 LLM 降级路径，
-由 ``rule_based_fallback=True`` 显式启用，正式判定不得引用。
+规则降级兜底由 ``rule_based_fallback=True`` 显式启用，正式判定不得引用。
 """
 
 from __future__ import annotations
@@ -15,7 +13,6 @@ from __future__ import annotations
 from typing import Any
 
 from bdlh_runtime.cognitive.topic_hints import topic_capabilities_for
-from bdlh_runtime.registry import RegistrySnapshot, dependency_closure
 
 from .goal_schema import GoalSpec
 
@@ -39,16 +36,8 @@ def _usable_observations(observations: list[dict[str, Any]]) -> dict[str, list[s
     return usable
 
 
-def backfill_criteria(
-    snapshot: RegistrySnapshot | None,
-    goals: list[GoalSpec],
-    allowed: list[str],
-) -> list[GoalSpec]:
-    """控制器回填：按主题覆盖提示 + depends_on 闭包计算 candidate_capabilities。
-
-    主题提示不发放权限；只在 allowed 内取交集。
-    """
-    del snapshot
+def backfill_criteria(goals: list[GoalSpec], allowed: list[str]) -> list[GoalSpec]:
+    """控制器回填：按主题覆盖提示计算 candidate_capabilities（只在 allowed 内取交）。"""
     allowed_set = set(allowed)
     updated: list[GoalSpec] = []
     for goal in goals:
@@ -72,12 +61,10 @@ def evaluate_goals(
     goals: list[GoalSpec],
     observations: list[dict[str, Any]],
     allowed: list[str],
-    snapshot: RegistrySnapshot | None = None,
     *,
     rule_based_fallback: bool = False,
 ) -> list[GoalSpec]:
     """对每个 Goal 做覆盖判定并回填 observation_refs / status。"""
-    del snapshot  # 主题覆盖已迁出 Registry；保留参数兼容旧调用
     allowed_set = set(allowed)
     usable = _usable_observations(observations)
     updated: list[GoalSpec] = []
@@ -93,7 +80,6 @@ def _evaluate_one(
     allowed_set: set[str],
     rule_based_fallback: bool,
 ) -> tuple[str, list[str]]:
-    # ── 分支 1：账户 / 画像 Goal（RequestedTopic 无此主题，靠标记判定）──
     if goal.needs_account or goal.needs_profile:
         prefix = _ACCOUNT_PREFIX if goal.needs_account else _PROFILE_PREFIX
         owned = {name for name in allowed_set if name.startswith(prefix)}
@@ -104,15 +90,12 @@ def _evaluate_one(
             refs.extend(usable.get(name, []))
         return ("COVERED", sorted(set(refs))) if refs else ("PENDING", [])
 
-    # ── 分支 2/3：按 criterion 判定 ──
     all_refs: list[str] = []
     any_blocked = False
     for criterion in goal.success_criteria:
         if criterion.topic is not None:
-            # 分支 2：主题能力 OR 覆盖
             candidates = criterion.candidate_capabilities
             if not candidates:
-                # 主题能力全部不在 allowed → 资格缺口
                 topic_caps = topic_capabilities_for(criterion.topic)
                 if topic_caps and not (set(topic_caps) & allowed_set):
                     any_blocked = True
@@ -126,13 +109,11 @@ def _evaluate_one(
                 return "PENDING", []
             all_refs.extend(covered_refs)
         else:
-            # 分支 3：无 topic → 需要非纯 resolve 的业务数据 Observation
             business = [name for name in usable if name not in RESOLVE_CAPABILITIES]
             if business:
                 for name in business:
                     all_refs.extend(usable[name])
             elif rule_based_fallback and usable:
-                # 规则降级专用兜底：仅无 LLM 环境启用；正式判定不得引用
                 for name in usable:
                     all_refs.extend(usable[name])
             else:
@@ -145,8 +126,3 @@ def _evaluate_one(
 def all_goals_settled(goals: list[GoalSpec]) -> bool:
     """FINISH 建议被接受的前置：所有 Goal ∈ {COVERED, BLOCKED}。"""
     return all(goal.status in {"COVERED", "BLOCKED"} for goal in goals)
-
-
-def dependency_names(snapshot: RegistrySnapshot, names: list[str]) -> list[str]:
-    """闭包能力名单（不进 OR 集合，仅顺序约束）。"""
-    return dependency_closure(snapshot, names)

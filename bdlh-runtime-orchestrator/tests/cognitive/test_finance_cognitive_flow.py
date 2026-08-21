@@ -29,12 +29,18 @@ from bdlh_runtime.domains.finance.contracts import (
 )
 
 
-def _event(message: str, *, event_id: str = "event-1") -> InputEvent:
+def _event(
+    message: str,
+    *,
+    event_id: str = "event-1",
+    enabled_skills: frozenset[str] | None = None,
+) -> InputEvent:
     return InputEvent(
         event_id=event_id,
         user_id="user-1",
         session_id="session-1",
         message=message,
+        enabled_skills=enabled_skills,
     )
 
 
@@ -130,10 +136,23 @@ class FinanceDispatcher:
         )
 
 
-def _app(dispatcher: FinanceDispatcher, store: InMemoryVerifiedEntityStore | None = None) -> CognitiveOrchestrator:
+def _app(
+    dispatcher: FinanceDispatcher,
+    store: InMemoryVerifiedEntityStore | None = None,
+    *,
+    knowledge_responder: object | None = None,
+) -> CognitiveOrchestrator:
     entities = store or InMemoryVerifiedEntityStore()
+
+    class _DefaultKnowledge:
+        def answer(self, message: str) -> str:
+            return f"skill-knowledge:{message}"
+
     return CognitiveOrchestrator(
-        selector=FinanceCognitiveSelector(entities),
+        selector=FinanceCognitiveSelector(
+            entities,
+            knowledge_responder=knowledge_responder or _DefaultKnowledge(),
+        ),
         dispatcher=dispatcher,
         continuation=FinanceCognitiveContinuation(entities),
         enabled_domains=frozenset({"finance"}),
@@ -172,6 +191,46 @@ async def test_natural_language_name_resolves_then_researches_in_one_run() -> No
 
 
 @pytest.mark.asyncio
+async def test_finance_skill_gate_uses_general_chat_when_session_skills_off() -> None:
+    """会话未启用 finance Skill 时不得派发金融域，改为普通对话。"""
+
+    dispatcher = FinanceDispatcher()
+
+    result = await _app(dispatcher).run(
+        _event("贵州茅台今天怎么样", enabled_skills=frozenset()),
+    )
+
+    assert dispatcher.requests == []
+    assert result.response.response_kind == "ANSWER"
+    assert result.response.audit_codes == ["GENERAL_CHAT"]
+    assert result.response.message.startswith("skill-knowledge:")
+    assert [item.action_type for item in result.state.action_history] == [
+        CognitiveActionType.RESPOND,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_finance_skill_gate_passes_with_enabled_skill_or_unset() -> None:
+    """开关启用（含控制台的 finance. 前缀形式）或未提供时保持原有派发行为。"""
+
+    enabled_dispatcher = FinanceDispatcher()
+    await _app(enabled_dispatcher).run(
+        _event("贵州茅台今天怎么样", enabled_skills=frozenset({"finance.stock-research"})),
+    )
+    assert [type(item) for item in enabled_dispatcher.requests] == [
+        InstrumentResolutionRequest,
+        FinancialDomainRequest,
+    ]
+
+    unset_dispatcher = FinanceDispatcher()
+    await _app(unset_dispatcher).run(_event("贵州茅台今天怎么样"))
+    assert [type(item) for item in unset_dispatcher.requests] == [
+        InstrumentResolutionRequest,
+        FinancialDomainRequest,
+    ]
+
+
+@pytest.mark.asyncio
 async def test_ambiguous_resolution_asks_with_candidate_instead_of_guessing() -> None:
     dispatcher = FinanceDispatcher(ambiguous=True)
 
@@ -202,14 +261,30 @@ async def test_user_can_select_a_previous_ambiguous_candidate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_instrument_asks_for_name_alias_or_code() -> None:
+async def test_missing_instrument_falls_back_to_general_chat() -> None:
+    """有金融口吻但抽不出标的时：普通对话，不再逼问股票代码。"""
+
     dispatcher = FinanceDispatcher()
 
     result = await _app(dispatcher).run(_event("分析股票怎么样"))
 
     assert dispatcher.requests == []
-    assert result.response.response_kind == "ASK_USER"
-    assert "公司名称、简称或证券代码" in result.response.message
+    assert result.response.response_kind == "ANSWER"
+    assert result.response.audit_codes == ["GENERAL_CHAT"]
+    assert result.response.message.startswith("skill-knowledge:")
+
+
+@pytest.mark.asyncio
+async def test_enabled_skill_does_not_force_finance_on_general_chat() -> None:
+    """开了 Skill 也不强制金融：无标的/组合信号时仍普通对话。"""
+
+    dispatcher = FinanceDispatcher()
+    result = await _app(dispatcher).run(
+        _event("帮我写一句问候语", enabled_skills=frozenset({"finance.stock-research"})),
+    )
+    assert dispatcher.requests == []
+    assert result.response.audit_codes == ["GENERAL_CHAT"]
+    assert "问候语" in result.response.message
 
 
 @pytest.mark.asyncio
@@ -252,14 +327,33 @@ async def test_ellipsis_followup_reuses_verified_entity_but_new_topic_does_not()
 
 
 @pytest.mark.asyncio
-async def test_stable_knowledge_responds_without_domain_data() -> None:
+async def test_stable_knowledge_goes_through_skill_responder_not_domain() -> None:
+    """开 Skill（或旧入口未声明开关）时：知识题走 Skill 知识回答器，不派发领域、不用硬编码词典。"""
+
     dispatcher = FinanceDispatcher()
 
-    result = await _app(dispatcher).run(_event("什么是市盈率"))
+    result = await _app(dispatcher).run(
+        _event("什么是市盈率", enabled_skills=frozenset({"finance.stock-research"})),
+    )
 
     assert dispatcher.requests == []
     assert result.response.response_kind == "ANSWER"
+    assert result.response.audit_codes == ["SKILL_KNOWLEDGE"]
+    assert result.response.message.startswith("skill-knowledge:")
     assert "市盈率" in result.response.message
+
+
+@pytest.mark.asyncio
+async def test_knowledge_uses_general_chat_when_finance_skills_off() -> None:
+    """关 Skill 时：知识题走普通对话，不写死金融引导。"""
+
+    dispatcher = FinanceDispatcher()
+    result = await _app(dispatcher).run(
+        _event("什么是市盈率", enabled_skills=frozenset()),
+    )
+    assert dispatcher.requests == []
+    assert result.response.audit_codes == ["GENERAL_CHAT"]
+    assert result.response.message.startswith("skill-knowledge:")
 
 
 @pytest.mark.asyncio

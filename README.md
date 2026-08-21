@@ -68,7 +68,7 @@
 | [02-M2股票研究下沉-字段来源矩阵与实施报告.md](docs/reviews/02-M2股票研究下沉-字段来源矩阵与实施报告.md) | M2 字段来源矩阵 |
 | [03-M3前置数据契约差距与实施状态.md](docs/archive/reviews/03-M3前置数据契约差距与实施状态.md) | M3 前置数据契约历史报告 |
 | [历史审查索引.md](docs/reviews/历史审查索引.md) | 已清理审查报告的来源与去向 |
-| [langgraph-top-level-design.md](bdlh-runtime-orchestrator/docs/langgraph-top-level-design.md) | Python 编排层顶层设计 |
+| [cognitive / domains](bdlh-runtime-orchestrator/src/bdlh_runtime) | Python 编排与 Finance Skill 插件（Cognitive 主路径） |
 | [DOMAIN_DEPLOYMENT.md](deploy/DOMAIN_DEPLOYMENT.md) | HTTPS 路由、MCP 子域名与公网端口收口手册 |
 | [schema.sql](db/schema.sql) | 数据库建表语句 |
 | [docker-compose.yml](deploy/docker-compose.yml) | 容器化部署配置 |

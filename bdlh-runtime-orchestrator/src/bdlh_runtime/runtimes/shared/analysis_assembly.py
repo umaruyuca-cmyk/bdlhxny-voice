@@ -1,4 +1,4 @@
-"""旧 Root Graph 与 Finance Runtime 共用的纯 AnalysisInput 装配核心。"""
+"""Finance Runtime 与确定性引擎共用的 AnalysisInput 装配核心。"""
 
 from __future__ import annotations
 

@@ -219,23 +219,50 @@ class InMemoryVerifiedEntityStore:
             return
 
 
+from bdlh_runtime.cognitive.plugin_gates import finance_skill_enabled as finance_skill_enabled
+
+
+_SKILL_KNOWLEDGE_UNAVAILABLE_REASON = (
+    "当前知识回答能力暂不可用，请稍后重试。"
+)
+
+_GENERAL_CHAT_UNAVAILABLE_REASON = "当前对话能力暂不可用，请稍后重试。"
+
+
+def _finance_skill_enabled(enabled_skills: frozenset[str]) -> bool:
+    return finance_skill_enabled(enabled_skills)
+
+
+class _KnowledgeResponder(Protocol):
+    def answer(self, message: str) -> str: ...
+
+
 class FinanceCognitiveSelector:
-    """确定性提取金融实体提及；不生成未经验证的 canonical symbol。"""
+    """金融 Skill 插件适配器：仅在 GoalAction 判定需要金融能力后进入。
 
-    def __init__(self, entity_store: InMemoryVerifiedEntityStore) -> None:
+    不充当产品默认意图机。Skill 开关表示「允许使用金融插件」，不强制每条消息进金融。
+    """
+
+    def __init__(
+        self,
+        entity_store: InMemoryVerifiedEntityStore,
+        *,
+        knowledge_responder: _KnowledgeResponder | None = None,
+    ) -> None:
         self._entity_store = entity_store
+        self._knowledge_responder = knowledge_responder
 
-    async def select(self, event: InputEvent) -> CognitiveAction:
+    async def select(self, event: InputEvent, *, understood: object | None = None) -> CognitiveAction:
+        del understood
         self._entity_store.begin_turn(event)
         if event.event_type == InputEventType.SCHEDULED_WAKEUP:
             return self._scheduled_wakeup_action(event)
+        # 会话声明了 Skill 快照但未启用 finance：禁止金融域，普通对话即可。
+        if event.enabled_skills is not None and not _finance_skill_enabled(event.enabled_skills):
+            return self._general_chat_action(event.message)
         message = event.message.strip()
         if _is_stable_knowledge_question(message):
-            return CognitiveAction(
-                action_type=CognitiveActionType.RESPOND,
-                reason_code="STABLE_FINANCIAL_KNOWLEDGE",
-                reason=_knowledge_answer(message),
-            )
+            return self._skill_knowledge_action(message)
 
         impact_action = self._impact_action(event, message)
         if impact_action is not None:
@@ -254,14 +281,13 @@ class FinanceCognitiveSelector:
             entity = self._entity_store.latest(event)
             if entity is not None:
                 return self._research_action(event, entity.candidate)
+            # 无已验证标的可续：不当成强制荐股，回普通对话。
+            return self._general_chat_action(message)
 
         mention = self._extract_mention(event)
         if mention is None:
-            return CognitiveAction(
-                action_type=CognitiveActionType.ASK_USER,
-                reason_code="INSTRUMENT_REQUIRED",
-                reason="你想分析哪只股票？可以直接提供公司名称、简称或证券代码。",
-            )
+            # Skill 开启也不等于本轮必须做金融分析。
+            return self._general_chat_action(message)
 
         if mention.mention_type == "REFERENCE":
             entity = self._entity_store.latest(event)
@@ -272,6 +298,10 @@ class FinanceCognitiveSelector:
                     reason="当前对话中没有可安全继承的已验证标的。你想分析哪只股票？",
                 )
             return self._research_action(event, entity.candidate)
+
+        # NAME/CODE：仅在用户话里有金融意图时才解析，避免闲聊被当成荐股。
+        if mention.mention_type == "NAME" and not _looks_like_finance_query(message):
+            return self._general_chat_action(message)
 
         resolution = InstrumentResolutionRequest(
             request_id=f"{event.event_id}:resolve",
@@ -286,6 +316,34 @@ class FinanceCognitiveSelector:
             reason_code="RESOLVE_INSTRUMENT",
             reason="先通过金融领域边界验证证券身份",
             domain_request=resolution,
+        )
+
+    def _general_chat_action(self, message: str) -> CognitiveAction:
+        """普通对话：走直接回答器，不派发金融域、不写死金融引导文案。"""
+        if self._knowledge_responder is None:
+            return CognitiveAction(
+                action_type=CognitiveActionType.RESPOND,
+                reason_code="GENERAL_CHAT_UNAVAILABLE",
+                reason=_GENERAL_CHAT_UNAVAILABLE_REASON,
+            )
+        return CognitiveAction(
+            action_type=CognitiveActionType.RESPOND,
+            reason_code="GENERAL_CHAT",
+            reason=self._knowledge_responder.answer(message.strip()),
+        )
+
+    def _skill_knowledge_action(self, message: str) -> CognitiveAction:
+        """Skill 已授权后的知识分析：走知识回答器，禁止硬编码词典。"""
+        if self._knowledge_responder is None:
+            return CognitiveAction(
+                action_type=CognitiveActionType.RESPOND,
+                reason_code="SKILL_KNOWLEDGE_UNAVAILABLE",
+                reason=_SKILL_KNOWLEDGE_UNAVAILABLE_REASON,
+            )
+        return CognitiveAction(
+            action_type=CognitiveActionType.RESPOND,
+            reason_code="SKILL_KNOWLEDGE",
+            reason=self._knowledge_responder.answer(message),
         )
 
     @staticmethod
@@ -601,19 +659,26 @@ def _candidate_name(message: str) -> str | None:
     return cleaned
 
 
+_FINANCE_QUERY_CUES = re.compile(
+    r"(?:股票|个股|证券|标的|行情|走势|估值|市盈率|市净率|研报|持仓|组合|"
+    r"分析|研究|适合我|适不适合|跌了|涨了|价格|行情|怎么样|如何|今天|现在)"
+)
+
+
+def _looks_like_finance_query(message: str) -> bool:
+    """有代码或金融意图词才视为金融提问；避免普通闲聊被当标的名。"""
+    if _CODE_PATTERN.search(message):
+        return True
+    if _FINANCE_QUERY_CUES.search(message):
+        return True
+    # 「什么是贵州茅台」：知识前缀但带发行人，仍应解析标的（纯概念题已在上游分流）。
+    if message.startswith(("什么是", "解释一下")) and _candidate_name(message):
+        return True
+    return False
+
+
 def _first_hint(message: str, mapping: dict[str, str]) -> str | None:
     return next((value for token, value in mapping.items() if token in message), None)
-
-
-def _knowledge_answer(message: str) -> str:
-    if "市盈率" in message or "PE" in message.upper():
-        return "市盈率（PE）是股价相对每股收益的倍数，常用于比较盈利估值；应结合盈利质量、行业与周期看，不能单凭倍数高低判断贵或便宜。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-    if "市净率" in message or "PB" in message.upper():
-        return "市净率（PB）是市值相对净资产的倍数，常用于重资产或金融类公司比较；资产质量和盈利能力会显著影响其解释。"
-    if "估值" in message:
-        return "估值是用盈利、现金流、资产或可比公司等方法衡量证券价格相对基本面的水平；不同方法依赖不同假设，通常需要交叉验证。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-    return "这个问题属于稳定金融知识，可从定义、适用条件、局限和常见误区四个方面理解；如需实时标的数据，请同时给出公司名称、简称或证券代码。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-
 
 
 def _is_suitability_only_request(message: str) -> bool:

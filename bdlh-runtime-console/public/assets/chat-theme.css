@@ -65,47 +65,112 @@ textarea:focus,input:focus{outline:none}
 
 .new-chat{
   display:flex;align-items:center;justify-content:center;gap:7px;
-  width:100%;height:40px;margin-bottom:8px;
+  width:100%;height:40px;margin-bottom:12px;
   border-radius:10px;background:#fff;color:var(--ink);
   border:1px solid var(--line);
   font-size:13.5px;font-weight:500;letter-spacing:.01em;
-  transition:background-color .18s,transform .1s;
+  transition:background-color .18s,transform .1s,border-color .18s;
 }
-.new-chat:hover{background:var(--hover)}
+.new-chat:hover{background:#fff;border-color:var(--line-strong)}
 .new-chat:active{transform:scale(.985)}
 
+.nav-block{
+  margin:0 0 10px;
+  padding:8px 6px 6px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+}
+.nav-block-label{
+  padding:2px 10px 8px;
+  font-size:10.5px;font-weight:650;color:var(--ink-3);letter-spacing:.08em;
+}
 .nav-item{
-  display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 12px;
-  border-radius:10px;color:var(--ink);font-size:13.5px;text-align:left;margin-bottom:4px;
+  display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;
+  border-radius:9px;color:var(--ink-2);font-size:13.5px;text-align:left;margin:0;
 }
-.nav-item:hover{background:var(--hover)}
-.nav-item.on{background:var(--active);font-weight:550}
+.nav-item+.nav-item{margin-top:2px}
+.nav-item:hover{background:var(--hover);color:var(--ink)}
+.nav-item.on{background:var(--active);color:var(--ink);font-weight:550}
+.nav-ico{
+  width:18px;height:18px;flex:none;
+  display:grid;place-items:center;color:currentColor;opacity:.88;
+}
+.nav-ico svg{display:block}
+.nav-txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+.sessions-panel{
+  flex:1;min-height:0;display:flex;flex-direction:column;
+  margin-top:2px;padding-top:12px;
+  border-top:1px solid var(--line);
+}
 .sessions-label{
-  padding:0 10px;margin-bottom:6px;
-  font-size:10.5px;font-weight:650;color:var(--ink-3);letter-spacing:.1em;
+  display:flex;align-items:center;gap:8px;
+  padding:0 8px 10px;
+  font-size:10.5px;font-weight:650;color:var(--ink-3);letter-spacing:.08em;
 }
-.sessions{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:1px}
+.sessions-count{
+  display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 6px;
+  border-radius:999px;background:#ececec;color:var(--ink-2);
+  font-size:10px;font-weight:600;letter-spacing:0;
+}
+.sessions{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:3px;padding:0 2px 6px}
 .session{
-  position:relative;display:flex;align-items:center;
-  width:100%;min-height:38px;padding:7px 34px 7px 10px;border-radius:9px;
-  color:var(--ink-2);font-size:13px;text-align:left;cursor:pointer;
-  transition:background-color .14s;
+  position:relative;display:flex;align-items:center;gap:10px;
+  width:100%;min-height:44px;padding:8px 34px 8px 8px;border-radius:11px;
+  border:1px solid transparent;background:transparent;
+  color:var(--ink-2);font:inherit;text-align:left;cursor:pointer;
+  transition:background-color .14s,color .14s,border-color .14s;
 }
-.session span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.session:hover{background:var(--hover);color:var(--ink)}
-.session.active{background:var(--active);color:var(--ink);font-weight:550}
+.session-ico{
+  flex:none;width:28px;height:28px;border-radius:8px;
+  display:grid;place-items:center;
+  background:#efefef;color:var(--ink-3);
+}
+.session-main{
+  min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;
+}
+.session-title{
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  font-size:13px;line-height:1.35;color:inherit;
+}
+.session-meta{
+  font-size:11px;line-height:1.3;color:var(--ink-3);letter-spacing:.01em;
+}
+.session:hover{background:#fff;border-color:var(--line);color:var(--ink)}
+.session:hover .session-ico{background:#e8e8e8;color:var(--ink-2)}
+.session.active{
+  background:#fff;border-color:var(--line-strong);color:var(--ink);
+  box-shadow:0 1px 2px rgba(0,0,0,.03);
+}
+.session.active .session-ico{background:var(--ink);color:#fff}
+.session.active .session-title{font-weight:600}
+.session.active .session-meta{color:var(--ink-2)}
 .session .del{
   position:absolute;right:6px;top:50%;transform:translateY(-50%);
-  width:24px;height:24px;border-radius:7px;color:var(--ink-3);
+  width:26px;height:26px;border-radius:8px;color:var(--ink-3);
   display:none;place-items:center;transition:background-color .14s,color .14s;
 }
 .session:hover .del{display:grid}
-.session .del:hover{background:#e8e8e8;color:var(--danger)}
-.sessions-empty{padding:18px 10px;color:var(--ink-3);font-size:12px;text-align:center}
+.session .del:hover{background:#f3f3f3;color:var(--danger)}
+.sessions-empty{
+  margin:6px 4px 0;padding:22px 14px;
+  border:1px dashed var(--line);border-radius:12px;
+  color:var(--ink-3);text-align:center;line-height:1.55;
+}
+.sessions-empty-ico{
+  width:40px;height:40px;margin:0 auto 10px;border-radius:12px;
+  display:grid;place-items:center;background:#efefef;color:var(--ink-3);
+}
+.sessions-empty p{margin:0;color:var(--ink-2);font-size:13px;font-weight:550}
+.sessions-empty span{display:block;margin-top:4px;font-size:12px}
 .sessions-group{
-  padding:13px 10px 5px;
-  font-size:10.5px;font-weight:650;color:var(--ink-3);letter-spacing:.1em;
+  display:flex;align-items:center;gap:8px;
+  padding:12px 8px 6px;
+  font-size:10.5px;font-weight:650;color:var(--ink-3);letter-spacing:.08em;
+}
+.sessions-group::after{
+  content:"";flex:1;height:1px;background:var(--line);opacity:.9;
 }
 .sessions-group:first-child{padding-top:2px}
 
@@ -208,6 +273,13 @@ textarea:focus,input:focus{outline:none}
   font-size:11px;font-weight:700;
 }
 .body{min-width:0;max-width:100%}
+/* 用户气泡：按整句宽度撑开；过长再在 78% 内换行（避免一字一竖排） */
+.msg.user .body{
+  flex:0 1 auto;
+  width:max-content;
+  max-width:min(78%,36rem);
+  min-width:0;
+}
 
 .msg-status{
   display:none;align-items:center;gap:8px;
@@ -237,13 +309,19 @@ textarea:focus,input:focus{outline:none}
 
 .text{
   font-size:15.5px;line-height:1.85;color:var(--ink);
-  word-break:break-word;white-space:pre-wrap;
+  overflow-wrap:break-word;word-break:normal;white-space:pre-wrap;
 }
 .msg.user .text{
-  max-width:78%;padding:10px 16px;
+  display:block;
+  box-sizing:border-box;
+  width:max-content;
+  max-width:100%;
+  padding:10px 16px;
   background:var(--bubble-user);border-radius:22px;
   font-size:15px;line-height:1.65;
   white-space:pre-wrap;
+  overflow-wrap:break-word;
+  word-break:normal;
 }
 .text.error{color:var(--danger)}
 
@@ -410,6 +488,8 @@ textarea:focus,input:focus{outline:none}
 .send:hover{background:#2a2a2a}
 .send:active{transform:scale(.93)}
 .send:disabled{opacity:.35;cursor:not-allowed;background:#bdbdbd}
+.send.stopping{background:#0d0d0d}
+.send.stopping:hover{background:#333}
 .foot-note{margin-top:10px;text-align:center;font-size:11.5px;color:var(--ink-3)}
 
 /* deskpet 已从正式页移除，保留选择器避免旧缓存报错 */
@@ -526,11 +606,13 @@ textarea:focus,input:focus{outline:none}
 .auth-overlay{
   position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:20px;
   background:rgba(0,0,0,.4);backdrop-filter:blur(5px);
+  cursor:pointer;
 }
 .auth-overlay[hidden],#authAppliedPanel[hidden]{display:none}
 .auth-modal{
   width:min(420px,100%);padding:24px;border:1px solid var(--line);border-radius:18px;
   background:var(--card);box-shadow:var(--shadow-2);
+  cursor:default;
 }
 .auth-modal h2{margin-bottom:18px;font-size:22px;font-weight:650;letter-spacing:-.02em}
 .auth-modal label{display:block;margin:10px 0 5px;color:var(--ink-2);font-size:12px}
@@ -644,9 +726,8 @@ textarea:focus,input:focus{outline:none}
   .sidebar.collapsed .sidebar-head{justify-content:center;padding:4px 0 16px}
   .sidebar.collapsed .brand,
   .sidebar.collapsed .new-chat,
-  .sidebar.collapsed .nav-item,
-  .sidebar.collapsed .sessions-label,
-  .sidebar.collapsed .sessions,
+  .sidebar.collapsed .nav-block,
+  .sidebar.collapsed .sessions-panel,
   .sidebar.collapsed .sidebar-foot{display:none}
   .sidebar.collapsed #sidebarCollapse svg{transform:rotate(180deg)}
 }
@@ -662,7 +743,7 @@ textarea:focus,input:focus{outline:none}
   .hero{padding:10vh 18px 24px}
   .view.is-empty .hero{padding:0 18px 8px}
   .messages{padding:18px 14px 12px}
-  .msg.user .text{max-width:88%}
+  .msg.user .body{max-width:min(88%,100%)}
   .composer-wrap{width:calc(100% - 24px);padding:8px 0 10px}
   .view.is-empty .composer-wrap{width:calc(100% - 24px);margin-top:14px;padding:0}
   .to-bottom{right:14px;bottom:112px}

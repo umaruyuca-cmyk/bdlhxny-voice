@@ -132,9 +132,18 @@ def rule_based_understand(message: str, *, goal_id_prefix: str = "g") -> Underst
         )
 
     missing: list[str] = []
-    if not instruments and not suitability:
-        if not re.search(r"(?:持仓|组合|我的账户)", text):
-            missing.append("instrument")
+    # 只有金融行情类主题缺标的时才追问；纯 web_research / 普通外部查询不归因「缺股票」
+    finance_topics = [topic for topic in topics if topic in {"news", "money_flow", "industry"}]
+    if not instruments and not suitability and finance_topics:
+        missing.append("instrument")
+    elif (
+        not instruments
+        and not suitability
+        and not topics
+        and re.search(r"(?:股票|个股|证券|标的|行情|估值|走势)", text)
+        and not re.search(r"(?:持仓|组合|我的账户)", text)
+    ):
+        missing.append("instrument")
 
     goal = GoalSpec(
         goal_id=f"{goal_id_prefix}1",

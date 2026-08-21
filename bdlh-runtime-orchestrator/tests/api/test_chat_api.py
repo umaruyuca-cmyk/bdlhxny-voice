@@ -77,21 +77,24 @@ def _client(*, cognitive: Any | None = None) -> TestClient:
     return TestClient(create_api_app(application))
 
 
-def test_chat_stream_requires_auth_and_uses_cognitive_path():
+def test_chat_stream_allows_guest_and_uses_cognitive_path():
+    """缺 Token 走游客对话；带合法 JWT 同样走 Cognitive 主路径。"""
     client = _client(cognitive=KnowledgeCognitive())
 
-    unauthorized = client.post(
+    guest = client.post(
         "/api/v1/chat/stream",
-        json={"message": "什么是市盈率？", "mode": "general"},
+        json={"message": "什么是市盈率？"},
     )
     response = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"message": "什么是市盈率？", "mode": "general"},
+        json={"message": "什么是市盈率？"},
     )
+    guest_events = _events(guest)
     events = _events(response)
 
-    assert unauthorized.status_code == 401
+    assert guest.status_code == 200
+    assert guest_events[-1]["type"] == "done"
     assert response.status_code == 200
     assert events[0]["runtimePath"] == COGNITIVE_RUNTIME_PATH
     assert any(event.get("type") == "token" for event in events)
@@ -100,13 +103,40 @@ def test_chat_stream_requires_auth_and_uses_cognitive_path():
     assert events[-1]["runtimePath"] == COGNITIVE_RUNTIME_PATH
 
 
+def test_chat_stream_validates_enabled_skill_ids_contract():
+    """会话 Skill 开关快照：合法 id 通过，非法/重复 id 显式 422，不再静默丢弃。"""
+    client = _client(cognitive=KnowledgeCognitive())
+
+    accepted = client.post(
+        "/api/v1/chat/stream",
+        headers=_headers(7),
+        json={
+            "message": "什么是市盈率？",
+            "enabledSkillIds": ["finance.stock-research"],
+        },
+    )
+    assert accepted.status_code == 200
+    assert _events(accepted)[-1]["type"] == "done"
+
+    for invalid in (["Finance.StockResearch"], ["finance.stock-research", "finance.stock-research"], [""]):
+        rejected = client.post(
+            "/api/v1/chat/stream",
+            headers=_headers(7),
+            json={
+                "message": "什么是市盈率？",
+                "enabledSkillIds": invalid,
+            },
+        )
+        assert rejected.status_code == 422
+
+
 def test_chat_clarification_resumes_the_same_cognitive_run():
     """澄清后纯代码回答经 Turn Router resume 同一 run（禁止盲目 sticky 以外的路径）。"""
     client = _client(cognitive=ClarifyingCognitive())
     first = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"message": "请做技术分析", "mode": "general"},
+        json={"message": "请做技术分析"},
     )
     first_events = _events(first)
     first_run = next(event["runId"] for event in first_events if event["type"] == "agent_run")
@@ -118,7 +148,7 @@ def test_chat_clarification_resumes_the_same_cognitive_run():
     resumed = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"sessionId": session_id, "message": "600000", "mode": "general"},
+        json={"sessionId": session_id, "message": "600000"},
     )
     resumed_events = _events(resumed)
     resumed_run = next(event["runId"] for event in resumed_events if event["type"] == "agent_run")
@@ -135,7 +165,7 @@ def test_conversations_are_user_scoped_regenerable_and_deletable():
     created = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"message": "什么是市净率？", "mode": "general"},
+        json={"message": "什么是市净率？"},
     )
     session_id = next(event["sessionId"] for event in _events(created) if event["type"] == "agent_run")
 
@@ -145,7 +175,6 @@ def test_conversations_are_user_scoped_regenerable_and_deletable():
         json={
             "sessionId": session_id,
             "message": "什么是市净率？",
-            "mode": "general",
             "regenerate": True,
         },
     )

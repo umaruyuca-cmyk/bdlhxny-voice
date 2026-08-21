@@ -79,7 +79,7 @@ def test_chat_clarification_resumes_same_run_for_symbol_answer():
     first = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"message": "请做技术分析", "mode": "general"},
+        json={"message": "请做技术分析"},
     )
     first_events = _events(first)
     clarify = next(event for event in first_events if event["type"] == "clarification")
@@ -90,7 +90,7 @@ def test_chat_clarification_resumes_same_run_for_symbol_answer():
     resumed = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"sessionId": session_id, "message": "600000", "mode": "general"},
+        json={"sessionId": session_id, "message": "600000"},
     )
     resumed_events = _events(resumed)
     resumed_run = next(event["runId"] for event in resumed_events if event["type"] == "agent_run")
@@ -114,7 +114,7 @@ def test_chat_pending_ambiguous_message_asks_which_without_main_graph():
     first = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"message": "请做技术分析", "mode": "general"},
+        json={"message": "请做技术分析"},
     )
     session_id = next(event["sessionId"] for event in _events(first) if event["type"] == "agent_run")
     before = calls["n"]
@@ -122,7 +122,7 @@ def test_chat_pending_ambiguous_message_asks_which_without_main_graph():
     confirm = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"sessionId": session_id, "message": "再看看市场情绪怎么样", "mode": "general"},
+        json={"sessionId": session_id, "message": "再看看市场情绪怎么样"},
     )
     events = _events(confirm)
     assert calls["n"] == before
@@ -136,7 +136,7 @@ def test_chat_pending_new_turn_abandons_old_run():
     first = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"message": "请做技术分析", "mode": "general"},
+        json={"message": "请做技术分析"},
     )
     first_events = _events(first)
     first_run = next(event["runId"] for event in first_events if event["type"] == "agent_run")
@@ -145,7 +145,7 @@ def test_chat_pending_new_turn_abandons_old_run():
     switched = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),
-        json={"sessionId": session_id, "message": "换一个问题，什么是市盈率", "mode": "general"},
+        json={"sessionId": session_id, "message": "换一个问题，什么是市盈率"},
     )
     switched_events = _events(switched)
     new_run = next(event["runId"] for event in switched_events if event["type"] == "agent_run")

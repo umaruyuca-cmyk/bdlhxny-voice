@@ -95,6 +95,10 @@ class InputEvent(BaseModel):
     message: str = Field(min_length=1, max_length=20_000)
     run_id: str | None = None
     task_id: str | None = None
+    # 会话级 Skill 开关快照：None 表示不限制（内部入口与旧客户端），
+    # 空/非空集合表示本轮显式声明的启用列表。finance Skill 仅「允许」金融域派发，
+    # 未命中金融信号时仍走普通对话；不参与权限与资格计算（权限真源仍是 Registry）。
+    enabled_skills: frozenset[str] | None = None
 
     @model_validator(mode="after")
     def validate_event_source(self) -> InputEvent:

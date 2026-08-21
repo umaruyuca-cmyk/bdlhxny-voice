@@ -1,6 +1,7 @@
-"""把语义路由命中映射为 CognitiveAction；未命中则交给后续选择器。
+"""把语义路由命中映射为 CognitiveAction；未命中返回 None。
 
-高置信闲聊/知识/禁止在内核结束；复合任务不在这里选 Skill。
+高置信闲聊/知识/禁止在内核结束；复合任务不在这里选 Skill 或领域。
+启用了 finance Skill 的知识题交回上层，由 GoalAction → 金融插件处理。
 """
 
 from __future__ import annotations
@@ -12,13 +13,10 @@ from bdlh_runtime.cognitive.contracts import (
     CognitiveActionType,
     InputEvent,
 )
+from bdlh_runtime.cognitive.plugin_gates import finance_skill_enabled
 
 from .contracts import RouteChoice, RouteDisposition
 from .router import SemanticRouter
-
-
-class FallbackSelector(Protocol):
-    async def select(self, event: InputEvent) -> CognitiveAction: ...
 
 
 class KnowledgeResponder(Protocol):
@@ -26,34 +24,33 @@ class KnowledgeResponder(Protocol):
 
 
 class SemanticRouteSelector:
-    """Cognitive 入口的快路径过滤器，本身不是领域选择器。"""
+    """内核快路径：闲聊 / 知识 / 禁止。未命中返回 None，由 GoalActionSelector 接管。"""
 
     def __init__(
         self,
         router: SemanticRouter,
         *,
-        fallback: FallbackSelector,
         knowledge_responder: KnowledgeResponder | None = None,
     ) -> None:
         self._router = router
-        self._fallback = fallback
         self._knowledge_responder = knowledge_responder
 
-    async def select(self, event: InputEvent) -> CognitiveAction:
-        # 1. 低于阈值或空命中：进入 Understand / 领域选择器，不假装已分类。
+    async def try_fastpath(self, event: InputEvent) -> CognitiveAction | None:
         choice = self._router.route(event.message)
         if choice is None:
-            return await self._fallback.select(event)
+            return None
         if choice.disposition == RouteDisposition.BLOCK:
             return CognitiveAction(
                 action_type=CognitiveActionType.RESPOND,
                 reason_code="SEMANTIC_FORBIDDEN",
                 reason=choice.response or "该请求不被允许。",
             )
-        # 2. 知识问答优先用无工具回答器；没有回答器时不丢给错误 Skill，而是回退。
         if choice.name == "knowledge":
+            # Skill 已开：知识分析归金融插件；未开：内核直接答
+            if event.enabled_skills is not None and finance_skill_enabled(event.enabled_skills):
+                return None
             if self._knowledge_responder is None:
-                return await self._fallback.select(event)
+                return None
             return CognitiveAction(
                 action_type=CognitiveActionType.RESPOND,
                 reason_code="SEMANTIC_KNOWLEDGE",

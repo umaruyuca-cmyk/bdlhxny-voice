@@ -26,7 +26,6 @@ class ToolsetName(StrEnum):
     PORTFOLIO_READ = "portfolio_read"
     FINANCIAL_PROFILE_READ = "financial_profile_read"
     PLANNING_COMPUTE = "planning_compute"
-    PLUGIN_PROBE_COMPUTE = "plugin_probe_compute"
 
 
 @dataclass(frozen=True)

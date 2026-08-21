@@ -1,10 +1,10 @@
 # BDLH Agent Runtime Frontend
 
-独立 Nginx 静态前端。正式入口为 `public/index.html`，浏览器只访问同源 `/api/`；代理层按领域分发到 Java 用户服务和 Python LangGraph 分析服务。
+独立 Nginx 静态前端。正式入口为 `public/index.html`，浏览器只访问同源 `/api/`；代理层按领域分发到 Java 用户服务和 Python Cognitive Orchestrator。
 
 ## 本地前后端联调
 
-先启动 Java Backend（端口 `8081`）和 Python Analysis（端口 `8000`），再在本目录执行：
+先启动 Java Backend（端口 `8081`）和 Python Orchestrator（端口 `8090`），再在本目录执行：
 
 ```powershell
 npm run dev
@@ -25,7 +25,7 @@ Skill 目录从 `public/skills/registry.json` 读取脱敏注册清单，当前�
 
 ```powershell
 $env:BDLH_RUNTIME_BACKEND_URL="http://127.0.0.1:8081"
-$env:BDLH_RUNTIME_ANALYSIS_URL="http://127.0.0.1:8000"
+$env:BDLH_RUNTIME_ANALYSIS_URL="http://127.0.0.1:8090"
 npm run dev
 ```
 

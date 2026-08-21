@@ -2,31 +2,27 @@
 
 BDLH Agent Runtime 的 Python 分析流程服务（LangGraph + Mem0 主版本）。
 
-当前实现以 Cognitive Orchestrator + Finance Domain 为唯一产品路径：
+当前实现以 Cognitive Orchestrator 为唯一产品路径（聊天页 + 可选 Skill 插件）：
 Domain Dispatcher、Capability Gateway、Observation、Guardrails、Mem0/Remote Memory、
 MCP 双传输、确定性分析引擎、Checkpointer 工厂、JWT 隔离的聊天 SSE API。
-
-M7 另注册了 `plugin_probe` 实验性第二 Domain，用于验证既有
-`DomainDescriptor / SkillManifest / Dispatcher / DomainBudget / Observation / Guardrail`
-可被新插件直接复用。该探针未加入用户 Cognitive 白名单，不是产品功能入口。
+金融是第一个 Domain Skill 插件，不是默认意图机。
 
 ## 架构分层
 
 ```text
 api/                  FastAPI + SSE 事件流（api_prefix 由 Settings 提供）
-runtimes/langgraph/   支撑组件（agents/direct_response 等；Root Graph 已退役）
+runtimes/langgraph/   直接回答模型等支撑组件
 memory/               Mem0 记忆层（base 抽象 + mem0 实现 + NoOp 降级）
 integrations/mcp/     MCP 接入（SSE + Streamable HTTP 双传输，实测路由）
-tools/                ToolRegistry + 分析能力工具 + Java 数据适配器 + deep_research
+tools/                Capability 视图 + Java/WebSearch 适配器 + deep_research + 分析能力
 observations/         Observation 标准化（含服务端吞错识别）
-domain/               确定性计算（零框架依赖）：指标/风险/回测/策略/交易日历
+domain/               确定性计算（零框架依赖）：指标/风险/交易日历/分析引擎
 cognitive/            Cognitive Orchestrator（唯一产品编排入口）
 domains/finance/      Finance Domain Runtime + Skill Manifest
 ```
 
-对话入口统一为 Cognitive Orchestrator（`cognitive_finance`）：经语义路由与
-Domain Dispatcher 进入 Finance Runtime；知识问答可走直接回答，领域研究走 Skill
-与 Capability Gateway。不再装配 Root Graph / 灰度双路径。
+对话入口统一为 Cognitive Orchestrator：快路径 → Understand → GoalAction →
+可选金融 Skill 插件；不再装配 Root Graph / 金融默认兜底选择器。
 
 ## 当前边界
 
@@ -44,8 +40,8 @@ uv sync --extra dev
 uv run uvicorn bdlh_runtime.main:app --reload
 ```
 
-前端开发服务器默认把聊天请求代理到 `127.0.0.1:8000`。生产容器监听
-`127.0.0.1:8090`，并使用异步 PostgreSQL Checkpointer 与 PostgreSQL 会话目录。
+前端开发服务器默认把聊天请求代理到 `127.0.0.1:8090`（与生产编排器端口一致），
+并使用异步 PostgreSQL Checkpointer 与 PostgreSQL 会话目录。
 
 ## 测试
 
@@ -53,8 +49,8 @@ uv run uvicorn bdlh_runtime.main:app --reload
 uv run --extra dev python -m pytest tests -q
 ```
 
-覆盖：Workflow 调度、ReAct 回归（Fake Gateway）、MCP 解析/fallback、记忆降级、
-分析引擎可复现性、回测无未来函数、交易日历、API 前缀。
+覆盖：Cognitive 编排、MCP 解析/fallback、记忆降级、
+分析引擎可复现性、交易日历、API 契约与身份隔离。
 
 ## M6 价格观察任务
 

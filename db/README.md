@@ -8,7 +8,7 @@
 2. 以其中**最新一份**为当前基线（见 [execution/README.md](./execution/README.md)）
 3. 用**一个超级管理员**按该文件顺序跑 SQL
 
-**当前基线：** [execution/20260817_SQL字段注释整理.md](./execution/20260817_SQL字段注释整理.md)
+**当前基线：** [execution/20260817_补齐portfolio_transactions表.md](./execution/20260817_补齐portfolio_transactions表.md)
 
 ## 目录结构
 

@@ -94,7 +94,8 @@ def test_application_wires_non_empty_capability_whitelist() -> None:
 
 
 class BlockingSelector:
-    async def select(self, event: InputEvent):
+    async def select(self, event: InputEvent, *, understood=None):
+        del understood
         from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType
 
         return CognitiveAction(
@@ -134,7 +135,7 @@ def test_chat_emits_guardrail_blocked_for_unauthorized_deep_research() -> None:
     response = client.post(
         "/api/v1/chat/stream",
         headers={"Authorization": f"Bearer {_token(7)}"},
-        json={"message": "请做深度调研", "mode": "general"},
+        json={"message": "请做深度调研"},
     )
     events = _events(response)
     blocked = next(event for event in events if event.get("type") == "guardrail.blocked")

@@ -26,7 +26,7 @@ def validate_descriptor_against_registry(
       3. side_effects 必须为空（v1 只读）。
     """
     valid_toolsets = {member.value for member in ToolsetName}
-    # Registry 投影出的 toolset 名也合法（plugin_probe 等非枚举 toolset）
+    # Registry 投影出的 toolset 名也合法（非枚举扩展 toolset）
     for skill in descriptor.skills:
         _validate_skill(skill, registry, valid_toolsets, descriptor.domain)
 

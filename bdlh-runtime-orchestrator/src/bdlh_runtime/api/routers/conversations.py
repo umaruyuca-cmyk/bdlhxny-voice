@@ -15,13 +15,11 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
     @router.get("/conversations")
     async def list_conversations(
         authorization: str | None = Header(default=None),
-        mode: str = Query(default="general", max_length=32),
         limit: int = Query(default=30, ge=1, le=100),
     ) -> list[dict[str, Any]]:
-        """返回当前登录用户的会话目录；mode 仅为前端兼容字段。"""
+        """返回当前用户的会话目录。"""
 
-        del mode
-        user_id = ctx.request_user_id(authorization)
+        user_id = ctx.chat_user_id(authorization)
         return [
             {
                 "sessionId": session.session_id,
@@ -37,7 +35,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         session_id: str,
         authorization: str | None = Header(default=None),
     ) -> dict[str, Any]:
-        user_id = ctx.request_user_id(authorization)
+        user_id = ctx.chat_user_id(authorization)
         session = chat_sessions.get(session_id, user_id)
         if session is None:
             raise HTTPException(status_code=404, detail="conversation not found")
@@ -56,7 +54,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         session_id: str,
         authorization: str | None = Header(default=None),
     ) -> Response:
-        user_id = ctx.request_user_id(authorization)
+        user_id = ctx.chat_user_id(authorization)
         if not chat_sessions.delete(session_id, user_id):
             raise HTTPException(status_code=404, detail="conversation not found")
         return Response(status_code=204)

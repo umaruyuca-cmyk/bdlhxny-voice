@@ -19,7 +19,8 @@ class _AskThenAnswerSelector:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def select(self, event: InputEvent) -> CognitiveAction:
+    async def select(self, event: InputEvent, *, understood=None) -> CognitiveAction:
+        del understood
         self.calls += 1
         if "600519" in event.message:
             return CognitiveAction(

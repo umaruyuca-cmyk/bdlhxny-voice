@@ -68,7 +68,6 @@ def test_registry_registers_descriptor_and_queries_skill() -> None:
     assert registry.descriptor("finance") is FINANCE_DESCRIPTOR
     assert registry.is_skill_enabled("finance", "stock-research")
     assert registry.is_skill_enabled("finance", "portfolio-health")
-    assert not registry.is_intent_enabled("finance", "STOCK_RESEARCH")
 
 
 def test_registry_rejects_descriptor_for_unregistered_domain() -> None:

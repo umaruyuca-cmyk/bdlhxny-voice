@@ -33,14 +33,15 @@ class DeterministicDirectResponseModel:
         for keyword, answer in self._ANSWERS.items():
             if keyword in normalized:
                 return answer
-        return f"关于“{message.strip()}”：这是一个不需要实时行情的金融知识问题。当前未配置可用的大模型，暂时只能提供基础解释。"  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
+        return f"关于“{message.strip()}”：当前未配置可用的大模型，暂时只能提供基础说明。"
 
 
 _SYSTEM_PROMPT = (
-    "你是 BDLH Agent Runtime 金融知识助手。回答不依赖实时行情的概念、方法和一般性问题。"
-    "本次是单次直接模型调用，不可调用任何工具，不得虚构实时价格、财务数字或用户持仓。"
-    "如果问题实际需要最新数据或具体标的分析，应明确说明需要进入分析流程。"
-    "使用清晰、克制的中文回答，不提供下单指令。"
+    "你是 BDLH Agent Runtime 助手。用清晰、克制的中文直接回答用户问题。"
+    "本次是单次直接模型调用，不可调用任何工具；不得虚构实时行情、财务数字、"
+    "用户未提供的账户或持仓信息。"
+    "若问题明显需要实时数据或深度研究类能力，可说明当前是普通对话，"
+    "用户可在需要时自行启用对应插件后再试——不要默认把自己说成金融分析系统。"
 )
 
 

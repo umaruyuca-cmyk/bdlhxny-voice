@@ -134,19 +134,10 @@ class Settings:
             }
         )
     )
-    default_react_round_limit: int = 8
-    default_tool_call_limit: int = 12
-    default_subgraph_timeout_seconds: int = 60
-    default_request_timeout_seconds: int = 90
 
     # ── 模型凭证（供记忆层和后续 Agent 使用）──
     llm_api_key: str | None = None
     qwen3_base_url: str | None = None
-
-    @property
-    def deepseek_api_key(self) -> str | None:
-        """兼容旧字段名；新代码请使用 llm_api_key。"""
-        return self.llm_api_key
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -157,7 +148,8 @@ class Settings:
         """
 
         environment = os.getenv("BDLH_RUNTIME_ENV", "production")
-        # G3：产品路径默认鉴权开启；禁止内置开发 JWT。测试显式关鉴权。
+        # G3：产品默认要求配置 JWT_SECRET（登录用户可校验）；缺 Token 按游客对话，
+        # 不拦截 chat/agent-runs。登录专属能力由 authenticated_task_user 强制。
         auth_required_default = "false" if environment == "test" else "true"
         jwt_secret = os.getenv("JWT_SECRET")
         return cls(
@@ -230,10 +222,6 @@ class Settings:
                     "RUN_ANALYSIS",
                 },
             ),
-            default_react_round_limit=int(os.getenv("DEFAULT_REACT_ROUND_LIMIT", "8")),
-            default_tool_call_limit=int(os.getenv("DEFAULT_TOOL_CALL_LIMIT", "12")),
-            default_subgraph_timeout_seconds=int(os.getenv("DEFAULT_SUBGRAPH_TIMEOUT_SECONDS", "60")),
-            default_request_timeout_seconds=int(os.getenv("DEFAULT_REQUEST_TIMEOUT_SECONDS", "90")),
         )
 
 

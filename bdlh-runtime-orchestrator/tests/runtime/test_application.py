@@ -40,12 +40,11 @@ def test_test_environment_assembles_with_injected_fakes():
     assert not hasattr(app.finance_runtime, "checkpointer")
 
 
-def test_m7_second_domain_is_registered_but_not_user_enabled():
+def test_product_domains_only_finance():
     app = create_application(Settings(environment="test"), registry_snapshot=seeded_snapshot())
 
-    assert app.domain_registry.list_domains() == ["finance", "plugin_probe"]
-    descriptor = app.domain_registry.descriptor("plugin_probe")
-    assert descriptor is not None and descriptor.status == "EXPERIMENTAL"
+    assert app.domain_registry.list_domains() == ["finance"]
+    assert app.domain_registry.descriptor("finance") is not None
     assert app.cognitive_application._enabled_domains == frozenset({"finance"})
 
 
@@ -73,7 +72,7 @@ def test_java_api_base_url_selects_remote_stores(monkeypatch):
     sentinel_tasks = object()
     sentinel_outbox = object()
 
-    def _fake_remote(*, base_url, internal_token, production=None):
+    def _fake_remote(*, base_url, internal_token):
         assert base_url == "http://java.example"
         assert internal_token == "token"
         return sentinel_history, sentinel_registry, sentinel_chat

@@ -219,13 +219,8 @@ def create_web_search_adapter(
     *,
     agent_id: str | None = None,
     token: str | None = None,
-    production: bool | None = None,
 ) -> WebSearchAdapter:
-    """工厂函数：创建 HttpWebSearchAdapter。
-
-    ``production`` 参数已废弃（G3）；行为始终 fail-closed，不 mock。
-    """
-    del production
+    """工厂函数：创建 HttpWebSearchAdapter（始终 fail-closed，不 mock）。"""
     return HttpWebSearchAdapter(
         base_url=base_url,
         timeout_seconds=timeout_seconds,

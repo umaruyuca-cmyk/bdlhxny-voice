@@ -1,8 +1,8 @@
 """Analysis Engine 的可替换能力边界。
 
-Root Graph 只依赖 ``AnalysisCapabilityAdapter``，不依赖本地函数、HTTP 或
+Finance Runtime 只依赖 ``AnalysisCapabilityAdapter``，不依赖本地函数、HTTP 或
 独立 Skill 的部署方式。未来把分析计算迁移到远程服务时，只需要替换工厂
-返回的实现，不需要改动工作流节点和状态契约。
+返回的实现，不需要改动编排与状态契约。
 """
 
 from __future__ import annotations

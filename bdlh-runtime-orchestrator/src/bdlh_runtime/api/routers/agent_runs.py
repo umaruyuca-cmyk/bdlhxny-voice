@@ -37,7 +37,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         authorization: str | None = Header(default=None),
     ) -> RunResponse:
         """创建并运行新的 Cognitive 线程。thread_id 可选，传入则延续已有会话。"""
-        user_id = ctx.request_user_id(authorization, payload.user_id)
+        user_id = ctx.chat_user_id(authorization, payload.user_id)
         run_id = str(uuid4())
         public_thread_id = payload.thread_id or run_id
         progress = CognitiveExecutionProgress()
@@ -62,7 +62,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 InputEvent(
                     event_id=f"run:{run_id}",
                     run_id=run_id,
-                    user_id=str(user_id),
+                    user_id=user_id,
                     session_id=public_thread_id,
                     message=payload.message,
                 ),
@@ -118,7 +118,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         run_id: str,
         authorization: str | None = Header(default=None),
     ) -> RunResponse:
-        requester_user_id = ctx.request_user_id(authorization)
+        requester_user_id = ctx.chat_user_id(authorization)
         state = await ctx.load_run_state(run_id, requester_user_id)
         if state is None:
             raise HTTPException(status_code=404, detail="run not found")
@@ -131,7 +131,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         authorization: str | None = Header(default=None),
     ) -> PauseAckResponse:
         """用户 Esc → Pause：协作式停止并写入可恢复 pending（ADR-014）。"""
-        requester_user_id = ctx.request_user_id(authorization)
+        requester_user_id = ctx.chat_user_id(authorization)
         state = await ctx.load_run_state(run_id, requester_user_id)
         location = (
             application.run_registry.get(run_id, requester_user_id) if application.run_registry is not None else None
@@ -186,7 +186,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         authorization: str | None = Header(default=None),
     ) -> CancelAckResponse:
         """放弃当前 run：清 pending，标记 ABANDONED，不可 resume。"""
-        requester_user_id = ctx.request_user_id(authorization)
+        requester_user_id = ctx.chat_user_id(authorization)
         state = await ctx.load_run_state(run_id, requester_user_id)
         location = (
             application.run_registry.get(run_id, requester_user_id) if application.run_registry is not None else None
@@ -259,7 +259,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         authorization: str | None = Header(default=None),
     ) -> RunResponse:
         """使用同一 Cognitive session/run 恢复用户补充后的运行。"""
-        requester_user_id = ctx.request_user_id(authorization)
+        requester_user_id = ctx.chat_user_id(authorization)
         state_before_resume = await ctx.load_run_state(run_id, requester_user_id)
         if state_before_resume is None:
             raise HTTPException(status_code=404, detail="run not found")
@@ -389,7 +389,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         run_id: str,
         authorization: str | None = Header(default=None),
     ):
-        requester_user_id = ctx.request_user_id(authorization)
+        requester_user_id = ctx.chat_user_id(authorization)
         state = await ctx.load_run_state(run_id, requester_user_id)
         if state is None:
             raise HTTPException(status_code=404, detail="run not found")

@@ -1,4 +1,4 @@
-"""独立、非默认的 M4 Cognitive 编排；内核不依赖具体领域。"""
+"""Cognitive 编排内核；不依赖具体领域实现。"""
 
 from __future__ import annotations
 
@@ -27,12 +27,22 @@ from .contracts import (
     InputEvent,
     PublicResponse,
 )
+from .goal_schema import UnderstandOutput
 from .policy import ActionPolicy, DefaultActionPolicy
 from .understand import RuleBasedUnderstandModel, UnderstandModel
 
 
 class CognitiveActionSelector(Protocol):
-    async def select(self, event: InputEvent) -> CognitiveAction: ...
+    async def select(
+        self,
+        event: InputEvent,
+        *,
+        understood: UnderstandOutput | None = None,
+    ) -> CognitiveAction: ...
+
+
+class CognitiveFastpath(Protocol):
+    async def try_fastpath(self, event: InputEvent) -> CognitiveAction | None: ...
 
 
 class DomainDispatchPort(Protocol):
@@ -69,7 +79,7 @@ class CognitiveExecution(BaseModel):
 
 
 class CognitiveOrchestrator:
-    """四时点防护的确定性管线，可独立于旧 Root Graph 装配。"""
+    """四时点防护的确定性管线：快路径 → Understand → GoalAction → 可选 Domain 插件。"""
 
     def __init__(
         self,
@@ -77,6 +87,7 @@ class CognitiveOrchestrator:
         selector: CognitiveActionSelector,
         dispatcher: DomainDispatchPort,
         continuation: DomainContinuationPort | None = None,
+        fastpath: CognitiveFastpath | None = None,
         action_policy: ActionPolicy | None = None,
         plan_guardrail: DefaultPlanGuardrail | None = None,
         action_guardrail: DefaultActionGuardrail | None = None,
@@ -93,6 +104,7 @@ class CognitiveOrchestrator:
         if max_domain_steps < 1:
             raise ValueError("max_domain_steps must be positive")
         self._selector = selector
+        self._fastpath = fastpath
         self._dispatcher = dispatcher
         self._continuation = continuation
         self._action_policy = action_policy or DefaultActionPolicy()
@@ -153,7 +165,7 @@ class CognitiveOrchestrator:
                     prior_action=checkpoint.pending_action,
                 )
             # select：保留 goals，仅用新消息重选行动
-            action = await self._selector.select(event)
+            action = await self._select_action(event, understood=None)
             if state.goals:
                 action = action.model_copy(
                     update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
@@ -166,15 +178,26 @@ class CognitiveOrchestrator:
                 execution_observer=execution_observer,
             )
 
+        fastpath_action = await self._try_fastpath(event)
+        if fastpath_action is not None:
+            state = CognitiveState(event=event, goals=[], needs_external=False)
+            return await self._action_loop(
+                event=event,
+                state=state,
+                action=fastpath_action,
+                context=context,
+                execution_observer=execution_observer,
+            )
+
         understood = await self._understand.understand(event.message)
         allowed_names = sorted(self._authorized_capabilities)
-        goals = backfill_criteria(None, list(understood.goals), allowed_names)
+        goals = backfill_criteria(list(understood.goals), allowed_names)
         state = CognitiveState(
             event=event,
             goals=goals,
             needs_external=understood.needs_external,
         )
-        action = await self._selector.select(event)
+        action = await self._select_action(event, understood=understood)
         if state.goals:
             action = action.model_copy(
                 update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
@@ -186,6 +209,25 @@ class CognitiveOrchestrator:
             context=context,
             execution_observer=execution_observer,
         )
+
+    async def _try_fastpath(self, event: InputEvent) -> CognitiveAction | None:
+        if self._fastpath is None:
+            return None
+        return await self._fastpath.try_fastpath(event)
+
+    async def _select_action(
+        self,
+        event: InputEvent,
+        *,
+        understood: UnderstandOutput | None,
+    ) -> CognitiveAction:
+        # 恢复选择：先尝试快路径，再 Understand 后交给 GoalActionSelector
+        if understood is None:
+            fastpath_action = await self._try_fastpath(event)
+            if fastpath_action is not None:
+                return fastpath_action
+            understood = await self._understand.understand(event.message)
+        return await self._selector.select(event, understood=understood)
 
     async def _action_loop(
         self,

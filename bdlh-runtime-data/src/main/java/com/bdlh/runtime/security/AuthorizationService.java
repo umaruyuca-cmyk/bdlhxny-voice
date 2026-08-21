@@ -1,5 +1,6 @@
 package com.bdlh.runtime.security;
 
+import com.baomidou.dynamic.datasource.annotation.DS;
 import com.bdlh.runtime.mapper.AuthorizationMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -9,6 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
  * 统一执行基于角色的权限查询，避免控制器自行拼接用户和角色逻辑。
  */
 @Service
+@DS("mysql")
 public class AuthorizationService {
 
     private final AuthorizationMapper authorizationMapper;

@@ -178,13 +178,8 @@ def create_java_adapter(
     timeout_seconds: float = 10.0,
     *,
     token: str | None = None,
-    production: bool | None = None,
 ) -> JavaDataAdapter:
-    """工厂函数：创建 HttpJavaDataAdapter。
-
-    ``production`` 参数已废弃（G3）；保留仅为兼容旧调用方，行为始终 fail-closed。
-    """
-    del production
+    """工厂函数：创建 HttpJavaDataAdapter（始终 fail-closed，不 mock）。"""
     return HttpJavaDataAdapter(
         base_url=base_url,
         timeout_seconds=timeout_seconds,

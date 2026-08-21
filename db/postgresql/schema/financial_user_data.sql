@@ -99,6 +99,38 @@ COMMENT ON COLUMN public.portfolio_positions.active IS '是否有效持仓；FAL
 COMMENT ON COLUMN public.portfolio_positions.created_at IS '创建时间';
 COMMENT ON COLUMN public.portfolio_positions.updated_at IS '最近更新时间';
 
+CREATE TABLE IF NOT EXISTS public.portfolio_transactions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    name VARCHAR(128),
+    transaction_type VARCHAR(32) NOT NULL,
+    quantity NUMERIC(20, 6),
+    price NUMERIC(20, 6),
+    amount NUMERIC(20, 4),
+    currency VARCHAR(8),
+    trade_date DATE NOT NULL,
+    note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_portfolio_transactions_user_trade_date
+    ON public.portfolio_transactions(user_id, trade_date DESC, id DESC);
+
+COMMENT ON TABLE public.portfolio_transactions IS '已发生交易的历史记录（只读查询，不承载交易执行）';
+COMMENT ON COLUMN public.portfolio_transactions.id IS '交易记录主键';
+COMMENT ON COLUMN public.portfolio_transactions.user_id IS '用户 ID';
+COMMENT ON COLUMN public.portfolio_transactions.symbol IS '证券代码';
+COMMENT ON COLUMN public.portfolio_transactions.name IS '证券名称';
+COMMENT ON COLUMN public.portfolio_transactions.transaction_type IS '交易类型，如 BUY/SELL/DIVIDEND';
+COMMENT ON COLUMN public.portfolio_transactions.quantity IS '成交数量';
+COMMENT ON COLUMN public.portfolio_transactions.price IS '成交单价';
+COMMENT ON COLUMN public.portfolio_transactions.amount IS '成交金额';
+COMMENT ON COLUMN public.portfolio_transactions.currency IS '计价币种，如 CNY';
+COMMENT ON COLUMN public.portfolio_transactions.trade_date IS '交易日期';
+COMMENT ON COLUMN public.portfolio_transactions.note IS '备注';
+COMMENT ON COLUMN public.portfolio_transactions.created_at IS '记录写入时间';
+
 CREATE TABLE IF NOT EXISTS public.financial_profile_confirmations (
     confirmation_ref VARCHAR(64) PRIMARY KEY,
     user_id BIGINT NOT NULL,

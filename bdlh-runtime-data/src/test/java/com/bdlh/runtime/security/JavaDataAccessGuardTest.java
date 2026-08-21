@@ -60,7 +60,11 @@ class JavaDataAccessGuardTest {
         JavaDataAccessGuard guard = new JavaDataAccessGuard(context, true, "service-secret");
 
         assertThat(guard.resolveUserId(42L)).isEqualTo(42L);
+        assertThat(guard.resolveUserId(0L)).isEqualTo(0L);
         assertThatThrownBy(() -> guard.resolveUserId(null))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(() -> guard.resolveUserId(-1L))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         error -> assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }

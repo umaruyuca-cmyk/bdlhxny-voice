@@ -267,9 +267,7 @@
           headers,
           body: JSON.stringify({
             sessionId: sessionIdFor(skill),
-            mode: "general",
             message: text,
-            instrument: null,
             regenerate: false,
             enabledSkillIds: skill === "stock" ? ["finance.stock-research"] : []
           }),

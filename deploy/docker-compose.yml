@@ -69,6 +69,7 @@ services:
         sh mqadmin updatetopic -n rmq-namesrv:9876 -c DefaultCluster -t bdlh.user.events
         sh mqadmin updatetopic -n rmq-namesrv:9876 -c DefaultCluster -t bdlh.memory.commands
         sh mqadmin updateSubGroup -n rmq-namesrv:9876 -c DefaultCluster -g bdlh-notification-consumer
+        sh mqadmin updateSubGroup -n rmq-namesrv:9876 -c DefaultCluster -g bdlh-memory-consumer
 
   bdlh-runtime-orchestrator:
     build:
@@ -144,6 +145,10 @@ services:
       - "127.0.0.1:8081:8080"
     environment:
       # 以下变量统一来自 deploy/.env（模板见 .env.example）
+      # 容器内必须监听 0.0.0.0:8080（与下方端口映射/健康检查及 JAVA_API_BASE_URL 对齐）；
+      # 环境变量优先级高于 jar 内 application-dev.yml 的回环绑定。
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 8080
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       PG_URL: ${PG_URL}
       PG_USER: ${PG_USER}

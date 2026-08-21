@@ -2,6 +2,10 @@
 
 JWT 由 Java 用户系统签发，Python 只验证签名和 subject，并把 subject 作为可信
 user_id 注入 LangGraph。原始 Token 不写入 State、Checkpointer、事件或日志。
+
+未携带 Token 时返回 ``None``（游客）；对话入口再归一为 ``GUEST_USER_ID``。
+``required=True`` 只表示服务端应配置 ``JWT_SECRET`` 以便登录用户可校验，
+不再在缺 Token 时拦截对话。登录专属能力请用 ``authenticated_task_user``。
 """
 
 from __future__ import annotations
@@ -22,8 +26,7 @@ class JwtAuthenticator:
 
     def authenticate(self, authorization: str | None) -> str | None:
         if not authorization:
-            if self.required:
-                raise AuthenticationError("请先登录")
+            # 游客：缺 Token 不拦截；登录专属路由自行要求身份。
             return None
         scheme, separator, token = authorization.partition(" ")
         if separator != " " or scheme.lower() != "bearer" or not token.strip():
@@ -39,4 +42,4 @@ class JwtAuthenticator:
         except AuthenticationError:
             raise
         except jwt.PyJWTError as exc:
-            raise AuthenticationError("登录状态无效或已过期") from exc
+            raise AuthenticationError("Token 无效或已过期") from exc
