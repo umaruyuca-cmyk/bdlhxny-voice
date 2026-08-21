@@ -29,7 +29,7 @@ from .contracts import (
 )
 from .goal_schema import UnderstandOutput
 from .policy import ActionPolicy, DefaultActionPolicy
-from .understand import RuleBasedUnderstandModel, UnderstandModel
+from .understand import UnderstandModel
 
 
 class CognitiveActionSelector(Protocol):
@@ -99,10 +99,12 @@ class CognitiveOrchestrator:
         observer: CognitiveExecutionObserver | None = None,
         max_domain_steps: int = 2,
         pause_check: Callable[[str], bool] | None = None,
-        understand: UnderstandModel | None = None,
+        understand: UnderstandModel,
     ) -> None:
         if max_domain_steps < 1:
             raise ValueError("max_domain_steps must be positive")
+        if understand is None:
+            raise ValueError("understand is required")
         self._selector = selector
         self._fastpath = fastpath
         self._dispatcher = dispatcher
@@ -118,7 +120,7 @@ class CognitiveOrchestrator:
         self._data_guardrail = data_guardrail or DefaultDataQualityGuardrail()
         self._response_guardrail = response_guardrail or DefaultResponseGuardrail()
         self._pause_check = pause_check
-        self._understand = understand or RuleBasedUnderstandModel()
+        self._understand = understand
 
     async def run(
         self,

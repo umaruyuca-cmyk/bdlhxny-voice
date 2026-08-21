@@ -54,7 +54,7 @@ def project_skill_manifest(skill: SkillRecord, snapshot: RegistrySnapshot) -> Sk
         required_toolsets=frozenset(toolsets),
         required_capabilities=required_caps,
         optional_capabilities=optional_caps,
-        required_data_modes=frozenset({"LIVE", "USER_CONFIRMED", "TEST_FIXTURE"}),
+        required_data_modes=frozenset({"LIVE", "USER_CONFIRMED"}),
         completeness_policy="registry_projected",
         budget_profile="DomainBudget.default",
         degradation_rules=(),

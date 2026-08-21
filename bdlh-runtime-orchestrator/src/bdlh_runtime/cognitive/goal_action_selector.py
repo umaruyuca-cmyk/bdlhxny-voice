@@ -38,6 +38,7 @@ _MISSING_HINTS: dict[str, str] = {
     "instrument": "请补充你想了解的证券代码、公司名称或简称。",
     "objective": "请再具体说明你想完成什么。",
     "time_range": "请补充关注的时间范围。",
+    "理解失败": "暂时无法理解你的问题，请换一种说法或稍后重试。",
 }
 
 _FINANCE_MARKET_TOPICS = frozenset({"news", "money_flow", "industry"})

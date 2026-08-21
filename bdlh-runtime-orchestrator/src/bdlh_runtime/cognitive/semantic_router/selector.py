@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from bdlh_runtime.cognitive.contracts import (
@@ -36,7 +37,8 @@ class SemanticRouteSelector:
         self._knowledge_responder = knowledge_responder
 
     async def try_fastpath(self, event: InputEvent) -> CognitiveAction | None:
-        choice = self._router.route(event.message)
+        # 模型编码是同步阻塞 HTTP 调用，放入线程避免卡住事件循环。
+        choice = await asyncio.to_thread(self._router.route, event.message)
         if choice is None:
             return None
         if choice.disposition == RouteDisposition.BLOCK:

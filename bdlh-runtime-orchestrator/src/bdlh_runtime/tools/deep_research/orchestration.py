@@ -11,30 +11,24 @@ from time import perf_counter
 from bdlh_runtime.tools.deep_research.atomic_search import AtomicSearchPort
 from bdlh_runtime.tools.deep_research.contracts import DeepResearchRequest, ResearchBundle
 from bdlh_runtime.tools.deep_research.graph import build_deep_research_graph
-from bdlh_runtime.tools.deep_research.models import (
-    DeepResearchModel,
-    RuleBasedDeepResearchModel,
-)
+from bdlh_runtime.tools.deep_research.models import DeepResearchModel
 
 
 async def run_deep_research(
     request: DeepResearchRequest,
     *,
     atomic_search: AtomicSearchPort,
+    research_model: DeepResearchModel,
     deep_trigger_reasons: list[str] | None = None,
-    research_model: DeepResearchModel | None = None,
     allow_complete: bool = False,
 ) -> ResearchBundle:
     """执行隔离版 Deep 编排并返回 ResearchBundle。
 
-    ``allow_complete``：仅当注入非规则 LLM 且评测确认后可由装配器标 COMPLETE；
-    默认 False，规则骨架强制 PARTIAL。
+    ``allow_complete``：仅当评测确认后可由装配器标 COMPLETE；默认 False。
     """
-
-    model = research_model or RuleBasedDeepResearchModel()
     graph = build_deep_research_graph(
         atomic_search=atomic_search,
-        research_model=model,
+        research_model=research_model,
     )
     initial = {
         "request": request.model_dump(),

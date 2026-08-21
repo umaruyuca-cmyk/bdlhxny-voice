@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bdlh_runtime.cognitive.understand import rule_based_understand
+from tests.helpers_understand import rule_based_understand
 
 
 def test_knowledge_question_does_not_need_external() -> None:

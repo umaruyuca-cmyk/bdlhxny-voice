@@ -7,8 +7,7 @@ from fastapi.testclient import TestClient
 
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import create_application
-from tests.helpers_registry import seeded_snapshot
+from tests.helpers_application import build_isolated_application
 
 SECRET = "m6-test-jwt-secret-with-at-least-thirty-two-bytes"
 
@@ -24,13 +23,11 @@ def headers(user: int) -> dict[str, str]:
 
 
 def test_financial_task_crud_is_authenticated_and_user_scoped() -> None:
-    application = create_application(
-        Settings(
-            environment="test",
+    application = build_isolated_application(
+        settings=Settings(
             auth_required=True,
             jwt_secret=SECRET,
         ),
-        registry_snapshot=seeded_snapshot(),
     )
     client = TestClient(create_api_app(application))
     expires_at = datetime.now(UTC) + timedelta(hours=1)
@@ -78,13 +75,11 @@ def test_financial_task_crud_is_authenticated_and_user_scoped() -> None:
 
 
 def test_cancel_version_conflict_while_running_returns_409() -> None:
-    application = create_application(
-        Settings(
-            environment="test",
+    application = build_isolated_application(
+        settings=Settings(
             auth_required=True,
             jwt_secret=SECRET,
         ),
-        registry_snapshot=seeded_snapshot(),
     )
     client = TestClient(create_api_app(application))
     expires_at = datetime.now(UTC) + timedelta(hours=1)

@@ -184,6 +184,8 @@ class PortfolioValuationBuilder:
     @staticmethod
     def _combined_data_mode(*observations: dict[str, Any]) -> str:
         modes = {item.get("data_mode") for item in observations}
+        if FinancialDataMode.MOCK.value in modes:
+            return FinancialDataMode.MOCK.value
         if FinancialDataMode.TEST_FIXTURE.value in modes:
             return FinancialDataMode.TEST_FIXTURE.value
         if modes == {FinancialDataMode.USER_CONFIRMED.value}:

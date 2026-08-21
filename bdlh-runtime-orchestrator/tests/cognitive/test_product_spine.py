@@ -9,6 +9,8 @@ from bdlh_runtime.cognitive.goal_action_selector import GoalActionSelector
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
 from bdlh_runtime.cognitive.semantic_router import SemanticRouteSelector, build_kernel_router
 from bdlh_runtime.domains.finance.cognitive_adapter import FinanceCognitiveSelector, InMemoryVerifiedEntityStore
+from tests.helpers_encoder import LexicalEncoder
+from tests.helpers_understand import RuleBasedUnderstandModel
 
 
 class _Respond:
@@ -29,9 +31,13 @@ async def test_product_spine_chitchat_uses_fastpath_without_domain() -> None:
             finance=FinanceCognitiveSelector(InMemoryVerifiedEntityStore(), knowledge_responder=respond),
             respond=respond,
         ),
-        fastpath=SemanticRouteSelector(build_kernel_router(), knowledge_responder=respond),
+        fastpath=SemanticRouteSelector(
+            build_kernel_router(encoder=LexicalEncoder()),
+            knowledge_responder=respond,
+        ),
         dispatcher=_NoDomain(),
         enabled_domains=frozenset({"finance"}),
+        understand=RuleBasedUnderstandModel(),
     )
     result = await app.run(
         InputEvent(event_id="e1", user_id="u1", session_id="s1", message="你好"),
@@ -48,9 +54,13 @@ async def test_product_spine_external_non_finance_stays_chat_even_with_skill() -
             finance=FinanceCognitiveSelector(InMemoryVerifiedEntityStore(), knowledge_responder=respond),
             respond=respond,
         ),
-        fastpath=SemanticRouteSelector(build_kernel_router(), knowledge_responder=respond),
+        fastpath=SemanticRouteSelector(
+            build_kernel_router(encoder=LexicalEncoder()),
+            knowledge_responder=respond,
+        ),
         dispatcher=_NoDomain(),
         enabled_domains=frozenset({"finance"}),
+        understand=RuleBasedUnderstandModel(),
     )
     result = await app.run(
         InputEvent(

@@ -77,3 +77,18 @@ FASTPATH_ROUTES: tuple[FastpathRouteSpec, ...] = (
         ),
     ),
 )
+
+#: Qwen 向量模型（qwen3-embedding）阈值；与哈希词法编码分属不同相似度空间，
+#: 不可混用。2026-08-18 用本机 qwen3-embedding:4b-q8_0 对正负例集实测校准：
+#: - chitchat 0.75：正例最低 0.807，非闲聊最高 0.696（「帮我看看我的持仓」）；
+#: - knowledge 0.70：保留强概念题（≥0.70），弱匹配（0.57~0.66）回落完整管线
+#:   由 Understand/GoalAction 精确分流，避免「600519 的市盈率多少」这类数据题
+#:   被无工具回答器误接；
+#: - forbidden 0.80：正例 0.86~0.89 稳定命中；「转账一百块」(0.748) 与
+#:   「帮我看看我的持仓」(0.769) 区间重叠无干净分界，按「宁漏判不误伤」取
+#:   高精度阈值——漏判项回落完整管线后仍受只读数据平面与无工具回答器约束。
+MODEL_FASTPATH_THRESHOLDS: dict[str, float] = {
+    "chitchat": 0.75,
+    "knowledge": 0.70,
+    "forbidden": 0.80,
+}

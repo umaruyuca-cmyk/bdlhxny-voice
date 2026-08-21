@@ -58,10 +58,10 @@ def assert_java_reachable_for_startup(
     *,
     registry_snapshot: Any | None,
 ) -> None:
-    """非测试启动路径下，Java 不可达则 fail-closed（G3）。
+    """只要配置了 JAVA_API_BASE_URL，不可达则 fail-closed（G3）。
 
-    - ``test``：跳过（单测注入 snapshot / 假 URL）
-    - 其余环境：只要配置了 JAVA_API_BASE_URL 就必须可达（含已注入 snapshot）
+    不再按 environment=test 跳过；隔离单测请走 ``helpers_application``，
+    不要经本入口假装 Java 已就绪。
     """
 
     from .errors import ConfigurationError
@@ -69,9 +69,6 @@ def assert_java_reachable_for_startup(
     del registry_snapshot  # 产品路径不再因注入 snapshot 而跳过探测
     base_url = getattr(settings, "java_api_base_url", None)
     if not base_url:
-        return
-    environment = getattr(settings, "environment", "production")
-    if environment == "test":
         return
 
     result = probe_java_data_plane(base_url)

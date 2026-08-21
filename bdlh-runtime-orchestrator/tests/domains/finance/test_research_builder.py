@@ -245,7 +245,7 @@ def test_duplicate_source_conflict_preserves_evidence_and_downgrades() -> None:
 @pytest.mark.parametrize(
     ("marker", "expected_coverage"),
     [
-        ({"data_mode": "TEST_FIXTURE"}, "PARTIAL"),
+        ({"data_mode": "TEST_FIXTURE"}, "LIMITED"),
         ({"is_mock": True}, "LIMITED"),
     ],
 )

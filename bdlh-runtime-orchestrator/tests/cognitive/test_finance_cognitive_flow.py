@@ -4,6 +4,7 @@ import pytest
 
 from bdlh_runtime.cognitive.contracts import CognitiveActionType, InputEvent
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
+from tests.helpers_understand import RuleBasedUnderstandModel
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainFact,
@@ -166,6 +167,7 @@ def _app(
                 DomainOperation.RUN_ANALYSIS.value,
             }
         ),
+        understand=RuleBasedUnderstandModel(),
     )
 
 

@@ -2,13 +2,16 @@
 
 from .catalog import build_kernel_router
 from .contracts import Route, RouteChoice, RouteDisposition
-from .encoder import Encoder, LexicalEncoder
+from .encoder import Encoder, EncoderUnavailableError, QwenEmbeddingEncoder
+from .fastpath_data import MODEL_FASTPATH_THRESHOLDS
 from .router import SemanticRouter
 from .selector import SemanticRouteSelector
 
 __all__ = [
     "Encoder",
-    "LexicalEncoder",
+    "EncoderUnavailableError",
+    "MODEL_FASTPATH_THRESHOLDS",
+    "QwenEmbeddingEncoder",
     "Route",
     "RouteChoice",
     "RouteDisposition",

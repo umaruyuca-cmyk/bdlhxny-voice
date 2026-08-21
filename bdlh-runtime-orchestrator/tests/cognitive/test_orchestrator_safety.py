@@ -9,6 +9,7 @@ from bdlh_runtime.cognitive.contracts import (
     InputEvent,
 )
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
+from tests.helpers_understand import RuleBasedUnderstandModel
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainBudget,
@@ -123,6 +124,7 @@ def _orchestrator(**kwargs: object) -> CognitiveOrchestrator:
     defaults = {
         "enabled_domains": frozenset({"example"}),
         "authorized_operations": frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+        "understand": RuleBasedUnderstandModel(),
     }
     defaults.update(kwargs)
     return CognitiveOrchestrator(**defaults)  # type: ignore[arg-type]

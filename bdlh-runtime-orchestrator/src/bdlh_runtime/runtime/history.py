@@ -46,9 +46,12 @@ class InMemoryAnalysisHistoryStore:
         ]
 
 
-def create_history_store(*, environment: str = "test") -> AnalysisHistoryStore:
-    """创建测试用内存历史存储；运行时数据必须经 Java Data Plane。"""
+def create_history_store(*, environment: str = "production") -> AnalysisHistoryStore:
+    """产品工厂禁止返回内存 History Store；请经 Java Data Plane。
 
-    if environment != "test":
-        raise ConfigurationError("Python 内存 History Store 仅允许测试环境")
-    return InMemoryAnalysisHistoryStore()
+    ``InMemoryAnalysisHistoryStore`` 仍可供测试直接构造；隔离装配见
+    ``tests/helpers_application``。
+    """
+
+    del environment
+    raise ConfigurationError("Python 内存 History Store 已禁用；请使用 Java Data Plane")

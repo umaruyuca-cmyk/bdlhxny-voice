@@ -1,4 +1,4 @@
-"""LLM Understand：契约解析、走私拒绝、失败降级。"""
+"""LLM Understand：契约解析、走私拒绝、失败软澄清。"""
 
 from __future__ import annotations
 
@@ -8,9 +8,7 @@ import pytest
 
 from bdlh_runtime.cognitive.understand import (
     LlmUnderstandModel,
-    RuleBasedUnderstandModel,
     create_understand_model,
-    rule_based_understand,
 )
 
 
@@ -93,28 +91,30 @@ async def test_llm_understand_parses_valid_json() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_understand_rejects_route_and_falls_back() -> None:
+async def test_llm_understand_rejects_route_and_soft_fails() -> None:
     model = LlmUnderstandModel(_FakeSmuggleLlm())
     out = await model.understand("600519 新闻")
-    fallback = rule_based_understand("600519 新闻")
-    assert out.model_dump() == fallback.model_dump()
+    assert out.missing == ["理解失败"]
+    assert out.needs_external is False
 
 
 @pytest.mark.asyncio
-async def test_llm_understand_falls_back_on_bad_json() -> None:
+async def test_llm_understand_soft_fails_on_bad_json() -> None:
     model = LlmUnderstandModel(_FakeBadJsonLlm())
     out = await model.understand("什么是市盈率")
+    assert out.missing == ["理解失败"]
     assert out.needs_external is False
-    assert out.goals[0].objective.startswith("解释概念")
 
 
 @pytest.mark.asyncio
 async def test_llm_understand_rejects_capability_name_in_objective() -> None:
     model = LlmUnderstandModel(_FakeCapabilityInObjectiveLlm())
     out = await model.understand("看行情")
-    assert out == await RuleBasedUnderstandModel().understand("看行情")
+    assert out.missing == ["理解失败"]
 
 
-def test_create_understand_model_without_llm_is_rule_based() -> None:
-    model = create_understand_model(None)
-    assert isinstance(model, RuleBasedUnderstandModel)
+def test_create_understand_model_without_llm_raises() -> None:
+    from bdlh_runtime.runtime.errors import ConfigurationError
+
+    with pytest.raises(ConfigurationError, match="Understand 需要 LLM"):
+        create_understand_model(None)

@@ -462,7 +462,7 @@ async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> Non
                     data={
                         "schema_version": NORMALIZED_USER_DATA_SCHEMA,
                         "user_id": "user-1",
-                        "data_mode": "TEST_FIXTURE",
+                        "data_mode": "LIVE",
                         "positions": [
                             {
                                 "symbol": "600519",
@@ -476,7 +476,7 @@ async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> Non
                     data_quality=DataQuality(completeness=1.0, quality_status="OK"),
                     provenance=[
                         ProvenanceRecord(
-                            source="fixture",
+                            source="java-api",
                             tool=capability,
                             retrieved_at="2026-08-11T00:00:00+00:00",
                         )
@@ -491,14 +491,14 @@ async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> Non
                     data={
                         "schema_version": NORMALIZED_USER_DATA_SCHEMA,
                         "user_id": "user-1",
-                        "data_mode": "TEST_FIXTURE",
+                        "data_mode": "LIVE",
                         "account": {"cash": 50_000, "currency": "CNY", "source": "acct-1"},
                         "liquidity": {},
                     },
                     data_quality=DataQuality(completeness=1.0, quality_status="OK"),
                     provenance=[
                         ProvenanceRecord(
-                            source="fixture",
+                            source="java-api",
                             tool=capability,
                             retrieved_at="2026-08-11T00:00:00+00:00",
                         )
@@ -513,7 +513,7 @@ async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> Non
                     data={
                         "schema_version": NORMALIZED_USER_DATA_SCHEMA,
                         "user_id": "user-1",
-                        "data_mode": "TEST_FIXTURE",
+                        "data_mode": "LIVE",
                         "risk_profile": {
                             "risk_level": "BALANCED",
                             "max_loss_tolerance_pct": 20.0,
@@ -523,7 +523,7 @@ async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> Non
                     data_quality=DataQuality(completeness=1.0, quality_status="OK"),
                     provenance=[
                         ProvenanceRecord(
-                            source="fixture",
+                            source="java-api",
                             tool=capability,
                             retrieved_at="2026-08-11T00:00:00+00:00",
                         )

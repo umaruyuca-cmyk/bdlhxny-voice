@@ -37,7 +37,7 @@ NORMALIZED_USER_DATA_SCHEMA = "financial-user-observation.v1"
 PORTFOLIO_VALUATION_CAPABILITY = "portfolio.build_current_valuation"
 PORTFOLIO_VALUATION_SCHEMA = "portfolio-valuation.v1"
 
-ExecutionEnvironment = Literal["production", "development", "test"]
+ExecutionEnvironment = Literal["production", "development"]
 
 
 class FinancialSnapshotError(ValueError):
@@ -212,7 +212,7 @@ class FinancialSnapshotBuilder:
     ) -> FinancialSnapshot:
         if not request.requires_financial_snapshot:
             raise FinancialSnapshotError("FinancialSnapshotBuilder only accepts requires_financial_snapshot requests")
-        if execution_environment not in {"production", "development", "test"}:
+        if execution_environment not in {"production", "development"}:
             raise FinancialSnapshotError("Unsupported execution environment")
 
         by_capability: dict[str, Observation] = {}
@@ -373,8 +373,8 @@ class FinancialSnapshotBuilder:
 
         if data_mode == FinancialDataMode.MOCK:
             limitations.append("MOCK user data cannot support personalization")
-        if data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment != "test":
-            limitations.append("TEST_FIXTURE user data is forbidden outside explicit test environment")
+        if data_mode == FinancialDataMode.TEST_FIXTURE:
+            limitations.append("TEST_FIXTURE user data is forbidden in product paths")
 
         critical_missing = bool(limitations)
         if missing_capabilities or not usable:
@@ -383,9 +383,11 @@ class FinancialSnapshotBuilder:
             completeness = "PARTIAL"
         else:
             completeness = "COMPLETE"
-        if data_mode in {FinancialDataMode.MOCK, FinancialDataMode.UNAVAILABLE} or (
-            data_mode == FinancialDataMode.TEST_FIXTURE and execution_environment != "test"
-        ):
+        if data_mode in {
+            FinancialDataMode.MOCK,
+            FinancialDataMode.UNAVAILABLE,
+            FinancialDataMode.TEST_FIXTURE,
+        }:
             completeness = "LIMITED"
 
         return FinancialSnapshot(

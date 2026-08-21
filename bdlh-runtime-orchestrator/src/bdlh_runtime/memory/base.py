@@ -1,6 +1,6 @@
 """记忆层统一抽象。
 
-所有记忆实现（Mem0、降级 NoOp、未来其他后端）都遵守这套接口。LangGraph
+所有记忆实现（RemoteMemoryStore、Mem0、测试替身）都遵守这套接口。LangGraph
 版只允许 Context Service 在入口读取 search，并由 Run 出口写入 add；
 ReAct 循环中不碰记忆——这是保证流程确定性的关键边界（ADR-015）。
 

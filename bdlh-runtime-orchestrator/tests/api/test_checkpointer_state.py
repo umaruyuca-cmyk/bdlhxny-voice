@@ -12,9 +12,8 @@ from bdlh_runtime.cognitive.contracts import (
 )
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import create_application
 from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH
-from tests.helpers_registry import seeded_snapshot
+from tests.helpers_application import build_isolated_application
 
 
 class ScriptedCognitive:
@@ -38,12 +37,10 @@ class ScriptedCognitive:
 
 
 def _application() -> Any:
-    application = create_application(
-        Settings(environment="test"),
-        registry_snapshot=seeded_snapshot(),
+    return build_isolated_application(
+        settings=Settings(auth_required=False),
+        cognitive_application=ScriptedCognitive(),
     )
-    application.cognitive_application = ScriptedCognitive()
-    return application
 
 
 def test_get_run_reads_cognitive_state_from_api_store():

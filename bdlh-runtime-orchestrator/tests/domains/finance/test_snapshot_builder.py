@@ -289,12 +289,12 @@ def test_complete_normalized_inputs_build_a_deterministic_live_snapshot() -> Non
     first = builder.build(
         request=_request(),
         observations=[*observations, valuation],
-        execution_environment="test",
+        execution_environment="production",
     )
     second = builder.build(
         request=_request(),
         observations=list(reversed([*observations, valuation])),
-        execution_environment="test",
+        execution_environment="production",
     )
 
     assert first.model_dump() == second.model_dump()
@@ -507,7 +507,7 @@ def test_snapshot_builder_rejects_unverifiable_time() -> None:
         FinancialSnapshotBuilder().build(
             request=_request(),
             observations=normalized,
-            execution_environment="test",
+            execution_environment="production",
         )
 
 
@@ -640,7 +640,7 @@ def test_snapshot_builder_carries_proposed_allocation_from_request() -> None:
     snapshot = FinancialSnapshotBuilder().build(
         request=request,
         observations=_normalize_all(raw),
-        execution_environment="test",
+        execution_environment="production",
     )
     assert snapshot.proposed_amount == 25_000.0
     assert snapshot.proposed_weight_pct == 10.0

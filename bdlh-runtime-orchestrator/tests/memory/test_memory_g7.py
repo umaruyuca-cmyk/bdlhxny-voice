@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from bdlh_runtime.memory.noop import NoOpMemoryStore
+from tests.helpers_memory import StubMemoryStore
+
 from bdlh_runtime.memory.recall import recall_semantic_memory
 from bdlh_runtime.memory.remote import RemoteMemoryStore
 from bdlh_runtime.memory.writer import MemoryWriter
@@ -12,7 +13,7 @@ from bdlh_runtime.memory.writer import MemoryWriter
 
 @pytest.mark.asyncio
 async def test_writer_rejects_l4_metadata() -> None:
-    writer = MemoryWriter(NoOpMemoryStore())
+    writer = MemoryWriter(StubMemoryStore())
     result = await writer.persist(
         user_id="7",
         content="我偏好简洁回答",
@@ -25,7 +26,7 @@ async def test_writer_rejects_l4_metadata() -> None:
 
 @pytest.mark.asyncio
 async def test_writer_rejects_unconfirmed() -> None:
-    writer = MemoryWriter(NoOpMemoryStore())
+    writer = MemoryWriter(StubMemoryStore())
     result = await writer.persist(
         user_id="7",
         content="我偏好简洁回答",
@@ -78,7 +79,7 @@ async def test_remote_search_marks_degraded_on_failure() -> None:
 
 
 @pytest.mark.asyncio
-async def test_noop_recall_is_not_degraded() -> None:
-    recall = await recall_semantic_memory(NoOpMemoryStore(), user_id="7", query="茅台")
+async def test_stub_recall_is_not_degraded() -> None:
+    recall = await recall_semantic_memory(StubMemoryStore(), user_id="7", query="茅台")
     assert recall.records == []
     assert recall.degraded is False

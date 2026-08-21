@@ -1,10 +1,11 @@
 """应用装配入口。
 
 负责把 LLM、Memory、Gateway、Finance Runtime 与 Cognitive Orchestrator 按配置
-装配为唯一产品执行路径。装配原则：每个组件都走"有配置用真实版、无配置降级"
-的路径，保证应用在任何环境（无 API Key、无 Mem0、无 MCP）都能启动并跑通流程。
+装配为唯一产品执行路径。装配原则：生产标准 fail-closed——缺 Java / LLM /
+Qwen 向量 / Remote Memory 等必需凭证则拒绝启动，不提供 mock/noop/词法逃生门。
 
 Cognitive + Finance 是默认且唯一的编排入口；不再装配 Root Graph 产品路径。
+隔离单测请用 ``tests/helpers_application.build_isolated_application``。
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ class AgentRuntimeApplication:
     history_store: Any | None = None
     run_registry: Any | None = None
     chat_session_store: Any | None = None
-    # 运行状态读写端口；内存实现仅用于显式测试环境。
+    # 运行状态读写端口；内存实现仅用于显式测试构造。
     run_state_reader: Any = field(default_factory=InMemoryRunStateReader)
     capability_registry: Any | None = None
     domain_registry: Any | None = None
@@ -54,19 +55,30 @@ def create_application(
     *,
     registry_snapshot: Any | None = None,
 ) -> AgentRuntimeApplication:
-    """从 Settings 装配完整应用。
+    """从 Settings 装配完整应用（生产标准 fail-closed）。
 
     装配顺序：LLM → Memory → Gateway → Agents → Finance → Cognitive。
-    产品路径按生产标准 fail-closed（G3）：缺 Java/凭证则拒绝启动，不走 mock。
-    仅 ``environment=test`` 允许注入 snapshot / 假依赖。
+    缺 Java/LLM/Qwen/Memory 凭证一律 ConfigurationError，不因「任意环境」放行。
     """
     settings = settings or Settings.from_environment()
     if settings.auth_required and not settings.jwt_secret:
         raise ConfigurationError("启用用户隔离时必须配置 JWT_SECRET")
-    if settings.environment != "test" and not settings.java_api_base_url:
+    if not settings.java_api_base_url:
         raise ConfigurationError("当前终态要求配置 JAVA_API_BASE_URL；不再支持 Python 本地数据存储回退")
-    if settings.environment != "test" and not settings.java_data_internal_token:
-        raise ConfigurationError("非测试环境必须配置 JAVA_DATA_INTERNAL_TOKEN；不允许无凭证 Java 调用")
+    if not settings.java_data_internal_token:
+        raise ConfigurationError("必须配置 JAVA_DATA_INTERNAL_TOKEN；不允许无凭证 Java 调用")
+    if not settings.llm_api_key:
+        raise ConfigurationError("必须配置 LLM_API_KEY（或 DEEPSEEK_API_KEY）")
+    if not settings.fastpath_embedder_base_url:
+        raise ConfigurationError(
+            "生产快路径要求 Qwen 向量服务：请设置 QWEN3_BASE_URL / FASTPATH_EMBEDDER_BASE_URL"
+        )
+    if settings.memory_mode != "remote":
+        raise ConfigurationError("BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品路径移除")
+    if not settings.memory_service_base_url:
+        raise ConfigurationError("Remote Memory Service 需要 MEMORY_SERVICE_BASE_URL")
+    if not settings.memory_service_internal_token:
+        raise ConfigurationError("Remote Memory Service 需要 MEMORY_SERVICE_INTERNAL_TOKEN")
     if settings.financial_task_worker_enabled and settings.financial_task_poll_seconds <= 0:
         raise ConfigurationError("M6 Worker 轮询间隔必须大于 0 秒")
 
@@ -74,20 +86,22 @@ def create_application(
 
     assert_java_reachable_for_startup(settings, registry_snapshot=registry_snapshot)
 
-    # ── 1. LLM（有 Key 用真实模型，无则 None 触发各 Agent 降级）──
+    # ── 1. LLM（缺 Key 已在上方拒绝；create_llm 仍可能因依赖缺失返回 None）──
     llm = create_llm(
         api_key=settings.llm_api_key,
         base_url=settings.mem0.llm_base_url,
         model=settings.mem0.llm_model,
     )
+    if llm is None:
+        raise ConfigurationError("LLM 客户端创建失败：请检查 LLM_API_KEY 与 langchain-openai 依赖")
 
-    # ── 2. 记忆层（Mem0 后端不可用时降级 NoOp）──
+    # ── 2. 记忆层（仅 Remote Memory Service）──
     memory_store = _create_memory(settings)
 
     # ── 3. MCP Gateway（创建 client，云端不在线时调用会失败但启动不阻断）──
     gateway_adapter = _create_gateway(settings)
 
-    # ── 4. Direct response（Cognitive knowledge_responder；按 LLM 有无降级）──
+    # ── 4. Direct response（Cognitive knowledge_responder）──
     direct_response_model = create_direct_response_model(llm)
 
     # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
@@ -108,7 +122,7 @@ def create_application(
     deep_infra_ready = deep_research_infra_ready(settings)
     deep_research_executor = create_deep_research_executor(settings, llm=llm)
 
-    # ── 4.6 注册表快照（DB 真源；测试显式注入，禁止默认清单兜底）──
+    # ── 4.6 注册表快照（DB 真源；测试可显式注入，禁止默认清单兜底）──
     registry_snapshot = _load_registry_snapshot(settings, registry_snapshot=registry_snapshot)
     from bdlh_runtime.tools.capabilities import load_capability_registry
 
@@ -142,7 +156,7 @@ def create_application(
         deep_research_enabled=settings.deep_research_enabled and deep_infra_ready,
         execution_environment=(
             settings.environment
-            if settings.environment in {"production", "development", "test"}
+            if settings.environment in {"production", "development"}
             else "production"
         ),
     )
@@ -197,7 +211,10 @@ def create_application(
         knowledge_responder=direct_response_model,
     )
     cognitive_fastpath = SemanticRouteSelector(
-        build_kernel_router(),
+        build_kernel_router(
+            encoder=_fastpath_encoder(settings),
+            score_thresholds=_fastpath_thresholds(settings),
+        ),
         knowledge_responder=direct_response_model,
     )
     cognitive_application = CognitiveOrchestrator(
@@ -216,52 +233,33 @@ def create_application(
     )
 
     # ── 4.6e 运行持久化：Java Data Plane 是唯一运行时写源 ──
-    from .chat_sessions import create_chat_session_store
-    from .history import create_history_store
-    from .run_registry import create_run_registry
+    from .remote_run_state import create_remote_run_state_store
+    from .remote_runtime_data import create_remote_runtime_stores
 
-    if settings.java_api_base_url:
-        from .remote_run_state import create_remote_run_state_store
-        from .remote_runtime_data import create_remote_runtime_stores
-
-        history_store, run_registry, chat_session_store = create_remote_runtime_stores(
-            base_url=settings.java_api_base_url,
-            internal_token=settings.java_data_internal_token,
-        )
-        run_state_reader = create_remote_run_state_store(
-            base_url=settings.java_api_base_url,
-            internal_token=settings.java_data_internal_token,
-        )
-    else:
-        # Isolated unit tests may exercise domain assembly without a Java service.
-        # This branch is intentionally unavailable to development and production.
-        history_store = create_history_store(environment=settings.environment)
-        run_registry = create_run_registry(environment=settings.environment)
-        chat_session_store = create_chat_session_store(environment=settings.environment)
-        run_state_reader = InMemoryRunStateReader()
+    history_store, run_registry, chat_session_store = create_remote_runtime_stores(
+        base_url=settings.java_api_base_url,
+        internal_token=settings.java_data_internal_token,
+    )
+    run_state_reader = create_remote_run_state_store(
+        base_url=settings.java_api_base_url,
+        internal_token=settings.java_data_internal_token,
+    )
 
     from .chat_sessions import ChatSessionVerifiedEntityPersistence
 
     verified_entities.attach_persistence(ChatSessionVerifiedEntityPersistence(chat_session_store))
     # ── 4.6g M6 最小持续任务（价格条件观察）──
+    from .remote_tasks import create_remote_task_stores
     from .scheduler import (
         FinancialTaskScheduler,
         FinancialTaskWakeupHandler,
         NotificationOutboxWorker,
     )
 
-    if settings.java_api_base_url:
-        from .remote_tasks import create_remote_task_stores
-
-        task_store, notification_outbox = create_remote_task_stores(
-            base_url=settings.java_api_base_url,
-            internal_token=settings.java_data_internal_token,
-        )
-    else:
-        from .tasks import create_notification_outbox, create_task_store
-
-        task_store = create_task_store(environment=settings.environment)
-        notification_outbox = create_notification_outbox(environment=settings.environment)
+    task_store, notification_outbox = create_remote_task_stores(
+        base_url=settings.java_api_base_url,
+        internal_token=settings.java_data_internal_token,
+    )
     task_wakeup_handler = FinancialTaskWakeupHandler(
         task_store=task_store,
         outbox=notification_outbox,
@@ -322,39 +320,24 @@ def _load_registry_snapshot(settings: Settings, *, registry_snapshot: Any | None
 
 
 def _create_memory(settings: Settings) -> Any:
-    """创建 L3 Memory Port；生产不再在 Orchestrator 内实例化 Mem0 SDK。"""
-    from bdlh_runtime.memory.noop import NoOpMemoryStore
+    """创建 L3 Memory Port；产品路径仅 Remote Memory Service。"""
+    if settings.memory_mode != "remote":
+        raise ConfigurationError("BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品路径移除")
+    if not settings.memory_service_base_url or not settings.memory_service_internal_token:
+        raise ConfigurationError("Remote Memory Service 需要 MEMORY_SERVICE_BASE_URL 与 MEMORY_SERVICE_INTERNAL_TOKEN")
+    from bdlh_runtime.memory.remote import RemoteMemoryStore
+    from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
 
-    if settings.memory_mode == "noop":
-        return NoOpMemoryStore()
-    if settings.memory_mode == "remote":
-        if not settings.memory_service_base_url or not settings.memory_service_internal_token:
-            raise ConfigurationError("Remote Memory Service 需要 MEMORY_SERVICE_BASE_URL 与 MEMORY_SERVICE_INTERNAL_TOKEN")
-        from bdlh_runtime.memory.remote import RemoteMemoryStore
-        from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
-
-        if not settings.java_api_base_url or not settings.java_data_internal_token:
-            raise ConfigurationError("Remote Memory Store 写入 Outbox 需要 Java Data Plane 服务凭证")
-        return RemoteMemoryStore(
-            base_url=settings.memory_service_base_url,
-            internal_token=settings.memory_service_internal_token,
-            java_client=RuntimeDataClient(
-                base_url=settings.java_api_base_url,
-                internal_token=settings.java_data_internal_token,
-            ),
-        )
-    if settings.memory_mode == "embedded-test" and settings.environment == "test":
-        from bdlh_runtime.memory.mem0.mem0_store import create_memory_store
-
-        return create_memory_store(
-            mem0_llm_model=settings.mem0.llm_model,
-            mem0_llm_api_key=settings.mem0.llm_api_key,
-            mem0_llm_base_url=settings.mem0.llm_base_url,
-            mem0_embedder_model=settings.mem0.embedder_model,
-            mem0_embedder_api_key=settings.mem0.embedder_api_key,
-            mem0_embedder_base_url=settings.mem0.embedder_base_url,
-        )
-    raise ConfigurationError("BDLH_MEMORY_MODE 只允许 noop、remote；embedded-test 仅 environment=test")
+    if not settings.java_api_base_url or not settings.java_data_internal_token:
+        raise ConfigurationError("Remote Memory Store 写入 Outbox 需要 Java Data Plane 服务凭证")
+    return RemoteMemoryStore(
+        base_url=settings.memory_service_base_url,
+        internal_token=settings.memory_service_internal_token,
+        java_client=RuntimeDataClient(
+            base_url=settings.java_api_base_url,
+            internal_token=settings.java_data_internal_token,
+        ),
+    )
 
 
 def _create_gateway(settings: Settings) -> Any:
@@ -366,6 +349,31 @@ def _create_gateway(settings: Settings) -> Any:
     from bdlh_runtime.integrations.mcp.adapter import create_adapter_from_settings
 
     return create_adapter_from_settings(settings)
+
+
+def _fastpath_encoder(settings: Settings) -> Any:
+    """快路径编码器：始终使用 Qwen 向量模型。
+
+    启动即预编码全部样句——Qwen 服务地址配错时装配直接失败（fail-closed）。
+    运行期偶发故障由 SemanticRouter 降级未命中。
+    """
+    from bdlh_runtime.cognitive.semantic_router.encoder import QwenEmbeddingEncoder
+
+    assert settings.fastpath_embedder_base_url is not None  # 上方 create_application 已校验
+    return QwenEmbeddingEncoder(
+        base_url=settings.fastpath_embedder_base_url,
+        model=settings.fastpath_embedder_model,
+        api_key=settings.fastpath_embedder_api_key,
+        timeout_seconds=settings.fastpath_embedder_timeout_seconds,
+    )
+
+
+def _fastpath_thresholds(settings: Settings) -> Any:
+    """模型编码相似度空间阈值（见 fastpath_data 校准注记）。"""
+    del settings
+    from bdlh_runtime.cognitive.semantic_router.fastpath_data import MODEL_FASTPATH_THRESHOLDS
+
+    return MODEL_FASTPATH_THRESHOLDS
 
 
 def _create_java_adapter(base_url: str | None, *, token: str | None) -> Any:

@@ -45,13 +45,12 @@ def test_list_by_thread_permission_isolation():
     assert store.list_by_thread("t1", None) == []
 
 
-def test_create_history_store_returns_in_memory_in_test_environment():
-    store = create_history_store(environment="test")
-    assert isinstance(store, InMemoryAnalysisHistoryStore)
-
-
-def test_create_history_store_refuses_non_test_environment():
+def test_create_history_store_always_refuses():
     from bdlh_runtime.runtime.errors import ConfigurationError
 
-    with pytest.raises(ConfigurationError, match="仅允许测试环境"):
+    with pytest.raises(ConfigurationError, match="Java Data Plane"):
+        create_history_store()
+    with pytest.raises(ConfigurationError, match="Java Data Plane"):
+        create_history_store(environment="test")
+    with pytest.raises(ConfigurationError, match="Java Data Plane"):
         create_history_store(environment="production")

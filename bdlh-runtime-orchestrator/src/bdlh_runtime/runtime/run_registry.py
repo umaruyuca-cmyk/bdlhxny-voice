@@ -43,9 +43,12 @@ class InMemoryRunRegistry:
         return location if str(location.user_id) == str(user_id) else None
 
 
-def create_run_registry(*, environment: str = "test") -> RunRegistry:
-    """创建测试用内存索引；运行时数据必须经 Java Data Plane。"""
+def create_run_registry(*, environment: str = "production") -> RunRegistry:
+    """产品工厂禁止返回内存 Run Registry；请经 Java Data Plane。
 
-    if environment != "test":
-        raise ConfigurationError("Python 内存 Run Registry 仅允许测试环境")
-    return InMemoryRunRegistry()
+    ``InMemoryRunRegistry`` 仍可供测试直接构造；隔离装配见
+    ``tests/helpers_application``。
+    """
+
+    del environment
+    raise ConfigurationError("Python 内存 Run Registry 已禁用；请使用 Java Data Plane")

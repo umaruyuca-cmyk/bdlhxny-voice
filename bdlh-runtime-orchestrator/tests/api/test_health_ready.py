@@ -10,15 +10,34 @@ from bdlh_runtime.config import Settings
 from bdlh_runtime.runtime.application import create_application
 from bdlh_runtime.runtime.dependency_probes import ProbeResult
 from bdlh_runtime.runtime.errors import ConfigurationError
+from tests.helpers_application import build_isolated_application
 from tests.helpers_registry import seeded_snapshot
 
 
 def _app(**settings_kwargs):
-    settings = Settings(environment="test", **settings_kwargs)
+    settings_kwargs.setdefault("auth_required", False)
+    settings = Settings(**settings_kwargs)
     return create_api_app(
-        create_application(settings, registry_snapshot=seeded_snapshot()),
+        build_isolated_application(settings=settings),
         api_prefix="/api/v1",
     )
+
+
+def _full_prod_settings(**overrides) -> Settings:
+    base = dict(
+        environment="production",
+        auth_required=True,
+        java_api_base_url="http://java.example",
+        java_data_internal_token="token",
+        llm_api_key="llm-key",
+        fastpath_embedder_base_url="http://embed.example/v1",
+        memory_mode="remote",
+        memory_service_base_url="http://memory.example",
+        memory_service_internal_token="mem-token",
+        jwt_secret="x" * 32,
+    )
+    base.update(overrides)
+    return Settings(**base)
 
 
 def test_health_is_liveness_only(monkeypatch):
@@ -38,12 +57,19 @@ def test_ready_fails_when_deep_research_enabled_without_bailian(monkeypatch):
         "bdlh_runtime.runtime.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
     )
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", True, "HTTP 200"),
+    )
     client = TestClient(
         _app(
             java_api_base_url="http://127.0.0.1:8081",
             java_data_internal_token="token",
             jwt_secret="test-jwt-secret-with-at-least-thirty-two-bytes",
             auth_required=True,
+            memory_mode="remote",
+            memory_service_base_url="http://memory.example",
+            memory_service_internal_token="mem-token",
             deep_research_enabled=True,
             bailian_web_search_api_key=None,
         )
@@ -60,11 +86,18 @@ def test_ready_ok_when_java_probe_passes(monkeypatch):
         "bdlh_runtime.runtime.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
     )
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", True, "HTTP 200"),
+    )
     client = TestClient(
         _app(
             java_api_base_url="http://java.example",
             java_data_internal_token="token",
             auth_required=False,
+            memory_mode="remote",
+            memory_service_base_url="http://memory.example",
+            memory_service_internal_token="mem-token",
         )
     )
     response = client.get("/api/v1/ready")
@@ -80,10 +113,17 @@ def test_ready_503_when_java_unreachable(monkeypatch):
         "bdlh_runtime.runtime.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
     )
+    monkeypatch.setattr(
+        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", True, "HTTP 200"),
+    )
     client = TestClient(
         _app(
             java_api_base_url="http://java.example",
             java_data_internal_token="token",
+            memory_mode="remote",
+            memory_service_base_url="http://memory.example",
+            memory_service_internal_token="mem-token",
         )
     )
     response = client.get("/api/v1/ready")
@@ -124,13 +164,7 @@ def test_production_startup_fails_when_java_actuator_down(monkeypatch):
     )
     with pytest.raises(ConfigurationError, match="Java Data Plane 不可达"):
         create_application(
-            Settings(
-                environment="production",
-                java_api_base_url="http://java.example",
-                java_data_internal_token="token",
-                jwt_secret="x" * 32,
-                auth_required=True,
-            ),
+            _full_prod_settings(),
             registry_snapshot=seeded_snapshot(),
         )
 
@@ -138,12 +172,7 @@ def test_production_startup_fails_when_java_actuator_down(monkeypatch):
 def test_production_requires_internal_token():
     with pytest.raises(ConfigurationError, match="JAVA_DATA_INTERNAL_TOKEN"):
         create_application(
-            Settings(
-                environment="production",
-                java_api_base_url="http://java.example",
-                jwt_secret="x" * 32,
-                auth_required=True,
-            ),
+            _full_prod_settings(java_data_internal_token=None),
             registry_snapshot=seeded_snapshot(),
         )
 
@@ -156,12 +185,7 @@ def test_development_startup_fails_when_java_actuator_down(monkeypatch):
     )
     with pytest.raises(ConfigurationError, match="Java Data Plane 不可达"):
         create_application(
-            Settings(
-                environment="development",
-                java_api_base_url="http://java.example",
-                java_data_internal_token="token",
-                auth_required=False,
-            ),
+            _full_prod_settings(environment="development", auth_required=False, jwt_secret=None),
             registry_snapshot=seeded_snapshot(),
         )
 
@@ -175,11 +199,11 @@ def test_ready_503_when_development_missing_internal_token(monkeypatch):
         environment="development",
         java_api_base_url="http://java.example",
         auth_required=False,
+        memory_mode="remote",
+        memory_service_base_url="http://memory.example",
+        memory_service_internal_token="mem-token",
     )
-    app = create_application(
-        Settings(environment="test", auth_required=False),
-        registry_snapshot=seeded_snapshot(),
-    )
+    app = build_isolated_application(settings=Settings(auth_required=False))
     from types import SimpleNamespace
 
     from bdlh_runtime.runtime.readiness import evaluate_readiness

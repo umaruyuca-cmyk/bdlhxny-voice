@@ -19,8 +19,6 @@ from bdlh_runtime.tools.deep_research import (
     BailianWebSearchProvider,
     DeepResearchRequest,
     DeepResearchToolExecutor,
-    FakeAtomicSearchPort,
-    RuleBasedDeepResearchModel,
     assemble_research_bundle,
     evaluate_deep_research_trigger,
     parse_bailian_search_payload,
@@ -29,6 +27,8 @@ from bdlh_runtime.tools.deep_research import (
 from bdlh_runtime.tools.deep_research.atomic_search import AtomicSearchRequest
 from bdlh_runtime.tools.deep_research.bailian_provider import ProcessRateLimiter
 from bdlh_runtime.tools.deep_research.contracts import ResearchFinding, ResearchSource
+from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
+from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
 
 
 def _request(**kwargs) -> DeepResearchRequest:
@@ -286,7 +286,11 @@ async def test_executor_disabled_by_default():
 
 @pytest.mark.asyncio
 async def test_executor_isolation_path_with_fake_search():
-    executor = DeepResearchToolExecutor(enabled=True, atomic_search=FakeAtomicSearchPort())
+    executor = DeepResearchToolExecutor(
+        enabled=True,
+        atomic_search=FakeAtomicSearchPort(),
+        research_model=RuleBasedDeepResearchModel(),
+    )
     obs = await executor.execute(
         DEEP_SEARCH_CAPABILITY,
         _request(research_topics=["舆情", "风险"], success_criteria=["有来源", "有风险点"]).model_dump(),
@@ -332,7 +336,11 @@ async def test_run_deep_research_hard_stops_on_stagnation():
 
 @pytest.mark.asyncio
 async def test_executor_does_not_handle_web_search():
-    executor = DeepResearchToolExecutor(enabled=True, atomic_search=FakeAtomicSearchPort())
+    executor = DeepResearchToolExecutor(
+        enabled=True,
+        atomic_search=FakeAtomicSearchPort(),
+        research_model=RuleBasedDeepResearchModel(),
+    )
     obs = await executor.execute("research.web_search", {"query": "x"})
     assert obs.status == "FAILED"
     assert obs.error_code == "DEEP_RESEARCH_INVALID_REQUEST"

@@ -1,9 +1,9 @@
-"""Understand：立案 Goal（LLM 优先，失败降级规则版）。
+"""Understand：立案 Goal（LLM 路径）。
 
 硬规则：
 - 不输出 route / skill_id / plan_steps / capability / 工具名；
 - candidate_capabilities / observation_refs / status 由控制器回填，LLM 不得生效；
-- 无 LLM 或解析失败时降级 ``rule_based_understand``，不阻断主流程。
+- 解析/调用失败时软失败为「需澄清」UnderstandOutput，不降级关键词金融路由。
 """
 
 from __future__ import annotations
@@ -17,20 +17,12 @@ from .goal_schema import (
     FORBIDDEN_UNDERSTAND_FIELDS,
     GoalSpec,
     SuccessCriterion,
-    UnderstandEntities,
     UnderstandOutput,
     strip_controller_fields,
 )
 
 logger = logging.getLogger("bdlh_runtime.cognitive.understand")
 
-_CODE_PATTERN = re.compile(r"(?<!\d)(?P<code>\d{6})(?!\d)")
-_KNOWLEDGE_PATTERN = re.compile(r"(?:什么是|解释一下|是什么意思|有何区别|怎么算|如何理解)")
-_SUITABILITY_PATTERN = re.compile(r"(?:适不适合|适合买|能不能买|风险匹配|适当性|适合持有)")
-_NEWS_PATTERN = re.compile(r"(?:新闻|舆情|消息)")
-_MONEY_FLOW_PATTERN = re.compile(r"(?:资金流|主力|北向)")
-_INDUSTRY_PATTERN = re.compile(r"(?:行业|板块|赛道)")
-_WEB_PATTERN = re.compile(r"(?:网上|搜索|查一下资料)")
 _CAPABILITY_NAME_PATTERN = re.compile(r"\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_.]*\b")
 
 _SYSTEM_PROMPT = """你是 BDLH Agent Runtime 的理解节点（Understand）。
@@ -69,125 +61,46 @@ class UnderstandModel(Protocol):
         ...
 
 
-def rule_based_understand(message: str, *, goal_id_prefix: str = "g") -> UnderstandOutput:
-    """规则版 Understand：无 LLM / 解析失败时的确定性降级。"""
-    text = message.strip()
-    if not text:
-        return UnderstandOutput(
-            goals=[
-                GoalSpec(
-                    goal_id=f"{goal_id_prefix}1",
-                    objective="澄清用户意图",
-                    success_criteria=[SuccessCriterion(criterion_id="c1", description="获得可执行的目标描述")],
-                )
-            ],
-            missing=["objective"],
-            needs_external=False,
-        )
-
-    if _KNOWLEDGE_PATTERN.search(text) and _CODE_PATTERN.search(text) is None:
-        return UnderstandOutput(
-            goals=[
-                GoalSpec(
-                    goal_id=f"{goal_id_prefix}1",
-                    objective=f"解释概念：{text}",
-                    success_criteria=[
-                        SuccessCriterion(criterion_id="c1", description="给出可核对的概念说明"),
-                    ],
-                )
-            ],
-            needs_external=False,
-        )
-
-    topics: list[str] = []
-    if _NEWS_PATTERN.search(text):
-        topics.append("news")
-    if _MONEY_FLOW_PATTERN.search(text):
-        topics.append("money_flow")
-    if _INDUSTRY_PATTERN.search(text):
-        topics.append("industry")
-    if _WEB_PATTERN.search(text):
-        topics.append("web_research")
-
-    code_match = _CODE_PATTERN.search(text)
-    instruments = [code_match.group("code")] if code_match else []
-    suitability = _SUITABILITY_PATTERN.search(text) is not None
-
-    criteria: list[SuccessCriterion] = []
-    if topics:
-        for index, topic in enumerate(topics, start=1):
-            criteria.append(
-                SuccessCriterion(
-                    criterion_id=f"t{index}",
-                    topic=topic,  # type: ignore[arg-type]
-                    description=f"覆盖主题 {topic}",
-                )
-            )
-    else:
-        criteria.append(
-            SuccessCriterion(
-                criterion_id="c1",
-                description="获得至少一条非纯解析的业务 Observation",
-            )
-        )
-
-    missing: list[str] = []
-    # 只有金融行情类主题缺标的时才追问；纯 web_research / 普通外部查询不归因「缺股票」
-    finance_topics = [topic for topic in topics if topic in {"news", "money_flow", "industry"}]
-    if not instruments and not suitability and finance_topics:
-        missing.append("instrument")
-    elif (
-        not instruments
-        and not suitability
-        and not topics
-        and re.search(r"(?:股票|个股|证券|标的|行情|估值|走势)", text)
-        and not re.search(r"(?:持仓|组合|我的账户)", text)
-    ):
-        missing.append("instrument")
-
-    goal = GoalSpec(
-        goal_id=f"{goal_id_prefix}1",
-        objective=text,
-        requested_topics=topics,  # type: ignore[arg-type]
-        needs_account=suitability or bool(re.search(r"(?:持仓|组合|账户)", text)),
-        needs_profile=suitability,
-        success_criteria=criteria,
-    )
+def _failure_understand(message: str) -> UnderstandOutput:
+    """LLM 不可用/不合规时的软失败：迫使编排走澄清，不关键词路由金融。"""
+    text = (message or "").strip() or "（空输入）"
     return UnderstandOutput(
-        goals=[goal],
-        entities=UnderstandEntities(instruments=instruments),
-        missing=missing,
-        needs_external=True,
+        goals=[
+            GoalSpec(
+                goal_id="g1",
+                objective=f"澄清用户意图：{text[:80]}",
+                success_criteria=[
+                    SuccessCriterion(
+                        criterion_id="c1",
+                        description="获得可执行的目标描述",
+                    )
+                ],
+            )
+        ],
+        missing=["理解失败"],
+        needs_external=False,
     )
-
-
-class RuleBasedUnderstandModel:
-    """异步包装规则 Understand，便于统一装配。"""
-
-    async def understand(self, message: str) -> UnderstandOutput:
-        return rule_based_understand(message)
 
 
 class LlmUnderstandModel:
-    """LLM Understand；失败或契约不合规时降级规则版。"""
+    """LLM Understand；失败或契约不合规时软失败为澄清输出。"""
 
-    def __init__(self, llm: Any, *, fallback: UnderstandModel | None = None):
+    def __init__(self, llm: Any):
         self._llm = llm
-        self._fallback = fallback or RuleBasedUnderstandModel()
 
     async def understand(self, message: str) -> UnderstandOutput:
         text = message.strip()
         if not text:
-            return await self._fallback.understand(message)
+            return _failure_understand(message)
         try:
             raw = await self._ainvoke_json(text)
             parsed = _parse_understand_payload(raw)
             if parsed is not None:
                 return parsed
-            logger.warning("Understand LLM 输出无法通过契约校验，降级规则版")
+            logger.warning("Understand LLM 输出无法通过契约校验，软失败为澄清")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Understand LLM 调用失败，降级规则版: %s", type(exc).__name__)
-        return await self._fallback.understand(message)
+            logger.warning("Understand LLM 调用失败，软失败为澄清: %s", type(exc).__name__)
+        return _failure_understand(message)
 
     async def _ainvoke_json(self, message: str) -> str | None:
         invoke = getattr(self._llm, "ainvoke", None)
@@ -219,10 +132,12 @@ class LlmUnderstandModel:
         return str(content) if content is not None else None
 
 
-def create_understand_model(llm: Any | None) -> UnderstandModel:
-    """装配 Understand：有 LLM 用 LLM，否则规则版。"""
+def create_understand_model(llm: Any) -> UnderstandModel:
+    """装配 Understand：产品路径必须有 LLM。"""
     if llm is None:
-        return RuleBasedUnderstandModel()
+        from bdlh_runtime.runtime.errors import ConfigurationError
+
+        raise ConfigurationError("Understand 需要 LLM；产品路径不允许规则替身装配")
     return LlmUnderstandModel(llm)
 
 

@@ -12,7 +12,7 @@ from bdlh_runtime.cognitive.contracts import (
 )
 from bdlh_runtime.cognitive.goal_schema import GoalSpec, SuccessCriterion
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
-from bdlh_runtime.cognitive.understand import RuleBasedUnderstandModel
+from tests.helpers_understand import RuleBasedUnderstandModel
 
 
 class _AskThenAnswerSelector:

@@ -11,29 +11,13 @@ from typing import Any, Protocol
 
 logger = logging.getLogger("bdlh_runtime.agents.direct_response")
 
+_FAILURE_MESSAGE = "暂时无法完成回答，请稍后重试"
+
 
 class DirectResponseModel(Protocol):
     def answer(self, message: str) -> str:
         """根据用户问题返回自然语言回答。"""
         ...
-
-
-class DeterministicDirectResponseModel:
-    """无模型环境的可测试降级实现。"""
-
-    _ANSWERS = {
-        "市盈率": "市盈率（PE）是股票价格与每股收益的比值，常用于衡量市场为企业盈利支付的估值倍数。比较时应结合行业、盈利稳定性和增长预期，不能只看数值高低。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-        "pe": "市盈率（PE）是股票价格与每股收益的比值，常用于衡量市场为企业盈利支付的估值倍数。比较时应结合行业、盈利稳定性和增长预期，不能只看数值高低。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-        "市净率": "市净率（PB）是股票价格与每股净资产的比值，常用于观察市场相对账面净资产给出的估值。它更适合与同行业公司及企业自身历史区间比较。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-        "pb": "市净率（PB）是股票价格与每股净资产的比值，常用于观察市场相对账面净资产给出的估值。它更适合与同行业公司及企业自身历史区间比较。",  # noqa: E501 —— 单条中文知识内容串，拆行反而破坏可读性
-    }
-
-    def answer(self, message: str) -> str:
-        normalized = message.strip().lower()
-        for keyword, answer in self._ANSWERS.items():
-            if keyword in normalized:
-                return answer
-        return f"关于“{message.strip()}”：当前未配置可用的大模型，暂时只能提供基础说明。"
 
 
 _SYSTEM_PROMPT = (
@@ -46,11 +30,10 @@ _SYSTEM_PROMPT = (
 
 
 class LlmDirectResponseModel:
-    """一次 LLM 调用模式；失败时确定性降级，不执行 Tool Loop。"""
+    """一次 LLM 调用模式；失败时返回短失败文案，不假装词典知识。"""
 
     def __init__(self, llm: Any):
         self._llm = llm
-        self._fallback = DeterministicDirectResponseModel()
 
     def answer(self, message: str) -> str:
         try:
@@ -62,13 +45,19 @@ class LlmDirectResponseModel:
             )
             content = response.content if hasattr(response, "content") else str(response)
             normalized = str(content).strip()
-            return normalized or self._fallback.answer(message)
+            if normalized:
+                return normalized
+            logger.warning("直接问答模型返回空内容")
+            return _FAILURE_MESSAGE
         except Exception as exc:
-            logger.warning("直接问答模型调用失败，使用确定性回答: %s", exc)
-            return self._fallback.answer(message)
+            logger.warning("直接问答模型调用失败: %s", exc)
+            return _FAILURE_MESSAGE
 
 
-def create_direct_response_model(llm: Any | None) -> DirectResponseModel:
+def create_direct_response_model(llm: Any) -> DirectResponseModel:
+    """装配直接问答模型：产品路径必须有 LLM。"""
     if llm is None:
-        return DeterministicDirectResponseModel()
+        from bdlh_runtime.runtime.errors import ConfigurationError
+
+        raise ConfigurationError("Direct response 需要 LLM；产品路径不允许确定性替身装配")
     return LlmDirectResponseModel(llm)

@@ -1,30 +1,30 @@
-"""记忆层测试：NoOp 降级行为 + routing_policy 参数翻译。"""
+"""记忆层测试：Stub 存储行为 + routing_policy 参数翻译。"""
 
 from __future__ import annotations
 
 import pytest
+from tests.helpers_memory import StubMemoryStore
 
 from bdlh_runtime.integrations.mcp.routing_policy import (
     get_route,
     translate_arguments,
 )
-from bdlh_runtime.memory import NoOpMemoryStore
 
-# ── NoOpMemoryStore 降级行为 ──
+# ── StubMemoryStore 行为 ──
 
 
 @pytest.mark.asyncio
-async def test_noop_search_returns_empty():
-    """NoOp 的 search 必须返回空列表，不抛异常。"""
-    store = NoOpMemoryStore()
+async def test_stub_search_returns_empty():
+    """Stub 的 search 必须返回空列表，不抛异常。"""
+    store = StubMemoryStore()
     result = await store.search("任何查询", "user-1")
     assert result == []
 
 
 @pytest.mark.asyncio
-async def test_noop_add_does_not_raise():
-    """NoOp 的 add 必须静默成功，不抛异常、不阻塞。"""
-    store = NoOpMemoryStore()
+async def test_stub_add_does_not_raise():
+    """Stub 的 add 必须静默成功，不抛异常、不阻塞。"""
+    store = StubMemoryStore()
     await store.add("一些内容", "user-1")  # 不应抛异常
 
 

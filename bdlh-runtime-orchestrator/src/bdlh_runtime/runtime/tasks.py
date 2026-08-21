@@ -800,20 +800,26 @@ class PostgresNotificationOutbox:
             return [self._decode(row[0]) for row in rows]
 
 
-def create_task_store(*, environment: str = "test") -> TaskStore:
-    """创建测试用内存任务存储；运行时数据必须经 Java Data Plane。"""
+def create_task_store(*, environment: str = "production") -> TaskStore:
+    """产品工厂禁止返回内存 Task Store；请经 Java Data Plane。
 
-    if environment != "test":
-        raise ConfigurationError("Python 内存 Financial Task Store 仅允许测试环境")
-    return InMemoryTaskStore()
+    ``InMemoryTaskStore`` 仍可供测试直接构造；隔离装配见
+    ``tests/helpers_application``。
+    """
+
+    del environment
+    raise ConfigurationError("Python 内存 Financial Task Store 已禁用；请使用 Java Data Plane")
 
 
-def create_notification_outbox(*, environment: str = "test") -> NotificationOutbox:
-    """创建测试用内存 Outbox；运行时数据必须经 Java Data Plane。"""
+def create_notification_outbox(*, environment: str = "production") -> NotificationOutbox:
+    """产品工厂禁止返回内存 Outbox；请经 Java Data Plane。
 
-    if environment != "test":
-        raise ConfigurationError("Python 内存 Notification Outbox 仅允许测试环境")
-    return InMemoryNotificationOutbox()
+    ``InMemoryNotificationOutbox`` 仍可供测试直接构造；隔离装配见
+    ``tests/helpers_application``。
+    """
+
+    del environment
+    raise ConfigurationError("Python 内存 Notification Outbox 已禁用；请使用 Java Data Plane")
 
 
 def new_task_id() -> str:

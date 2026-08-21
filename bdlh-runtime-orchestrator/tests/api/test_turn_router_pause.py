@@ -13,9 +13,8 @@ from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.cognitive.contracts import CognitiveState, InputEvent, PublicResponse
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import create_application
 from bdlh_runtime.runtime.turn_router import ASK_WHICH_PROMPT, TurnDecision, route_turn
-from tests.helpers_registry import seeded_snapshot
+from tests.helpers_application import build_isolated_application
 
 SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes"
 
@@ -54,12 +53,10 @@ class ClarifyingCognitive:
 
 
 def _client(*, cognitive: Any | None = None) -> tuple[TestClient, Any]:
-    application = create_application(
-        Settings(environment="test", auth_required=True, jwt_secret=SECRET),
-        registry_snapshot=seeded_snapshot(),
+    application = build_isolated_application(
+        settings=Settings(auth_required=True, jwt_secret=SECRET),
+        cognitive_application=cognitive,
     )
-    if cognitive is not None:
-        application.cognitive_application = cognitive
     return TestClient(create_api_app(application)), application
 
 

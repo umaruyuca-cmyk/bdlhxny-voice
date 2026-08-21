@@ -57,7 +57,7 @@ class ImpactExecutor:
             data = {
                 "schema_version": NORMALIZED_USER_DATA_SCHEMA,
                 "user_id": _USER,
-                "data_mode": "TEST_FIXTURE",
+                "data_mode": "LIVE",
                 "positions": [
                     {
                         "symbol": "600519",
@@ -73,7 +73,7 @@ class ImpactExecutor:
             data = {
                 "schema_version": NORMALIZED_USER_DATA_SCHEMA,
                 "user_id": _USER,
-                "data_mode": "TEST_FIXTURE",
+                "data_mode": "LIVE",
                 "account": {"cash": 50_000, "currency": "CNY", "source": "acct-1"},
                 "liquidity": {},
             }
@@ -81,7 +81,7 @@ class ImpactExecutor:
             data = {
                 "schema_version": NORMALIZED_USER_DATA_SCHEMA,
                 "user_id": _USER,
-                "data_mode": "TEST_FIXTURE",
+                "data_mode": "LIVE",
                 "risk_profile": {
                     "risk_level": "BALANCED",
                     "max_loss_tolerance_pct": 20.0,
@@ -106,7 +106,7 @@ class ImpactExecutor:
             data_quality=DataQuality(completeness=1.0, quality_status="OK"),
             provenance=[
                 ProvenanceRecord(
-                    source="fixture",
+                    source="java-api",
                     tool=capability,
                     request_id=request_id,
                     retrieved_at="2026-08-17T00:00:00+00:00",
@@ -121,7 +121,7 @@ def _runtime(executor: ImpactExecutor) -> FinanceRuntime:
         planner=FinancePlanner(),
         authorization=FinanceCapabilityAuthorizationPolicy(load_capability_registry(seeded_snapshot())),
         executor=executor,
-        execution_environment="test",
+        execution_environment="production",
     )
 
 

@@ -81,7 +81,7 @@ services:
       - "127.0.0.1:8090:8090"
     environment:
       # 以下变量统一来自 deploy/.env（模板见 .env.example）
-      BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-development}
+      BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-production}
       BDLH_RUNTIME_AUTH_REQUIRED: ${BDLH_RUNTIME_AUTH_REQUIRED:-true}
       BDLH_RUNTIME_API_PREFIX: ${BDLH_RUNTIME_API_PREFIX:-/api/v1}
       BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS: ${BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS:-30}
@@ -95,7 +95,7 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
       JAVA_API_BASE_URL: ${JAVA_API_BASE_URL:-http://bdlh-runtime-data:8080}
       JAVA_DATA_INTERNAL_TOKEN: ${JAVA_DATA_INTERNAL_TOKEN}
-      BDLH_MEMORY_MODE: ${BDLH_MEMORY_MODE:-noop}
+      BDLH_MEMORY_MODE: ${BDLH_MEMORY_MODE:-remote}
       MEMORY_SERVICE_BASE_URL: ${MEMORY_SERVICE_BASE_URL:-http://bdlh-memory-service:8091}
       MEMORY_SERVICE_INTERNAL_TOKEN: ${MEMORY_SERVICE_INTERNAL_TOKEN}
       AKSHARE_ONE_MCP_TRANSPORT: ${AKSHARE_ONE_MCP_TRANSPORT:-streamable_http}
@@ -188,7 +188,7 @@ services:
     container_name: bdlh-memory-service
     restart: unless-stopped
     environment:
-      BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-development}
+      BDLH_RUNTIME_ENV: ${BDLH_RUNTIME_ENV:-production}
       MEMORY_SERVICE_INTERNAL_TOKEN: ${MEMORY_SERVICE_INTERNAL_TOKEN}
       MEMORY_POSTGRES_DSN: ${MEMORY_POSTGRES_DSN}
       MEMORY_ROCKETMQ_ENABLED: ${MEMORY_ROCKETMQ_ENABLED:-false}

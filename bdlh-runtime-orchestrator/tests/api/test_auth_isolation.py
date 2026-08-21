@@ -7,8 +7,7 @@ from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.cognitive.contracts import CognitiveState, InputEvent, PublicResponse
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import create_application
-from tests.helpers_registry import seeded_snapshot
+from tests.helpers_application import build_isolated_application
 
 SECRET = "test-jwt-secret-with-at-least-thirty-two-bytes"
 
@@ -40,9 +39,8 @@ def _token(user_id: int, *, expired: bool = False) -> str:
 
 
 def _client():
-    application = create_application(
-        Settings(environment="test", auth_required=True, jwt_secret=SECRET),
-        registry_snapshot=seeded_snapshot(),
+    application = build_isolated_application(
+        settings=Settings(auth_required=True, jwt_secret=SECRET),
     )
     return application, TestClient(create_api_app(application))
 
@@ -64,11 +62,10 @@ def test_agent_runs_allow_guest_but_reject_invalid_jwt():
 
 
 def test_chat_stream_allows_guest_without_login():
-    application = create_application(
-        Settings(environment="test", auth_required=True, jwt_secret=SECRET),
-        registry_snapshot=seeded_snapshot(),
+    application = build_isolated_application(
+        settings=Settings(auth_required=True, jwt_secret=SECRET),
+        cognitive_application=_GuestCognitive(),
     )
-    application.cognitive_application = _GuestCognitive()
     client = TestClient(create_api_app(application))
     response = client.post(
         "/api/v1/chat/stream",

@@ -17,7 +17,6 @@ from .goal_action_selector import GoalActionSelector, wants_finance_plugin
 from .plugin_gates import finance_skill_enabled
 from .policy import ActionPolicyResult, DefaultActionPolicy
 from .semantic_router import (
-    LexicalEncoder,
     Route,
     RouteChoice,
     SemanticRouter,
@@ -38,7 +37,6 @@ __all__ = [
     "GoalActionSelector",
     "InputEvent",
     "InputEventType",
-    "LexicalEncoder",
     "PublicResponse",
     "Route",
     "RouteChoice",

@@ -61,17 +61,16 @@ def evaluate_readiness(application: Any) -> ReadinessReport:
     else:
         checks.append(ReadinessCheck("config.jwt_secret", True, "auth_required=false，跳过"))
 
-    if java_url or settings.environment != "test":
-        if settings.java_data_internal_token:
-            checks.append(ReadinessCheck("config.java_data_internal_token", True, "已配置"))
-        else:
-            checks.append(
-                ReadinessCheck(
-                    "config.java_data_internal_token",
-                    False,
-                    "缺少 JAVA_DATA_INTERNAL_TOKEN（产品路径不允许无凭证）",
-                )
+    if settings.java_data_internal_token:
+        checks.append(ReadinessCheck("config.java_data_internal_token", True, "已配置"))
+    else:
+        checks.append(
+            ReadinessCheck(
+                "config.java_data_internal_token",
+                False,
+                "缺少 JAVA_DATA_INTERNAL_TOKEN（产品路径不允许无凭证）",
             )
+        )
 
     if application.capability_registry is not None and application.cognitive_application is not None:
         checks.append(ReadinessCheck("registry.loaded", True, "capability_registry 与 cognitive 已装配"))

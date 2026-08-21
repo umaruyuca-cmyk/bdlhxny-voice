@@ -1,8 +1,7 @@
 """DeepResearchToolExecutor：固定复合研究 Capability（ADR-016 APPROVED 开发阶段）。
 
 默认 ``enabled=False``：返回 UNAVAILABLE，不跑编排、不碰 SearXNG。
-``enabled=True`` 且注入 ``AtomicSearchPort`` 时：跑 Brief → Supervisor/Researcher
-→ compress → 装配（模型可注入；默认规则模型）。
+``enabled=True`` 时必须注入 ``AtomicSearchPort`` 与 ``DeepResearchModel``。
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from bdlh_runtime.tools.deep_research.assembly import assemble_research_bundle
 from bdlh_runtime.tools.deep_research.atomic_search import AtomicSearchPort
 from bdlh_runtime.tools.deep_research.call_policy import evaluate_deep_research_trigger
 from bdlh_runtime.tools.deep_research.contracts import DEEP_SEARCH_CAPABILITY, DeepResearchRequest
-from bdlh_runtime.tools.deep_research.models import DeepResearchModel, RuleBasedDeepResearchModel
+from bdlh_runtime.tools.deep_research.models import DeepResearchModel
 from bdlh_runtime.tools.deep_research.orchestration import run_deep_research
 
 
@@ -30,9 +29,13 @@ class DeepResearchToolExecutor:
         atomic_search: AtomicSearchPort | None = None,
         research_model: DeepResearchModel | None = None,
     ) -> None:
+        if enabled and research_model is None:
+            raise ValueError("research_model is required when DeepResearchToolExecutor is enabled")
+        if enabled and atomic_search is None:
+            raise ValueError("atomic_search is required when DeepResearchToolExecutor is enabled")
         self._enabled = enabled
         self._atomic_search = atomic_search
-        self._research_model = research_model or RuleBasedDeepResearchModel()
+        self._research_model = research_model
 
     @property
     def enabled(self) -> bool:
@@ -81,11 +84,11 @@ class DeepResearchToolExecutor:
             )
             return self._bundle_observation(bundle, status="PARTIAL")
 
-        if self._atomic_search is None:
+        if self._atomic_search is None or self._research_model is None:
             return self._observation(
                 status="UNAVAILABLE",
                 error_code="ATOMIC_SEARCH_UNAVAILABLE",
-                error_message="AtomicSearchPort is not configured",
+                error_message="AtomicSearchPort or DeepResearchModel is not configured",
                 data=None,
                 known_unavailable=[DEEP_SEARCH_CAPABILITY],
             )

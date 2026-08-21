@@ -4,6 +4,7 @@ import pytest
 
 from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType, InputEvent
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
+from tests.helpers_understand import RuleBasedUnderstandModel
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainBudget,
@@ -61,6 +62,7 @@ def app(action: CognitiveAction) -> CognitiveOrchestrator:
         dispatcher=DomainDispatcher(registry),
         enabled_domains=frozenset({"example"}),
         authorized_operations=frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+        understand=RuleBasedUnderstandModel(),
     )
 
 
@@ -109,6 +111,7 @@ async def test_unregistered_domain_returns_limited_not_success() -> None:
         dispatcher=DomainDispatcher(registry),
         enabled_domains=frozenset({"example", "missing"}),
         authorized_operations=frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+        understand=RuleBasedUnderstandModel(),
     )
     result = await orchestrator.run(event())
 
@@ -130,6 +133,7 @@ async def test_empty_enabled_domains_fail_closed_for_domain_invoke() -> None:
         dispatcher=DomainDispatcher(DomainRegistry()),
         enabled_domains=frozenset(),
         authorized_operations=frozenset({DomainOperation.READ_PUBLIC_RESEARCH.value}),
+        understand=RuleBasedUnderstandModel(),
     ).run(event())
 
     assert result.response.response_kind == "BLOCKED"

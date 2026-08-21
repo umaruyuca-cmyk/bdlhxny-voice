@@ -25,31 +25,24 @@ from bdlh_runtime.tools.deep_research.contracts import (
     ResearchUsage,
 )
 from bdlh_runtime.tools.deep_research.graph_state import DeepResearchGraphState
-from bdlh_runtime.tools.deep_research.models import (
-    DeepResearchModel,
-    RuleBasedDeepResearchModel,
-)
+from bdlh_runtime.tools.deep_research.models import DeepResearchModel, ResearchUnitPlan
 
 
 def build_deep_research_graph(
     *,
     atomic_search: AtomicSearchPort,
-    research_model: DeepResearchModel | None = None,
+    research_model: DeepResearchModel,
 ):
     """编译隔离 Deep Research 子图。"""
 
-    model = research_model or RuleBasedDeepResearchModel()
+    model = research_model
 
     async def write_research_brief(state: DeepResearchGraphState) -> dict[str, Any]:
         request = DeepResearchRequest.model_validate(state["request"])
         brief = await model.write_brief(request)
-        limitations = list(state.get("limitations") or [])
-        if isinstance(model, RuleBasedDeepResearchModel) and "rule_based_orchestration" not in limitations:
-            limitations.append("rule_based_orchestration")
         return {
             "brief": brief,
             "model_calls": int(state.get("model_calls") or 0) + 1,
-            "limitations": limitations,
             "phase": "brief",
         }
 
@@ -58,7 +51,7 @@ def build_deep_research_graph(
         brief = state.get("brief") or ""
         plans = await model.plan_units(request, brief=brief)
         if not plans:
-            plans = await RuleBasedDeepResearchModel().plan_units(request, brief=brief)
+            plans = [ResearchUnitPlan(topic="primary", query=request.question)]
         units = [
             {
                 "topic": plan.topic,

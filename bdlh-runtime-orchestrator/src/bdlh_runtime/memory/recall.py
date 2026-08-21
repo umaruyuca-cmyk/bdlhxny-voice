@@ -28,9 +28,6 @@ async def recall_semantic_memory(
     """入口召回；失败返回空列表并标记 degraded，禁止假造成功。"""
     if store is None:
         return MemoryRecallResult(degraded=False, limitation=None)
-    # 显式 noop 不是故障
-    if type(store).__name__ == "NoOpMemoryStore":
-        return MemoryRecallResult(records=[], degraded=False)
     try:
         if hasattr(store, "search_with_status"):
             records, degraded = await store.search_with_status(query, user_id, limit=limit)

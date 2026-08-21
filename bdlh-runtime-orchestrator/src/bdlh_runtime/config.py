@@ -8,6 +8,9 @@
 - MCP 数据源：两个金融 MCP 的传输方式与端点，传输协议不同必须分别配置。
 - 记忆层：Mem0 内部使用的 LLM 与 Embedding，显式指定避免走默认 OpenAI。
 - 模型凭证：LLM（默认 GLM-4.7）与 Qwen3 的接入参数，供记忆层和后续 Agent 使用。
+
+产品配置一律按生产标准装配：无 noop/embedded-test/lexical 等产品降级分支。
+隔离单测请用 ``tests/helpers_application.py``，不要在 Settings 上开测试逃生门。
 """
 
 from __future__ import annotations
@@ -42,11 +45,11 @@ class McpSourceConfig:
 
 @dataclass(frozen=True)
 class Mem0Config:
-    """Mem0 记忆层配置。
+    """Mem0 记忆层配置（由独立 Memory Service 消费）。
 
     内部 LLM 和 Embedding 必须显式指定为本项目使用的模型，不得走 Mem0 默认
-    的 OpenAI——否则会引入未声明的外部依赖和成本。Mem0 不可用时由
-    NoOpMemoryStore 降级，主流程不受影响（见 memory/noop.py）。
+    的 OpenAI——否则会引入未声明的外部依赖和成本。产品路径只走 Remote
+    Memory Service；Orchestrator 不再以 NoOp 作为配置级降级。
     """
 
     llm_model: str = DEFAULT_LLM_MODEL  # Mem0 内部抽取/去重用的 LLM
@@ -62,10 +65,10 @@ class Settings:
     """BDLH Agent Runtime Python 服务的完整运行配置。"""
 
     # ── 基础运行 ──
-    environment: str = "development"
+    environment: str = "production"
     api_prefix: str = "/api/v1"
     max_event_wait_seconds: float = 30.0
-    auth_required: bool = False
+    auth_required: bool = True
     jwt_secret: str | None = None
     # ── M6 持续任务 Worker ──
     financial_task_worker_enabled: bool = False
@@ -73,8 +76,8 @@ class Settings:
     # Chat/Run/History/Task 均由 Java Data Plane 持久化。
     java_api_base_url: str | None = None
     java_data_internal_token: str | None = None
-    # PLATFORM-P5：生产只允许 Remote Memory Service；embedded Mem0 仅测试/迁移对照。
-    memory_mode: str = "noop"
+    # 产品仅允许 Remote Memory Service；noop / embedded-test 已从产品配置移除。
+    memory_mode: str = "remote"
     memory_service_base_url: str | None = None
     memory_service_internal_token: str | None = None
 
@@ -139,6 +142,12 @@ class Settings:
     llm_api_key: str | None = None
     qwen3_base_url: str | None = None
 
+    # ── 快路径向量化：始终 Qwen 向量模型（与记忆层共用 Qwen3 服务）──
+    fastpath_embedder_base_url: str | None = None
+    fastpath_embedder_api_key: str | None = None
+    fastpath_embedder_model: str = "qwen3-embedding:4b-q8_0"
+    fastpath_embedder_timeout_seconds: float = 10.0
+
     @classmethod
     def from_environment(cls) -> Settings:
         """从环境变量读取配置；生产环境应由部署系统统一注入。
@@ -150,13 +159,17 @@ class Settings:
         environment = os.getenv("BDLH_RUNTIME_ENV", "production")
         # G3：产品默认要求配置 JWT_SECRET（登录用户可校验）；缺 Token 按游客对话，
         # 不拦截 chat/agent-runs。登录专属能力由 authenticated_task_user 强制。
-        auth_required_default = "false" if environment == "test" else "true"
         jwt_secret = os.getenv("JWT_SECRET")
+        memory_mode = os.getenv("BDLH_MEMORY_MODE", "remote").strip().lower()
+        if memory_mode != "remote":
+            raise ValueError(
+                "BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品配置移除"
+            )
         return cls(
             environment=environment,
             api_prefix=os.getenv("BDLH_RUNTIME_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS", "30")),
-            auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", auth_required_default).lower()
+            auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", "true").lower()
             in {"1", "true", "yes", "on"},
             jwt_secret=jwt_secret,
             financial_task_worker_enabled=os.getenv("BDLH_FINANCIAL_TASK_WORKER_ENABLED", "false").lower()
@@ -164,7 +177,7 @@ class Settings:
             financial_task_poll_seconds=float(os.getenv("BDLH_FINANCIAL_TASK_POLL_SECONDS", "10")),
             java_api_base_url=os.getenv("JAVA_API_BASE_URL"),
             java_data_internal_token=os.getenv("JAVA_DATA_INTERNAL_TOKEN"),
-            memory_mode=os.getenv("BDLH_MEMORY_MODE", "noop").strip().lower(),
+            memory_mode=memory_mode,
             memory_service_base_url=os.getenv("MEMORY_SERVICE_BASE_URL"),
             memory_service_internal_token=os.getenv("MEMORY_SERVICE_INTERNAL_TOKEN"),
             mcp_akshare_one=McpSourceConfig(
@@ -188,6 +201,16 @@ class Settings:
             ),
             llm_api_key=_first_env("LLM_API_KEY", "DEEPSEEK_API_KEY"),
             qwen3_base_url=os.getenv("QWEN3_BASE_URL"),
+            fastpath_embedder_base_url=os.getenv("FASTPATH_EMBEDDER_BASE_URL")
+            or os.getenv("QWEN3_BASE_URL"),
+            fastpath_embedder_api_key=os.getenv("FASTPATH_EMBEDDER_API_KEY")
+            or os.getenv("QWEN3_API_KEY"),
+            fastpath_embedder_model=_first_env(
+                "FASTPATH_EMBEDDER_MODEL",
+                "MEM0_EMBEDDER_MODEL",
+                default="qwen3-embedding:4b-q8_0",
+            ),
+            fastpath_embedder_timeout_seconds=float(os.getenv("FASTPATH_EMBEDDER_TIMEOUT_SECONDS", "10")),
             web_search_base_url=os.getenv("WEB_SEARCH_BASE_URL"),
             web_search_agent_id=os.getenv("WEB_SEARCH_AGENT_ID"),
             web_search_token=os.getenv("WEB_SEARCH_TOKEN"),

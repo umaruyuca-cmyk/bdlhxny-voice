@@ -180,12 +180,15 @@ class InMemoryChatSessionStore:
             return self._sessions.pop(self._key(session_id, user_id), None) is not None
 
 
-def create_chat_session_store(*, environment: str = "test") -> ChatSessionStore:
-    """创建测试用内存会话目录；运行时数据必须经 Java Data Plane。"""
+def create_chat_session_store(*, environment: str = "production") -> ChatSessionStore:
+    """产品工厂禁止返回内存会话目录；请经 Java Data Plane。
 
-    if environment != "test":
-        raise ConfigurationError("Python 内存聊天会话目录仅允许测试环境")
-    return InMemoryChatSessionStore()
+    ``InMemoryChatSessionStore`` 仍可供测试直接构造；隔离装配见
+    ``tests/helpers_application``。
+    """
+
+    del environment
+    raise ConfigurationError("Python 内存聊天会话目录已禁用；请使用 Java Data Plane")
 
 
 class ChatSessionVerifiedEntityPersistence:

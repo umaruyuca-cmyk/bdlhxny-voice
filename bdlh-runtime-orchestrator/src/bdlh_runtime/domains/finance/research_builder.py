@@ -336,13 +336,12 @@ class StockResearchResultBuilder:
         if analysis_status in {"FAILED", "LIMITED"} or base_coverage == "LIMITED" or not evidence:
             return "LIMITED"
         modes = {self._data_mode(item) for item in observations}
-        if "UNAVAILABLE" in modes or "MOCK" in modes:
+        if "UNAVAILABLE" in modes or "MOCK" in modes or "TEST_FIXTURE" in modes:
             return "LIMITED"
         if (
             analysis_status == "PARTIAL"
             or base_coverage == "PARTIAL"
             or has_conflicts
-            or "TEST_FIXTURE" in modes
             or any(item.quality in {"LOW", "INVALID"} for item in evidence)
         ):
             return "PARTIAL"
@@ -595,7 +594,7 @@ class StockResearchResultBuilder:
         if observation.status in {"FAILED", "UNAVAILABLE"} or observation.data is None:
             return "INVALID"
         mode = self._data_mode(observation)
-        if mode in {"MOCK", "UNAVAILABLE"}:
+        if mode in {"MOCK", "UNAVAILABLE", "TEST_FIXTURE"}:
             return "INVALID"
         if not observation.provenance:
             return "LOW"
@@ -604,8 +603,6 @@ class StockResearchResultBuilder:
             return "MEDIUM"
         if quality == "INVALID":
             return "INVALID"
-        if mode == "TEST_FIXTURE":
-            return "LOW"
         if quality == "OK":
             return "HIGH"
         return "MEDIUM"

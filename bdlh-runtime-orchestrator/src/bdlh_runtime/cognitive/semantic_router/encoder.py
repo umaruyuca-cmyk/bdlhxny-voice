@@ -1,15 +1,17 @@
 """可替换的文本编码器。
 
-默认 ``LexicalEncoder`` 用稳定哈希 n-gram，不引入额外依赖，便于测试与离线装配。
-生产可替换为 OpenAI / Qwen Embedding，只要满足 ``Encoder`` 协议。
+生产快路径使用 ``QwenEmbeddingEncoder``（OpenAI 兼容 /v1/embeddings，Qwen3 向量模型）。
+词法哈希编码器仅存在于测试 helpers，不得进入产品装配。
 """
 
 from __future__ import annotations
 
-import hashlib
-import math
-import re
+from collections import OrderedDict
 from typing import Protocol, runtime_checkable
+
+
+class EncoderUnavailableError(RuntimeError):
+    """向量化服务不可用；快路径应视为未命中，放行完整管线。"""
 
 
 @runtime_checkable
@@ -19,54 +21,81 @@ class Encoder(Protocol):
     def encode(self, texts: list[str]) -> list[list[float]]: ...
 
 
-class LexicalEncoder:
-    """字符 n-gram + 词元的哈希向量，用余弦即可比较语义相近的短句。"""
+class QwenEmbeddingEncoder:
+    """Qwen3 向量模型编码器（OpenAI 兼容 /v1/embeddings）。
 
-    def __init__(self, *, dim: int = 384, ngram_min: int = 2, ngram_max: int = 3) -> None:
-        if dim < 32:
-            raise ValueError("dim must be >= 32")
-        if ngram_min < 1 or ngram_max < ngram_min:
-            raise ValueError("invalid n-gram range")
-        self._dim = dim
-        self._ngram_min = ngram_min
-        self._ngram_max = ngram_max
+    生产快路径唯一编码器；查询侧带进程内 LRU 缓存，重复句子不再请求。
+    服务调用失败抛 ``EncoderUnavailableError``：启动期预编码失败会让装配
+    直接报错（配置错误必须显性暴露）；运行期由 SemanticRouter 降级为未命中。
+    同步阻塞实现，调用方应放入线程（见 SemanticRouteSelector）。
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model: str,
+        api_key: str | None = None,
+        timeout_seconds: float = 10.0,
+        cache_size: int = 512,
+    ) -> None:
+        if not base_url:
+            raise ValueError("base_url is required")
+        if not model:
+            raise ValueError("model is required")
+        self._endpoint = base_url.rstrip("/") + "/embeddings"
+        self._model = model
+        self._api_key = api_key
+        self._timeout_seconds = timeout_seconds
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        self._cache_size = cache_size
 
     def encode(self, texts: list[str]) -> list[list[float]]:
-        return [_l2_normalize(self._vector(text)) for text in texts]
+        results: list[list[float] | None] = []
+        missing_texts: list[str] = []
+        missing_indexes: list[int] = []
+        for index, text in enumerate(texts):
+            cached = self._cache.get(text)
+            if cached is not None:
+                self._cache.move_to_end(text)
+                results.append(cached)
+            else:
+                results.append(None)
+                missing_texts.append(text)
+                missing_indexes.append(index)
+        if missing_texts:
+            vectors = self._encode_remote(missing_texts)
+            for index, text, vector in zip(missing_indexes, missing_texts, vectors, strict=True):
+                results[index] = vector
+                self._cache[text] = vector
+                self._cache.move_to_end(text)
+                if len(self._cache) > self._cache_size:
+                    self._cache.popitem(last=False)
+        return [vector if vector is not None else [] for vector in results]
 
-    def _vector(self, text: str) -> list[float]:
-        # 1. 统一大小写，保留中文与字母数字。
-        normalized = _normalize(text)
-        vector = [0.0] * self._dim
-        if not normalized:
-            return vector
-        # 2. 字符 n-gram 捕获中文短句的局部重叠。
-        for n in range(self._ngram_min, self._ngram_max + 1):
-            if len(normalized) < n:
-                continue
-            for i in range(len(normalized) - n + 1):
-                vector[self._bucket(normalized[i : i + n])] += 1.0
-        # 3. 空白分词给英文短语额外权重。
-        for token in _TOKEN_RE.findall(normalized):
-            if len(token) >= 2:
-                vector[self._bucket(f"tok:{token}")] += 2.0
-        return vector
+    def _encode_remote(self, texts: list[str]) -> list[list[float]]:
+        import httpx
 
-    def _bucket(self, gram: str) -> int:
-        digest = hashlib.blake2b(gram.encode("utf-8"), digest_size=8).digest()
-        return int.from_bytes(digest, "big") % self._dim
-
-
-_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
-
-
-def _normalize(text: str) -> str:
-    return " ".join(text.casefold().split())
-
-
-def _l2_normalize(vector: list[float]) -> list[float]:
-    # 1. 单位化后点积即余弦，避免每次查询重复开方。
-    norm = math.sqrt(sum(value * value for value in vector))
-    if norm == 0.0:
-        return vector
-    return [value / norm for value in vector]
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        try:
+            # trust_env=False：向量服务是内网/容器网调用，禁止被系统代理
+            # （Windows 注册表代理等）截走——否则 localhost 请求会被代理打成 502。
+            with httpx.Client(timeout=self._timeout_seconds, trust_env=False) as client:
+                response = client.post(
+                    self._endpoint,
+                    headers=headers,
+                    json={"model": self._model, "input": texts},
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except Exception as exc:  # noqa: BLE001
+            raise EncoderUnavailableError(
+                f"Qwen 向量服务不可用（{self._endpoint}）：{type(exc).__name__}"
+            ) from exc
+        try:
+            data = sorted(payload["data"], key=lambda item: item["index"])
+            return [list(map(float, item["embedding"])) for item in data]
+        except Exception as exc:  # noqa: BLE001
+            raise EncoderUnavailableError("Qwen 向量服务返回结构异常") from exc

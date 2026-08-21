@@ -28,11 +28,10 @@ def test_in_memory_registry_round_trip() -> None:
     assert registry.get("missing") is None
 
 
-def test_create_run_registry_returns_in_memory_in_test_environment() -> None:
-    registry = create_run_registry(environment="test")
-    assert isinstance(registry, InMemoryRunRegistry)
-
-
-def test_create_run_registry_refuses_non_test_environment() -> None:
-    with pytest.raises(ConfigurationError, match="仅允许测试环境"):
+def test_create_run_registry_always_refuses() -> None:
+    with pytest.raises(ConfigurationError, match="Java Data Plane"):
+        create_run_registry()
+    with pytest.raises(ConfigurationError, match="Java Data Plane"):
+        create_run_registry(environment="test")
+    with pytest.raises(ConfigurationError, match="Java Data Plane"):
         create_run_registry(environment="production")
