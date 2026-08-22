@@ -17,7 +17,7 @@ const SITE_PAGES = [
   "/showcase/index.html", "/showcase/results.html", "/showcase/runs.html",
   "/experiment/index.html", "/experiment/cases.html", "/experiment/reproduce.html",
   "/context/index.html", "/context/design.html", "/context/results.html",
-  "/judging/index.html", "/judging/judge.html", "/judging/invalid.html",
+  "/judging/index.html", "/judging/metrics.html", "/judging/judge.html", "/judging/invalid.html",
   "/engine/index.html", "/engine/loading.html", "/engine/catalog.html",
   "/engine/governance.html", "/engine/guardrail.html", "/engine/tools.html",
   "/ops/index.html", "/ops/run-api.html", "/ops/artifacts.html",
@@ -29,7 +29,7 @@ async function readPage(page) {
 }
 
 test("模块页齐备,共享三层导航壳(模块顶栏 + 模块侧栏 + 本页目录)", async () => {
-  assert.equal(SITE_PAGES.length, 24);
+  assert.equal(SITE_PAGES.length, 25);
   for (const page of SITE_PAGES) {
     const html = await readPage(page);
     assert.match(html, /docs\.css/, `${page} 必须引用 docs.css`);

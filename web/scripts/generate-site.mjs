@@ -60,6 +60,7 @@ const PAGES = {
   ],
   "/judging/": [
     { href: "/judging/", title: "指标定义" },
+    { href: "/judging/metrics", title: "批次指标总表" },
     { href: "/judging/judge", title: "判官说明" },
     { href: "/judging/invalid", title: "无效运行与口径" },
   ],
@@ -555,6 +556,60 @@ const JUDGING_METRICS = {
   ],
 };
 
+const JUDGING_BATCH_METRICS = {
+  path: "judging/metrics.html",
+  title: "批次指标总表 · 评判标准",
+  description: "最新已发布批次计算出的全部指标(基础+通用目录专项),逐组对照。",
+  moduleKey: "/judging/",
+  currentPath: "/judging/metrics",
+  sections: [
+    {
+      id: "batch",
+      title: "批次信息",
+      html: `<div id="batchMeta"><div class="placeholder-block">正在读取已发布批次…</div></div>`,
+    },
+    {
+      id: "table",
+      title: "全部指标(逐组)",
+      html: `<p>下表为最新已发布批次实际计算出的<strong>全部指标</strong>——基础能力/合规/效率与通用目录专项(GT-7);「未运行」表示该组无对应金标或调用,不进分母。每行可展开定义,口径详见<a href="/judging/">指标定义</a>。</p><div id="metricsTable"><div class="placeholder-block">正在读取…</div></div>`,
+    },
+  ],
+  extraScripts: `
+<script src="/showcase/shared.js"></script>
+<script>
+(function () {
+  "use strict";
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+  fetch("/showcase-data/index.json", { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (index) {
+      var latest = index && index.latest_batch;
+      if (!latest) throw new Error("尚无已发布批次");
+      var meta = "批次 " + esc(latest.batch_id.slice(0, 8)) +
+        (latest.is_formal ? "(正式)" : "(未达门槛,过程参考)") +
+        " · 模型 " + esc(latest.model || "-") +
+        " · 每题 " + latest.runs_per_case + " 次 · " + latest.case_count + " 题" +
+        " · 发布于 " + esc(String(latest.published_at || "").replace("T", " ").slice(0, 16));
+      document.getElementById("batchMeta").innerHTML = '<p class="lab-note">' + meta + "</p>";
+      return fetch("/showcase-data/batches/" + latest.batch_id + "/report.json", { cache: "no-store" });
+    })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (report) {
+      if (!report) throw new Error("批次产物缺失");
+      document.getElementById("metricsTable").innerHTML = SHOWCASE.renderGroupTable(report);
+    })
+    .catch(function (err) {
+      document.getElementById("metricsTable").innerHTML =
+        '<div class="placeholder-block">未运行:(' + esc(err.message) + ")</div>";
+    });
+})();
+</script>`,
+};
+
 const JUDGING_JUDGE = {
   path: "judging/judge.html",
   title: "判官说明 · 评判标准",
@@ -875,6 +930,7 @@ const ALL_PAGES = [
   CONTEXT_DESIGN,
   CONTEXT_RESULTS,
   JUDGING_METRICS,
+  JUDGING_BATCH_METRICS,
   JUDGING_JUDGE,
   JUDGING_INVALID,
   ENGINE_LOOP,

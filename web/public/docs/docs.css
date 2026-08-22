@@ -745,3 +745,10 @@ tr:nth-child(even) td { background: #fcfcfd; }
 .muted { color: #98a1af; font-size: 12.5px; }
 .ok { color: #2c7a4b; }
 .deny { color: #b23b3b; }
+.metric-group-row td {
+  background: #f5f7fb;
+  font-weight: 650;
+  font-size: 12.5px;
+  color: var(--doc-dim);
+  padding: 6px 12px;
+}

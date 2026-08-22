@@ -36,9 +36,16 @@ const GROUP_KEYS = {
   treatment: { key: "full-system", label: "完整工程模式" },
 };
 const METRIC_FIELDS = [
-  "tool_selection_rate", "hallucination_rate", "forbidden_leak_rate", "number_hallucination_rate",
-  "c1_violation_rate", "c2_violation_rate", "mean_rounds", "mean_tokens",
-  "median_duration_ms", "p95_duration_ms",
+  "tool_selection_rate", "hallucination_rate", "invisible_tool_rate", "forbidden_leak_rate",
+  "number_hallucination_rate", "c1_violation_rate", "c2_violation_rate", "mean_rounds",
+  "mean_tokens", "median_duration_ms", "p95_duration_ms",
+  // GT-7 通用目录专项(None=该组无对应金标/调用,不进分母,公开侧如实透出)
+  "selection_precision_mean", "selection_recall_mean", "missed_rate", "extra_call_rate",
+  "forbidden_attempt_rate", "params_complete_rate", "params_type_valid_rate",
+  "params_factual_rate", "duplicate_call_rate", "order_correct_rate",
+  "unconfirmed_write_rate", "write_for_query_rate", "search_hit_rate",
+  "invalid_search_rate", "duplicate_search_rate", "search_then_correct_rate",
+  "mean_tools_schema_tokens",
 ];
 const CONTEXT_STRATEGY_ENUM = new Set(["full", "recent-n", "single-summary", "budgeted"]);
 

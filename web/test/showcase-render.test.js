@@ -20,6 +20,22 @@ const GATED_INDEX = {
   },
 };
 
+test("组指标总表覆盖通用目录专项(GT-7)与分组标题行", () => {
+  const report = {
+    groups: [
+      { key: "baseline-tool-calling", label: "裸 tool calling", valid_runs: 5, invalid_runs: 0,
+        metrics: { tool_selection_rate: 1, selection_precision_mean: 0.5, order_correct_rate: null, mean_tools_schema_tokens: 900 } },
+      { key: "full-system", label: "完整工程模式", valid_runs: 5, invalid_runs: 0,
+        metrics: { tool_selection_rate: 1, selection_precision_mean: null, order_correct_rate: 1 } },
+    ],
+  };
+  const html = SHOWCASE.renderGroupTable(report);
+  assert.match(html, /通用目录专项/, "GT-7 分组标题行需渲染");
+  assert.match(html, /选择精确率/, "GT-7 指标行需渲染");
+  assert.match(html, /metric-group-row/, "分组标题行带样式类");
+  assert.match(html, /未运行/, "None 指标渲染为未运行(不进分母)");
+});
+
 test("homeState 三态：无数据 / 未达门槛 / 正式批次", () => {
   assert.equal(S.homeState(null).kind, "nodata");
   assert.equal(S.homeState({ latest_batch: null }).kind, "nodata");

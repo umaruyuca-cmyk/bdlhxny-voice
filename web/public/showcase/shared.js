@@ -72,6 +72,7 @@
   var METRIC_DEFS = [
     { field: "tool_selection_rate", label: "工具选择准确率", def: "实际成功工具集合与期望工具集合一致的比例", fmt: pct },
     { field: "hallucination_rate", label: "幻觉工具率", def: "调用了当次工具目录中不存在名称的比例", fmt: pct },
+    { field: "invisible_tool_rate", label: "不可见工具调用率", def: "调用了当次不可见(被可见集收窄排除)工具名称的比例", fmt: pct },
     { field: "forbidden_leak_rate", label: "越权泄漏率", def: "未授权运行成功访问受限工具或数据的比例", fmt: pct },
     { field: "number_hallucination_rate", label: "数字幻觉率", def: "答案中的事实性数字无法在工具结果或数据快照中找到的比例", fmt: pct },
     { field: "c1_violation_rate", label: "C-1 违规率", def: "违反交易边界语义（C-1）的比例", fmt: pct },
@@ -79,7 +80,25 @@
     { field: "mean_rounds", label: "平均轮次", def: "每个有效运行的模型调用轮次均值", fmt: function (v) { return num(v == null ? null : Number(v).toFixed(1)); } },
     { field: "mean_tokens", label: "平均 token", def: "prompt + completion 的均值（估算口径运行数见分场景明细）", fmt: function (v) { return num(v); } },
     { field: "median_duration_ms", label: "p50 时长", def: "总时长中位数", fmt: function (v) { return num(v, "ms"); } },
-    { field: "p95_duration_ms", label: "p95 时长", def: "总时长 95 分位", fmt: function (v) { return num(v, "ms"); } }
+    { field: "p95_duration_ms", label: "p95 时长", def: "总时长 95 分位", fmt: function (v) { return num(v, "ms"); } },
+    { group: "通用目录专项（GT-7；「未运行」=该组无对应金标或调用，不进分母）" },
+    { field: "selection_precision_mean", label: "选择精确率", def: "成功调用集合中命中金标的比例(均值)", fmt: pct },
+    { field: "selection_recall_mean", label: "选择召回率", def: "金标工具被成功调用的比例(均值)", fmt: pct },
+    { field: "missed_rate", label: "漏选率", def: "存在金标工具未被调用的运行比例", fmt: pct },
+    { field: "extra_call_rate", label: "多余调用率", def: "成功调用了金标之外工具的运行比例", fmt: pct },
+    { field: "forbidden_attempt_rate", label: "禁止尝试率", def: "尝试调用题目标注不存在工具的运行比例", fmt: pct },
+    { field: "params_complete_rate", label: "参数完整率", def: "调用实参覆盖 schema 必填项的比例", fmt: pct },
+    { field: "params_type_valid_rate", label: "参数类型正确率", def: "调用实参通过 schema 校验的比例", fmt: pct },
+    { field: "params_factual_rate", label: "参数事实一致率", def: "实参与金标期望参数值一致的比例", fmt: pct },
+    { field: "duplicate_call_rate", label: "重复调用率", def: "存在同工具同参数重复调用的运行比例", fmt: pct },
+    { field: "order_correct_rate", label: "调用顺序正确率", def: "金标调用序完全一致的比例", fmt: pct },
+    { field: "unconfirmed_write_rate", label: "未确认写入率", def: "题面未给确认仍调用写入类工具的运行比例(只判不拦)", fmt: pct },
+    { field: "write_for_query_rate", label: "查询误用写入率", def: "查询类问题调用了写入类工具的运行比例", fmt: pct },
+    { field: "search_hit_rate", label: "检索命中率", def: "检索后调齐金标工具的比例(v1 按调用记录近似)", fmt: pct },
+    { field: "invalid_search_rate", label: "无效检索率", def: "不必要时仍调用 search_tools 的运行比例", fmt: pct },
+    { field: "duplicate_search_rate", label: "重复检索率", def: "多次调用 search_tools 的运行比例", fmt: pct },
+    { field: "search_then_correct_rate", label: "检索后选择准确率", def: "发生检索且工具选择正确的比例", fmt: pct },
+    { field: "mean_tools_schema_tokens", label: "工具定义 token(均值)", def: "当轮可见工具 schema 序列化后的 token 估算均值", fmt: function (v) { return num(v); } }
   ];
 
   var OUTCOME_DEFS = [
@@ -100,6 +119,9 @@
         "组键 " + esc(g.key) + "；有效 " + g.valid_runs + " / 无效 " + g.invalid_runs + " 次运行</p></details></th>";
     }).join("") + "</tr>";
     var rows = METRIC_DEFS.map(function (m) {
+      if (m.group) {
+        return '<tr class="metric-group-row"><td colspan="' + (report.groups.length + 1) + '">' + esc(m.group) + "</td></tr>";
+      }
       return "<tr><td>" + esc(m.label) + '<details class="metric-def"><summary>定义</summary><p>' + esc(m.def) +
         "</p></details></td>" + report.groups.map(function (g) {
           return "<td>" + m.fmt(g.metrics ? g.metrics[m.field] : null) + "</td>";
