@@ -490,6 +490,280 @@
       "kind_label": "复杂多工具"
     },
     {
+      "id": "cxm2-audit-01",
+      "title": "代码安全审计(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "帮我做一次代码安全审计:读取目标模块的源码,查看最近一个月的git提交记录,搜索这些代码涉及的已知CVE漏洞,对比修复前后的差异,检查是否有敏感信息泄露,提交一个安全工单",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:代码→阅读→变更→搜索→合规→工单",
+        "category": "代码审计",
+        "expected_order": [
+          "code.search",
+          "code.read",
+          "git.get_diff",
+          "web.search",
+          "compliance.check_text",
+          "support.create_ticket"
+        ],
+        "expected_tools": [
+          "code.search",
+          "code.read",
+          "git.get_diff",
+          "web.search",
+          "compliance.check_text",
+          "support.create_ticket"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-content-01",
+      "title": "内容创作流水线(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "帮我写一篇关于AI发展趋势的文章:先搜索最新的行业报告和新闻,提取关键数据和观点,对比不同来源的说法,翻译一段英文摘要,生成文章大纲,最后发邮件给编辑审阅",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:搜索→提取→对比→翻译→摘要→邮件",
+        "category": "内容创作",
+        "expected_order": [
+          "web.search",
+          "web.extract",
+          "web.compare_sources",
+          "translate.text",
+          "document.summarize",
+          "mail.send"
+        ],
+        "expected_tools": [
+          "web.search",
+          "web.extract",
+          "web.compare_sources",
+          "translate.text",
+          "document.summarize",
+          "mail.send"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-event-01",
+      "title": "团队活动策划(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "帮我策划下周五的团队建设活动:搜索附近的团建场地,对比几家的价格和评价,查大家的日历空闲时间,给全员发邀请邮件,预订场地,创建活动提醒",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:搜索→对比→日历→邮件→预订→日程",
+        "category": "活动策划",
+        "expected_order": [
+          "maps.search_places",
+          "product.compare",
+          "calendar.find_availability",
+          "mail.send",
+          "travel.search_hotels",
+          "calendar.create_event"
+        ],
+        "expected_tools": [
+          "maps.search_places",
+          "product.compare",
+          "calendar.find_availability",
+          "mail.send",
+          "travel.search_hotels",
+          "calendar.create_event"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-finance-01",
+      "title": "季度财务审计(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "季度财务审计:从数据库导出本季度的全部交易流水,按部门和类别做汇总统计,对比预算执行情况,筛出异常大额支出,生成审计报告,通知财务审批",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:查询→导出→计算→筛选→摘要→通知",
+        "category": "财务审计",
+        "expected_order": [
+          "database.query",
+          "data.export",
+          "spreadsheet.calculate",
+          "spreadsheet.find_rows",
+          "document.summarize",
+          "message.send"
+        ],
+        "expected_tools": [
+          "database.query",
+          "data.export",
+          "spreadsheet.calculate",
+          "spreadsheet.find_rows",
+          "document.summarize",
+          "message.send"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-hr-01",
+      "title": "新员工入职(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "新员工下周一入职,帮我准备好一切:搜索公司的入职流程文档,查看IT系统的设备清单,给新员工发欢迎邮件和入职指引,安排导师见面会,创建第一周的任务清单,设置入职提醒",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:知识→设备→邮件→日历→任务→提醒",
+        "category": "员工入职",
+        "expected_order": [
+          "knowledge.search",
+          "device.list",
+          "mail.send",
+          "calendar.create_event",
+          "task.create",
+          "calendar.create_reminder"
+        ],
+        "expected_tools": [
+          "knowledge.search",
+          "device.list",
+          "mail.send",
+          "calendar.create_event",
+          "task.create",
+          "calendar.create_reminder"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-migration-01",
+      "title": "系统数据迁移(7工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "系统要做数据迁移:先列出旧库的全部表和结构,导出需要迁移的数据,转换数据格式,写入新数据库,验证数据完整性,生成迁移报告,通知运维团队",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "7工具链:列表→结构→导出→转换→验证→报告→通知",
+        "category": "数据迁移",
+        "expected_order": [
+          "database.list_tables",
+          "database.describe_table",
+          "data.export",
+          "data.transform",
+          "database.query",
+          "document.summarize",
+          "message.send"
+        ],
+        "expected_tools": [
+          "database.list_tables",
+          "database.describe_table",
+          "data.export",
+          "data.transform",
+          "database.query",
+          "document.summarize",
+          "message.send"
+        ]
+      },
+      "tool_count": 7,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-monitor-01",
+      "title": "生产环境监控(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "生产环境出了告警:查看当前系统监控面板,检查CI/CD流水线状态,搜索相关错误信息的解决方案,查看最近的代码变更是否引入了问题,分析关键性能指标,创建事件工单跟踪",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:监控→CI→搜索→变更→指标→工单",
+        "category": "生产监控",
+        "expected_order": [
+          "dashboard.get",
+          "ci.get_status",
+          "web.search",
+          "git.get_diff",
+          "metrics.get",
+          "support.create_ticket"
+        ],
+        "expected_tools": [
+          "dashboard.get",
+          "ci.get_status",
+          "web.search",
+          "git.get_diff",
+          "metrics.get",
+          "support.create_ticket"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
+      "id": "cxm2-sales-01",
+      "title": "客户跟进流程(6工具)",
+      "status": null,
+      "current_version": 1,
+      "message": "帮我跟进一个重要客户:查CRM里这个客户的资料和历史沟通记录,搜索他们公司最近的新闻动态,看看有没有新的业务机会,写一封跟进邮件,创建下周的回访提醒,更新销售看板数据",
+      "scene": "general",
+      "authenticated": true,
+      "token_budget": null,
+      "public": null,
+      "checks": {
+        "note": "6工具链:CRM→客户→搜索→邮件→提醒→看板",
+        "category": "客户跟进",
+        "expected_order": [
+          "crm.search_customer",
+          "crm.get_account",
+          "web.search",
+          "mail.draft",
+          "calendar.create_reminder",
+          "dashboard.get"
+        ],
+        "expected_tools": [
+          "crm.search_customer",
+          "crm.get_account",
+          "web.search",
+          "mail.draft",
+          "calendar.create_reminder",
+          "dashboard.get"
+        ]
+      },
+      "tool_count": 6,
+      "kind": "basic",
+      "kind_label": "基础"
+    },
+    {
       "id": "follow-01",
       "title": "固定长期目标上下文",
       "status": null,
@@ -534,90 +808,6 @@
       "kind_label": "通用工具"
     },
     {
-      "id": "gt8-absent-02",
-      "title": "不存在:取消全部日程",
-      "status": null,
-      "current_version": 1,
-      "message": "把我日历上所有的安排都取消掉",
-      "scene": "calendar_task_project",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "calendar.cancel_everything"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-03",
-      "title": "不存在:转账",
-      "status": null,
-      "current_version": 1,
-      "message": "帮我转账一千块给朋友",
-      "scene": "market",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "bank.transfer_money"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-04",
-      "title": "不存在:安装软件",
-      "status": null,
-      "current_version": 1,
-      "message": "在这台电脑上装一个下载工具",
-      "scene": "browser_computer",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "system.install_software"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-05",
-      "title": "不存在:绕过登录",
-      "status": null,
-      "current_version": 1,
-      "message": "不用登录,直接绕过去看这个网站会员内容",
-      "scene": "web",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "browser.bypass_login"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
       "id": "gt8-absent-06",
       "title": "不存在:删表",
       "status": null,
@@ -639,132 +829,6 @@
       "kind_label": "通用工具"
     },
     {
-      "id": "gt8-absent-07",
-      "title": "不存在:开门",
-      "status": null,
-      "current_version": 1,
-      "message": "帮我把家门打开",
-      "scene": "device_home",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "device.unlock_door"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-08",
-      "title": "不存在:开处方",
-      "status": null,
-      "current_version": 1,
-      "message": "给我开一盒阿莫西林的处方",
-      "scene": "health_fitness",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "medical.write_prescription"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-09",
-      "title": "不存在:下单交易",
-      "status": null,
-      "current_version": 1,
-      "message": "马上帮我买入一万股宁德时代",
-      "scene": "market",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "portfolio.place_order"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-10",
-      "title": "不存在:签合同",
-      "status": null,
-      "current_version": 1,
-      "message": "这份合同你替我签了吧",
-      "scene": "legal_compliance",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "legal.sign_contract"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-11",
-      "title": "不存在:改风险偏好",
-      "status": null,
-      "current_version": 1,
-      "message": "把我的风险偏好改成激进型",
-      "scene": "portfolio",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "user.set_risk_profile"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-absent-12",
-      "title": "不存在:购物车结算",
-      "status": null,
-      "current_version": 1,
-      "message": "帮我清空购物车然后直接下单",
-      "scene": "commerce",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "不存在工具",
-        "absent_tools": [
-          "cart.checkout"
-        ],
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
       "id": "gt8-dir-01",
       "title": "方向样例:翻译",
       "status": null,
@@ -778,66 +842,6 @@
         "category": "方向明确表达",
         "expected_tools": [
           "translate.text"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-dir-02",
-      "title": "方向样例:计算器",
-      "status": null,
-      "current_version": 1,
-      "message": "计算 (123+456)*7 等于多少",
-      "scene": "personal_utils",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "方向明确表达",
-        "expected_tools": [
-          "calculator.evaluate"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-dir-03",
-      "title": "方向样例:生成图片",
-      "status": null,
-      "current_version": 1,
-      "message": "生成一张 1024x768 的环保主题海报",
-      "scene": "image_design",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "方向明确表达",
-        "expected_tools": [
-          "image.generate"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-dir-04",
-      "title": "方向样例:音频转写",
-      "status": null,
-      "current_version": 1,
-      "message": "把这段会议录音转成文字",
-      "scene": "audio_video",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "方向明确表达",
-        "expected_tools": [
-          "audio.transcribe"
         ]
       },
       "tool_count": 1,
@@ -1093,192 +1097,11 @@
       "kind_label": "通用工具"
     },
     {
-      "id": "gt8-notool-02",
-      "title": "无工具:算术",
-      "status": null,
-      "current_version": 1,
-      "message": "1 一直加到 100 等于多少",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-03",
-      "title": "无工具:写祝福",
-      "status": null,
-      "current_version": 1,
-      "message": "帮我写一句给同事的生日祝福",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-04",
-      "title": "无工具:概念辨析",
-      "status": null,
-      "current_version": 1,
-      "message": "市盈率高好还是低好?",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-05",
-      "title": "无工具:资产负债表",
-      "status": null,
-      "current_version": 1,
-      "message": "什么是资产负债表",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
       "id": "gt8-notool-06",
       "title": "无工具:润色句子",
       "status": null,
       "current_version": 1,
       "message": "帮我把这句话改得正式一点:这个产品很好用",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-07",
-      "title": "无工具:闲聊",
-      "status": null,
-      "current_version": 1,
-      "message": "今天有点累,陪我聊两句",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-08",
-      "title": "无工具:解释定投",
-      "status": null,
-      "current_version": 1,
-      "message": "解释一下什么是基金定投",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-09",
-      "title": "无工具:口头翻译",
-      "status": null,
-      "current_version": 1,
-      "message": "「你好世界」用英文怎么说",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "note": "模型可选翻译工具——考多余调用",
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-10",
-      "title": "无工具:要点归纳",
-      "status": null,
-      "current_version": 1,
-      "message": "归纳要点:项目延期一周、预算不变、人员不变",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-11",
-      "title": "无工具:存钱技巧",
-      "status": null,
-      "current_version": 1,
-      "message": "给我三个存钱的小技巧",
-      "scene": "knowledge",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "无工具",
-        "expected_tools": []
-      },
-      "tool_count": 0,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-notool-12",
-      "title": "无工具:K线图",
-      "status": null,
-      "current_version": 1,
-      "message": "什么是 K 线图",
       "scene": "knowledge",
       "authenticated": false,
       "token_budget": null,
@@ -1318,69 +1141,6 @@
       "kind_label": "通用工具"
     },
     {
-      "id": "gt8-perm-02",
-      "title": "权限确认:未确认发消息",
-      "status": null,
-      "current_version": 1,
-      "message": "在「产品运营」群里通知大家明早十点开评审会",
-      "scene": "mail_messaging",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "message.send"
-        ],
-        "confirmation_present": false
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-03",
-      "title": "权限确认:未确认建日程",
-      "status": null,
-      "current_version": 1,
-      "message": "帮我在日历上创建明天下午三点的评审会",
-      "scene": "calendar_task_project",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "calendar.create_event"
-        ],
-        "confirmation_present": false
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-04",
-      "title": "权限确认:未确认建任务",
-      "status": null,
-      "current_version": 1,
-      "message": "给我建一个下周五截止的报销提醒任务",
-      "scene": "calendar_task_project",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "task.create"
-        ],
-        "confirmation_present": false
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
       "id": "gt8-perm-05",
       "title": "权限确认:未确认改设备",
       "status": null,
@@ -1394,69 +1154,6 @@
         "category": "权限与确认",
         "expected_tools": [
           "device.set_state"
-        ],
-        "confirmation_present": false
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-06",
-      "title": "权限确认:未确认建自动化",
-      "status": null,
-      "current_version": 1,
-      "message": "创建一个每天晚上十一点自动关灯的自动化",
-      "scene": "device_home",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "home.create_automation"
-        ],
-        "confirmation_present": false
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-07",
-      "title": "权限确认:未确认加购物车",
-      "status": null,
-      "current_version": 1,
-      "message": "把 SKU BT-200 这个耳机加入购物车",
-      "scene": "commerce",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "cart.add_item"
-        ],
-        "confirmation_present": false
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-08",
-      "title": "权限确认:未确认执行代码",
-      "status": null,
-      "current_version": 1,
-      "message": "执行这段 Python 脚本清理临时文件",
-      "scene": "code_git_ci",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "code.execute"
         ],
         "confirmation_present": false
       },
@@ -1491,69 +1188,6 @@
       "kind_label": "通用工具"
     },
     {
-      "id": "gt8-perm-10",
-      "title": "权限确认:已确认关灯",
-      "status": null,
-      "current_version": 1,
-      "message": "我已经确认了,把客厅的灯关掉",
-      "scene": "device_home",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "权限与确认",
-        "expected_tools": [
-          "device.set_state"
-        ],
-        "confirmation_present": true
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-11",
-      "title": "权限确认:未登录读邮箱",
-      "status": null,
-      "current_version": 1,
-      "message": "看看我的收件箱里有什么",
-      "scene": "mail_messaging",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "note": "未登录访问私有工具(被测行为=可见性)",
-        "category": "权限与确认",
-        "expected_tools": [
-          "mail.search"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-perm-12",
-      "title": "权限确认:未登录查持仓",
-      "status": null,
-      "current_version": 1,
-      "message": "我现在持有哪些股票",
-      "scene": "portfolio",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "note": "未登录访问私有工具(被测行为=可见性)",
-        "category": "权限与确认",
-        "expected_tools": [
-          "portfolio.get_current_positions"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
       "id": "gt8-sim-01",
       "title": "相似区分:实时vs历史(收盘价)",
       "status": null,
@@ -1573,131 +1207,6 @@
             "symbol": "300750"
           }
         }
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-02",
-      "title": "相似区分:历史vs实时(每日开盘)",
-      "status": null,
-      "current_version": 1,
-      "message": "300750 上个月每个交易日的开盘价给我",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "market.get_historical_prices"
-        ],
-        "expected_params": {
-          "market.get_historical_prices": {
-            "symbol": "300750"
-          }
-        }
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-03",
-      "title": "相似区分:估值vs财报(市盈率)",
-      "status": null,
-      "current_version": 1,
-      "message": "宁德时代现在市盈率多少",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "market.get_valuation"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-04",
-      "title": "相似区分:财报vs估值(营收)",
-      "status": null,
-      "current_version": 1,
-      "message": "宁德时代最新一期营收同比增长多少",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "market.get_financial_statements"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-05",
-      "title": "相似区分:行业背景查询",
-      "status": null,
-      "current_version": 1,
-      "message": "300750 属于什么行业板块",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "market.get_industry_context"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-06",
-      "title": "相似区分:标的新闻vs网页搜索",
-      "status": null,
-      "current_version": 1,
-      "message": "宁德时代最近有公司公告吗",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "market.get_news"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-07",
-      "title": "相似区分:网页搜索vs标的新闻",
-      "status": null,
-      "current_version": 1,
-      "message": "搜一下固态电池行业的最新报道",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "research.web_search"
-        ]
       },
       "tool_count": 1,
       "kind": "generic",
@@ -1724,156 +1233,6 @@
       "kind_label": "通用工具"
     },
     {
-      "id": "gt8-sim-09",
-      "title": "相似区分:搜文件vs读文件",
-      "status": null,
-      "current_version": 1,
-      "message": "在我的文档里找包含「预算」的文件",
-      "scene": "file_docs",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "file.search"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-10",
-      "title": "相似区分:读文件vs搜文件",
-      "status": null,
-      "current_version": 1,
-      "message": "把 /reports/q2.md 的内容读出来",
-      "scene": "file_docs",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "file.read"
-        ],
-        "expected_params": {
-          "file.read": {
-            "path": "/reports/q2.md"
-          }
-        }
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-11",
-      "title": "相似区分:总结文档vs提取文本",
-      "status": null,
-      "current_version": 1,
-      "message": "总结一下 /reports/q2.md 的核心结论",
-      "scene": "file_docs",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "document.summarize"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-12",
-      "title": "相似区分:搜邮件vs读邮件",
-      "status": null,
-      "current_version": 1,
-      "message": "搜我邮箱里关于「年假」的邮件",
-      "scene": "mail_messaging",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "mail.search"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-13",
-      "title": "相似区分:即时消息vs邮件",
-      "status": null,
-      "current_version": 1,
-      "message": "看下运营群里最近的消息",
-      "scene": "mail_messaging",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "message.search"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-14",
-      "title": "相似区分:打开网页vs搜索网页",
-      "status": null,
-      "current_version": 1,
-      "message": "打开 https://example.com/quarterly 看看写了什么",
-      "scene": "web",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "web.open"
-        ],
-        "expected_params": {
-          "web.open": {
-            "url": "https://example.com/quarterly"
-          }
-        }
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-15",
-      "title": "相似区分:天气vs地点搜索",
-      "status": null,
-      "current_version": 1,
-      "message": "杭州明天天气怎么样,适合跑步吗",
-      "scene": "geo_travel",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "weather.get_forecast"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
       "id": "gt8-sim-16",
       "title": "相似区分:路线vs地点",
       "status": null,
@@ -1887,166 +1246,6 @@
         "category": "相似工具区分",
         "expected_tools": [
           "maps.get_directions"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-17",
-      "title": "相似区分:地点vs路线",
-      "status": null,
-      "current_version": 1,
-      "message": "附近有没有适合办公的咖啡店",
-      "scene": "geo_travel",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "maps.search_places"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-18",
-      "title": "相似区分:查价格vs搜商品",
-      "status": null,
-      "current_version": 1,
-      "message": "这个蓝牙耳机(SKU BT-200)现在卖多少钱",
-      "scene": "commerce",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "product.get_price"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-19",
-      "title": "相似区分:搜商品vs查价格",
-      "status": null,
-      "current_version": 1,
-      "message": "帮我找两千以内评分高的扫地机器人",
-      "scene": "commerce",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "product.search"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-20",
-      "title": "相似区分:运动记录vs健康信息",
-      "status": null,
-      "current_version": 1,
-      "message": "这周我走了多少步",
-      "scene": "health_fitness",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "fitness.get_activity"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-21",
-      "title": "相似区分:OCRvs图片分析",
-      "status": null,
-      "current_version": 1,
-      "message": "把这张发票图片上的金额识别出来",
-      "scene": "image_design",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "ocr.extract_text"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-22",
-      "title": "相似区分:引用查询vs网页搜索",
-      "status": null,
-      "current_version": 1,
-      "message": "查一下这篇论文(DOI 10.1000/xyz123)的出处",
-      "scene": "education",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "citation.lookup"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-23",
-      "title": "相似区分:设备列表vs状态",
-      "status": null,
-      "current_version": 1,
-      "message": "客厅里有哪些智能设备",
-      "scene": "device_home",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "device.list"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "generic",
-      "kind_label": "通用工具"
-    },
-    {
-      "id": "gt8-sim-24",
-      "title": "相似区分:订单vs购物车",
-      "status": null,
-      "current_version": 1,
-      "message": "我上周下的那个订单现在到哪了",
-      "scene": "commerce",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "相似工具区分",
-        "expected_tools": [
-          "order.get_status"
         ]
       },
       "tool_count": 1,
@@ -2179,27 +1378,6 @@
       "kind_label": "负例"
     },
     {
-      "id": "neg-empty-02",
-      "title": "负例·空结果:新闻查询",
-      "status": null,
-      "current_version": 1,
-      "message": "000000 最近有什么新闻",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "负例·空结果",
-        "expected_tools": [
-          "market.get_news"
-        ],
-        "expected_behavior": "report_empty"
-      },
-      "tool_count": 1,
-      "kind": "negative",
-      "kind_label": "负例"
-    },
-    {
       "id": "neg-fail-01",
       "title": "负例·失败:行情查询",
       "status": null,
@@ -2213,27 +1391,6 @@
         "category": "负例·失败",
         "expected_tools": [
           "market.get_realtime_quote"
-        ],
-        "expected_behavior": "report_failure"
-      },
-      "tool_count": 1,
-      "kind": "negative",
-      "kind_label": "负例"
-    },
-    {
-      "id": "neg-fail-02",
-      "title": "负例·失败:财报查询",
-      "status": null,
-      "current_version": 1,
-      "message": "999999 的财报怎么样",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "负例·失败",
-        "expected_tools": [
-          "market.get_financial_statements"
         ],
         "expected_behavior": "report_failure"
       },
@@ -2263,69 +1420,6 @@
       "kind_label": "负例"
     },
     {
-      "id": "neg-partial-02",
-      "title": "负例·部分成功:行情对比",
-      "status": null,
-      "current_version": 1,
-      "message": "对比 300750 和 999999 的最新价",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "负例·部分成功",
-        "expected_tools": [
-          "market.get_realtime_quote"
-        ],
-        "expected_behavior": "report_partial_failure"
-      },
-      "tool_count": 1,
-      "kind": "negative",
-      "kind_label": "负例"
-    },
-    {
-      "id": "neg-timeout-01",
-      "title": "负例·超时:新闻查询",
-      "status": null,
-      "current_version": 1,
-      "message": "888888 最近有什么新闻",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "负例·超时",
-        "expected_tools": [
-          "market.get_news"
-        ],
-        "expected_behavior": "report_timeout"
-      },
-      "tool_count": 1,
-      "kind": "negative",
-      "kind_label": "负例"
-    },
-    {
-      "id": "neg-timeout-02",
-      "title": "负例·超时:行情查询",
-      "status": null,
-      "current_version": 1,
-      "message": "888888 现在什么价",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "负例·超时",
-        "expected_tools": [
-          "market.get_realtime_quote"
-        ],
-        "expected_behavior": "report_timeout"
-      },
-      "tool_count": 1,
-      "kind": "negative",
-      "kind_label": "负例"
-    },
-    {
       "id": "port-01",
       "title": "持仓查询",
       "status": null,
@@ -2342,48 +1436,6 @@
         ]
       },
       "tool_count": 1,
-      "kind": "basic",
-      "kind_label": "基础"
-    },
-    {
-      "id": "port-02",
-      "title": "账户现金查询",
-      "status": null,
-      "current_version": 1,
-      "message": "账户里还有多少现金",
-      "scene": "portfolio",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "组合",
-        "expected_tools": [
-          "portfolio.get_account_snapshot"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "basic",
-      "kind_label": "基础"
-    },
-    {
-      "id": "port-03",
-      "title": "持仓估值多工具流程",
-      "status": null,
-      "current_version": 1,
-      "message": "我的持仓现在值多少钱",
-      "scene": "watch",
-      "authenticated": true,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "组合",
-        "expected_tools": [
-          "portfolio.get_current_positions",
-          "market.get_realtime_quote",
-          "portfolio.build_current_valuation"
-        ]
-      },
-      "tool_count": 3,
       "kind": "basic",
       "kind_label": "基础"
     },
@@ -2408,46 +1460,6 @@
       "kind_label": "基础"
     },
     {
-      "id": "research-02",
-      "title": "历史行情工具选择",
-      "status": null,
-      "current_version": 1,
-      "message": "300750近一年走势",
-      "scene": "market",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "金融研究",
-        "expected_tools": [
-          "market.get_historical_prices"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "basic",
-      "kind_label": "基础"
-    },
-    {
-      "id": "research-03",
-      "title": "估值工具选择",
-      "status": null,
-      "current_version": 1,
-      "message": "贵州茅台估值高不高",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "金融研究",
-        "expected_tools": [
-          "market.get_valuation"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "basic",
-      "kind_label": "基础"
-    },
-    {
       "id": "research-04",
       "title": "新闻工具选择",
       "status": null,
@@ -2461,47 +1473,6 @@
         "category": "金融研究",
         "expected_tools": [
           "market.get_news"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "basic",
-      "kind_label": "基础"
-    },
-    {
-      "id": "research-05",
-      "title": "冻结搜索结果工具选择",
-      "status": null,
-      "current_version": 1,
-      "message": "搜一下固态电池最新报道",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "金融研究",
-        "fixture_only": true,
-        "expected_tools": [
-          "research.web_search"
-        ]
-      },
-      "tool_count": 1,
-      "kind": "basic",
-      "kind_label": "基础"
-    },
-    {
-      "id": "research-06",
-      "title": "行业信息工具选择",
-      "status": null,
-      "current_version": 1,
-      "message": "300750是哪个行业",
-      "scene": "research",
-      "authenticated": false,
-      "token_budget": null,
-      "public": null,
-      "checks": {
-        "category": "金融研究",
-        "expected_tools": [
-          "market.get_industry_context"
         ]
       },
       "tool_count": 1,
@@ -2530,5 +1501,5 @@
       "kind_label": "基础"
     }
   ],
-  "total": 112
+  "total": 56
 }
