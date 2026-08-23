@@ -471,6 +471,111 @@
       '<p class="lab-note">同一列内比较上下两半:压缩内容格若不劣于原始内容格(召回不降、泄漏不升),压缩即划算。</p>';
   }
 
+  // ── 数据仪表盘:8卡+柱状图(首页/结果页共用) ──
+
+  function renderBarChart(title, rows, opts) {
+    if (!rows || rows.length === 0) return "";
+    var max = Math.max.apply(null, rows.map(function (r) { return r.value || 0; }));
+    if (max <= 0) max = 1;
+    var h = '<div class="hbar-chart"><h4>' + esc(title) + "</h4>";
+    rows.forEach(function (r) {
+      var w = Math.max(3, ((r.value || 0) / max) * 100);
+      var color = r.color || "blue";
+      var val = r.fmt ? r.fmt(r.value) : num(r.value);
+      h += '<div class="hbar-row">';
+      h += '<span class="hbar-label">' + esc(r.label) + "</span>";
+      h += '<div class="hbar-track"><div class="hbar-fill ' + color + '" style="width:' + w + '%">';
+      h += '<span class="hbar-val">' + val + "</span></div></div>";
+      if (r.note) h += '<span class="hbar-note">' + esc(r.note) + "</span>";
+      h += "</div>";
+    });
+    h += "</div>";
+    return h;
+  }
+
+  function renderDashboard(report) {
+    if (!report || !report.groups || report.groups.length === 0) return "";
+    var byKey = {};
+    report.groups.forEach(function (g) { byKey[g.key] = g; });
+    var base = byKey["baseline-tool-calling"];
+    var full = byKey["full-system"];
+    var react = byKey["langgraph-react"];
+    if (!base || !full) return "";
+
+    function m(g, k) { return g && g.metrics ? g.metrics[k] : null; }
+    function delta(cur, ref, lowerBetter) {
+      if (cur == null || ref == null) return { text: "未运行", cls: "flat" };
+      var d = ref === 0 ? 0 : ((cur - ref) / ref * 100);
+      if (Math.abs(d) < 1) return { text: "持平", cls: "flat" };
+      var sign = d > 0 ? "+" : "";
+      var good = lowerBetter ? d < 0 : d > 0;
+      return { text: sign + Math.round(d) + "% vs 基线", cls: good ? "up" : "down" };
+    }
+
+    var cards = [];
+    // 核心能力
+    var ts = m(full, "tool_selection_rate");
+    cards.push({ v: pct(ts), l: "工具选择准确率", c: ts === 1 ? "good" : "neutral",
+      d: ts === m(base, "tool_selection_rate") ? { text: "三组一致", cls: "flat" } : delta(ts, m(base, "tool_selection_rate"), false) });
+    var hal = m(full, "hallucination_rate");
+    cards.push({ v: pct(hal), l: "幻觉工具率", c: hal === 0 ? "good" : "bad",
+      d: delta(hal, m(base, "hallucination_rate"), true) });
+    var numhal = m(full, "number_hallucination_rate");
+    cards.push({ v: pct(numhal), l: "数字幻觉率", c: numhal !== null && numhal <= 0.1 ? "good" : "warn",
+      d: delta(numhal, m(base, "number_hallucination_rate"), true) });
+
+    // 效率
+    var tok = m(full, "mean_tokens");
+    var btok = m(base, "mean_tokens");
+    var tokSave = (tok != null && btok) ? Math.round((1 - tok / btok) * 100) : null;
+    cards.push({ v: tok != null ? String(tok) : "未运行", l: "平均 Token", c: tokSave !== null && tokSave > 50 ? "good" : "neutral",
+      d: tokSave !== null ? { text: "节省 " + tokSave + "%", cls: "up" } : { text: "未运行", cls: "flat" } });
+    var dur = m(full, "median_duration_ms");
+    cards.push({ v: dur != null ? (dur / 1000).toFixed(1) + "<small>s</small>" : "未运行", l: "中位耗时", c: "accent",
+      d: delta(dur, m(base, "median_duration_ms"), true) });
+    var rounds = m(full, "mean_rounds");
+    cards.push({ v: rounds != null ? rounds.toFixed(1) : "未运行", l: "平均轮次", c: "accent",
+      d: delta(rounds, m(base, "mean_rounds"), true) });
+    var toolTok = m(full, "mean_tools_schema_tokens");
+    cards.push({ v: toolTok != null ? String(toolTok) : "未运行", l: "工具定义 Token", c: "accent",
+      d: delta(toolTok, m(base, "mean_tools_schema_tokens"), true) });
+
+    // 质量
+    var pc = m(full, "params_complete_rate");
+    cards.push({ v: pct(pc), l: "参数完整率", c: pc === 1 ? "good" : "warn",
+      d: delta(pc, m(base, "params_complete_rate"), false) });
+
+    var h = '<div class="dash-grid">';
+    cards.forEach(function (c) {
+      h += '<div class="dash-card ' + c.c + '">';
+      h += '<div class="dash-value">' + c.v + '</div>';
+      h += '<div class="dash-label">' + esc(c.l) + '</div>';
+      if (c.d) h += '<div class="dash-delta ' + c.d.cls + '">' + esc(c.d.text) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+
+    // 柱状图
+    var labels = { "baseline-tool-calling": "裸 tool calling", "langgraph-react": "LangGraph ReAct", "full-system": "完整工程模式" };
+    h += renderBarChart("数字幻觉率（越低越好）", [
+      { label: labels["baseline-tool-calling"] || "裸调用", value: m(base, "number_hallucination_rate"), color: "red", fmt: pct },
+      { label: labels["langgraph-react"] || "ReAct", value: m(react, "number_hallucination_rate"), color: "amber", fmt: pct },
+      { label: labels["full-system"] || "完整模式", value: m(full, "number_hallucination_rate"), color: "green", fmt: pct, note: "输出护栏" }
+    ]);
+    h += renderBarChart("平均 Token 消耗（越少越好）", [
+      { label: labels["baseline-tool-calling"] || "裸调用", value: m(base, "mean_tokens"), color: "red", fmt: function(v){return num(v);} },
+      { label: labels["langgraph-react"] || "ReAct", value: m(react, "mean_tokens"), color: "amber", fmt: function(v){return num(v);} },
+      { label: labels["full-system"] || "完整模式", value: m(full, "mean_tokens"), color: "green", fmt: function(v){return num(v);}, note: "上下文压缩" }
+    ]);
+    h += renderBarChart("中位响应耗时（越快越好）", [
+      { label: labels["baseline-tool-calling"] || "裸调用", value: m(base, "median_duration_ms"), color: "red", fmt: function(v){return (v/1000).toFixed(1)+"s";} },
+      { label: labels["langgraph-react"] || "ReAct", value: m(react, "median_duration_ms"), color: "amber", fmt: function(v){return (v/1000).toFixed(1)+"s";} },
+      { label: labels["full-system"] || "完整模式", value: m(full, "median_duration_ms"), color: "green", fmt: function(v){return (v/1000).toFixed(1)+"s";}, note: "快路径" }
+    ]);
+
+    return h;
+  }
+
   global.SHOWCASE = {
     esc: esc,
     pct: pct,
@@ -478,6 +583,8 @@
     homeState: homeState,
     renderHomeBanner: renderHomeBanner,
     renderStatCards: renderStatCards,
+    renderDashboard: renderDashboard,
+    renderBarChart: renderBarChart,
     renderGroupTable: renderGroupTable,
     renderOutcomeBadges: renderOutcomeBadges,
     renderCaseTable: renderCaseTable,

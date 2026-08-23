@@ -966,3 +966,142 @@ details.case-trace summary { cursor: pointer; font-size: 14px; }
   font-size: 12px; font-weight: 600; flex-shrink: 0;
 }
 .cat-tool-chain code { font-size: 13px; color: var(--doc-text); }
+
+/* ── 数据仪表盘(首页+结果页可视化) ── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.dash-card {
+  background: #fff;
+  border: 1px solid var(--doc-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+}
+.dash-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+}
+.dash-card.good::before { background: #10b981; }
+.dash-card.warn::before { background: #f59e0b; }
+.dash-card.bad::before { background: #ef4444; }
+.dash-card.neutral::before { background: #94a3b8; }
+.dash-card.accent::before { background: #3b82f6; }
+.dash-value {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--doc-text);
+}
+.dash-value small { font-size: 16px; font-weight: 600; color: var(--doc-dim); }
+.dash-label {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--doc-dim);
+  margin-top: 4px;
+}
+.dash-delta {
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.dash-delta.up { color: #059669; }
+.dash-delta.down { color: #dc2626; }
+.dash-delta.flat { color: #94a3b8; }
+
+/* 横向柱状图(纯 CSS) */
+.hbar-chart {
+  background: #fff;
+  border: 1px solid var(--doc-border);
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin: 16px 0;
+}
+.hbar-chart h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--doc-text);
+  margin: 0 0 14px;
+}
+.hbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0;
+}
+.hbar-label {
+  flex: 0 0 110px;
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--doc-dim);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hbar-track {
+  flex: 1;
+  height: 28px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+.hbar-fill {
+  height: 100%;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 10px;
+  transition: width 0.6s ease;
+  min-width: 40px;
+}
+.hbar-fill.blue { background: linear-gradient(90deg, #93c5fd, #3b82f6); }
+.hbar-fill.green { background: linear-gradient(90deg, #6ee7b7, #10b981); }
+.hbar-fill.red { background: linear-gradient(90deg, #fca5a5, #ef4444); }
+.hbar-fill.amber { background: linear-gradient(90deg, #fcd34d, #f59e0b); }
+.hbar-fill.gray { background: linear-gradient(90deg, #cbd5e1, #94a3b8); }
+.hbar-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.hbar-note {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--doc-faint);
+  max-width: 120px;
+}
+
+/* 对比雷达图(SVG) */
+.radar-chart {
+  background: #fff;
+  border: 1px solid var(--doc-border);
+  border-radius: 12px;
+  padding: 18px;
+  margin: 16px 0;
+  text-align: center;
+}
+.radar-chart h4 {
+  font-size: 14px; font-weight: 700; margin: 0 0 10px; color: var(--doc-text);
+}
+.radar-legend {
+  display: flex; justify-content: center; gap: 16px; margin-top: 10px;
+}
+.radar-legend span {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--doc-dim);
+}
+.radar-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+}
