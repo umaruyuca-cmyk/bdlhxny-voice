@@ -594,14 +594,14 @@
       { label: labels["full-system"] || "完整模式", value: m(full, "mean_tokens"), color: "green", fmt: function(v){return num(v);}, note: "上下文压缩" }
     ]);
 
-    // 逐案例对照表
+    // 逐案例对照表(可点击跳转到运行索引)
     if (report.cases && report.cases.length > 0) {
-      h += '<div class="hbar-chart"><h4>逐案例对照（✓=工具选择正确,数字=正确次数/总次数）</h4>';
+      h += '<div class="hbar-chart"><h4>逐案例对照（✓=工具选择正确,点击题号查看运行明细）</h4>';
       h += '<table class="cat-table"><thead><tr><th>用例</th>';
       report.groups.forEach(function (g) { h += "<th>" + esc(g.label) + "</th>"; });
       h += "</tr></thead><tbody>";
       report.cases.forEach(function (c) {
-        h += "<tr><td><code>" + esc(c.id) + "</code></td>";
+        h += '<tr><td><a href="/showcase/runs" style="color:var(--doc-accent)"><code>' + esc(c.id) + "</code></a></td>";
         report.groups.forEach(function (g) {
           var cg = c.groups && c.groups[g.key];
           if (cg) {
@@ -615,6 +615,13 @@
       });
       h += "</tbody></table></div>";
     }
+
+    // 底部操作条:进入运行索引查看全部明细
+    h += '<div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">';
+    h += '<a href="/showcase/runs" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--doc-accent);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">查看全部运行明细 →</a>';
+    h += '<a href="/showcase/results" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#fff;border:1px solid var(--doc-border);color:var(--doc-text);text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">完整指标对照表</a>';
+    h += '<a href="/showcase/tools" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#fff;border:1px solid var(--doc-border);color:var(--doc-text);text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">工具调用明细</a>';
+    h += "</div>";
 
     return h;
   }
