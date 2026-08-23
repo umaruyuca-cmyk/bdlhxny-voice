@@ -46,16 +46,24 @@
   .event-list { list-style: none; padding-left: 0; margin: 4px 0 0; font-size: 12.5px; }
   .event-list li { padding: 2px 0; border-bottom: 1px dashed #eef1f6; }
   .event-list code { background: #f4f6fa; padding: 0 4px; border-radius: 4px; }
+  .lab-quick { border: 1px solid #dbe4f0; border-radius: 12px; padding: 14px 18px; margin: 14px 0 18px; background: #f6f9ff; }
 </style>
 </head>
 <body>
 <main class="lab-main">
   <h1>内部运行台</h1>
-  <p style="color:#5b6575;font-size:14px">项目所有者按固定题号发起 Agent 对照批次。请求只接受题号与实验配置，不接受问题正文、提示词或自定义工具。</p>
+  <p style="color:#5b6575;font-size:14px">项目所有者按固定题号发起 Agent 对照批次。请求只接受题号与实验配置，不接受问题正文、提示词或自定义工具。登录后本页即实验入口：一键发起、按题号发起、压缩对照与联动对照都在这里。</p>
   <div class="lab-toolbar">
     <a href="/" style="color:#1f2d3d;text-decoration:none;font-size:13px;font-weight:600;margin-right:10px;padding:6px 12px;border:1px solid #d8dee9;border-radius:8px;background:#fff">← 首页</a>
     <span id="whoami">…</span>
     <button type="button" id="logoutBtn">退出登录</button>
+  </div>
+
+  <div class="lab-quick" id="quickCard">
+    <h2 style="margin:0 0 4px;font-size:16px">实时发起对照实验</h2>
+    <p class="lab-note" style="margin:0 0 10px">按当前表单默认配置立即开跑：全部题库、每题 1 次、含 ReAct 组（三组 × 每题一次，真实调用模型，通常需要数分钟）。要改参数先用下方表单调整，再回来一键发起。</p>
+    <button type="button" class="lab-submit" id="quickStartBtn">一键发起对照实验</button>
+    <span class="lab-note" id="quickStatus"></span>
   </div>
 
   <form class="lab-form" id="batchForm">
@@ -97,6 +105,23 @@
         <button type="button" class="lab-mini" id="llmSaveBtn">保存配置</button>
       </div>
       <p class="lab-note" id="llmTestResult">密钥只保存在数据库（接口永不回显明文，仅显示尾 4 位）；发起批次将使用此配置构建模型客户端。</p>
+    </fieldset>
+    <fieldset>
+      <legend>上下文压缩对照（6 套长上下文用例 × full-raw / budgeted-comp 两变体，同一 Agent，唯一变量=处理策略）</legend>
+      <div class="lab-row">
+        <label>每变体次数 <select id="ctxRuns"><option>3</option><option>4</option><option>5</option></select></label>
+        <button type="button" class="lab-mini" id="ctxSubmitBtn">发起压缩对照批次</button>
+        <span class="lab-note" id="ctxStatus">发布后结果出现在「上下文压缩 → 用例结果」页。</span>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>联动对照（同一长上下文：原始 full-raw 与压缩 budgeted-comp 分别跑三组实现，检验压缩质量）</legend>
+      <div class="lab-row">
+        <label>用例 <select id="linkCase"><option value="">全部对照用例</option></select></label>
+        <label>每格次数 <select id="linkRuns"><option>1</option><option>2</option><option>3</option></select></label>
+        <button type="button" class="lab-mini" id="linkSubmitBtn">发起联动对照批次</button>
+        <span class="lab-note" id="linkStatus">2 变体 × 3 组 = 6 格；发布后「上下文压缩 → 用例结果」页出现联动表。单用例压缩测试(不调模型)见「上下文压缩 → 长上下文库」。</span>
+      </div>
     </fieldset>
     <fieldset>
       <legend>固定题号（全不选=全部题目）</legend>
@@ -244,6 +269,26 @@
     box.innerHTML = outcome.body.map(function (c) {
       return '<label><input type="checkbox" value="' + c.id + '"> ' + c.id + " · " + (c.title || c.message || "") + "</label>";
     }).join("");
+    // 联动对照用例下拉:变体目录里带对照变体(full-raw/budgeted-comp)的用例
+    var linkBox = document.getElementById("linkCase");
+    var ctxCases = outcome.body.filter(function (c) {
+      return (c.variants || []).some(function (v) {
+        return v.variantId === "full-raw" || v.variantId === "budgeted-comp";
+      });
+    });
+    linkBox.innerHTML = '<option value="">全部对照用例（' + ctxCases.length + " 套）</option>" + ctxCases.map(function (c) {
+      return '<option value="' + esc(c.id) + '">' + esc(c.id) + " · " + esc(c.title || c.message || "") + "</option>";
+    }).join("");
+    // 长上下文库页「联动对照」跳转预填:?link=ctx-xxx
+    var wanted = new URLSearchParams(location.search).get("link");
+    if (wanted) {
+      var exists = ctxCases.some(function (c) { return c.id === wanted; });
+      if (exists) {
+        linkBox.value = wanted;
+        linkBox.scrollIntoView({ block: "center" });
+        document.getElementById("linkStatus").textContent = "已从长上下文库带入用例 " + wanted + ",点击右侧按钮发起。";
+      }
+    }
   }).catch(function (err) {
     document.getElementById("caseList").innerHTML = '<span class="bad">题库加载失败：' + err.message + "（检查隧道与 data 服务）</span>";
   });
@@ -348,6 +393,56 @@
     }).catch(function (err) {
       box.innerHTML = '<span class="bad">' + err.message + "</span>";
       btn.disabled = false; btn.textContent = "发起批次";
+    });
+  });
+
+  // ── 上下文压缩对照批次：6 套用例 × 两变体，复用作业轮询 ──
+  document.getElementById("ctxSubmitBtn").addEventListener("click", function () {
+    var btn = this;
+    var status = document.getElementById("ctxStatus");
+    btn.disabled = true; btn.textContent = "发起中…";
+    api("/api/v1/context-batches", {
+      method: "POST",
+      body: JSON.stringify({ runs: Number(document.getElementById("ctxRuns").value) }),
+    }).then(function (outcome) {
+      if (outcome.status !== 200) throw new Error(outcome.body.detail || ("HTTP " + outcome.status));
+      status.textContent = "已发起：batch " + outcome.body.batch_id.slice(0, 8) + "，执行中…";
+      poll(outcome.body.job_id, outcome.body.batch_id);
+      btn.disabled = false; btn.textContent = "发起压缩对照批次";
+    }).catch(function (err) {
+      status.innerHTML = '<span class="bad">发起失败：' + err.message + "</span>";
+      btn.disabled = false; btn.textContent = "发起压缩对照批次";
+    });
+  });
+
+  // ── 一键发起:按当前表单配置(默认全部题库、每题 1 次、含 ReAct 组)立即提交 ──
+  document.getElementById("quickStartBtn").addEventListener("click", function () {
+    var status = document.getElementById("quickStatus");
+    var form = document.getElementById("batchForm");
+    status.textContent = "正在提交…";
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+    } else {
+      form.dispatchEvent(new Event("submit", { cancelable: true }));
+    }
+  });
+
+  // ── 联动对照批次:同一长上下文 原始/压缩 × 三组实现,复用作业轮询 ──
+  document.getElementById("linkSubmitBtn").addEventListener("click", function () {
+    var btn = this;
+    var status = document.getElementById("linkStatus");
+    var caseId = document.getElementById("linkCase").value;
+    btn.disabled = true; btn.textContent = "发起中…";
+    var payload = { runs: Number(document.getElementById("linkRuns").value) };
+    if (caseId) payload.case_ids = [caseId];
+    api("/api/v1/context-link-batches", { method: "POST", body: JSON.stringify(payload) }).then(function (outcome) {
+      if (outcome.status !== 200) throw new Error(outcome.body.detail || ("HTTP " + outcome.status));
+      status.textContent = "已发起：batch " + outcome.body.batch_id.slice(0, 8) + "，执行中…";
+      poll(outcome.body.job_id, outcome.body.batch_id);
+      btn.disabled = false; btn.textContent = "发起联动对照批次";
+    }).catch(function (err) {
+      status.innerHTML = '<span class="bad">发起失败：' + err.message + "</span>";
+      btn.disabled = false; btn.textContent = "发起联动对照批次";
     });
   });
 

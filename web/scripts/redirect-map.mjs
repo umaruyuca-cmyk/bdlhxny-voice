@@ -13,6 +13,9 @@ export const REDIRECTS = new Map([
   ["/docs/tools", "/engine/tools"],
   ["/docs/results", "/showcase/results"],
   ["/showcase/context", "/context/results"],
+  ["/home", "/"],
+  ["/home/", "/"],
+  ["/home/index", "/"],
 ]);
 
 /** 归一化:去掉 .html 后查表(旧链接可能带扩展名)。 */

@@ -284,7 +284,136 @@ function projectPublicRun(full, batchId) {
   return run;
 }
 
+/** 上下文压缩对照工件识别:策略变体聚合(by_variant),无实现方式组。 */
+function isContextArtifact(artifact) {
+  return artifact.experiment_type === "context-strategy" || (!artifact.groups && artifact.by_variant);
+}
+
+/** 联动对照工件识别:变体 × 实现方式双维聚合(by_group,键 "variant:mode")。 */
+function isContextLinkArtifact(artifact) {
+  return artifact.experiment_type === "context-link" || (!artifact.groups && artifact.by_group);
+}
+
+/** 联动对照组键 → 公开标签(变体标签 · 实现方式标签)。 */
+const CONTEXT_LINK_LABELS = {
+  variants: {
+    "full-raw": "原始内容(full-raw)",
+    "budgeted-comp": "压缩内容(budgeted-comp)",
+  },
+  modes: {
+    "baseline-tool-calling": "裸 tool calling",
+    "langgraph-react": "LangGraph ReAct",
+    "full-system": "完整工程模式",
+  },
+};
+
+function contextLinkGroupLabel(key) {
+  const [variant, ...modeParts] = key.split(":");
+  const mode = modeParts.join(":");
+  const variantLabel = CONTEXT_LINK_LABELS.variants[variant] || variant;
+  const modeLabel = CONTEXT_LINK_LABELS.modes[mode] || mode;
+  return `${variantLabel} · ${modeLabel}`;
+}
+
+function projectContextLinkBatchReport(artifact, batchId, gitCommit) {
+  const groups = Object.entries(artifact.by_group ?? {}).map(([key, agg]) => {
+    const valid = int(agg.valid_runs);
+    // 联动口径:压缩质量六格对照;基础编排指标取可对应映射,其余诚实 null
+    const projected = { task_success_rate: null };
+    for (const field of METRIC_FIELDS) projected[field] = null;
+    projected.tool_selection_rate = valid ? num(agg.tool_correct_runs / valid) : null;
+    projected.number_hallucination_rate = valid ? num(int(agg.number_hallucination_runs) / valid) : null;
+    projected.constraint_retention_rate = num(agg.mean_required_retention_rate);
+    projected.fact_recall_rate = valid ? num((valid - int(agg.missing_required_fact_runs)) / valid) : null;
+    projected.injection_isolated_rate = valid ? num(int(agg.injection_isolated_runs) / valid) : null;
+    projected.forbidden_fact_leak_rate = valid ? num(int(agg.forbidden_fact_leak_runs) / valid) : null;
+    projected.raw_tokens = num(agg.mean_original_tokens);
+    projected.working_tokens = num(agg.mean_working_tokens);
+    projected.median_duration_ms = num(agg.mean_duration_ms); // 均值口径,页面列头已标注
+    return {
+      key,
+      label: contextLinkGroupLabel(key),
+      valid_runs: valid,
+      invalid_runs: int(agg.invalid_runs),
+      metrics: pick(projected, ["task_success_rate", ...METRIC_FIELDS, "constraint_retention_rate",
+        "fact_recall_rate", "injection_isolated_rate", "forbidden_fact_leak_rate", "raw_tokens", "working_tokens"]),
+    };
+  });
+  return {
+    batch_id: batchId,
+    experiment_type: "context-link",
+    generated_at: artifact.generated_at,
+    git_commit: gitCommit,
+    model: str(artifact.model),
+    fixed_conditions: {
+      case_ids: [...new Set((artifact.run_records || []).map((row) => str(row.case_id)))].sort(),
+      runs_per_case: int(artifact.runs_per_case),
+      tool_data: "frozen",
+      agent_modes: Array.isArray(artifact.agent_modes) ? artifact.agent_modes.map(str) : [],
+      variable: "variant_x_mode",
+    },
+    groups,
+    outcome_counts: { win: null, regress: null, tie: null, both_fail: null, invalid: null },
+    cases: [],
+  };
+}
+
+/** 策略变体 → 公开组键/标签(renderStrategyTable 消费 full/budgeted 等策略键)。 */
+const CONTEXT_VARIANT_KEYS = {
+  "full-raw": { key: "full", label: "full（全量透传 full-raw）" },
+  "budgeted-comp": { key: "budgeted", label: "budgeted（按预算压缩）" },
+};
+
+function projectContextBatchReport(artifact, batchId, gitCommit) {
+  const groups = Object.entries(artifact.by_variant ?? {}).map(([variant, agg]) => {
+    const mapping = CONTEXT_VARIANT_KEYS[variant] || { key: variant, label: variant };
+    const valid = int(agg.valid_runs);
+    // 基础指标:可对应的映射(工具选择=tool_correct/valid),其余诚实 null;
+    // 压缩对照专列:原始/工作 token、强制项保留、事实召回、注入隔离
+    const projected = { task_success_rate: null };
+    for (const field of METRIC_FIELDS) projected[field] = null;
+    projected.tool_selection_rate = valid ? num(agg.tool_correct_runs / valid) : null;
+    projected.constraint_retention_rate = num(agg.mean_required_retention_rate);
+    projected.fact_recall_rate = valid ? num((valid - int(agg.missing_required_fact_runs)) / valid) : null;
+    projected.injection_isolated_rate = valid ? num(int(agg.injection_isolated_runs) / valid) : null;
+    projected.forbidden_fact_leak_rate = valid ? num(int(agg.forbidden_fact_leak_runs) / valid) : null;
+    projected.raw_tokens = num(agg.mean_original_tokens);
+    projected.working_tokens = num(agg.mean_working_tokens);
+    projected.median_duration_ms = num(agg.mean_duration_ms); // 均值口径,页面列头已标注
+    return {
+      key: mapping.key,
+      label: mapping.label,
+      valid_runs: valid,
+      invalid_runs: int(agg.invalid_runs),
+      metrics: pick(projected, ["task_success_rate", ...METRIC_FIELDS, "constraint_retention_rate",
+        "fact_recall_rate", "injection_isolated_rate", "forbidden_fact_leak_rate", "raw_tokens", "working_tokens"]),
+    };
+  });
+  return {
+    batch_id: batchId,
+    experiment_type: "context-strategy",
+    generated_at: artifact.generated_at,
+    git_commit: gitCommit,
+    model: str(artifact.model),
+    fixed_conditions: {
+      case_ids: [...new Set((artifact.run_records || []).map((row) => str(row.case_id)))].sort(),
+      runs_per_case: int(artifact.runs_per_case),
+      tool_data: "frozen",
+      variable: "context_strategy",
+    },
+    groups,
+    outcome_counts: { win: null, regress: null, tie: null, both_fail: null, invalid: null },
+    cases: [],
+  };
+}
+
 function projectBatchReport(artifact, batchId, gitCommit, publishedRuns) {
+  if (isContextLinkArtifact(artifact)) {
+    return projectContextLinkBatchReport(artifact, batchId, gitCommit);
+  }
+  if (isContextArtifact(artifact)) {
+    return projectContextBatchReport(artifact, batchId, gitCommit);
+  }
   const groups = Object.entries(artifact.groups ?? {})
     .filter(([source]) => GROUP_KEYS[source])
     .map(([source, metrics]) => {
@@ -378,6 +507,7 @@ async function projectIndex(artifact, batchId, gitCommit, publishedAt, outputDir
   const invalidTotal = batch.groups.reduce((sum, g) => sum + g.invalid_runs, 0);
   const ref = {
     batch_id: batchId,
+    experiment_type: batch.experiment_type,
     published_at: publishedAt,
     is_formal: met,
     case_count: int(artifact.case_count),

@@ -25,6 +25,7 @@
         "case_count": { "type": "integer", "minimum": 0 },
         "runs_per_case": { "type": "integer", "minimum": 0 },
         "model": { "type": "string", "minLength": 1 },
+        "experiment_type": { "enum": ["agent-implementation", "context-strategy", "context-link"] },
         "git_commit": { "type": "string", "minLength": 1 },
         "validity_gate": { "$ref": "#/definitions/validityGate" }
       }
@@ -40,6 +41,7 @@
         "case_count": { "type": "integer", "minimum": 0 },
         "runs_per_case": { "type": "integer", "minimum": 0 },
         "model": { "type": "string", "minLength": 1 },
+        "experiment_type": { "enum": ["agent-implementation", "context-strategy", "context-link"] },
         "git_commit": { "type": "string", "minLength": 1 }
       }
     },

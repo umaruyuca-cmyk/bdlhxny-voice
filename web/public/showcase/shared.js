@@ -42,10 +42,21 @@
   }
 
   function renderStatCards(state, report) {
+    // 上下文压缩对照批次:渲染策略摘要卡(工作 token 与强制项保留)
+    if (state.kind === "formal" && isContextBatch(report)) {
+      var ctxRows = (report.groups || []).map(function (g) {
+        var m = g.metrics || {};
+        return '<div class="stat-val-row">' + esc(g.label) + "：工作上下文 " + num(m.working_tokens) +
+          " token · 强制项保留 " + pct(m.constraint_retention_rate) + " · 事实召回 " + pct(m.fact_recall_rate) + "</div>";
+      }).join("");
+      return '<div class="stat-card"><div class="stat-label">上下文压缩对照（最新正式批次）</div><div class="stat-vals">' +
+        (ctxRows || '<span class="stat-now">未运行</span>') +
+        '</div><div class="stat-hint">策略逐项对比见<a href="/context/results">用例结果</a></div></div>';
+    }
     var cards = [
       { label: "工具选择准确率", group: "full-system", field: "tool_selection_rate", better: "high" },
       { label: "数字幻觉率", group: "full-system", field: "number_hallucination_rate", better: "low" },
-      { label: "无效运行数", value: null, hint: "有效性分类未实现（P3-1）" }
+      { label: "无效运行数", value: null, hint: "无效运行(限流/余额/服务不可用)单列,不进分母" }
     ];
     if (state.kind !== "formal" || !report) {
       return cards.map(function (c) {
@@ -55,13 +66,14 @@
     var byKey = {};
     (report.groups || []).forEach(function (g) { byKey[g.key] = g; });
     var base = byKey["baseline-tool-calling"], full = byKey["full-system"];
+    var invalidTotal = (report.groups || []).reduce(function (sum, g) { return sum + (g.invalid_runs || 0); }, 0);
     return cards.map(function (c) {
       var html = '<div class="stat-card"><div class="stat-label">' + c.label + "</div>";
       if (c.group) {
         var b = base && base.metrics[c.field], t = full && full.metrics[c.field];
         html += '<div class="stat-vals"><span class="stat-base">基线 ' + pct(b) + '</span><span class="stat-arrow">→</span><span class="stat-now">' + pct(t) + "</span></div>";
       } else {
-        html += '<div class="stat-vals"><span class="stat-now">' + num(c.value) + "</span></div>";
+        html += '<div class="stat-vals"><span class="stat-now">' + num(invalidTotal) + "</span></div>";
       }
       html += '<div class="stat-hint">' + esc(c.hint || "完整工程模式 vs 裸 tool calling") + "</div></div>";
       return html;
@@ -329,18 +341,134 @@
       var m = g.metrics || {};
       return "<tr><td>" + s.label + "</td><td>" + num(m.raw_tokens) + "</td><td>" + num(m.working_tokens) + "</td><td>" +
         pct(m.constraint_retention_rate) + "</td><td>" + pct(m.fact_recall_rate) + "</td><td>" +
-        pct(m.reference_integrity_rate) + "</td><td>" + num(m.median_duration_ms, "ms") + "</td></tr>";
+        pct(m.injection_isolated_rate) + "</td><td>" + num(m.median_duration_ms, "ms") + "</td></tr>";
     }).join("");
-    return '<table><thead><tr><th>策略</th><th>原始 token</th><th>工作 token</th><th>强制项保留</th><th>关键事实召回</th><th>引用完整</th><th>p50 时长</th></tr></thead><tbody>' +
+    return '<table><thead><tr><th>策略</th><th>原始 token</th><th>工作 token</th><th>强制项保留</th><th>关键事实召回</th><th>注入隔离</th><th>平均时长</th></tr></thead><tbody>' +
       rows + "</tbody></table>";
   }
 
   /** 正反例成对（showcase 文档 §13.3）：无数据时明示，不手写样例。 */
   function renderContextPairs(report) {
     if (!isContextBatch(report)) {
-      return '<div class="placeholder-block">未运行：上下文构建器接入中（P3-2）——成对展示需要同一用例的真实成功与失败运行。</div>';
+      return '<div class="placeholder-block">未运行：尚无已发布的上下文对照批次。</div>';
     }
     return '<div class="placeholder-block">暂无失败样本：当前已发布的上下文批次中没有可成对展示的失败运行。</div>';
+  }
+
+  /** 工具调用明细：本轮批次每题每组的按序工具调用(读逐运行工件的 tool_results 段)。 */
+  var TOOL_STATUS_LABEL = { SUCCESS: "ok" };
+
+  function renderToolChips(run) {
+    var steps = (run && run.sections && run.sections.tool_results) || [];
+    if (!steps.length) {
+      return '<span class="tool-chip none">无工具调用</span>';
+    }
+    var ordered = steps.slice().sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
+    return ordered.map(function (step) {
+      var cls = TOOL_STATUS_LABEL[step.status] || (step.status === "SUCCESS" ? "ok" : "bad");
+      return '<li><span class="tool-chip ' + cls + '" title="' + esc(step.status) +
+        (step.summary ? " · " + esc(JSON.stringify(step.summary).slice(0, 120)) : "") + '">' +
+        '<span class="seq">#' + esc(step.seq) + "</span>" + esc(step.name) + "</span></li>";
+    }).join("");
+  }
+
+  function renderToolTrace(report, runsById) {
+    var cases = (report && report.cases) || [];
+    var groups = (report && report.groups) || [];
+    if (!cases.length || !groups.length) {
+      return '<div class="placeholder-block">未运行：尚无已发布的批次。</div>';
+    }
+    runsById = runsById || {};
+    var blocks = cases.map(function (c) {
+      var groupHtml = groups.map(function (g) {
+        var ids = (c.run_ids && c.run_ids[g.key]) || [];
+        var runs = ids
+          .map(function (id) { return runsById[id]; })
+          .filter(Boolean);
+        var runHtml = runs.length
+          ? runs.map(function (run) {
+              return '<div class="tool-run"><a href="/showcase/runs?id=' + encodeURIComponent(run.run_id) + '">' +
+                "run " + esc(String(run.run_id).slice(-8)) + "</a> · 第 " + esc(run.experiment.repeat_index) + " 次" +
+                '<ul class="tool-seq">' + renderToolChips(run) + "</ul></div>";
+            }).join("")
+          : '<p class="pending">未发布</p>';
+        return '<div class="tool-group-block"><h4>' + esc(g.label) + "</h4>" + runHtml + "</div>";
+      }).join("");
+      var toolStats = {};
+      groups.forEach(function (g) {
+        var ids = (c.run_ids && c.run_ids[g.key]) || [];
+        var names = {};
+        ids.forEach(function (id) {
+          var run = runsById[id];
+          ((run && run.sections && run.sections.tool_results) || []).forEach(function (step) {
+            names[step.name] = true;
+          });
+        });
+        toolStats[g.key] = Object.keys(names).sort();
+      });
+      var union = [];
+      groups.forEach(function (g) {
+        toolStats[g.key].forEach(function (name) {
+          if (union.indexOf(name) === -1) union.push(name);
+        });
+      });
+      return '<details class="case-trace"><summary><code>' + esc(c.id) + "</code> " + esc(c.message) +
+        ' <span class="muted">去重后共调用 ' + union.length + " 个工具</span></summary>" +
+        '<div class="tool-groups-grid">' + groupHtml + "</div>" +
+        (union.length ? '<p class="muted">本题出现的工具：' + union.map(function (n) { return "<code>" + esc(n) + "</code>"; }).join("、") + "</p>" : "") +
+        "</details>";
+    }).join("");
+    return '<p class="lab-note">读取批次 ' + esc(String(report.batch_id).slice(0, 8)) +
+      "(有效口径;点击题目展开每组每次运行的调用顺序)。</p>" + blocks;
+  }
+
+  var LINKAGE_VARIANTS = [
+    { key: "full-raw", label: "原始内容(full-raw)" },
+    { key: "budgeted-comp", label: "压缩内容(budgeted-comp)" },
+  ];
+  var LINKAGE_MODES = [
+    { key: "baseline-tool-calling", label: "裸 tool calling" },
+    { key: "langgraph-react", label: "LangGraph ReAct" },
+    { key: "full-system", label: "完整工程模式" },
+  ];
+  var LINKAGE_METRICS = [
+    { field: "tool_selection_rate", label: "工具选择正确率", fmt: pct },
+    { field: "fact_recall_rate", label: "关键事实召回", fmt: pct },
+    { field: "forbidden_fact_leak_rate", label: "禁用事实泄漏", fmt: pct },
+    { field: "injection_isolated_rate", label: "注入隔离", fmt: pct },
+    { field: "number_hallucination_rate", label: "数字幻觉率", fmt: pct },
+    { field: "working_tokens", label: "工作 token(均值)", fmt: num },
+    { field: "median_duration_ms", label: "平均时长", fmt: function (v) { return num(v, "ms"); } },
+  ];
+
+  function isLinkageBatch(report) {
+    return !!(report && report.experiment_type === "context-link");
+  }
+
+  /** 联动对照表:变体 × 实现方式六格,比较压缩内容相对原始内容的保持度。 */
+  function renderLinkageTable(report) {
+    if (!isLinkageBatch(report)) {
+      return '<div class="placeholder-block">未运行：尚无已发布的联动对照批次。</div>';
+    }
+    var byKey = {};
+    (report.groups || []).forEach(function (g) { byKey[g.key] = g; });
+    var head = '<tr><th>指标</th>' + LINKAGE_VARIANTS.map(function (v) {
+      return '<th colspan="' + LINKAGE_MODES.length + '">' + esc(v.label) + "</th>";
+    }).join("") + "</tr>";
+    head += "<tr><th></th>" + LINKAGE_VARIANTS.map(function (v) {
+      return LINKAGE_MODES.map(function (m) { return "<th>" + esc(m.label) + "</th>"; }).join("");
+    }).join("") + "</tr>";
+    var rows = LINKAGE_METRICS.map(function (metric) {
+      return "<tr><td>" + esc(metric.label) + "</td>" + LINKAGE_VARIANTS.map(function (v) {
+        return LINKAGE_MODES.map(function (m) {
+          var g = byKey[v.key + ":" + m.key];
+          var value = g && g.metrics ? g.metrics[metric.field] : null;
+          return "<td>" + metric.fmt(value) + "</td>";
+        }).join("");
+      }).join("") + "</tr>";
+    }).join("");
+    return "<table><thead>" + head + "</thead><tbody>" + rows + "</tbody></table>" +
+      '<p class="lab-note">同一列内比较上下两半:压缩内容格若不劣于原始内容格(召回不降、泄漏不升),压缩即划算。</p>';
   }
 
   global.SHOWCASE = {
@@ -359,7 +487,10 @@
     renderRunsIndex: renderRunsIndex,
     renderStrategyTable: renderStrategyTable,
     renderContextPairs: renderContextPairs,
+    renderToolTrace: renderToolTrace,
+    renderLinkageTable: renderLinkageTable,
     isContextBatch: isContextBatch,
+    isLinkageBatch: isLinkageBatch,
     METRIC_DEFS: METRIC_DEFS,
     RUN_SECTION_TITLES: RUN_SECTION_TITLES
   };

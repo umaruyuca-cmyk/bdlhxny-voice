@@ -263,3 +263,69 @@ test("canonicalHash 与 engine payload_hash 同口径(跨语言对拍样例)", (
   const sample = { b: { d: [3, 1], c: "中文" }, a: 1 };
   assert.equal(canonicalHash(sample), "sha256:bbd2c4239adce18fbb59a58555e2499dd1b0d89b995b8b648a2b940af35380de");
 });
+
+test("联动对照批次发布:按 变体×实现 六格投影,experiment_type=context-link", async () => {
+  const artifact = {
+    generated_at: "2026-08-23T10:00:00+08:00",
+    experiment_type: "context-link",
+    model: "glm-4.7-flash",
+    runs_per_case: 1,
+    case_count: 1,
+    agent_modes: ["baseline", "react", "treatment"],
+    validity_threshold: {
+      min_valid_per_group: 1,
+      groups: {
+        "full-raw:baseline-tool-calling": { required: 1, valid: 1, met: true },
+        "budgeted-comp:full-system": { required: 1, valid: 1, met: true },
+      },
+      met: true,
+    },
+    by_group: {
+      "full-raw:baseline-tool-calling": {
+        total_runs: 1, valid_runs: 1, invalid_runs: 0,
+        tool_correct_runs: 1, number_hallucination_runs: 0,
+        mean_required_retention_rate: 1.0, missing_required_fact_runs: 0,
+        forbidden_fact_leak_runs: 0, injection_isolated_runs: 0,
+        mean_original_tokens: 9000, mean_working_tokens: 9000, mean_duration_ms: 4000,
+      },
+      "budgeted-comp:full-system": {
+        total_runs: 1, valid_runs: 1, invalid_runs: 0,
+        tool_correct_runs: 1, number_hallucination_runs: 0,
+        mean_required_retention_rate: 1.0, missing_required_fact_runs: 0,
+        forbidden_fact_leak_runs: 0, injection_isolated_runs: 1,
+        mean_original_tokens: 9000, mean_working_tokens: 1200, mean_duration_ms: 2500,
+      },
+    },
+    run_records: [
+      { run_key: "ctx:full-raw:baseline:0", case_id: "ctx-port-01", agent_mode: "baseline-tool-calling", variant_id: "full-raw", repeat_index: 0, status: "COMPLETE", validity: "VALID", error_category: null, run_id: RUN_BASE },
+      { run_key: "ctx:budgeted-comp:treatment:0", case_id: "ctx-port-01", agent_mode: "full-system", variant_id: "budgeted-comp", repeat_index: 0, status: "COMPLETE", validity: "VALID", error_category: null, run_id: RUN_FULL },
+    ],
+  };
+  await writeBatch(artifact);
+  await writeRun(makeRunArtifact(RUN_BASE, "baseline-tool-calling"));
+  await writeRun(makeRunArtifact(RUN_FULL, "full-system"));
+  const outDir = path.join(workDir, "out-link");
+  const result = await publishBatch({
+    artifactsDir: path.join(workDir, "artifacts"),
+    batchId: BATCH_ID,
+    gitCommit: "abc1234",
+    outputDir: outDir,
+  });
+  assert.equal(result.batchId, BATCH_ID);
+  const report = JSON.parse(await readFile(path.join(outDir, "batches", `${BATCH_ID}/report.json`), "utf8"));
+  assert.equal(report.experiment_type, "context-link");
+  const keys = report.groups.map((g) => g.key).sort();
+  assert.deepEqual(keys, ["budgeted-comp:full-system", "full-raw:baseline-tool-calling"]);
+  const byKey = Object.fromEntries(report.groups.map((g) => [g.key, g]));
+  assert.match(byKey["full-raw:baseline-tool-calling"].label, /原始内容.*裸 tool calling/);
+  assert.match(byKey["budgeted-comp:full-system"].label, /压缩内容.*完整工程模式/);
+  assert.equal(byKey["full-raw:baseline-tool-calling"].metrics.working_tokens, 9000);
+  assert.equal(byKey["budgeted-comp:full-system"].metrics.working_tokens, 1200);
+  assert.equal(byKey["budgeted-comp:full-system"].metrics.tool_selection_rate, 1);
+  assert.equal(byKey["full-raw:baseline-tool-calling"].metrics.injection_isolated_rate, 0, "裸组原样平铺:注入未隔离是诚实结果");
+  // 产物过 schema(含新枚举值)
+  validate(report, await loadSchema("batch-report"));
+  const index = JSON.parse(await readFile(path.join(outDir, "index.json"), "utf8"));
+  validate(index, await loadSchema("index"));
+  assert.equal(index.latest_batch.batch_id, BATCH_ID);
+});

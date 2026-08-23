@@ -5,62 +5,162 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>压缩算法 · 上下文压缩</title>
-<meta name="description" content="四策略、条目分类、强制项保留与不可信数据包裹。">
+<meta name="description" content="token 计数公式、四种策略的决策规则、预算分配与压缩函数的精确口径。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <nav class="topnav" aria-label="模块导航">
-      <a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
-      <a href="/showcase/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</a>
-      <a href="/experiment/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</a>
-      <a href="/context/" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</a>
-      <a href="/judging/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</a>
-      <a href="/engine/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</a>
-      <a href="/ops/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</a>
-    </nav>
+    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
     <div class="topbar-actions">
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
-    <a class="topbar-home" href="/home/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9l4-6z"/><path d="M2 9h20"/><path d="M12 21 8 9l4-6 4 6-4 12"/></svg>タカラダ・リッカ</a>
+    <a class="topbar-lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
     <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
     </div>
-    <button class="side-btn" id="sideBtn" type="button" aria-label="展开本页目录">本页目录</button>
+    <button class="side-btn" id="sideBtn" type="button" aria-label="展开导航">导航</button>
   </div>
 </header>
 <div class="docs-layout">
   <aside class="docs-side" id="docsSide">
-    <h4>模块页面</h4>
-    <ul>
-      <li><a href="/context/" class="active">压缩算法</a></li>
-      <li><a href="/context/design">长短对照设计</a></li>
-      <li><a href="/context/results">用例结果</a></li>
-    </ul>
-    <h4>本页目录</h4>
-    <ul>
-      <li><a href="#strategies">四种策略</a></li>
-      <li><a href="#classification">条目分类与红线</a></li>
-      <li><a href="#tokens">token 计数口径</a></li>
-      <li><a href="#wiring">接入位置</a></li>
-    </ul>
+    <nav class="side-tree" aria-label="站点模块导航">
+    <a class="side-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
+        <ul>
+          <li><a href="/about/">系统定位与架构</a></li>
+          <li><a href="/about/banks">题库与数据</a></li>
+          <li><a href="/about/repo">仓库与复现</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
+        <ul>
+          <li><a href="/showcase/">批次概览</a></li>
+          <li><a href="/showcase/results">对照结果</a></li>
+          <li><a href="/showcase/tools">工具调用明细</a></li>
+          <li><a href="/showcase/runs">单次运行</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</summary>
+        <ul>
+          <li><a href="/experiment/">实验设计</a></li>
+          <li><a href="/experiment/cases">固定题库</a></li>
+          <li><a href="/experiment/reproduce">如何复现</a></li>
+        </ul>
+      </details>
+    <details class="side-group here" open>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
+        <ul>
+          <li><a href="/context/" class="active">压缩算法</a></li>
+          <li><a href="/context/library">长上下文库</a></li>
+          <li><a href="/context/design">长短对照设计</a></li>
+          <li><a href="/context/results">用例结果</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
+        <ul>
+          <li><a href="/judging/">指标定义</a></li>
+          <li><a href="/judging/metrics">批次指标总表</a></li>
+          <li><a href="/judging/judge">判官说明</a></li>
+          <li><a href="/judging/invalid">无效运行与口径</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
+        <ul>
+          <li><a href="/engine/">Agent 循环</a></li>
+          <li><a href="/engine/loading">工具装载</a></li>
+          <li><a href="/engine/catalog">工具目录</a></li>
+          <li><a href="/engine/governance">治理中间件</a></li>
+          <li><a href="/engine/guardrail">输出护栏</a></li>
+          <li><a href="/engine/tools">工具清单</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
+        <ul>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/run-api">私有运行 API</a></li>
+          <li><a href="/ops/artifacts">工件与发布</a></li>
+          <li><a href="/ops/deploy">部署与边界</a></li>
+          <li><a href="/ops/roadmap">路线图</a></li>
+        </ul>
+      </details>
+  </nav>
     <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
   </aside>
   <main class="docs-main">
-    <h1>压缩算法 · 上下文压缩</h1>
-<h2 id="strategies">四种策略</h2>
+<div class="detail-layout">
+      <aside class="page-toc" aria-label="本页目录">
+      <h4 class="page-toc-title">本页目录</h4>
+      <ul>
+        <li><a href="#overview">四种策略与符号</a></li>
+        <li><a href="#tokens">token 计数公式</a></li>
+        <li><a href="#allocation">budgeted:预算分配公式</a></li>
+        <li><a href="#compress">压缩函数 compress(i, target)</a></li>
+        <li><a href="#other-strategies">其余策略公式</a></li>
+        <li><a href="#invariants">校验与红线</a></li>
+      </ul>
+    </aside>
+      <div class="detail-body">
+        <h1>压缩算法 · 上下文压缩</h1>
+<h2 id="overview">四种策略与符号</h2>
+<p>构建器输入为条目集合 <code>I = {i₁,…,iₙ}</code>(每条带分类 <code>cls(i) ∈ {required, compressible, reference_only, distractor}</code>、优先级 <code>p(i)</code>、序号 <code>seq(i)</code>)与预算 <code>B</code>;输出为工作上下文消息与逐条决策(<code>kept / compressed / referenced / omitted / isolated</code>)。四种策略:</p>
 <ul>
   <li><strong>full</strong>:全量透传(预算内不压缩);</li>
   <li><strong>recent-n</strong>:只保留最近 N 条(窗口外省略);</li>
   <li><strong>single-summary</strong>:可压缩项合并为单摘要;</li>
   <li><strong>budgeted</strong>:按优先级与性价比选择压缩,仅引用项以来源元数据代表。</li>
 </ul>
-    <h2 id="classification">条目分类与红线</h2>
-<p>每条上下文条目带分类:<strong>required</strong>(强制保留)/ <strong>compressible</strong>(可压缩)/ <strong>reference_only</strong>(仅引用)/ <strong>distractor</strong>(干扰:过期、跨用户、注入)。强制项超预算直接判运行失败(<code>CONTEXT_BUILD_FAILED</code>),<strong>不静默降级</strong>。跨用户条目按属主隔离;不可信条目一律以 <code>&lt;untrusted-data&gt;</code> 包裹且不进入指令区。</p>
-    <h2 id="tokens">token 计数口径</h2>
-<p>当前计数器为保守确定性口径 <code>conservative-cjk1-latin4-v1</code>(CJK/标点每字 1 token,拉丁字母/数字每 4 字符 1 token);版本号写入工件与处理报告,口径可辨。处理报告记录原始/工作 token、保留/压缩/引用/隔离/省略计数、逐条决策原因与构建耗时。</p>
-    <h2 id="wiring">接入位置</h2>
-<p>Agent 循环的模型输入拼装统一经构建器(有架构测试守卫,禁止旁路拼装):系统提示作为纯指令条目逐字透传,固定上下文条目全部进入构建器裁决。见<a href="/engine/">Agent 循环</a>。</p>
+<p>默认参数:<code>N = 10</code>,压缩目标比例 <code>ρ = 0.35</code>,压缩条目最小 token <code>M = 32</code>。</p>
+    <h2 id="tokens">token 计数公式</h2>
+<p>计数器为保守确定性口径 <code>conservative-cjk1-latin4-v1</code>,版本号写入工件与处理报告。对文本 <code>s</code>,设:</p>
+<ul>
+  <li><code>C(s)</code> = 非空白字符中属于「CJK 汉字 / 平假名 / 片假名 / 谚文 / Unicode 标点(类别 P*)」的个数;</li>
+  <li><code>L(s)</code> = 其余非空白字符(拉丁字母、数字与其他文字)的个数;</li>
+  <li>空白字符不计入。</li>
+</ul>
+<p>则 <code>T(s) = C(s) + ⌈L(s) / 4⌉</code>。该口径刻意偏保守(高估),保证预算内绝不超出真实 tokenizer 计数。</p>
+<p>条目渲染时附加头标:<code>render(i, c) = [context item=ID type=cls(i) source=SID] + "\n" + c</code>;不可信条目(<code>trusted=false</code> 或角色为 <code>untrusted_data</code>)整体包裹 <code>&lt;untrusted-data&gt;…&lt;/untrusted-data&gt;</code>,且不进入指令区。系统提示为 <code>bare</code> 条目逐字透传(不加头标)。所有 token 均按渲染后文本计数。</p>
+    <h2 id="allocation">budgeted:预算分配公式</h2>
+<p><strong>第一步(required 全保留,红线)</strong>:</p>
+<div class="flow">R = Σ_{cls(i)=required} T(render(i, content(i)))　→　R &gt; B 时直接判 CONTEXT_BUILD_FAILED,不静默降级;否则剩余预算 M₁ = B − R</div>
+<p><strong>第二步(候选排序)</strong>:候选集 <code>Cand = {i : cls(i) ∈ {compressible, reference_only}}</code>,按 <code>(−p(i), seq(i), id(i))</code> 字典序升序处理(优先级高者优先,同优先级按时间先后)。跨用户条目(owner 不匹配)在此之前已被整体隔离(<code>isolated</code>);干扰项(<code>distractor</code>)不进预算,直接隔离。</p>
+<p><strong>第三步(逐条配额)</strong>:处理到第 <code>j</code> 条(0 起,其后还有 <code>m = max(1, |Cand| − j)</code> 条)时,设当前剩余预算为 <code>Mⱼ</code>:</p>
+<div class="flow">fairⱼ = max(M_min, ⌊Mⱼ / m⌋)　(均分下限保护,M_min = 32)
+targetⱼ = min( T_orig(j),　max(M_min, ⌊T_orig(j) × ρ⌋),　max(0, fairⱼ − T_header(j)) )</div>
+<p>其中 <code>T_orig(j) = T(render(iⱼ, content(iⱼ)))</code> 为原始渲染 token,<code>T_header(j) = T(render(iⱼ, ""))</code> 为头标 token。三个上限分别来自「不需要压」「不许压过头」「当条配额」。<code>reference_only</code> 条目不走压缩,直接以一行元数据代表:<code>[reference source=SID original_tokens=T_orig]</code>。</p>
+<p><strong>第四步(入选与否)</strong>:压缩产物渲染后 token <code>≤ Mⱼ</code> 则入选并扣减预算(<code>Mⱼ₊₁ = Mⱼ − T(render(iⱼ, value))</code>);否则整条 <code>omitted</code>(原因记录进决策)。最终选中条目按 <code>(seq, id)</code> 复原时间顺序。</p>
+    <h2 id="compress">压缩函数 compress(i, target)</h2>
+<p>单条压缩为确定性过程,无模型调用:</p>
+<ol>
+  <li><strong>规范化</strong>:按连续空行分段,段内连续空白折叠为单个空格,去掉首尾空白,并<strong>丢弃重复段落</strong>(保首次出现);</li>
+  <li><strong>JSON 紧凑化</strong>:内容以 <code>{</code> 或 <code>[</code> 开头且可解析为 JSON 时,重写为无空白紧凑形式(键排序),否则保留规范化文本;</li>
+  <li><strong>预算内直接返回</strong>:若 <code>T(norm) ≤ target</code>,原样返回(决策记 <code>kept</code>,不算压缩);</li>
+  <li><strong>头尾保留</strong>:否则构造 <code>[compressed source=SID]\n + norm[: ⌈0.6·|norm|⌉] + \n[content omitted]\n + norm[−⌈0.25·|norm|⌉:]</code>,即保头部 60%、尾部 25%,中段显式标注省略;</li>
+  <li><strong>收缩循环</strong>:仍超预算时,对当前较大的一侧(头或尾)长度乘 0.8(下限 1 字符)重试,直至放得下;</li>
+  <li><strong>兜底二分</strong>:极端情况下(连省略标记都放不下)在「标记 + 全文」上二分查找最大前缀长度 <code>lo</code> 使 <code>T(text[:lo]) ≤ target</code>,截断返回。</li>
+</ol>
+<p>压缩后能复原的定位信息只有 <code>source=SID</code> 与头标——这是设计取舍:省略必须显式可辨,不允许静默截断冒充全文。</p>
+    <h2 id="other-strategies">其余策略公式</h2>
+<ul>
+  <li><strong>full</strong>:全部条目按 <code>(seq, id)</code> 顺序渲染;<code>Σ T(render(i)) &gt; B</code> 时抛 <code>ContextWindowError</code>(不截断冒充全量)。</li>
+  <li><strong>recent-n</strong>:按 <code>(seq, id)</code> 排序取最后 N 条为窗口;窗口内逐条放行并扣减预算,窗口外或预算耗尽记 <code>omitted</code>。</li>
+  <li><strong>single-summary</strong>:required 先全保留(同 budgeted 第一步);可选条目按序拼接为一个合成条目(优先级取各条最大值,来源为各条 source 逗号连接),摘要预算 = <code>剩余预算 − T(合成条目头标)</code>,对合成条目调用上面的 compress;放得下则全部可选条目记 <code>compressed</code>,否则全部记 <code>omitted</code>。</li>
+</ul>
+    <h2 id="invariants">校验与红线</h2>
+<ul>
+  <li><strong>required 保留率 100%</strong>:决策中 action ∈ {kept, compressed, referenced} 的 required 条目集合必须等于全部 required 条目;缺失即告警并按失败口径处理;</li>
+  <li><strong>工作 token 校验</strong>:最终 <code>W = Σ T(message.content) &gt; B</code> 时抛 <code>ContextWindowError</code>;</li>
+  <li><strong>消息拼装</strong>:可信指令类条目(system/instruction)合并为一条 system 消息,其余合并为一条 user 消息——注入条目永远进不了指令区;</li>
+  <li><strong>处理报告</strong>:记录原始/工作 token、保留/压缩/引用/隔离/省略计数、逐条决策原因与构建耗时,随九段工件落库。</li>
+</ul>
+<p>接入位置:Agent 循环的模型输入拼装统一经构建器(有架构测试守卫,禁止旁路拼装)。见<a href="/engine/">Agent 循环</a>。</p>
+      </div>
+    </div>
   </main>
 </div>
 <script src="/docs/docs.js"></script>

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>数据库与冻结数据 · 数据与运行</title>
-<meta name="description" content="PostgreSQL 为唯一数据来源:init.sql 承接表、冻结工具返回与长上下文用例。">
+<title>长上下文库 · 上下文压缩</title>
+<meta name="description" content="库内长上下文条目的元信息列表:token 规模、内容方向、条目构成与原文下载。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -50,11 +50,11 @@
           <li><a href="/experiment/reproduce">如何复现</a></li>
         </ul>
       </details>
-    <details class="side-group">
+    <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
         <ul>
           <li><a href="/context/">压缩算法</a></li>
-          <li><a href="/context/library">长上下文库</a></li>
+          <li><a href="/context/library" class="active">长上下文库</a></li>
           <li><a href="/context/design">长短对照设计</a></li>
           <li><a href="/context/results">用例结果</a></li>
         </ul>
@@ -79,10 +79,10 @@
           <li><a href="/engine/tools">工具清单</a></li>
         </ul>
       </details>
-    <details class="side-group here" open>
+    <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/" class="active">数据库与冻结数据</a></li>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
           <li><a href="/ops/deploy">部署与边界</a></li>
@@ -97,21 +97,25 @@
       <aside class="page-toc" aria-label="本页目录">
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
-        <li><a href="#schema">库结构</a></li>
-        <li><a href="#fixtures">冻结数据</a></li>
+        <li><a href="#about">本页是什么</a></li>
+        <li><a href="#list">上下文列表</a></li>
+        <li><a href="#compress">压缩测试(登录后可用)</a></li>
       </ul>
     </aside>
       <div class="detail-body">
-        <h1>数据库与冻结数据 · 数据与运行</h1>
-<h2 id="schema">库结构</h2>
-<p>全部表结构在 <code>db/postgresql/setup/init.sql</code>(手动执行,无 Flyway):用例三表(定义/版本/变体)、数据快照、批次与运行、执行明细(run_events / model_calls+messages / tool_calls / guardrail_checks / run_measurements / context_builds 全家)、工件与发布(publications / publication_runs)、账号会话与工具目录八表。增量脚本放 <code>db/postgresql/changes/</code>,由所有者手动执行。</p>
-    <h2 id="fixtures">冻结数据</h2>
-<p>编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),三组共用,隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
+        <h1>长上下文库 · 上下文压缩</h1>
+<h2 id="about">本页是什么</h2>
+<p>上下文压缩实验的语料库存在 PostgreSQL(<code>changes/20260821-long-context-cases.sql</code>,批量条目由确定性公式生成、有业务含义)。本页列出每套长上下文的基础信息:<strong>token 规模(保守口径估算)、内容方向、条目构成(强制/可压缩/仅引用/干扰)、两条变体的预算</strong>;原文不直接铺在页面上,以 <code>.txt</code> 提供下载。</p>
+    <h2 id="list">上下文列表</h2>
+<div id="libraryList"><div class="placeholder-block">正在读取长上下文库…</div></div>
+    <h2 id="compress">压缩测试(登录后可用)</h2>
+<div id="compressPanel" class="placeholder-block"><p>压缩测试按钮仅在登录后显示:点击后按该用例的压缩变体预算现场执行一次构建器,展示原始/工作 token、逐条决策与保留率——不发起模型调用,不产生费用。</p></div>
       </div>
     </div>
   </main>
 </div>
 <script src="/docs/docs.js"></script>
 
+<script src="/context/library.js"></script>
 </body>
 </html>

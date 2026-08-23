@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>数据库与冻结数据 · 数据与运行</title>
-<meta name="description" content="PostgreSQL 为唯一数据来源:init.sql 承接表、冻结工具返回与长上下文用例。">
+<title>工具调用明细 · 实证展示</title>
+<meta name="description" content="本轮批次每题每组的按序工具调用链:调用了哪些工具、什么顺序、成功与否。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -33,12 +33,12 @@
           <li><a href="/about/repo">仓库与复现</a></li>
         </ul>
       </details>
-    <details class="side-group">
+    <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
         <ul>
           <li><a href="/showcase/">批次概览</a></li>
           <li><a href="/showcase/results">对照结果</a></li>
-          <li><a href="/showcase/tools">工具调用明细</a></li>
+          <li><a href="/showcase/tools" class="active">工具调用明细</a></li>
           <li><a href="/showcase/runs">单次运行</a></li>
         </ul>
       </details>
@@ -79,10 +79,10 @@
           <li><a href="/engine/tools">工具清单</a></li>
         </ul>
       </details>
-    <details class="side-group here" open>
+    <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/" class="active">数据库与冻结数据</a></li>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
           <li><a href="/ops/deploy">部署与边界</a></li>
@@ -93,25 +93,64 @@
     <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
   </aside>
   <main class="docs-main">
+
 <div class="detail-layout">
       <aside class="page-toc" aria-label="本页目录">
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
-        <li><a href="#schema">库结构</a></li>
-        <li><a href="#fixtures">冻结数据</a></li>
+        <li><a href="#what">本轮实验跑了什么、调了哪些工具</a></li>
+        <li><a href="#list">调用明细列表(读发布产物)</a></li>
       </ul>
     </aside>
       <div class="detail-body">
-        <h1>数据库与冻结数据 · 数据与运行</h1>
-<h2 id="schema">库结构</h2>
-<p>全部表结构在 <code>db/postgresql/setup/init.sql</code>(手动执行,无 Flyway):用例三表(定义/版本/变体)、数据快照、批次与运行、执行明细(run_events / model_calls+messages / tool_calls / guardrail_checks / run_measurements / context_builds 全家)、工件与发布(publications / publication_runs)、账号会话与工具目录八表。增量脚本放 <code>db/postgresql/changes/</code>,由所有者手动执行。</p>
-    <h2 id="fixtures">冻结数据</h2>
-<p>编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),三组共用,隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
-      </div>
+    <h2 id="what">本轮实验跑了什么、调了哪些工具</h2>
+    <p>上一栏是最新已发布批次<strong>逐题 × 逐组 × 逐次运行</strong>的工具调用序列:每道题展示了问题原文、每组实现(裸 tool calling / LangGraph ReAct / 完整工程模式)每次运行的<strong>按序调用链</strong>——顺序即真实调用顺序(#n 为步骤号),绿色为成功、红色为失败或被拦截;未产生工具调用的运行如实标注「无工具调用」。点击题目行展开,点击 run 号进入该运行的九段明细。</p>
+    <h2 id="list">调用明细列表(读发布产物)</h2>
+    <div id="toolTrace"><div class="placeholder-block">正在读取已发布批次与逐运行工件…</div></div>
+
+  </div>
     </div>
   </main>
 </div>
 <script src="/docs/docs.js"></script>
+<script src="/showcase/shared.js"></script>
+<script>
+(function () {
+  "use strict";
+  fetch("/showcase-data/index.json", { cache: "no-store" })
+    .then(function (res) { if (!res.ok) throw new Error("no index"); return res.json(); })
+    .then(function (index) {
+      var latest = index.latest_batch;
+      if (!latest) throw new Error("no batch");
+      return fetch("/showcase-data/batches/" + latest.batch_id + "/report.json", { cache: "no-store" });
+    })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (report) {
+      if (!report) throw new Error("批次产物缺失");
+      var ids = [];
+      (report.cases || []).forEach(function (c) {
+        Object.keys(c.run_ids || {}).forEach(function (group) {
+          (c.run_ids[group] || []).forEach(function (id) { if (ids.indexOf(id) === -1) ids.push(id); });
+        });
+      });
+      if (!ids.length) throw new Error("批次不含已发布运行");
+      return Promise.all(ids.map(function (id) {
+        return fetch("/showcase-data/runs/" + encodeURIComponent(id) + ".json", { cache: "no-store" })
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .catch(function () { return null; });
+      })).then(function (runs) {
+        var byId = {};
+        runs.forEach(function (run) { if (run) byId[run.run_id] = run; });
+        document.getElementById("toolTrace").innerHTML = SHOWCASE.renderToolTrace(report, byId);
+      });
+    })
+    .catch(function (err) {
+      document.getElementById("toolTrace").innerHTML =
+        '<div class="placeholder-block">未运行:(' + SHOWCASE.esc(err.message) + ")。批次发布并附带逐运行工件后,本页自动出现。</div>";
+    });
+})();
+</script>
+
 
 </body>
 </html>

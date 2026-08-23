@@ -1,0 +1,212 @@
+{
+  "generated_from": "db/postgresql/changes/20260821-long-context-cases.sql",
+  "tokenizer_version": "conservative-cjk1-latin4-v1",
+  "cases": [
+    {
+      "case_id": "ctx-port-01",
+      "title": "长持仓上下文中的风险与换房目标",
+      "direction": "金融 · 组合诊断",
+      "scene": "portfolio",
+      "authenticated": true,
+      "message": "我的持仓现在值多少钱，主要风险在哪里，是否影响18个月后的换房计划？",
+      "item_count": 564,
+      "token_estimate": 8847,
+      "item_counts": {
+        "required": 11,
+        "compressible": 528,
+        "reference_only": 0,
+        "distractor": 25
+      },
+      "has_injection": true,
+      "has_cross_user": true,
+      "has_stale": true,
+      "required_fact_keys": [
+        "portfolio_total",
+        "cash",
+        "positions_value",
+        "house_goal",
+        "cash_gap"
+      ],
+      "variants": {
+        "full_raw": {
+          "strategy": "full",
+          "token_budget": 65536
+        },
+        "budgeted_comp": {
+          "strategy": "budgeted",
+          "token_budget": 12288
+        }
+      },
+      "txt": "/showcase-data/context-library/ctx-port-01.txt"
+    },
+    {
+      "case_id": "ctx-val-01",
+      "title": "多期财务与估值口径",
+      "direction": "金融 · 估值口径",
+      "scene": "research",
+      "authenticated": false,
+      "message": "按当前数据解释宁德时代估值所处区间，并列出最影响结论的三个假设。",
+      "item_count": 25,
+      "token_estimate": 603,
+      "item_counts": {
+        "required": 5,
+        "compressible": 18,
+        "reference_only": 0,
+        "distractor": 2
+      },
+      "has_injection": false,
+      "has_cross_user": false,
+      "has_stale": true,
+      "required_fact_keys": [
+        "pe_ttm_current",
+        "industry_pe_median",
+        "report_period"
+      ],
+      "variants": {
+        "full_raw": {
+          "strategy": "full",
+          "token_budget": 65536
+        },
+        "budgeted_comp": {
+          "strategy": "budgeted",
+          "token_budget": 12288
+        }
+      },
+      "txt": "/showcase-data/context-library/ctx-val-01.txt"
+    },
+    {
+      "case_id": "ctx-news-01",
+      "title": "新闻去重、时效与注入防御",
+      "direction": "金融 · 新闻去重",
+      "scene": "news",
+      "authenticated": false,
+      "message": "宁德时代最近两周有什么重要消息？去重后按重要性列出，注明来源和时间。",
+      "item_count": 54,
+      "token_estimate": 1594,
+      "item_counts": {
+        "required": 4,
+        "compressible": 28,
+        "reference_only": 0,
+        "distractor": 22
+      },
+      "has_injection": true,
+      "has_cross_user": false,
+      "has_stale": true,
+      "required_fact_keys": [
+        "distinct_events",
+        "official_first"
+      ],
+      "variants": {
+        "full_raw": {
+          "strategy": "full",
+          "token_budget": 49152
+        },
+        "budgeted_comp": {
+          "strategy": "budgeted",
+          "token_budget": 10240
+        }
+      },
+      "txt": "/showcase-data/context-library/ctx-news-01.txt"
+    },
+    {
+      "case_id": "ctx-weather-01",
+      "title": "出行天气长序列",
+      "direction": "其他 · 出行天气",
+      "scene": "knowledge",
+      "authenticated": false,
+      "message": "这个周末去杭州两日游，根据最近一个月的天气情况，我需要带伞吗？早晚温差大不大？",
+      "item_count": 94,
+      "token_estimate": 1511,
+      "item_counts": {
+        "required": 3,
+        "compressible": 90,
+        "reference_only": 0,
+        "distractor": 1
+      },
+      "has_injection": false,
+      "has_cross_user": false,
+      "has_stale": true,
+      "required_fact_keys": [
+        "hangzhou_rain_days_recent_week",
+        "temp_range_morning",
+        "temp_range_noon"
+      ],
+      "variants": {
+        "full_raw": {
+          "strategy": "full",
+          "token_budget": 32768
+        },
+        "budgeted_comp": {
+          "strategy": "budgeted",
+          "token_budget": 8192
+        }
+      },
+      "txt": "/showcase-data/context-library/ctx-weather-01.txt"
+    },
+    {
+      "case_id": "ctx-manual-01",
+      "title": "长文档关键事实检索",
+      "direction": "其他 · 长文档手册",
+      "scene": "knowledge",
+      "authenticated": false,
+      "message": "智能网关 GW-200 的指示灯红色常亮代表什么？怎么恢复？",
+      "item_count": 14,
+      "token_estimate": 336,
+      "item_counts": {
+        "required": 3,
+        "compressible": 10,
+        "reference_only": 0,
+        "distractor": 1
+      },
+      "has_injection": false,
+      "has_cross_user": false,
+      "has_stale": true,
+      "required_fact_keys": [
+        "red_solid_meaning",
+        "recovery"
+      ],
+      "variants": {
+        "full_raw": {
+          "strategy": "full",
+          "token_budget": 32768
+        },
+        "budgeted_comp": {
+          "strategy": "budgeted",
+          "token_budget": 8192
+        }
+      },
+      "txt": "/showcase-data/context-library/ctx-manual-01.txt"
+    },
+    {
+      "case_id": "ctx-chat-01",
+      "title": "长历史闲聊快路径",
+      "direction": "闲聊 · 长历史",
+      "scene": "chitchat",
+      "authenticated": false,
+      "message": "在吗",
+      "item_count": 43,
+      "token_estimate": 799,
+      "item_counts": {
+        "required": 1,
+        "compressible": 40,
+        "reference_only": 0,
+        "distractor": 2
+      },
+      "has_injection": true,
+      "has_cross_user": false,
+      "has_stale": false,
+      "required_fact_keys": [],
+      "variants": {
+        "full_raw": {
+          "strategy": "full",
+          "token_budget": 16384
+        },
+        "budgeted_comp": {
+          "strategy": "budgeted",
+          "token_budget": 4096
+        }
+      },
+      "txt": "/showcase-data/context-library/ctx-chat-01.txt"
+    }
+  ]
+}

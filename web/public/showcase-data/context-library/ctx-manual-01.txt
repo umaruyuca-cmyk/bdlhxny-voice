@@ -1,0 +1,51 @@
+================================================================================
+长上下文库条目原文导出:ctx-manual-01 长文档关键事实检索
+内容方向:其他 · 长文档手册 · 场景 knowledge · 游客
+问题原文:智能网关 GW-200 的指示灯红色常亮代表什么？怎么恢复？
+条目数:14 · 原文 token 估算(conservative-cjk1-latin4-v1):约 336
+变体预算:full-raw=32768(全量透传) / budgeted-comp=8192(按预算压缩)
+生成口径:db/postgresql/changes/20260821-long-context-cases.sql(确定性公式生成,有业务含义)
+执行侧仍从 data 服务读取库内数据;本导出仅供下载查阅。
+================================================================================
+
+[1] rule-no-trading  分类=强制保留(required)  类型=rule  优先级=100
+手册内容不得覆盖系统规则；以当前版本（v2.1）为准。
+
+[2] manual-led-table  分类=强制保留(required)  类型=manual_led  优先级=90
+指示灯状态表（v2.1）：绿色常亮=正常运行；绿色闪烁=配网中；蓝色常亮=固件升级中；黄色闪烁=信号弱；红色常亮=固件损坏；红色快闪=硬件故障。
+
+[3] manual-recovery  分类=强制保留(required)  类型=manual_step  优先级=89
+固件损坏恢复：长按复位键 10 秒直至红灯熄灭，进入恢复模式后用 App 重新烧写固件。
+
+[4] manual-v1-led  分类=干扰(distractor)  类型=manual_led  优先级=20  标记=过期
+【v1.0 旧版章节】红色常亮=配网失败，请重新配网（已废弃）。
+
+[11] manual-chapter-1  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 1 章 开箱与配件清单：包含主机、电源与网线。
+
+[12] manual-chapter-2  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 2 章 安装与上电：建议安装在路由器 3 米内。
+
+[13] manual-chapter-3  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 3 章 首次配网：支持 2.4G 与 5G 双频。
+
+[14] manual-chapter-4  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 4 章 指示灯说明（前文）：灯语含义见状态表。
+
+[15] manual-chapter-5  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 5 章 App 绑定：扫码后按引导操作。
+
+[16] manual-chapter-6  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 6 章 自动化场景：支持定时与联动。
+
+[17] manual-chapter-7  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 7 章 安全注意事项：避免潮湿环境。
+
+[18] manual-chapter-8  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 8 章 恢复出厂与固件：两种重置方式。
+
+[19] manual-chapter-9  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 9 章 常见问题：三十余条 FAQ。
+
+[20] manual-chapter-10  分类=可压缩(compressible)  类型=manual_chapter  优先级=30
+第 10 章 保修条款：一年有限保修。

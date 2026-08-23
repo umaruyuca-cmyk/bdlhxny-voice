@@ -20,7 +20,7 @@ const contentTypes = new Map([
 ]);
 
 /**
- * Touchstone 展示站：纯静态 /docs/ 文档页，无后端代理。
+ * 对照评测展示站：纯静态页面，无后端代理。
  */
 const server = http.createServer(async (request, response) => {
   try {
@@ -45,14 +45,14 @@ async function serveStatic(requestPath, request, response) {
     return;
   }
   // 模块前缀(机甲首页 + 六模块):无尾斜杠 302 到模块首页;{page} 自动补 .html
-  const MODULE_PREFIXES = ["/home", "/showcase", "/lab", "/experiment", "/context", "/judging", "/engine", "/ops"];
+  const MODULE_PREFIXES = ["/about", "/showcase", "/lab", "/experiment", "/context", "/judging", "/engine", "/ops"];
   if (MODULE_PREFIXES.includes(requestPath)) {
     response.writeHead(302, { Location: requestPath + "/" });
     response.end();
     return;
   }
   let target = requestPath;
-  const DIRECTORY_INDEX = ["/home/", "/showcase/", "/lab/", "/experiment/", "/context/", "/judging/", "/engine/", "/ops/"];
+  const DIRECTORY_INDEX = ["/about/", "/showcase/", "/lab/", "/experiment/", "/context/", "/judging/", "/engine/", "/ops/"];
   if (requestPath === "/") target = "/index.html";
   else if (DIRECTORY_INDEX.includes(requestPath)) target = requestPath + "index.html";
   else {
@@ -101,7 +101,7 @@ async function serveStatic(requestPath, request, response) {
 }
 
 server.listen(port, host, () => {
-  console.log(`Touchstone 展示站: http://${host}:${port}/showcase/（架构讲解 /docs/）`);
+  console.log(`对照评测展示站: http://${host}:${port}/`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

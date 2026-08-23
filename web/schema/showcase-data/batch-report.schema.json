@@ -7,7 +7,7 @@
   "required": ["batch_id", "experiment_type", "generated_at", "git_commit", "model", "fixed_conditions", "groups", "outcome_counts", "cases"],
   "properties": {
     "batch_id": { "type": "string", "minLength": 1 },
-    "experiment_type": { "enum": ["agent-implementation", "context-strategy"] },
+    "experiment_type": { "enum": ["agent-implementation", "context-strategy", "context-link"] },
     "generated_at": { "type": "string", "minLength": 1 },
     "git_commit": { "type": "string", "minLength": 1 },
     "model": { "type": "string", "minLength": 1 },
@@ -20,6 +20,7 @@
         "runs_per_case": { "type": "integer", "minimum": 1 },
         "tool_data": { "enum": ["frozen", "live"] },
         "agent_mode": { "type": "string" },
+        "agent_modes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "context_strategy": { "type": "string" },
         "variable": { "type": "string", "description": "本批次唯一变量" }
       }
@@ -60,6 +61,12 @@
             "duplicate_search_rate": { "$ref": "#/definitions/num01" },
             "search_then_correct_rate": { "$ref": "#/definitions/num01" },
             "mean_tools_schema_tokens": { "$ref": "#/definitions/num" },
+            "constraint_retention_rate": { "$ref": "#/definitions/num01" },
+            "fact_recall_rate": { "$ref": "#/definitions/num01" },
+            "injection_isolated_rate": { "$ref": "#/definitions/num01" },
+            "forbidden_fact_leak_rate": { "$ref": "#/definitions/num01" },
+            "raw_tokens": { "$ref": "#/definitions/num" },
+            "working_tokens": { "$ref": "#/definitions/num" },
               "tool_selection_rate": { "$ref": "#/definitions/num01" },
               "hallucination_rate": { "$ref": "#/definitions/num01" },
               "forbidden_leak_rate": { "$ref": "#/definitions/num01" },

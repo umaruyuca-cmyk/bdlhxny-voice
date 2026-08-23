@@ -6,22 +6,23 @@ import assert from "node:assert/strict";
  * /showcase 实证层契约(七模块版):三页共享壳、与全站模块互链、纯静态零后端。
  */
 
-const SHOWCASE_PAGES = ["index", "results", "runs"];
+const SHOWCASE_PAGES = ["index", "results", "tools", "runs"];
 
 async function readShowcase(page) {
   return readFile(new URL(`../public/showcase/${page}.html`, import.meta.url), "utf8");
 }
 
-test("实证层三页共享七模块导航壳", async () => {
+test("实证层三页共享级联导航壳", async () => {
   for (const page of SHOWCASE_PAGES) {
     const html = await readShowcase(page);
     assert.match(html, /docs\.css/, `${page}.html 必须引用 docs.css`);
     assert.match(html, /docs\.js/, `${page}.html 必须引入共享导航脚本`);
-    assert.match(html, /class="topnav"/, `${page}.html 必须有顶栏导航`);
-    for (const href of ["/", "/experiment/", "/context/", "/judging/", "/engine/", "/ops/"]) {
-      assert.ok(html.includes(`href="${href}"`), `${page}.html 顶栏缺少模块 ${href}`);
+    assert.match(html, /class="brand"/, `${page}.html 顶栏必须有品牌行`);
+    assert.match(html, /class="side-tree"/, `${page}.html 侧栏必须有级联模块树`);
+    for (const href of ["/", "/about/", "/experiment/", "/context/", "/judging/", "/engine/", "/ops/"]) {
+      assert.ok(html.includes(`href="${href}"`), `${page}.html 侧栏树缺少模块 ${href}`);
     }
-    assert.match(html, /模块页面/, `${page}.html 侧栏需要模块页面清单`);
+    assert.match(html, /side-group here" open/, `${page}.html 当前模块(实证展示)必须默认展开`);
     assert.doesNotMatch(html, /\/showcase\/context/, `${page}.html 不得再链接已迁移的旧上下文页`);
   }
 });

@@ -73,7 +73,8 @@ test("正式批次指标卡：基线→对照渲染百分数", () => {
   const html = S.renderStatCards(state, report);
   assert.match(html, /基线 50%/);
   assert.match(html, /→<\/span><span class="stat-now">100%/);
-  assert.match(html, /未运行/);
+  assert.match(html, /无效运行数/);
+  assert.match(html, /stat-now">0<\/span>/);
 });
 
 test("esc 转义 HTML，pct/num 的 null 渲染为未运行", () => {
@@ -180,20 +181,20 @@ test("运行缺失与下钻索引：未发布明示，有 run_ids 时给链接",
 
 /* ── 上下文对照页渲染 ───────────────────────────────────── */
 
-test("非上下文批次：四策略行全部未运行，正反例明示接入中", () => {
+test("非上下文批次：四策略行全部未运行，正反例占位", () => {
   const table = S.renderStrategyTable(REPORT); // agent-implementation 批次
   for (const label of ["full（全量）", "recent-n（最近 N 条）", "single-summary（一次性摘要）", "budgeted（按预算选择压缩）"]) {
     assert.match(table, new RegExp(label.replace(/[()]/g, "\\$&")));
   }
   assert.equal((table.match(/未运行/g) || []).length, 4);
-  assert.match(S.renderContextPairs(REPORT), /P3-2/);
+  assert.match(S.renderContextPairs(REPORT), /尚无已发布的上下文对照批次/);
 });
 
 test("上下文批次：策略行渲染实测值", () => {
   const contextReport = {
     experiment_type: "context-strategy",
     groups: [
-      { key: "budgeted", metrics: { raw_tokens: 42800, working_tokens: 12150, constraint_retention_rate: 1, fact_recall_rate: 0.95, reference_integrity_rate: 1, median_duration_ms: 4200 } },
+      { key: "budgeted", metrics: { raw_tokens: 42800, working_tokens: 12150, constraint_retention_rate: 1, fact_recall_rate: 0.95, injection_isolated_rate: 1, median_duration_ms: 4200 } },
     ],
   };
   const table = S.renderStrategyTable(contextReport);
@@ -203,4 +204,68 @@ test("上下文批次：策略行渲染实测值", () => {
   assert.match(table, /4200ms/);
   assert.equal((table.match(/未运行/g) || []).length, 3); // 其余三策略未运行
   assert.match(S.renderContextPairs(contextReport), /暂无失败样本/);
+});
+
+test("工具调用明细:每题每组渲染按序调用链,未发布与无调用如实标注", () => {
+  const report = {
+    batch_id: "11111111-2222-3333-4444-555555555555",
+    groups: [{ key: "full-system", label: "完整工程模式" }],
+    cases: [
+      {
+        id: "research-01",
+        category: "金融研究",
+        message: "宁德时代现在什么价",
+        groups: { "full-system": { correct: 5, hallucinated: 0, total: 5 } },
+        run_ids: { "full-system": ["run-a", "run-missing"] },
+      },
+    ],
+  };
+  const runsById = {
+    "run-a": {
+      run_id: "run-a",
+      experiment: { agent_mode: "full-system", repeat_index: 1, model: "m" },
+      sections: {
+        tool_results: [
+          { seq: 3, name: "market.get_news", status: "SUCCESS" },
+          { seq: 2, name: "market.get_realtime_quote", status: "SUCCESS" },
+          { seq: 4, name: "bad.tool", status: "FAILED" },
+        ],
+      },
+    },
+  };
+  const html = S.renderToolTrace(report, runsById);
+  assert.match(html, /research-01/, "题号渲染");
+  assert.match(html, /宁德时代现在什么价/, "问题原文渲染");
+  assert.match(html, /run-a/, "运行入口渲染");
+  const aIdx = html.indexOf("#2");
+  const bIdx = html.indexOf("#3");
+  assert.ok(aIdx >= 0 && bIdx > aIdx, "按 seq 升序渲染调用链(#2 在 #3 前)");
+  assert.match(html, /tool-chip bad/, "失败调用标红");
+  assert.match(html, /去重后共调用 3 个工具/, "去重工具计数");
+  assert.match(html, /case-trace/, "可折叠题目块");
+  // 未发布的运行不渲染 run 行;空 tool_results 渲染「无工具调用」
+  const empty = S.renderToolTrace(report, {
+    "run-missing": { run_id: "run-missing", experiment: { repeat_index: 2 }, sections: { tool_results: [] } },
+  });
+  assert.match(empty, /无工具调用/, "无工具调用如实标注");
+});
+
+test("联动对照表:非联动批次诚实占位,联动批次渲染六格", () => {
+  assert.match(S.renderLinkageTable({ experiment_type: "context-strategy" }), /未运行/);
+  assert.match(S.renderLinkageTable(null), /未运行/);
+  const report = {
+    experiment_type: "context-link",
+    groups: [
+      { key: "full-raw:baseline-tool-calling", valid_runs: 5, invalid_runs: 0, metrics: { tool_selection_rate: 0.6, fact_recall_rate: 0.8, working_tokens: 9000 } },
+      { key: "budgeted-comp:full-system", valid_runs: 5, invalid_runs: 0, metrics: { tool_selection_rate: 0.9, fact_recall_rate: 0.95, working_tokens: 1200 } },
+    ],
+  };
+  const html = S.renderLinkageTable(report);
+  assert.match(html, /原始内容\(full-raw\)/, "变体列头");
+  assert.match(html, /压缩内容\(budgeted-comp\)/, "变体列头");
+  assert.match(html, /裸 tool calling/, "实现方式列头");
+  assert.match(html, /完整工程模式/, "实现方式列头");
+  assert.match(html, /60%/, "实测百分数渲染");
+  assert.match(html, /1200/, "工作 token 渲染");
+  assert.match(html, /未运行/, "缺组格渲染未运行");
 });

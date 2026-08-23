@@ -1,39 +1,20 @@
-/* 站点共享脚本：顶栏激活态 / 下拉互斥 / 移动端侧栏 / 目录滚动跟随 */
+/* 站点共享脚本：侧栏级联手风琴互斥 / 移动端侧栏 / 目录滚动跟随 */
 (function () {
   "use strict";
 
-  // 1. 顶栏激活态：按当前路径标记本页链接与其所属分组
-  var path = location.pathname.replace(/\.html$/, "").replace(/\/$/, "") || "/docs";
-  document.querySelectorAll(".topnav a").forEach(function (a) {
-    var href = (a.getAttribute("href") || "").replace(/\/$/, "");
-    if (!href) return;
-    if (path === href || (href !== "/docs" && path.indexOf(href) === 0)) {
-      a.classList.add("active");
-      var group = a.closest(".topnav-group");
-      if (group) group.classList.add("here");
-    }
-  });
-
-  // 2. 下拉互斥 + 点击外部收起
-  var groups = Array.prototype.slice.call(document.querySelectorAll(".topnav-group"));
-  groups.forEach(function (g) {
+  // 1. 侧栏级联手风琴：单开模式——展开一组时收起其他组(原生 details 负责自身开合)
+  var sideGroups = Array.prototype.slice.call(document.querySelectorAll(".side-group"));
+  sideGroups.forEach(function (g) {
     var summary = g.querySelector("summary");
-    if (summary) {
-      summary.addEventListener("click", function (e) {
-        e.preventDefault();
-        var wasOpen = g.hasAttribute("open");
-        groups.forEach(function (x) { x.removeAttribute("open"); });
-        if (!wasOpen) g.setAttribute("open", "");
+    if (!summary) return;
+    summary.addEventListener("click", function () {
+      sideGroups.forEach(function (x) {
+        if (x !== g) x.removeAttribute("open");
       });
-    }
-  });
-  document.addEventListener("click", function (e) {
-    groups.forEach(function (g) {
-      if (!g.contains(e.target)) g.removeAttribute("open");
     });
   });
 
-  // 3. 移动端：本页目录开合
+  // 2. 移动端：侧栏开合
   var btn = document.getElementById("sideBtn");
   var side = document.getElementById("docsSide");
   if (btn && side) {
@@ -43,8 +24,8 @@
     });
   }
 
-  // 4. 目录滚动跟随（scroll-spy）
-  var links = Array.prototype.slice.call(document.querySelectorAll('.docs-side a[href^="#"]'));
+  // 3. 目录滚动跟随（scroll-spy;目录在主内容顶部的页内锚点条）
+  var links = Array.prototype.slice.call(document.querySelectorAll('.page-toc a[href^="#"]'));
   var targets = links
     .map(function (a) { return document.getElementById(a.getAttribute("href").slice(1)); })
     .filter(Boolean);
@@ -60,14 +41,18 @@
     window.addEventListener("scroll", spy, { passive: true });
     spy();
   }
-  // 5. 登录遮罩(当前页弹窗,不跳转) + 登录态三按钮(登录/宝多六花/退出登录)
+  // 4. 登录遮罩(当前页弹窗,不跳转) + 登录态三按钮(登录/运行台/退出登录)
   var RUN_API = window.__RUN_API__ || "http://127.0.0.1:8090";
-  var homeBtn = document.querySelector(".topbar-home");
+  var labBtn = document.querySelector(".topbar-lab");
   var loginBtn = document.querySelector(".topbar-login");
   var logoutBtn = document.querySelector(".topbar-logout");
   function refreshAuthState() {
     var logged = !!sessionStorage.getItem("lab_token");
-    if (homeBtn) homeBtn.style.display = logged ? "inline-flex" : "none";
+    // 运行台只在私有部署存在:公开页 HTML 不硬链接 /lab,登录态由脚本动态赋址
+    if (labBtn) {
+      labBtn.style.display = logged ? "inline-flex" : "none";
+      labBtn.href = logged ? "/lab/" : undefined;
+    }
     if (loginBtn) loginBtn.style.display = logged ? "none" : "inline-flex";
     if (logoutBtn) logoutBtn.style.display = logged ? "inline-flex" : "none";
   }
@@ -88,18 +73,18 @@
     });
   }
 
-  var loginBtn = document.querySelector(".topbar-login");
   if (loginBtn) {
-    loginBtn.setAttribute("title", "登录后可:按固定题号发起对照批次、跟踪与取消运行、查看单次运行的完整明细");
+    loginBtn.setAttribute("title", "登录后进入运行台:一键发起对照批次、勾选工具可见集、压缩测试与联动对照");
     var mask = document.createElement("div");
     mask.className = "login-mask";
     mask.innerHTML =
       '<div class="login-dialog" role="dialog" aria-label="所有者登录">' +
       "<h3>所有者登录</h3>" +
-      '<p class="login-sub">仅项目所有者；密码连续输错 5 次将锁定 15 分钟。登录后可：</p>' +
+      '<p class="login-sub">仅项目所有者；密码连续输错 5 次将锁定 15 分钟。登录后直接进入运行台，可：</p>' +
       '<ul class="login-caps">' +
-      "<li>按固定题号发起对照批次（重复次数 / 模型 / 冻结数据集 / 工具可见集 / Token 上限）</li>" +
+      "<li><strong>一键发起对照实验</strong>（或按题号发起：重复次数 / 模型 / 冻结数据集 / 工具可见集 / Token 上限）</li>" +
       "<li>跟踪批次进度，运行中可协作取消</li>" +
+      "<li>长上下文压缩测试与「三组 × 两变体」联动对照</li>" +
       "<li>查看每次运行的完整明细：逐步事件流、模型与工具调用记录、护栏检查结果、耗时与 Token 消耗</li>" +
       "</ul>" +
       '<label>用户名<input class="login-user" type="text" autocomplete="username"></label>' +
@@ -158,10 +143,11 @@
             sessionStorage.setItem("lab_token", outcome.body.token);
             sessionStorage.setItem("lab_user", outcome.body.username || "");
             refreshAuthState();
-            err.textContent = "登录成功，正在进入公告页…";
+            err.textContent = "登录成功，正在进入运行台…";
             setTimeout(function () {
               close();
-              location.href = "/";
+              // 登录即运行台:发起对照实验 / 工具勾选 / 压缩测试都在那里
+              location.href = "/lab/";
             }, 600);
           } else if (outcome.status === 423) {
             err.textContent = "账号已锁定，请稍后再试";

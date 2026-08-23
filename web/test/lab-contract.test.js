@@ -9,11 +9,11 @@ import assert from "node:assert/strict";
 
 const PUBLIC_PAGES = [
   ["", "index"],
-  ["home", "index"],
-  ["showcase", "index"], ["showcase", "results"], ["showcase", "runs"],
+  ["about", "index"], ["about", "banks"], ["about", "repo"],
+  ["showcase", "index"], ["showcase", "results"], ["showcase", "tools"], ["showcase", "runs"],
   ["experiment", "index"], ["experiment", "cases"], ["experiment", "reproduce"],
-  ["context", "index"], ["context", "design"], ["context", "results"],
-  ["judging", "index"], ["judging", "judge"], ["judging", "invalid"],
+  ["context", "index"], ["context", "library"], ["context", "design"], ["context", "results"],
+  ["judging", "index"], ["judging", "metrics"], ["judging", "judge"], ["judging", "invalid"],
   ["engine", "index"], ["engine", "loading"], ["engine", "catalog"],
   ["engine", "governance"], ["engine", "guardrail"], ["engine", "tools"],
   ["ops", "index"], ["ops", "run-api"], ["ops", "artifacts"], ["ops", "deploy"], ["ops", "roadmap"],
@@ -102,18 +102,19 @@ test("公开页面不链接 /lab(登录唯一入口是弹窗)、不出现后端�
   }
 });
 
-test("登录遮罩:公开页登录不跳转;宝多六花隐藏入口登录后才可见", async () => {
+test("登录遮罩:公开页登录不跳转;运行台隐藏入口登录后才可见并动态赋址", async () => {
   const docsJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
   assert.match(docsJs, /\/api\/v1\/login/, "遮罩登录需调用登录端点");
   assert.match(docsJs, /preventDefault/, "点击登录不得跳转页面");
   assert.match(docsJs, /lab_token/, "成功后写入会话令牌");
-  assert.match(docsJs, /topbar-home/, "登录后显示隐藏入口");
+  assert.match(docsJs, /topbar-lab/, "登录后显示运行台入口");
   assert.match(docsJs, /发起对照批次/, "登录入口需写明登录后可执行的操作");
   assert.match(docsJs, /\/api\/v1\/logout/, "顶栏需提供退出登录并调用注销端点");
   assert.match(docsJs, /topbar-logout/, "登录后显示退出登录按钮");
-  assert.match(docsJs, /location\.href = "\/"/, "登录成功后自动回到公告页");
+  assert.match(docsJs, /location\.href = "\/lab\/"/, "登录成功后自动进入运行台(发起对照实验)");
+  assert.match(docsJs, /labBtn\.href = logged/, "运行台链接由脚本登录态动态赋址(公开 HTML 不硬链接)");
   const css = await readFile(new URL("../public/docs/docs.css", import.meta.url), "utf8");
-  assert.match(css, /\.topbar-home\s*\{[^}]*display:\s*none/, "隐藏入口默认不可见");
+  assert.match(css, /\.topbar-lab\s*\{[^}]*display:\s*none/, "运行台入口默认不可见");
   // 遮罩表单由共享脚本运行时注入,公开页 HTML 源保持零输入控件
   for (const [dir, page] of PUBLIC_PAGES) {
     const html = await readPublicPage(dir, page);

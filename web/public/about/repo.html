@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>数据库与冻结数据 · 数据与运行</title>
-<meta name="description" content="PostgreSQL 为唯一数据来源:init.sql 承接表、冻结工具返回与长上下文用例。">
+<title>仓库与复现 · 系统概览</title>
+<meta name="description" content="代码构成、复现三步与工程门禁。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -25,12 +25,12 @@
   <aside class="docs-side" id="docsSide">
     <nav class="side-tree" aria-label="站点模块导航">
     <a class="side-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
-    <details class="side-group">
+    <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
         <ul>
           <li><a href="/about/">系统定位与架构</a></li>
           <li><a href="/about/banks">题库与数据</a></li>
-          <li><a href="/about/repo">仓库与复现</a></li>
+          <li><a href="/about/repo" class="active">仓库与复现</a></li>
         </ul>
       </details>
     <details class="side-group">
@@ -79,10 +79,10 @@
           <li><a href="/engine/tools">工具清单</a></li>
         </ul>
       </details>
-    <details class="side-group here" open>
+    <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/" class="active">数据库与冻结数据</a></li>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
           <li><a href="/ops/deploy">部署与边界</a></li>
@@ -97,16 +97,27 @@
       <aside class="page-toc" aria-label="本页目录">
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
-        <li><a href="#schema">库结构</a></li>
-        <li><a href="#fixtures">冻结数据</a></li>
+        <li><a href="#repo">仓库构成</a></li>
+        <li><a href="#reproduce">复现三步</a></li>
+        <li><a href="#gates">工程门禁</a></li>
       </ul>
     </aside>
       <div class="detail-body">
-        <h1>数据库与冻结数据 · 数据与运行</h1>
-<h2 id="schema">库结构</h2>
-<p>全部表结构在 <code>db/postgresql/setup/init.sql</code>(手动执行,无 Flyway):用例三表(定义/版本/变体)、数据快照、批次与运行、执行明细(run_events / model_calls+messages / tool_calls / guardrail_checks / run_measurements / context_builds 全家)、工件与发布(publications / publication_runs)、账号会话与工具目录八表。增量脚本放 <code>db/postgresql/changes/</code>,由所有者手动执行。</p>
-    <h2 id="fixtures">冻结数据</h2>
-<p>编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),三组共用,隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
+        <h1>仓库与复现 · 系统概览</h1>
+<h2 id="repo">仓库构成</h2>
+<p>代码在 <a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">GitHub</a>:<code>engine/</code>(被测内核与对照 runner)、<code>data/</code>(题库与记录服务)、<code>web/</code>(公开展示层与私有运行台)、<code>db/</code>(库结构与种子)。</p>
+    <h2 id="reproduce">复现三步</h2>
+<ol>
+  <li>本地启动(见 <code>deploy/本地启动说明.md</code>);</li>
+  <li>登录后进入运行台 <code>/lab/</code>:一键发起或按题号发起批次,亦可发起上下文压缩对照与联动对照;</li>
+  <li><code>npm run publish:showcase -- --git-commit &lt;sha&gt;</code> 投影到公开层。</li>
+</ol>
+    <h2 id="gates">工程门禁</h2>
+<ul>
+  <li>engine:<code>python -m pytest -q</code> 与 <code>python -m ruff check src tests</code></li>
+  <li>data:<code>mvn -q test</code></li>
+  <li>web:<code>npm test</code>(契约 + 渲染 + 发布管线测试)</li>
+</ul>
       </div>
     </div>
   </main>

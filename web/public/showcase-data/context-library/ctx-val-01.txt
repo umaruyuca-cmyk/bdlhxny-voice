@@ -1,0 +1,84 @@
+================================================================================
+长上下文库条目原文导出:ctx-val-01 多期财务与估值口径
+内容方向:金融 · 估值口径 · 场景 research · 游客
+问题原文:按当前数据解释宁德时代估值所处区间，并列出最影响结论的三个假设。
+条目数:25 · 原文 token 估算(conservative-cjk1-latin4-v1):约 603
+变体预算:full-raw=65536(全量透传) / budgeted-comp=12288(按预算压缩)
+生成口径:db/postgresql/changes/20260821-long-context-cases.sql(确定性公式生成,有业务含义)
+执行侧仍从 data 服务读取库内数据;本导出仅供下载查阅。
+================================================================================
+
+[1] rule-no-trading  分类=强制保留(required)  类型=rule  优先级=100
+不得给出买卖指令；结论为分析草案。
+
+[2] snapshot-current  分类=强制保留(required)  类型=snapshot  优先级=96
+数据快照时间 2026-08-20 14:32:00 +08:00。
+
+[3] filing-current-pe  分类=强制保留(required)  类型=filing  优先级=93
+2026Q2 财报：PE(TTM) 28.5，营收同比 +15.3%，净利率 12.1%，ROE 18.7%。
+
+[4] filing-stale-2025  分类=干扰(distractor)  类型=filing  优先级=20  标记=过期
+2025 年报：静态 PE 35.2（旧口径，仅作历史参照）。
+
+[5] industry-median  分类=强制保留(required)  类型=industry  优先级=92
+电池行业 PE 中位数 22.3（2026-08，三级行业分类）。
+
+[6] conflict-caliber-note  分类=强制保留(required)  类型=note  优先级=91
+估值口径冲突规则：当前结论用 TTM 口径并标注报告期；静态口径仅历史参照，不得混用。
+
+[7] forum-unsourced  分类=干扰(distractor)  类型=research  优先级=5
+某论坛帖子：目标价 300 元，无来源。
+
+[101] financial-2024Q3  分类=可压缩(compressible)  类型=financial  优先级=35
+2024Q3 季度：营收 428.5 亿元（同比 9.9%），净利率 9.9%，ROE 14.1%。
+
+[102] financial-2024Q4  分类=可压缩(compressible)  类型=financial  优先级=35
+2024Q4 季度：营收 457.0 亿元（同比 11.8%），净利率 10.8%，ROE 15.2%。
+
+[103] financial-2025Q1  分类=可压缩(compressible)  类型=financial  优先级=35
+2025Q1 季度：营收 485.5 亿元（同比 13.7%），净利率 11.7%，ROE 16.3%。
+
+[104] financial-2025Q2  分类=可压缩(compressible)  类型=financial  优先级=35
+2025Q2 季度：营收 514.0 亿元（同比 15.6%），净利率 9.0%，ROE 17.4%。
+
+[105] financial-2025Q3  分类=可压缩(compressible)  类型=financial  优先级=35
+2025Q3 季度：营收 542.5 亿元（同比 17.5%），净利率 9.9%，ROE 18.5%。
+
+[106] financial-2025Q4  分类=可压缩(compressible)  类型=financial  优先级=35
+2025Q4 季度：营收 571.0 亿元（同比 19.4%），净利率 10.8%，ROE 13.0%。
+
+[107] financial-2026Q1  分类=可压缩(compressible)  类型=financial  优先级=35
+2026Q1 季度：营收 599.5 亿元（同比 8.0%），净利率 11.7%，ROE 14.1%。
+
+[108] financial-2026Q2  分类=可压缩(compressible)  类型=financial  优先级=35
+2026Q2 季度：营收 628.0 亿元（同比 9.9%），净利率 9.0%，ROE 15.2%。
+
+[201] valuation-history-2022  分类=可压缩(compressible)  类型=valuation_series  优先级=34
+2022 年末：PE 20.4，PB 4.0，市值 5250 亿元。
+
+[202] valuation-history-2023  分类=可压缩(compressible)  类型=valuation_series  优先级=34
+2023 年末：PE 22.8，PB 4.4，市值 6700 亿元。
+
+[203] valuation-history-2024  分类=可压缩(compressible)  类型=valuation_series  优先级=34
+2024 年末：PE 25.2，PB 4.9，市值 8150 亿元。
+
+[204] valuation-history-2025  分类=可压缩(compressible)  类型=valuation_series  优先级=34
+2025 年末：PE 27.6，PB 5.3，市值 9600 亿元。
+
+[205] valuation-history-2026  分类=可压缩(compressible)  类型=valuation_series  优先级=34
+2026 年末：PE 30.0，PB 5.8，市值 11050 亿元。
+
+[301] peer-1  分类=可压缩(compressible)  类型=peer  优先级=33
+同行 #1：PE(TTM) 18.6，净利率 7.7%，市值 1540 亿元。
+
+[302] peer-2  分类=可压缩(compressible)  类型=peer  优先级=33
+同行 #2：PE(TTM) 22.2，净利率 9.4%，市值 2180 亿元。
+
+[303] peer-3  分类=可压缩(compressible)  类型=peer  优先级=33
+同行 #3：PE(TTM) 25.8，净利率 11.1%，市值 2820 亿元。
+
+[304] peer-4  分类=可压缩(compressible)  类型=peer  优先级=33
+同行 #4：PE(TTM) 29.4，净利率 12.8%，市值 3460 亿元。
+
+[305] peer-5  分类=可压缩(compressible)  类型=peer  优先级=33
+同行 #5：PE(TTM) 33.0，净利率 14.5%，市值 4100 亿元。

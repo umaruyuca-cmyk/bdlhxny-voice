@@ -1,0 +1,291 @@
+================================================================================
+长上下文库条目原文导出:ctx-weather-01 出行天气长序列
+内容方向:其他 · 出行天气 · 场景 knowledge · 游客
+问题原文:这个周末去杭州两日游，根据最近一个月的天气情况，我需要带伞吗？早晚温差大不大？
+条目数:94 · 原文 token 估算(conservative-cjk1-latin4-v1):约 1511
+变体预算:full-raw=32768(全量透传) / budgeted-comp=8192(按预算压缩)
+生成口径:db/postgresql/changes/20260821-long-context-cases.sql(确定性公式生成,有业务含义)
+执行侧仍从 data 服务读取库内数据;本导出仅供下载查阅。
+================================================================================
+
+[1] rule-no-trading  分类=强制保留(required)  类型=rule  优先级=100
+天气建议只能基于带日期的数据；旧预报必须标注日期，不得当当前天气。
+
+[2] travel-plan-current  分类=强制保留(required)  类型=plan  优先级=95
+本周末杭州两日游，户外活动为主。
+
+[3] weather-summary-recent  分类=强制保留(required)  类型=summary  优先级=94
+杭州最近 7 天：降雨 2 天；早间 16-21C，午间 25-31C，早晚温差约 10C。
+
+[4] forecast-stale  分类=干扰(distractor)  类型=forecast  优先级=20  标记=过期
+十日前预报：周末杭州晴（2026-08-10 发布，已失效）。
+
+[101] weather-hangzhou-0723  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-23：早 20C / 午 28C，多云。
+
+[102] weather-hangzhou-0724  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-24：早 21C / 午 29C，有雨。
+
+[103] weather-hangzhou-0725  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-25：早 16C / 午 30C，多云。
+
+[104] weather-hangzhou-0726  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-26：早 17C / 午 31C，多云。
+
+[105] weather-hangzhou-0727  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-27：早 18C / 午 25C，有雨。
+
+[106] weather-hangzhou-0728  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-28：早 19C / 午 26C，多云。
+
+[107] weather-hangzhou-0729  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-29：早 20C / 午 27C，多云。
+
+[108] weather-hangzhou-0730  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-30：早 21C / 午 28C，有雨。
+
+[109] weather-hangzhou-0731  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-07-31：早 16C / 午 29C，多云。
+
+[110] weather-hangzhou-0801  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-01：早 17C / 午 30C，多云。
+
+[111] weather-hangzhou-0802  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-02：早 18C / 午 31C，有雨。
+
+[112] weather-hangzhou-0803  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-03：早 19C / 午 25C，多云。
+
+[113] weather-hangzhou-0804  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-04：早 20C / 午 26C，多云。
+
+[114] weather-hangzhou-0805  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-05：早 21C / 午 27C，有雨。
+
+[115] weather-hangzhou-0806  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-06：早 16C / 午 28C，多云。
+
+[116] weather-hangzhou-0807  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-07：早 17C / 午 29C，多云。
+
+[117] weather-hangzhou-0808  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-08：早 18C / 午 30C，有雨。
+
+[118] weather-hangzhou-0809  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-09：早 19C / 午 31C，多云。
+
+[119] weather-hangzhou-0810  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-10：早 20C / 午 25C，多云。
+
+[120] weather-hangzhou-0811  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-11：早 21C / 午 26C，有雨。
+
+[121] weather-hangzhou-0812  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-12：早 16C / 午 27C，多云。
+
+[122] weather-hangzhou-0813  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-13：早 17C / 午 28C，多云。
+
+[123] weather-hangzhou-0814  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-14：早 18C / 午 29C，有雨。
+
+[124] weather-hangzhou-0815  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-15：早 19C / 午 30C，多云。
+
+[125] weather-hangzhou-0816  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-16：早 20C / 午 31C，多云。
+
+[126] weather-hangzhou-0817  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-17：早 21C / 午 25C，有雨。
+
+[127] weather-hangzhou-0818  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-18：早 16C / 午 26C，多云。
+
+[128] weather-hangzhou-0819  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-19：早 17C / 午 27C，多云。
+
+[129] weather-hangzhou-0820  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-20：早 18C / 午 28C，有雨。
+
+[130] weather-hangzhou-0821  分类=可压缩(compressible)  类型=weather  优先级=30
+hangzhou 2026-08-21：早 19C / 午 29C，多云。
+
+[131] weather-shanghai-0723  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-23：早 17C / 午 30C，有雨。
+
+[132] weather-shanghai-0724  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-24：早 18C / 午 31C，多云。
+
+[133] weather-shanghai-0725  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-25：早 19C / 午 25C，多云。
+
+[134] weather-shanghai-0726  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-26：早 20C / 午 26C，有雨。
+
+[135] weather-shanghai-0727  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-27：早 21C / 午 27C，多云。
+
+[136] weather-shanghai-0728  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-28：早 16C / 午 28C，多云。
+
+[137] weather-shanghai-0729  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-29：早 17C / 午 29C，有雨。
+
+[138] weather-shanghai-0730  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-30：早 18C / 午 30C，多云。
+
+[139] weather-shanghai-0731  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-07-31：早 19C / 午 31C，多云。
+
+[140] weather-shanghai-0801  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-01：早 20C / 午 25C，有雨。
+
+[141] weather-shanghai-0802  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-02：早 21C / 午 26C，多云。
+
+[142] weather-shanghai-0803  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-03：早 16C / 午 27C，多云。
+
+[143] weather-shanghai-0804  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-04：早 17C / 午 28C，有雨。
+
+[144] weather-shanghai-0805  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-05：早 18C / 午 29C，多云。
+
+[145] weather-shanghai-0806  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-06：早 19C / 午 30C，多云。
+
+[146] weather-shanghai-0807  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-07：早 20C / 午 31C，有雨。
+
+[147] weather-shanghai-0808  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-08：早 21C / 午 25C，多云。
+
+[148] weather-shanghai-0809  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-09：早 16C / 午 26C，多云。
+
+[149] weather-shanghai-0810  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-10：早 17C / 午 27C，有雨。
+
+[150] weather-shanghai-0811  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-11：早 18C / 午 28C，多云。
+
+[151] weather-shanghai-0812  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-12：早 19C / 午 29C，多云。
+
+[152] weather-shanghai-0813  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-13：早 20C / 午 30C，有雨。
+
+[153] weather-shanghai-0814  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-14：早 21C / 午 31C，多云。
+
+[154] weather-shanghai-0815  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-15：早 16C / 午 25C，多云。
+
+[155] weather-shanghai-0816  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-16：早 17C / 午 26C，有雨。
+
+[156] weather-shanghai-0817  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-17：早 18C / 午 27C，多云。
+
+[157] weather-shanghai-0818  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-18：早 19C / 午 28C，多云。
+
+[158] weather-shanghai-0819  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-19：早 20C / 午 29C，有雨。
+
+[159] weather-shanghai-0820  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-20：早 21C / 午 30C，多云。
+
+[160] weather-shanghai-0821  分类=可压缩(compressible)  类型=weather  优先级=30
+shanghai 2026-08-21：早 16C / 午 31C，多云。
+
+[161] weather-ningbo-0723  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-23：早 20C / 午 25C，多云。
+
+[162] weather-ningbo-0724  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-24：早 21C / 午 26C，多云。
+
+[163] weather-ningbo-0725  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-25：早 16C / 午 27C，有雨。
+
+[164] weather-ningbo-0726  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-26：早 17C / 午 28C，多云。
+
+[165] weather-ningbo-0727  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-27：早 18C / 午 29C，多云。
+
+[166] weather-ningbo-0728  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-28：早 19C / 午 30C，有雨。
+
+[167] weather-ningbo-0729  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-29：早 20C / 午 31C，多云。
+
+[168] weather-ningbo-0730  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-30：早 21C / 午 25C，多云。
+
+[169] weather-ningbo-0731  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-07-31：早 16C / 午 26C，有雨。
+
+[170] weather-ningbo-0801  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-01：早 17C / 午 27C，多云。
+
+[171] weather-ningbo-0802  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-02：早 18C / 午 28C，多云。
+
+[172] weather-ningbo-0803  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-03：早 19C / 午 29C，有雨。
+
+[173] weather-ningbo-0804  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-04：早 20C / 午 30C，多云。
+
+[174] weather-ningbo-0805  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-05：早 21C / 午 31C，多云。
+
+[175] weather-ningbo-0806  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-06：早 16C / 午 25C，有雨。
+
+[176] weather-ningbo-0807  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-07：早 17C / 午 26C，多云。
+
+[177] weather-ningbo-0808  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-08：早 18C / 午 27C，多云。
+
+[178] weather-ningbo-0809  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-09：早 19C / 午 28C，有雨。
+
+[179] weather-ningbo-0810  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-10：早 20C / 午 29C，多云。
+
+[180] weather-ningbo-0811  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-11：早 21C / 午 30C，多云。
+
+[181] weather-ningbo-0812  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-12：早 16C / 午 31C，有雨。
+
+[182] weather-ningbo-0813  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-13：早 17C / 午 25C，多云。
+
+[183] weather-ningbo-0814  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-14：早 18C / 午 26C，多云。
+
+[184] weather-ningbo-0815  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-15：早 19C / 午 27C，有雨。
+
+[185] weather-ningbo-0816  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-16：早 20C / 午 28C，多云。
+
+[186] weather-ningbo-0817  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-17：早 21C / 午 29C，多云。
+
+[187] weather-ningbo-0818  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-18：早 16C / 午 30C，有雨。
+
+[188] weather-ningbo-0819  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-19：早 17C / 午 31C，多云。
+
+[189] weather-ningbo-0820  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-20：早 18C / 午 25C，多云。
+
+[190] weather-ningbo-0821  分类=可压缩(compressible)  类型=weather  优先级=30
+ningbo 2026-08-21：早 19C / 午 26C，有雨。
