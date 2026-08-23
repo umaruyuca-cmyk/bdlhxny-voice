@@ -240,51 +240,49 @@ const announceScript = `
 const ANNOUNCE = {
   path: "index.html",
   title: "公告",
-  description: "最新批次公告、试用步骤、注意事项与登录说明。",
+  description: "最新批次对照数据仪表盘、快速指引与登录说明。",
   moduleKey: "/",
   currentPath: "/",
   sections: [
     {
-      id: "latest",
-      title: "最新批次",
-      html: `<div id="homeBanner"><div class="placeholder-block">正在读取已发布批次…</div></div>`,
-    },
-    {
-      id: "steps",
-      title: "试用步骤",
-      html: `<ol>
-  <li><strong>浏览对照结果</strong>:从「实证展示」查看最新批次的指标总览;「工具调用明细」页可看到本轮实验每道题具体调用了哪些工具、按什么顺序调用;每个数字都可继续下钻到单次运行的九段明细。</li>
-  <li><strong>了解题目与口径</strong>:「固定题库」查看题目清单与各组表现;「评判标准」查看每个指标的计算口径与有效样本规则;「上下文压缩」查看压缩算法、长上下文库与结果。</li>
-  <li><strong>发起实验(需登录)</strong>:点击右上角「登录」,登录成功后<strong>自动进入运行台</strong>:可一键发起对照实验,也可勾选固定题号并设置实验参数(重复次数、是否包含 ReAct 组、冻结数据集、工具可见集、token 上限);登录期间顶栏常驻「运行台」入口。</li>
-  <li><strong>跟踪与发布</strong>:批次运行中可在运行台查看进度并支持取消;每个运行完成后可逐层下钻。批次通过发布校验后,本站公开页的数字会自动更新为该批次结果。</li>
-</ol>`,
-    },
-    {
-      id: "notices",
-      title: "注意事项",
-      html: `<ul>
-  <li>本站为纯静态展示:浏览不会产生任何模型调用与费用;</li>
-  <li>所有数字来自发布校验后的运行工件,尚未运行的字段一律显示「未运行」,不使用估算值;</li>
-  <li>公开页面没有输入入口,不接受自定义问题;实验只能按固定题号发起;</li>
-  <li>实验中的全部工具调用均来自冻结数据集,不会访问任何真实外部系统;</li>
-  <li>系统的定位、架构与题库说明统一放在<a href="/about/">系统概览</a>模块。</li>
-</ul>`,
-    },
-    {
-      id: "login",
-      title: "登录说明",
-      html: `<ul>
-  <li>点击右上角「登录」在<strong>当前页弹出登录框</strong>完成登录,不跳转页面;仅提供项目所有者账号,由管理员创建与分发,不开放注册;</li>
-  <li>登录成功后<strong>直接进入运行台</strong>(发起对照实验 / 工具可见集勾选 / 上下文压缩测试都在运行台);登录期间顶栏(GitHub 图标左侧)常驻「运行台」入口;会话有有效期,到期自动失效;</li>
-  <li>密码连续输错 5 次将锁定 15 分钟;使用完毕请在运行台点击「退出登录」,退出后返回公告页;</li>
-  <li>登录与运行能力仅存在于私有部署;公开镜像不包含登录与运行台。</li>
-</ul>`,
-    },
-    {
-      id: "status",
-      title: "当前关键数字",
-      html: `<p>首个正式对照批次发布后,下方数字卡显示该批次实测值;此前的过程批次如实标注「未达门槛」。</p>
+      id: "dashboard",
+      title: "对照实验数据",
+      html: `<div id="homeBanner"><div class="placeholder-block">正在读取…</div></div>
 <div id="statCards"><div class="placeholder-block">正在读取关键数字…</div></div>`,
+    },
+    {
+      id: "guide",
+      title: "快速指引",
+      html: `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px">
+  <div style="background:#fff;border:1px solid var(--doc-border);border-radius:10px;padding:16px 18px">
+    <h4 style="margin:0 0 8px;font-size:14px">📊 看数据</h4>
+    <p style="margin:0;font-size:13px;color:var(--doc-dim);line-height:1.6">
+      <a href="/showcase/results">对照结果</a> · 三组完整指标对比<br>
+      <a href="/showcase/tools">工具调用明细</a> · 逐题调用链<br>
+      <a href="/judging/metrics">批次指标总表</a> · 全部 28 项指标
+    </p>
+  </div>
+  <div style="background:#fff;border:1px solid var(--doc-border);border-radius:10px;padding:16px 18px">
+    <h4 style="margin:0 0 8px;font-size:14px">🧪 了解系统</h4>
+    <p style="margin:0;font-size:13px;color:var(--doc-dim);line-height:1.6">
+      <a href="/tools/">工具目录</a> · ${112} 个工具浏览<br>
+      <a href="/cases/">用例库</a> · ${56} 道测试用例<br>
+      <a href="/about/">系统概览</a> · 架构与设计
+    </p>
+  </div>
+  <div style="background:#fff;border:1px solid var(--doc-border);border-radius:10px;padding:16px 18px">
+    <h4 style="margin:0 0 8px;font-size:14px">🔐 发起实验</h4>
+    <p style="margin:0;font-size:13px;color:var(--doc-dim);line-height:1.6">
+      点击右上角「登录」→ 弹窗登录<br>
+      登录后自动进入运行台<br>
+      勾选题号 → 一键发起对照批次
+    </p>
+  </div>
+</div>
+<div class="note" style="margin-top:16px">
+  <strong>注意</strong>:本站为纯静态展示,浏览不产生模型调用与费用;所有数字来自发布校验后的真实运行工件;
+  工具调用均来自冻结数据集,不访问真实外部系统;公开页无输入入口,不接受自定义问题。
+</div>`,
     },
   ],
   extraScripts: announceScript,

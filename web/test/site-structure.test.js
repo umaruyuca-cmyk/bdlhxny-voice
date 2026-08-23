@@ -70,7 +70,7 @@ test("公告为独立单页:侧栏直达链接无子级,系统说明并入新模
   assert.match(announce, /<a class="side-item[^>]*>(?:<svg[\s\S]*?<\/svg>)?公告<\/a>/, "公告必须是侧栏直达链接(单页模块)");
   const 公告块 = announce.match(/<a class="side-item[^>]*>公告<\/a>\s*<details/);
   assert.equal(公告块, null, "公告之后不应再有属于公告的子级分组");
-  for (const anchor of ["latest", "steps", "notices", "login", "status"]) {
+  for (const anchor of ["dashboard", "guide"]) {
     assert.ok(announce.includes(`id="${anchor}"`), `公告页缺少第 ${anchor} 节`);
   }
   for (const moved of ["id=\"architecture\"", "id=\"banks\"", "id=\"repo\""]) {
@@ -165,9 +165,10 @@ test("题库页去硬编码:数据驱动渲染,不含题号字面量", async () 
 
 test("公告页数据驱动:横幅与数字卡读发布产物", async () => {
   const announce = await readPage("/index.html");
-  assert.match(announce, /试用步骤/, "使用指引需在最上部");
+  assert.match(announce, /对照实验数据/, "数据仪表盘需在最上部");
+  assert.match(announce, /快速指引/, "快速指引紧随其后");
   assert.match(announce, /showcase-data\/index\.json/, "数字卡读发布产物");
-  assert.match(announce, /renderStatCards|renderHomeBanner/, "复用实证层渲染函数");
+  assert.match(announce, /renderDashboard|renderHomeBanner/, "复用仪表盘渲染函数");
 });
 
 test("工具调用明细页:读发布产物渲染按序调用链", async () => {
