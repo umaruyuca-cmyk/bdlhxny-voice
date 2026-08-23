@@ -38,6 +38,8 @@ const NAV_ICON = {
   engine:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
   ops: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
+  tools: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  cases: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
 };
 
 const MODULES = [
@@ -47,6 +49,8 @@ const MODULES = [
   { href: "/experiment/", label: "对照实验", icon: "experiment" },
   { href: "/context/", label: "上下文压缩", icon: "context" },
   { href: "/judging/", label: "评判标准", icon: "judging" },
+  { href: "/tools/", label: "工具目录", icon: "tools" },
+  { href: "/cases/", label: "用例库", icon: "cases" },
   { href: "/engine/", label: "引擎与治理", icon: "engine" },
   { href: "/ops/", label: "数据与运行", icon: "ops" },
 ];
@@ -81,6 +85,12 @@ const PAGES = {
     { href: "/judging/metrics", title: "批次指标总表" },
     { href: "/judging/judge", title: "判官说明" },
     { href: "/judging/invalid", title: "无效运行与口径" },
+  ],
+  "/tools/": [
+    { href: "/tools/", title: "全部工具" },
+  ],
+  "/cases/": [
+    { href: "/cases/", title: "全部用例" },
   ],
   "/engine/": [
     { href: "/engine/", title: "Agent 循环" },
@@ -1102,6 +1112,88 @@ const OPS_ROADMAP = {
   ],
 };
 
+// ── 工具目录与用例库(分页浏览) ─────────────────────────────────────────
+
+const TOOLS_LIST = {
+  path: "tools/index.html",
+  title: "工具目录",
+  description: "系统全部工具的浏览与检索(112 个,覆盖 55 个领域)。",
+  moduleKey: "/tools/",
+  currentPath: "/tools/",
+  sections: [],
+  bodyHtml: `
+    <div class="cat-toolbar">
+      <input class="cat-search" data-cat-search type="text" placeholder="搜索工具名 / 描述 / 领域…">
+      <select class="cat-filter" data-cat-filter="domain"><option value="">全部领域</option></select>
+    </div>
+    <table class="cat-table">
+      <thead><tr><th>工具名</th><th>描述</th><th>领域</th><th>副作用</th><th>风险</th><th>需登录</th><th>状态</th></tr></thead>
+      <tbody data-cat-table><tr><td colspan="7" style="text-align:center;color:var(--doc-faint)">加载中…</td></tr></tbody>
+    </table>
+    <div class="cat-paginate" data-cat-pager></div>
+    <div class="cat-count" data-cat-count></div>
+  `,
+  extraScripts: '<script src="/catalog/catalog.js"></script>\n<script>CATALOG.initToolsList();</script>',
+};
+
+const TOOLS_DETAIL = {
+  path: "tools/detail.html",
+  title: "工具详情",
+  description: "单个工具的参数 schema、风险等级与所属工具集。",
+  moduleKey: "/tools/",
+  currentPath: "/tools/detail",
+  sections: [],
+  bodyHtml: '<div id="toolDetail"><div class="cat-detail-card"><p>加载中…</p></div></div>',
+  extraScripts: '<script src="/catalog/catalog.js"></script>\n<script>CATALOG.initToolDetail();</script>',
+};
+
+const CASES_LIST = {
+  path: "cases/index.html",
+  title: "用例库",
+  description: "系统全部测试用例的浏览与检索(112 道,5 种类型)。",
+  moduleKey: "/cases/",
+  currentPath: "/cases/",
+  sections: [],
+  bodyHtml: `
+    <div class="cat-toolbar">
+      <input class="cat-search" data-cat-search type="text" placeholder="搜索题号 / 类别…">
+      <select class="cat-filter" data-cat-filter="kind">
+        <option value="">全部类型</option>
+        <option value="basic">基础</option>
+        <option value="generic">通用工具</option>
+        <option value="negative">负例</option>
+        <option value="context">长上下文</option>
+        <option value="complex">复杂多工具</option>
+      </select>
+      <select class="cat-filter" data-cat-filter="scene">
+        <option value="">全部场景</option>
+        <option value="general">general</option>
+        <option value="research">research</option>
+        <option value="market">market</option>
+        <option value="portfolio">portfolio</option>
+      </select>
+    </div>
+    <table class="cat-table">
+      <thead><tr><th>题号</th><th>类别</th><th>类型</th><th>场景</th><th>需登录</th><th>工具数</th></tr></thead>
+      <tbody data-cat-table><tr><td colspan="6" style="text-align:center;color:var(--doc-faint)">加载中…</td></tr></tbody>
+    </table>
+    <div class="cat-paginate" data-cat-pager></div>
+    <div class="cat-count" data-cat-count></div>
+  `,
+  extraScripts: '<script src="/catalog/catalog.js"></script>\n<script>CATALOG.initCasesList();</script>',
+};
+
+const CASES_DETAIL = {
+  path: "cases/detail.html",
+  title: "用例详情",
+  description: "单个用例的问题描述、期望工具链与禁止工具。",
+  moduleKey: "/cases/",
+  currentPath: "/cases/detail",
+  sections: [],
+  bodyHtml: '<div id="caseDetail"><div class="cat-detail-card"><p>加载中…</p></div></div>',
+  extraScripts: '<script src="/catalog/catalog.js"></script>\n<script>CATALOG.initCaseDetail();</script>',
+};
+
 // ── 生成 ─────────────────────────────────────────────────────────────────
 
 const ALL_PAGES = [
@@ -1109,6 +1201,10 @@ const ALL_PAGES = [
   ABOUT_SYSTEM,
   ABOUT_BANKS,
   ABOUT_REPO,
+  TOOLS_LIST,
+  TOOLS_DETAIL,
+  CASES_LIST,
+  CASES_DETAIL,
   EXPERIMENT_DESIGN,
   EXPERIMENT_CASES,
   EXPERIMENT_REPRODUCE,

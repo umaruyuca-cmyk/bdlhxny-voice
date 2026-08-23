@@ -878,3 +878,91 @@ details.case-trace summary { cursor: pointer; font-size: 14px; }
   .page-toc li a:hover { background: #e8ebf2; }
   .page-toc li a.active { background: var(--doc-accent); color: #fff; }
 }
+
+/* ── 工具目录与用例库(分页浏览) ── */
+.cat-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.cat-search {
+  flex: 1; min-width: 200px; max-width: 360px;
+  padding: 8px 14px; border: 1px solid var(--doc-border); border-radius: 8px;
+  font-size: 13px; outline: none; background: #fff;
+}
+.cat-search:focus { border-color: var(--doc-accent); }
+.cat-filter {
+  padding: 7px 10px; border: 1px solid var(--doc-border); border-radius: 8px;
+  font-size: 13px; background: #fff; color: var(--doc-text); outline: none;
+}
+.cat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cat-table th {
+  text-align: left; padding: 10px 12px; font-size: 12px; font-weight: 600;
+  color: var(--doc-faint); text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 2px solid var(--doc-border); white-space: nowrap;
+}
+.cat-table td {
+  padding: 10px 12px; border-bottom: 1px solid #eef1f6; vertical-align: middle;
+}
+.cat-table tr:hover td { background: #f8f9fc; }
+.cat-table a { color: var(--doc-accent); text-decoration: none; font-weight: 500; }
+.cat-table a:hover { text-decoration: underline; }
+.cat-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 550; white-space: nowrap;
+}
+.cat-badge.domain { background: #e0e7ff; color: #4338ca; }
+.cat-badge.risk-low { background: #d1fae5; color: #065f46; }
+.cat-badge.risk-medium { background: #fef3c7; color: #92400e; }
+.cat-badge.risk-high { background: #fee2e2; color: #991b1b; }
+.cat-badge.side-none { background: #f1f5f9; color: #64748b; }
+.cat-badge.side-write { background: #fef3c7; color: #92400e; }
+.cat-badge.side-external_action { background: #fee2e2; color: #991b1b; }
+.cat-badge.kind-basic { background: #f1f5f9; color: #64748b; }
+.cat-badge.kind-generic { background: #e0e7ff; color: #4338ca; }
+.cat-badge.kind-negative { background: #fee2e2; color: #991b1b; }
+.cat-badge.kind-context { background: #fae8ff; color: #86198f; }
+.cat-badge.kind-complex { background: #d1fae5; color: #065f46; }
+.cat-paginate {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  margin-top: 20px; flex-wrap: wrap;
+}
+.cat-paginate button {
+  min-width: 32px; height: 32px; padding: 0 8px;
+  border: 1px solid var(--doc-border); border-radius: 6px;
+  background: #fff; color: var(--doc-dim); font-size: 13px;
+  cursor: pointer; transition: all 0.12s;
+}
+.cat-paginate button:hover:not(:disabled) { border-color: var(--doc-accent); color: var(--doc-accent); }
+.cat-paginate button.active { background: var(--doc-accent); border-color: var(--doc-accent); color: #fff; }
+.cat-paginate button:disabled { opacity: 0.4; cursor: default; }
+.cat-paginate .ellipsis { padding: 0 4px; color: var(--doc-faint); font-size: 13px; }
+.cat-count { text-align: center; margin-top: 10px; font-size: 12.5px; color: var(--doc-faint); }
+.cat-detail-card {
+  background: #fff; border: 1px solid var(--doc-border); border-radius: 12px;
+  padding: 24px 28px; margin-bottom: 20px;
+}
+.cat-detail-card h2 { border-bottom: none; margin-top: 0; padding-bottom: 0; }
+.cat-detail-card h2::before { display: none; }
+.cat-meta { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+.cat-meta-item { font-size: 13px; color: var(--doc-dim); }
+.cat-meta-item strong { color: var(--doc-text); }
+.cat-schema {
+  background: var(--doc-code-bg); border-radius: 8px; padding: 14px 16px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px; line-height: 1.5; overflow-x: auto;
+  color: var(--doc-text);
+}
+.cat-tool-chain { list-style: none; padding: 0; counter-reset: step; }
+.cat-tool-chain li {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0; border-bottom: 1px solid #eef1f6;
+  counter-increment: step;
+}
+.cat-tool-chain li::before {
+  content: counter(step);
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--doc-accent-soft); color: var(--doc-accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
+.cat-tool-chain code { font-size: 13px; color: var(--doc-text); }

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>输出护栏 · 引擎与治理</title>
-<meta name="description" content="答案出口三检查:数字接地、C-1 高危操作、C-2 未授权建议。">
+<title>工具目录</title>
+<meta name="description" content="系统全部工具的浏览与检索(112 个,覆盖 55 个领域)。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -68,10 +68,10 @@
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
       </details>
-    <details class="side-group">
+    <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
         <ul>
-          <li><a href="/tools/">全部工具</a></li>
+          <li><a href="/tools/" class="active">全部工具</a></li>
         </ul>
       </details>
     <details class="side-group">
@@ -80,14 +80,14 @@
           <li><a href="/cases/">全部用例</a></li>
         </ul>
       </details>
-    <details class="side-group here" open>
+    <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
         <ul>
           <li><a href="/engine/">Agent 循环</a></li>
           <li><a href="/engine/loading">工具装载</a></li>
           <li><a href="/engine/catalog">工具目录</a></li>
           <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail" class="active">输出护栏</a></li>
+          <li><a href="/engine/guardrail">输出护栏</a></li>
           <li><a href="/engine/tools">工具清单</a></li>
         </ul>
       </details>
@@ -105,27 +105,23 @@
     <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
   </aside>
   <main class="docs-main">
-<div class="detail-layout">
-      <aside class="page-toc" aria-label="本页目录">
-      <h4 class="page-toc-title">本页目录</h4>
-      <ul>
-        <li><a href="#checks">三项出口检查</a></li>
-      </ul>
-    </aside>
-      <div class="detail-body">
-        <h1>输出护栏 · 引擎与治理</h1>
-<h2 id="checks">三项出口检查</h2>
-<ul>
-  <li><strong>数字接地</strong>:答案中的非平凡数字必须出现在某条工具结果中,幻觉数字替换为「[数据待核实]」;</li>
-  <li><strong>C-1</strong>:高危操作语义替换为「(该操作不被允许)」并追加风险披露(当前配置:交易执行类);</li>
-  <li><strong>C-2</strong>:未被授权的专业建议结论替换为固定免责表述(当前配置:适当性类结论)。</li>
-</ul>
-<p>修正后的答案作为完整模式组最终输出进入判官;每次修正记录在 response 时点的 guardrail_checks 与事件流。</p>
-      </div>
+    
+
+    <div class="cat-toolbar">
+      <input class="cat-search" data-cat-search type="text" placeholder="搜索工具名 / 描述 / 领域…">
+      <select class="cat-filter" data-cat-filter="domain"><option value="">全部领域</option></select>
     </div>
+    <table class="cat-table">
+      <thead><tr><th>工具名</th><th>描述</th><th>领域</th><th>副作用</th><th>风险</th><th>需登录</th><th>状态</th></tr></thead>
+      <tbody data-cat-table><tr><td colspan="7" style="text-align:center;color:var(--doc-faint)">加载中…</td></tr></tbody>
+    </table>
+    <div class="cat-paginate" data-cat-pager></div>
+    <div class="cat-count" data-cat-count></div>
+  
   </main>
 </div>
 <script src="/docs/docs.js"></script>
-
+<script src="/catalog/catalog.js"></script>
+<script>CATALOG.initToolsList();</script>
 </body>
 </html>

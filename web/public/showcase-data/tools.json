@@ -1,0 +1,2667 @@
+{
+  "tools": [
+    {
+      "name": "analysis.run_analysis",
+      "description": "对标准化数据执行确定性金融分析",
+      "domain": "analysis",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "planning_compute"
+      ],
+      "operations": [
+        "RUN_ANALYSIS"
+      ]
+    },
+    {
+      "name": "appointment.find_clinic",
+      "description": "查找医疗机构",
+      "domain": "appointment",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "location",
+        "specialty"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "health_fitness"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "audio.transcribe",
+      "description": "音频转文字",
+      "domain": "audio",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "audio_ref",
+        "language"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "audio_video"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "audio.translate",
+      "description": "翻译音频",
+      "domain": "audio",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "audio_ref",
+        "target_language"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "audio_video"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "browser.click",
+      "description": "点击页面元素(Mock 高风险)",
+      "domain": "browser",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "target"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": false,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "browser_computer"
+      ],
+      "operations": [
+        "WRITE_DEVICE"
+      ]
+    },
+    {
+      "name": "browser.fill_form",
+      "description": "填写网页表单(Mock,需确认)",
+      "domain": "browser",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "fields"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "browser_computer"
+      ],
+      "operations": [
+        "WRITE_DEVICE"
+      ]
+    },
+    {
+      "name": "browser.open_page",
+      "description": "在交互浏览器中打开页面(Mock)",
+      "domain": "browser",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "url"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "browser_computer"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "calculator.evaluate",
+      "description": "执行普通计算",
+      "domain": "calculator",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "expression"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "personal_utils"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "calendar.create_event",
+      "description": "创建日历事件(Mock,需确认)",
+      "domain": "calendar",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "title",
+        "start",
+        "end",
+        "participants"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "calendar_task_project"
+      ],
+      "operations": [
+        "WRITE_SCHEDULE"
+      ]
+    },
+    {
+      "name": "calendar.find_availability",
+      "description": "查询空闲时间",
+      "domain": "calendar",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "participants",
+        "duration"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "calendar_task_project"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "calendar.list_events",
+      "description": "查看日历事件",
+      "domain": "calendar",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "start",
+        "end"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "calendar_task_project"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "cart.add_item",
+      "description": "加入购物车(Mock,需确认,不产生真实订单)",
+      "domain": "cart",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "product_id",
+        "quantity"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": true,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "commerce"
+      ],
+      "operations": [
+        "WRITE_CART"
+      ]
+    },
+    {
+      "name": "ci.get_status",
+      "description": "查询构建状态",
+      "domain": "ci",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "repository",
+        "ref"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "code_git_ci"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "citation.lookup",
+      "description": "查询论文或引用信息",
+      "domain": "citation",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "identifier"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "education"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "code.execute",
+      "description": "执行代码(Mock 沙箱,需确认)",
+      "domain": "code",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "language",
+        "code"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "code_git_ci"
+      ],
+      "operations": [
+        "EXECUTE_CODE"
+      ]
+    },
+    {
+      "name": "code.read",
+      "description": "读取代码",
+      "domain": "code",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "path",
+        "start_line",
+        "end_line"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "code_git_ci"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "code.search",
+      "description": "搜索代码",
+      "domain": "code",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query",
+        "repository"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "code_git_ci"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "compliance.check_text",
+      "description": "检查文本是否符合固定规则(不生成法律结论)",
+      "domain": "compliance",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "text",
+        "policy_set"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "legal_compliance"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "computer.screenshot",
+      "description": "获取当前屏幕截图(Mock)",
+      "domain": "computer",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "browser_computer"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "computer.upload_file",
+      "description": "上传文件(Mock,需确认)",
+      "domain": "computer",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "path",
+        "target"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "browser_computer"
+      ],
+      "operations": [
+        "WRITE_DEVICE"
+      ]
+    },
+    {
+      "name": "contacts.search",
+      "description": "搜索联系人",
+      "domain": "contacts",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "personal_utils"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "contract.extract_terms",
+      "description": "提取合同关键条款",
+      "domain": "contract",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "document_ref"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "legal_compliance"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "crm.get_account",
+      "description": "读取客户账户",
+      "domain": "crm",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "account_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "crm_support"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "crm.search_customer",
+      "description": "搜索客户",
+      "domain": "crm",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "crm_support"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "dashboard.get",
+      "description": "读取已有报表",
+      "domain": "dashboard",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "dashboard_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "database_report"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "data.export",
+      "description": "导出数据(Mock)",
+      "domain": "data",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "input_ref",
+        "format"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "spreadsheet_data"
+      ],
+      "operations": [
+        "WRITE_FILE"
+      ]
+    },
+    {
+      "name": "data.transform",
+      "description": "转换结构化数据",
+      "domain": "data",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "input_ref",
+        "operations"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "spreadsheet_data"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "database.describe_table",
+      "description": "查询表结构",
+      "domain": "database",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "connection_id",
+        "table"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "database_report"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "database.list_tables",
+      "description": "列出数据表",
+      "domain": "database",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "connection_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "database_report"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "database.query",
+      "description": "执行只读查询(Mock,不执行真实 SQL)",
+      "domain": "database",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "connection_id",
+        "sql"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "database_report"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "design.create_mockup",
+      "description": "生成设计稿(Mock)",
+      "domain": "design",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "description",
+        "platform"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "image_design"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "device.get_status",
+      "description": "读取设备状态(Mock)",
+      "domain": "device",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "device_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "device_home"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "device.list",
+      "description": "列出设备(Mock)",
+      "domain": "device",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "location"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "device_home"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "device.set_state",
+      "description": "修改设备状态(Mock,需确认)",
+      "domain": "device",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "device_id",
+        "state"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "device_home"
+      ],
+      "operations": [
+        "WRITE_DEVICE"
+      ]
+    },
+    {
+      "name": "document.compare",
+      "description": "比较多份文档",
+      "domain": "document",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "paths",
+        "criteria"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "file_docs"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "document.summarize",
+      "description": "总结文档",
+      "domain": "document",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "path",
+        "focus"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "file_docs"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "drive.get_metadata",
+      "description": "查询云文件元数据",
+      "domain": "drive",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "file_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "cloud_knowledge"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "drive.list_folder",
+      "description": "列出云盘目录",
+      "domain": "drive",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "folder_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "cloud_knowledge"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "drive.search",
+      "description": "搜索云盘内容",
+      "domain": "drive",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "cloud_knowledge"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "file.extract_text",
+      "description": "从文件中提取文本",
+      "domain": "file",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "path"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "file_docs"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "file.list",
+      "description": "列出目录内容",
+      "domain": "file",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "folder"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "file_docs"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "file.read",
+      "description": "读取本地文件",
+      "domain": "file",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "path"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "file_docs"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "file.search",
+      "description": "搜索本地文件",
+      "domain": "file",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query",
+        "folder"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "file_docs"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "fitness.get_activity",
+      "description": "查询运动记录",
+      "domain": "fitness",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "start",
+        "end"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "health_fitness"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "git.get_diff",
+      "description": "读取代码差异",
+      "domain": "git",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "repository",
+        "ref"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "code_git_ci"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "github.search_issues",
+      "description": "搜索 Issue",
+      "domain": "github",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "repository",
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "code_git_ci"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "health.get_medication_info",
+      "description": "查询药品公开信息",
+      "domain": "health",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "name"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "health_fitness"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "health.search_guidance",
+      "description": "搜索一般健康信息(不构成诊疗建议)",
+      "domain": "health",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "health_fitness"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "home.create_automation",
+      "description": "创建自动化规则(Mock,需确认)",
+      "domain": "home",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "trigger",
+        "actions"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "device_home"
+      ],
+      "operations": [
+        "WRITE_DEVICE"
+      ]
+    },
+    {
+      "name": "image.analyze",
+      "description": "分析图片",
+      "domain": "image",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "image_ref",
+        "question"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "image_design"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "image.edit",
+      "description": "编辑图片(Mock)",
+      "domain": "image",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "image_ref",
+        "instruction"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "image_design"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "image.generate",
+      "description": "生成图片(Mock)",
+      "domain": "image",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "prompt",
+        "size"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "image_design"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "knowledge.get_record",
+      "description": "读取知识库记录",
+      "domain": "knowledge",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "record_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "cloud_knowledge"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "knowledge.search",
+      "description": "搜索内部知识库",
+      "domain": "knowledge",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query",
+        "collection"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "cloud_knowledge"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "learning.explain_topic",
+      "description": "生成学习解释",
+      "domain": "learning",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "topic",
+        "level"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "education"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "learning.search_course",
+      "description": "搜索课程",
+      "domain": "learning",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "topic",
+        "level"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "education"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "legal.compare_clauses",
+      "description": "比较合同条款",
+      "domain": "legal",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "clause_refs"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "legal_compliance"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "legal.search_policy",
+      "description": "搜索政策法规",
+      "domain": "legal",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "query",
+        "jurisdiction"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "legal_compliance"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "mail.draft",
+      "description": "生成邮件草稿(不发送)",
+      "domain": "mail",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "to",
+        "subject",
+        "body"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "mail_messaging"
+      ],
+      "operations": [
+        "WRITE_COMMUNICATION"
+      ]
+    },
+    {
+      "name": "mail.read",
+      "description": "读取邮件",
+      "domain": "mail",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "message_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "mail_messaging"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "mail.search",
+      "description": "搜索邮件",
+      "domain": "mail",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query",
+        "mailbox"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "mail_messaging"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "mail.send",
+      "description": "发送邮件(Mock,需确认)",
+      "domain": "mail",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "to",
+        "subject",
+        "body"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "mail_messaging"
+      ],
+      "operations": [
+        "WRITE_COMMUNICATION"
+      ]
+    },
+    {
+      "name": "maps.get_directions",
+      "description": "查询路线",
+      "domain": "maps",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "origin",
+        "destination",
+        "mode"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "geo_travel"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "maps.search_places",
+      "description": "搜索地点",
+      "domain": "maps",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "query",
+        "location"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "geo_travel"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "market.get_financial_statements",
+      "description": "查询标的标准化财务报表",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "fundamental_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.get_historical_prices",
+      "description": "查询标的 Historical OHLCV 序列",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol",
+        "lookback_days"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "market_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.get_industry_context",
+      "description": "查询标的所属行业与背景",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "fundamental_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.get_money_flow",
+      "description": "查询标的资金流向",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "market_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.get_news",
+      "description": "查询标的结构化新闻",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "news_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.get_realtime_quote",
+      "description": "查询标的最新行情",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "market_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.get_valuation",
+      "description": "查询标的估值指标",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [
+        "market.resolve_instrument"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "fundamental_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "market.resolve_instrument",
+      "description": "把名称或简称解析为标准标的",
+      "domain": "market",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "symbol"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "market_read"
+      ],
+      "operations": [
+        "READ_MARKET_DATA"
+      ]
+    },
+    {
+      "name": "message.search",
+      "description": "搜索即时消息",
+      "domain": "message",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query",
+        "channel"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "mail_messaging"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "message.send",
+      "description": "发送即时消息(Mock,需确认)",
+      "domain": "message",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "channel",
+        "recipients",
+        "body"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "external_action",
+      "requires_confirmation": true,
+      "risk_level": "high",
+      "enabled": true,
+      "toolsets": [
+        "mail_messaging"
+      ],
+      "operations": [
+        "WRITE_COMMUNICATION"
+      ]
+    },
+    {
+      "name": "metrics.get",
+      "description": "查询指标",
+      "domain": "metrics",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "metric_names",
+        "period"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "database_report"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "notes.search",
+      "description": "搜索个人笔记",
+      "domain": "notes",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "personal_utils"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "ocr.extract_text",
+      "description": "识别图片文字",
+      "domain": "ocr",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "image_ref"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "image_design"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "order.get_status",
+      "description": "查询订单状态",
+      "domain": "order",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "order_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "commerce"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "portfolio.build_current_valuation",
+      "description": "基于最新行情做确定性估值重算",
+      "domain": "portfolio",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "positions_observation",
+        "account_observation",
+        "quote_observations"
+      ],
+      "depends_on": [
+        "portfolio.get_current_positions",
+        "portfolio.get_account_snapshot"
+      ],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "portfolio_read"
+      ],
+      "operations": [
+        "READ_PORTFOLIO"
+      ]
+    },
+    {
+      "name": "portfolio.get_account_snapshot",
+      "description": "读取当前用户账户快照",
+      "domain": "portfolio",
+      "adapter": "java",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "portfolio_read"
+      ],
+      "operations": [
+        "READ_PORTFOLIO"
+      ]
+    },
+    {
+      "name": "portfolio.get_current_positions",
+      "description": "读取当前用户持仓列表",
+      "domain": "portfolio",
+      "adapter": "java",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "portfolio_read"
+      ],
+      "operations": [
+        "READ_PORTFOLIO"
+      ]
+    },
+    {
+      "name": "portfolio.get_transaction_history",
+      "description": "读取当前用户已发生成交流水",
+      "domain": "portfolio",
+      "adapter": "java",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "portfolio_read"
+      ],
+      "operations": [
+        "READ_PORTFOLIO"
+      ]
+    },
+    {
+      "name": "product.compare",
+      "description": "比较商品",
+      "domain": "product",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "product_ids",
+        "criteria"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "commerce"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "product.get_price",
+      "description": "查询价格",
+      "domain": "product",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "product_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "commerce"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "product.search",
+      "description": "搜索商品",
+      "domain": "product",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "query",
+        "filters"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "commerce"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "project.get_status",
+      "description": "查询项目状态",
+      "domain": "project",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "project_id"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "calendar_task_project"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "quiz.create",
+      "description": "生成练习题(Mock)",
+      "domain": "quiz",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "topic",
+        "difficulty",
+        "count"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "education"
+      ],
+      "operations": [
+        "WRITE_FILE"
+      ]
+    },
+    {
+      "name": "research.deep_search",
+      "description": "深度研究：多轮拆题检索与压缩（premium）",
+      "domain": "research",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "question",
+        "objective"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "news_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_RESEARCH"
+      ]
+    },
+    {
+      "name": "research.web_search",
+      "description": "检索外部公开资料并带来源返回",
+      "domain": "research",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "news_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_RESEARCH"
+      ]
+    },
+    {
+      "name": "speech.generate",
+      "description": "文字转语音(Mock)",
+      "domain": "speech",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "text",
+        "voice"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "audio_video"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "spreadsheet.calculate",
+      "description": "执行表格计算",
+      "domain": "spreadsheet",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "file_id",
+        "expression"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "spreadsheet_data"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "spreadsheet.create_chart",
+      "description": "创建图表(Mock)",
+      "domain": "spreadsheet",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "file_id",
+        "range",
+        "chart_type"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "spreadsheet_data"
+      ],
+      "operations": [
+        "WRITE_FILE"
+      ]
+    },
+    {
+      "name": "spreadsheet.find_rows",
+      "description": "查找符合条件的行",
+      "domain": "spreadsheet",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "file_id",
+        "conditions"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "spreadsheet_data"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "spreadsheet.read_range",
+      "description": "读取单元格区域",
+      "domain": "spreadsheet",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "file_id",
+        "sheet",
+        "range"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "spreadsheet_data"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "support.create_ticket",
+      "description": "创建工单(Mock)",
+      "domain": "support",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "title",
+        "description",
+        "priority"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "crm_support"
+      ],
+      "operations": [
+        "WRITE_COMMUNICATION"
+      ]
+    },
+    {
+      "name": "support.search_tickets",
+      "description": "搜索工单",
+      "domain": "support",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "query",
+        "status"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "crm_support"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "task.create",
+      "description": "创建任务(Mock)",
+      "domain": "task",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "title",
+        "due_at",
+        "assignee"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "write",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "calendar_task_project"
+      ],
+      "operations": [
+        "WRITE_SCHEDULE"
+      ]
+    },
+    {
+      "name": "task.list",
+      "description": "查询任务",
+      "domain": "task",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [
+        "status",
+        "project"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "calendar_task_project"
+      ],
+      "operations": [
+        "READ_PRIVATE_WORKSPACE"
+      ]
+    },
+    {
+      "name": "translate.text",
+      "description": "翻译文本",
+      "domain": "translate",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "text",
+        "target_language"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "personal_utils"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "travel.build_itinerary",
+      "description": "生成行程结构",
+      "domain": "travel",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "destination",
+        "dates",
+        "preferences"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "geo_travel"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "travel.search_hotels",
+      "description": "搜索住宿",
+      "domain": "travel",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "location",
+        "dates"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "geo_travel"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "travel.search_transport",
+      "description": "搜索交通方案",
+      "domain": "travel",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "origin",
+        "destination",
+        "date"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "geo_travel"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "user.get_risk_profile",
+      "description": "读取当前用户风险画像与金融档案",
+      "domain": "user",
+      "adapter": "java",
+      "read_only": true,
+      "requires_auth": true,
+      "required_arguments": [],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "financial_profile_read"
+      ],
+      "operations": [
+        "READ_PROFILE"
+      ]
+    },
+    {
+      "name": "video.generate",
+      "description": "生成视频(Mock)",
+      "domain": "video",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "prompt",
+        "duration"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "medium",
+      "enabled": true,
+      "toolsets": [
+        "audio_video"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "video.summarize",
+      "description": "总结视频",
+      "domain": "video",
+      "adapter": "local",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "video_ref",
+        "focus"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "audio_video"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "weather.get_forecast",
+      "description": "查询天气",
+      "domain": "weather",
+      "adapter": "mcp",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "location",
+        "date"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "geo_travel"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "web.check_freshness",
+      "description": "检查网页或信息更新时间",
+      "domain": "web",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "url"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "web_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "web.compare_sources",
+      "description": "比较多个网页来源",
+      "domain": "web",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "urls",
+        "question"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "web_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "web.extract",
+      "description": "提取网页结构化字段",
+      "domain": "web",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "url",
+        "fields"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "web_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "web.find",
+      "description": "在网页中定位文字",
+      "domain": "web",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "url",
+        "pattern"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "web_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "web.open",
+      "description": "打开指定网页",
+      "domain": "web",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "url"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "web_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    },
+    {
+      "name": "web.search",
+      "description": "搜索通用网页",
+      "domain": "web",
+      "adapter": "web",
+      "read_only": true,
+      "requires_auth": false,
+      "required_arguments": [
+        "query"
+      ],
+      "depends_on": [],
+      "timeout_seconds": 20,
+      "side_effect": "none",
+      "requires_confirmation": false,
+      "risk_level": "low",
+      "enabled": true,
+      "toolsets": [
+        "web_read"
+      ],
+      "operations": [
+        "READ_PUBLIC_CONTENT"
+      ]
+    }
+  ],
+  "total": 112
+}
