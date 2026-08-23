@@ -35,7 +35,7 @@ from bdlh_runtime.infra.llm import DEFAULT_LLM_BASE_URL, create_llm
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "/app/artifacts"))
 
 app = FastAPI(
-    title="Touchstone Private Run API",
+    title="Private Run API",
     version="1",
     # 生产最小暴露：私有服务不开放交互文档与 OpenAPI schema
     docs_url=None,
@@ -140,7 +140,7 @@ class ContextBatchRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "touchstone-run-api"}
+    return {"status": "ok", "service": "run-api"}
 
 
 @app.get("/ready")
@@ -431,6 +431,13 @@ def start_context_batch(
         if not _BATCH_SLOTS.acquire(blocking=False):
             raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
         selected = request.case_ids or sorted(known)
+        # 模型切换:压缩对照同样按发起者账号配置(模型归一+客户端构建)
+        try:
+            llm_config = data.get_llm_config(str(account["accountId"]))
+        except DataServiceError:
+            llm_config = None
+        if llm_config and llm_config.get("model"):
+            request = request.model_copy(update={"model": str(llm_config["model"])})
         batch_id = data.create_batch(
             name=f"上下文压缩对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
             fixed_conditions={
@@ -464,7 +471,7 @@ def start_context_batch(
 
     def task() -> None:
         try:
-            payload, run_records = _execute_context_eval(request, views, selected)
+            payload, run_records = _execute_context_eval(request, views, selected, llm_config=llm_config)
             _persist_runs(data, batch_id, request, payload, run_records)
             _persist_artifact(batch_id, payload)
             data.complete_batch(batch_id, "COMPLETE")
@@ -480,6 +487,290 @@ def start_context_batch(
 
     threading.Thread(target=task, daemon=True).start()
     return {"job_id": job_id, "batch_id": batch_id}
+
+
+class ContextLinkBatchRequest(BaseModel):
+    """联动对照批次:同一长上下文 原始(full-raw)/压缩(budgeted-comp) × 三组实现。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_ids: list[str] | None = Field(default=None, max_length=100, description="ctx 用例子集;空表示全部对照用例")
+    runs: int = Field(default=1, ge=1, le=5, description="每格(变体 × 实现)重复次数")
+    model: str = Field(
+        default_factory=lambda: os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"),
+        min_length=1,
+        max_length=100,
+    )
+
+
+class ContextCompressRequest(BaseModel):
+    """单用例压缩测试:只跑构建器(无模型调用),返回处理报告。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1, max_length=100)
+    variant_id: str = Field(default="budgeted-comp", max_length=100, description="取哪个变体的策略与预算")
+    token_budget: int | None = Field(default=None, ge=1, description="覆盖预算;缺省取变体预算")
+
+
+def _context_case_ids(views: list[dict[str, Any]]) -> set[str]:
+    return {
+        str(view["id"])
+        for view in views
+        if any(str(item.get("variantId")) in COMPARISON_VARIANTS for item in view.get("variants") or [])
+    }
+
+
+@app.get("/api/v1/context-cases")
+def list_context_cases(account: Annotated[dict[str, Any], Depends(require_login)]) -> list[dict[str, Any]]:
+    """长上下文库元信息:条目构成 + 保守口径 token 估算(库页列表与压缩测试共用)。"""
+    from bdlh_runtime.context.token_count import ConservativeTokenCounter
+
+    counter = ConservativeTokenCounter()
+    try:
+        views = _data().list_cases()
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    out: list[dict[str, Any]] = []
+    for view in views:
+        variants = [str(item.get("variantId")) for item in view.get("variants") or []]
+        if not any(variant in COMPARISON_VARIANTS for variant in variants):
+            continue
+        case_id = str(view["id"])
+        version = int(view.get("version") or 1)
+        variant_budgets: dict[str, Any] = {}
+        items: list[dict[str, Any]] = []
+        for variant_id in COMPARISON_VARIANTS:
+            if variant_id not in variants:
+                continue
+            payload = _data().get_case_variant_context(case_id, version, variant_id)
+            rows = payload.get("items") or []
+            variant_budgets[variant_id] = {
+                "strategy": str(payload.get("contextStrategy") or ""),
+                "token_budget": int(payload.get("tokenBudget") or 0),
+            }
+            if not items:
+                items = rows
+        counts = {"required": 0, "compressible": 0, "reference_only": 0, "distractor": 0}
+        token_total = 0
+        for row in items:
+            key = str(row.get("classification") or "compressible")
+            counts[key if key in counts else "compressible"] += 1
+            token_total += counter.count(str(row.get("content") or ""))
+        out.append(
+            {
+                "case_id": case_id,
+                "title": str(view.get("title") or ""),
+                "message": str(view.get("message") or ""),
+                "scene": str(view.get("scene") or ""),
+                "authenticated": bool(view.get("authenticated")),
+                "item_count": len(items),
+                "token_estimate": token_total,
+                "item_counts": counts,
+                "variants": variant_budgets,
+            }
+        )
+    return out
+
+
+@app.post("/api/v1/context-compress")
+def compress_context_case(
+    request: ContextCompressRequest, account: Annotated[dict[str, Any], Depends(require_login)]
+) -> dict[str, Any]:
+    """单用例现场压缩测试:构建器按变体策略/预算执行一次,返回逐条决策(无模型调用)。"""
+    from bdlh_runtime.context import (
+        CONSERVATIVE_TOKENIZER_VERSION,
+        ContextBuilder,
+        ContextBuildRequest,
+        ContextStrategy,
+    )
+    from bdlh_runtime.evaluation.context_eval import (
+        _OWNER_ID,
+        COMPARISON_VARIANTS,
+        fixture_items_to_context_items,
+    )
+
+    data = _data()
+    try:
+        views = data.list_cases()
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    known = _context_case_ids(views)
+    if request.case_id not in known:
+        raise HTTPException(status_code=400, detail=f"未知或非对照用例：{request.case_id}")
+    view = next(item for item in views if str(item["id"]) == request.case_id)
+    version = int(view.get("version") or 1)
+    if request.variant_id not in COMPARISON_VARIANTS:
+        raise HTTPException(status_code=400, detail=f"变体必须是 {list(COMPARISON_VARIANTS)} 之一")
+    try:
+        payload = data.get_case_variant_context(request.case_id, version, request.variant_id)
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    strategy = str(payload.get("contextStrategy") or "budgeted")
+    budget = request.token_budget or int(payload.get("tokenBudget") or 0)
+    items = payload.get("items") or []
+    if not items:
+        raise HTTPException(status_code=400, detail=f"变体 {request.case_id}/{request.variant_id} 无上下文条目")
+    try:
+        builder = ContextBuilder()
+        built = builder.build(
+            ContextBuildRequest(
+                items=fixture_items_to_context_items(tuple(items)),
+                token_budget=budget,
+                strategy=ContextStrategy(strategy),
+                owner_id=_OWNER_ID,
+            )
+        )
+    except ValueError as exc:
+        return {
+            "case_id": request.case_id,
+            "variant_id": request.variant_id,
+            "strategy": strategy,
+            "token_budget": budget,
+            "status": "FAILED",
+            "error": str(exc),
+            "tokenizer_version": CONSERVATIVE_TOKENIZER_VERSION,
+        }
+    report = built.report
+    return {
+        "case_id": request.case_id,
+        "variant_id": request.variant_id,
+        "strategy": strategy,
+        "token_budget": report.token_budget,
+        "status": "COMPLETE",
+        "original_tokens": report.original_tokens,
+        "working_tokens": report.working_tokens,
+        "required_retained": report.required_retained,
+        "tokenizer_version": CONSERVATIVE_TOKENIZER_VERSION,
+        "counts": report.counts,
+        "warnings": list(report.warnings),
+        "decisions": [
+            {
+                "item_id": decision.item_id,
+                "action": decision.action.value,
+                "reason": decision.reason,
+                "input_tokens": decision.input_tokens,
+                "output_tokens": decision.output_tokens,
+            }
+            for decision in report.decisions
+        ],
+        "working_excerpt": "\n".join(message.content for message in built.messages)[:2000],
+    }
+
+
+@app.post("/api/v1/context-link-batches")
+def start_context_link_batch(
+    request: ContextLinkBatchRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, str]:
+    """联动对照:同一长上下文 原始/压缩内容分别过三组实现,检验压缩质量。"""
+    from bdlh_runtime.evaluation.context_eval import LINKAGE_MODES
+
+    data = _data()
+    try:
+        views = data.list_cases()
+        known = _context_case_ids(views)
+        unknown = [case_id for case_id in request.case_ids or [] if case_id not in known]
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"未知或非对照用例：{unknown}")
+        if not _BATCH_SLOTS.acquire(blocking=False):
+            raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
+        selected = request.case_ids or sorted(known)
+        # 模型切换:联动对照同样按发起者账号配置(模型归一+客户端构建)
+        try:
+            llm_config = data.get_llm_config(str(account["accountId"]))
+        except DataServiceError:
+            llm_config = None
+        if llm_config and llm_config.get("model"):
+            request = request.model_copy(update={"model": str(llm_config["model"])})
+        batch_id = data.create_batch(
+            name=f"上下文联动对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
+            fixed_conditions={
+                "caseIds": selected,
+                "runsPerCell": request.runs,
+                "variants": list(COMPARISON_VARIANTS),
+                "agentModes": list(LINKAGE_MODES),
+                "model": request.model,
+                "toolData": "frozen",
+                "minValidSamples": int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5")),
+                "interleaveSeed": DEFAULT_INTERLEAVE_SEED,
+            },
+        )
+    except DataServiceError as exc:
+        with contextlib.suppress(ValueError):
+            _BATCH_SLOTS.release()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    job_id = uuid4().hex[:12]
+    job: dict[str, Any] = {
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "status": "running",
+        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "request": request.model_dump(),
+        "report": None,
+        "error": None,
+    }
+    _JOBS[job_id] = job
+
+    def task() -> None:
+        try:
+            payload, run_records = _execute_context_link_eval(request, views, selected, llm_config=llm_config)
+            _persist_runs(data, batch_id, request, payload, run_records)
+            _persist_artifact(batch_id, payload)
+            data.complete_batch(batch_id, "COMPLETE")
+            job["status"] = "done"
+            job["report"] = payload
+        except Exception as exc:  # 作业失败进入可见状态，不能让服务进程退出
+            with contextlib.suppress(DataServiceError):
+                data.complete_batch(batch_id, "FAILED")
+            job["status"] = "error"
+            job["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            _BATCH_SLOTS.release()
+
+    threading.Thread(target=task, daemon=True).start()
+    return {"job_id": job_id, "batch_id": batch_id}
+
+
+def _execute_context_link_eval(
+    request: ContextLinkBatchRequest,
+    views: list[dict[str, Any]],
+    selected: list[str],
+    llm_config: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], list[RunRecord]]:
+    from bdlh_runtime.evaluation.context_eval import (
+        LINKAGE_MODES,
+        load_context_variant_cases,
+        run_context_eval,
+    )
+    from bdlh_runtime.evaluation.context_eval import (
+        _report_payload as context_report_payload,
+    )
+
+    data = _data()
+    llm = None
+    if llm_config:
+        api_key = llm_config.get("apiKey") or os.getenv("LLM_API_KEY")
+        if api_key:
+            llm = create_llm(
+                api_key=api_key,
+                model=str(llm_config.get("model") or request.model),
+                base_url=str(llm_config.get("baseUrl") or DEFAULT_LLM_BASE_URL),
+            )
+    cases = [case for case in load_context_variant_cases(views, data) if case.case_id in set(selected)]
+    report = asyncio.run(
+        run_context_eval(
+            cases=cases,
+            llm=llm,
+            model=request.model,
+            runs_per_variant=request.runs,
+            data=data,
+            inter_run_delay_s=float(os.getenv("EVAL_INTER_RUN_DELAY_S", "1")),
+            agent_modes=LINKAGE_MODES,
+        )
+    )
+    return context_report_payload(report), report.run_records
 
 
 @app.get("/api/v1/batches/{batch_id}")
@@ -585,6 +876,7 @@ def _execute_context_eval(
     request: ContextBatchRequest,
     views: list[dict[str, Any]],
     selected: list[str],
+    llm_config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[RunRecord]]:
     from bdlh_runtime.evaluation.context_eval import (
         _report_payload as context_report_payload,
@@ -595,8 +887,26 @@ def _execute_context_eval(
     )
 
     data = _data()
+    llm = None
+    if llm_config:
+        api_key = llm_config.get("apiKey") or os.getenv("LLM_API_KEY")
+        if api_key:
+            llm = create_llm(
+                api_key=api_key,
+                model=str(llm_config.get("model") or request.model),
+                base_url=str(llm_config.get("baseUrl") or DEFAULT_LLM_BASE_URL),
+            )
     cases = [case for case in load_context_variant_cases(views, data) if case.case_id in set(selected)]
-    report = asyncio.run(run_context_eval(cases=cases, model=request.model, runs_per_variant=request.runs, data=data))
+    report = asyncio.run(
+        run_context_eval(
+            cases=cases,
+            llm=llm,
+            model=request.model,
+            runs_per_variant=request.runs,
+            data=data,
+            inter_run_delay_s=float(os.getenv("EVAL_INTER_RUN_DELAY_S", "1")),
+        )
+    )
     return context_report_payload(report), report.run_records
 
 

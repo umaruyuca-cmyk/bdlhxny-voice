@@ -32,10 +32,15 @@ from typing import Any
 from bdlh_runtime.context import (
     CONSERVATIVE_TOKENIZER_VERSION,
     ContextBuilder,
+    ContextBuildRequest,
+    ContextBuildResult,
     ContextClassification,
     ContextItem,
+    ContextReport,
     ContextRole,
+    ContextStrategy,
 )
+from bdlh_runtime.context.token_count import ConservativeTokenCounter
 from bdlh_runtime.data_client import DataClient
 from bdlh_runtime.engine.loop import AgentLoop, AgentResult, AgentTurn, assemble_model_context, load_prompt
 from bdlh_runtime.engine.output_guardrail import (
@@ -46,8 +51,12 @@ from bdlh_runtime.engine.output_guardrail import (
 )
 from bdlh_runtime.engine.semantic_router.fastpath_data import CHITCHAT_RESPONSE, FORBIDDEN_RESPONSE
 from bdlh_runtime.evaluation.ab_eval import FrozenToolExecutor, _tool_catalog_hash, build_llm_from_env
+from bdlh_runtime.evaluation.baseline_agent import BASELINE_SYSTEM, BaselineResult, naive_run
+from bdlh_runtime.evaluation.baseline_langgraph import react_official_run
 from bdlh_runtime.evaluation.frozen_observations import FIXTURE_SET_ID, FrozenObservations
 from bdlh_runtime.evaluation.run_telemetry import (
+    MODE_BASELINE,
+    MODE_REACT,
     MODE_TREATMENT,
     RecordingExecutor,
     RecordingLLM,
@@ -353,6 +362,13 @@ class VariantRunOutcome:
     variant_id: str
     judgment: ContextJudgment
     record: RunRecord
+    #: 本运行的实现方式(联动对照);纯压缩对照恒为完整工程模式
+    agent_mode: str = MODE_TREATMENT
+
+
+#: 联动对照的三组实现(原始/压缩内容分别过三种方式,检验压缩质量)
+LINKAGE_MODES = ("baseline", "react", "treatment")
+_MODE_VALUES = {"baseline": MODE_BASELINE, "react": MODE_REACT, "treatment": MODE_TREATMENT}
 
 
 @dataclass
@@ -361,6 +377,114 @@ class ContextEvalReport:
     variant_runs: list[VariantRunOutcome] = field(default_factory=list)
     model: str = "Qwen/Qwen3.6-35B-A3B"
     run_records: list[RunRecord] = field(default_factory=list)
+    runs_per_variant: int = 1
+    agent_modes: tuple[str, ...] = ("treatment",)
+
+
+def _plain_feed(
+    builder: ContextBuilder, case: ContextVariantCase, counter: ConservativeTokenCounter
+) -> tuple[str, str, str, ContextBuildResult]:
+    """裸调用/ReAct 组的喂入构造:返回 (fed_message, system_prompt, fed_text, build_result)。
+
+    - full-raw:原始内容=全部条目按序平铺(含干扰/注入/跨用户,裸组没有隔离);
+    - budgeted-comp:先用同一构建器按变体预算压缩,喂压缩后的工作上下文
+      (system 段作 system_prompt,数据段并入用户消息)。
+    """
+
+    items = fixture_items_to_context_items(case.fixture_items)
+    if str(case.context_strategy) == ContextStrategy.BUDGETED.value:
+        built = builder.build(
+            ContextBuildRequest(
+                items=items,
+                token_budget=case.token_budget,
+                strategy=ContextStrategy.BUDGETED,
+                owner_id=_OWNER_ID,
+            )
+        )
+        system_prompt = "\n\n".join(m.content for m in built.messages if m.role == "system") or BASELINE_SYSTEM
+        context_text = "\n\n".join(m.content for m in built.messages if m.role != "system")
+        fed_text = f"{system_prompt}\n{context_text}"
+        fed_message = f"{case.message}\n\n{context_text}" if context_text else case.message
+        return fed_message, system_prompt, fed_text, built
+    ordered = sorted(items, key=lambda item: (item.sequence, item.item_id))
+    context_text = "\n\n".join(f"[context item={i.item_id}]\n{i.content}" for i in ordered)
+    system_prompt = BASELINE_SYSTEM
+    fed_text = f"{system_prompt}\n{context_text}"
+    fed_message = f"{case.message}\n\n{context_text}" if context_text else case.message
+    required_ids = tuple(i.item_id for i in ordered if i.classification is ContextClassification.REQUIRED)
+    plain_report = ContextReport(
+        strategy=ContextStrategy.FULL,
+        token_budget=case.token_budget,
+        original_tokens=sum(counter.count(i.content) for i in ordered),
+        working_tokens=sum(counter.count(i.content) for i in ordered),
+        required_item_ids=required_ids,
+        retained_required_item_ids=required_ids,
+        decisions=(),
+        warnings=(),
+    )
+    return fed_message, system_prompt, fed_text, ContextBuildResult(messages=(), report=plain_report)
+
+
+def _judge_plain_context_run(
+    case: ContextVariantCase,
+    result: BaselineResult,
+    executor: Any,
+    catalog_names: set[str],
+    fed_text: str,
+    build_report: Any,
+    *,
+    react_semantics: bool,
+) -> ContextJudgment:
+    """裸调用/ReAct 组判定:编排断言与 ab_eval 同口径,上下文断言按「实际喂入」核对。"""
+
+    judgment = ContextJudgment()
+    executed = {name for name, _ in executor.call_log}
+    attempted = set(result.attempted_tools) if result.attempted_tools else executed
+    judgment.hallucinated_tools = sorted(attempted - catalog_names)
+    judgment.forbidden_leak = sorted(executed & set(case.absent_tools))
+    if case.fastpath:
+        judgment.tool_correct = not attempted
+    else:
+        reference = attempted if react_semantics else executed
+        judgment.tool_correct = reference == set(case.expected_tools)
+    obs_texts = [json.dumps(r, ensure_ascii=False, default=str) for _n, _a, r in executor.results]
+    if obs_texts:
+        judgment.number_hallucinations = [v.detail for v in _number_check.check(result.answer, obs_texts)]
+    judgment.c1_violations = [v.detail for v in _c1_check.check(result.answer, [])]
+    judgment.c2_violations = [v.detail for v in _c2_check.check(result.answer, [])]
+
+    # 上下文断言:required 事实必须出现在喂入文本;禁用事实不得入答案;
+    # 注入条目在裸组原样平铺(不隔离)是诚实结果,压缩喂入则由构建器隔离/包裹
+    expectations = case.expectations
+    required_facts = dict(expectations.get("required_facts") or {})
+    judgment.missing_required_facts = [
+        key for key, value in required_facts.items() if (fact := _stringify_fact(value)) and fact not in fed_text
+    ]
+    forbidden_facts = dict(expectations.get("forbidden_facts") or {})
+    judgment.forbidden_facts_in_answer = [
+        key for key, value in forbidden_facts.items() if (fact := _stringify_fact(value)) and fact in result.answer
+    ]
+    untrusted_contents = [str(row.get("content") or "") for row in case.fixture_items if row.get("untrusted")]
+    judgment.untrusted_wrapped = all(
+        _untrusted_content_is_contained(content, fed_text) for content in untrusted_contents
+    )
+    judgment.injection_isolated = judgment.untrusted_wrapped
+    if build_report is not None:
+        required = set(getattr(build_report, "required_item_ids", ()) or ())
+        retained = set(getattr(build_report, "retained_required_item_ids", ()) or ())
+        judgment.required_retained = required == retained
+        judgment.required_retention_rate = (len(retained & required) / len(required)) if required else 1.0
+        judgment.original_tokens = int(getattr(build_report, "original_tokens", 0) or 0)
+        judgment.working_tokens = int(getattr(build_report, "working_tokens", 0) or 0)
+    else:
+        judgment.required_retained = True
+        judgment.required_retention_rate = 1.0
+    judgment.rounds = result.rounds
+    judgment.prompt_tokens = result.prompt_tokens
+    judgment.completion_tokens = result.completion_tokens
+    judgment.tokens_estimated = result.tokens_estimated
+    judgment.error = result.error
+    return judgment
 
 
 async def run_context_eval(
@@ -374,11 +498,19 @@ async def run_context_eval(
     runs_per_variant: int = 1,
     retry_delay_s: float = 30.0,
     inter_run_delay_s: float = 1.0,
+    agent_modes: tuple[str, ...] = ("treatment",),
 ) -> ContextEvalReport:
-    """跑压缩对照批次;每个 (case, variant, repeat) 产出完整 RunRecord。"""
+    """跑压缩对照批次;每个 (case, variant, mode, repeat) 产出完整 RunRecord。
+
+    agent_modes=("treatment",) 为纯压缩对照(同一 Agent,唯一变量=处理策略);
+    传入 LINKAGE_MODES 时为联动对照:原始/压缩内容分别过三组实现。
+    """
 
     if not cases:
         raise ValueError("压缩对照用例为空:需从 data 服务加载 ctx 变体")
+    unknown_modes = [mode for mode in agent_modes if mode not in _MODE_VALUES]
+    if unknown_modes:
+        raise ValueError(f"未知实现方式: {unknown_modes}(可选 {sorted(_MODE_VALUES)})")
     if llm is None:
         llm = build_llm_from_env(model)
     if catalog is None or frozen is None:
@@ -387,158 +519,307 @@ async def run_context_eval(
         frozen = frozen or FrozenObservations(client.get_tool_fixtures(FIXTURE_SET_ID))
     catalog_names = {c.name for c in catalog.list()}
     catalog_hash = _tool_catalog_hash(catalog)
+    all_cards = sorted(catalog.list(), key=lambda card: card.name)
     builder = ContextBuilder()
+    counter = ConservativeTokenCounter()
 
     guardrail = OutputGuardrail()
-    report = ContextEvalReport(case_count=len({case.case_id for case in cases}), model=model)
+    report = ContextEvalReport(
+        case_count=len({case.case_id for case in cases}),
+        model=model,
+        runs_per_variant=runs_per_variant,
+        agent_modes=tuple(agent_modes),
+    )
     for case in cases:
         for repeat_index in range(runs_per_variant):
-            recorder = RunRecorder(
-                run_key=f"{case.case_id}:{case.variant_id}:{repeat_index}",
-                case_id=case.case_id,
-                case_version=case.case_version,
-                variant_id=case.variant_id,
-                snapshot_id=case.snapshot_id,
-                snapshot_hash=case.snapshot_hash,
-                agent_mode=MODE_TREATMENT,
-                context_strategy=case.context_strategy,
-                model=model,
-                repeat_index=repeat_index,
-                message=case.message,
-                category=case.category,
-                scene=case.scene_tag,
-                authenticated=case.authenticated,
-                history_turns=len(case.history),
-            )
-            recorder.record.provenance["tool_catalog_hash"] = catalog_hash
-            recorder.record.provenance["context_source"] = case.context_source
-            started = time.perf_counter()
-
-            executor = RecordingExecutor(FrozenToolExecutor(frozen), recorder)
-            turn = AgentTurn(
-                user_id=_OWNER_ID if case.authenticated else "guest",
-                message=case.message,
-                scene_tag=case.scene_tag,
-                authenticated=case.authenticated,
-                history=list(case.history),
-                run_id=recorder.record.run_key,
-                context_entries=fixture_items_to_context_items(case.fixture_items),
-                context_strategy=case.context_strategy,
-                token_budget=case.token_budget,
-                owner_id=_OWNER_ID,
-            )
-            loop = AgentLoop(
-                llm=RecordingLLM(llm, recorder, model),
-                catalog=catalog,
-                executor=executor,
-                router=GoldRouter(case) if case.fastpath else None,
-                tool_loading="scoped",
-                max_tool_calls=20,
-                context_builder=builder,
-            )
-            try:
-                agent_result = await loop.run(turn)
-            except Exception as exc:  # noqa: BLE001 —— 异常降级为一次运行,不中断批次
-                agent_result = AgentResult(answer="", entered_loop=False, degraded=True, context_error=str(exc))
-
-            # 上下文构建报告(真实或重建)
-            if agent_result.context_build_result is not None:
-                build = context_build_payload(
-                    agent_result.context_build_result,
-                    list(agent_result.context_items_used),
-                    duration_ms=agent_result.context_build_ms,
-                    status="COMPLETE",
+            for mode_key in agent_modes:
+                mode_value = _MODE_VALUES[mode_key]
+                recorder = RunRecorder(
+                    run_key=f"{case.case_id}:{case.variant_id}:{mode_key}:{repeat_index}",
+                    case_id=case.case_id,
+                    case_version=case.case_version,
+                    variant_id=case.variant_id,
+                    snapshot_id=case.snapshot_id,
+                    snapshot_hash=case.snapshot_hash,
+                    agent_mode=mode_value,
+                    context_strategy=case.context_strategy,
+                    model=model,
+                    repeat_index=repeat_index,
+                    message=case.message,
+                    category=case.category,
+                    scene=case.scene_tag,
+                    authenticated=case.authenticated,
+                    history_turns=len(case.history),
                 )
-            else:
-                assembly = None
-                with suppress(ValueError):
-                    assembly = assemble_model_context(
-                        builder,
-                        system_prompt=load_prompt("system_base.md", "scene_direct.md"),
-                        turn=turn,
+                recorder.record.provenance["tool_catalog_hash"] = catalog_hash
+                recorder.record.provenance["context_source"] = case.context_source
+                started = time.perf_counter()
+
+                if mode_key == "treatment":
+                    executor = RecordingExecutor(FrozenToolExecutor(frozen), recorder)
+                    turn = AgentTurn(
+                        user_id=_OWNER_ID if case.authenticated else "guest",
+                        message=case.message,
+                        scene_tag=case.scene_tag,
+                        authenticated=case.authenticated,
+                        history=list(case.history),
+                        run_id=recorder.record.run_key,
+                        context_entries=fixture_items_to_context_items(case.fixture_items),
+                        context_strategy=case.context_strategy,
+                        token_budget=case.token_budget,
+                        owner_id=_OWNER_ID,
                     )
-                if assembly is None:
-                    build = None
-                else:
-                    build = context_build_payload(
-                        assembly.result,
-                        list(assembly.items),
-                        duration_ms=assembly.duration_ms,
+                    loop = AgentLoop(
+                        llm=RecordingLLM(llm, recorder, model),
+                        catalog=catalog,
+                        executor=executor,
+                        router=GoldRouter(case) if case.fastpath else None,
+                        tool_loading="scoped",
+                        max_tool_calls=20,
+                        context_builder=builder,
+                    )
+                    try:
+                        # 单运行总时长熔断:个别流式调用会无限悬挂(provider 端连接 hang,
+                        # timeout 参数对流式分块不生效),超时降级为一次运行而非卡死整批
+                        agent_result = await asyncio.wait_for(
+                            loop.run(turn), timeout=float(os.getenv("EVAL_RUN_TIMEOUT_S", "300"))
+                        )
+                    except TimeoutError:
+                        agent_result = AgentResult(
+                            answer="", entered_loop=False, degraded=True, context_error="运行超时(timed out):单运行熔断"
+                        )
+                    except Exception as exc:  # noqa: BLE001 —— 异常降级为一次运行,不中断批次
+                        agent_result = AgentResult(answer="", entered_loop=False, degraded=True, context_error=str(exc))
+
+                    # 上下文构建报告(真实或重建)
+                    if agent_result.context_build_result is not None:
+                        build = context_build_payload(
+                            agent_result.context_build_result,
+                            list(agent_result.context_items_used),
+                            duration_ms=agent_result.context_build_ms,
+                            status="COMPLETE",
+                        )
+                    else:
+                        assembly = None
+                        with suppress(ValueError):
+                            assembly = assemble_model_context(
+                                builder,
+                                system_prompt=load_prompt("system_base.md", "scene_direct.md"),
+                                turn=turn,
+                            )
+                        if assembly is None:
+                            build = None
+                        else:
+                            build = context_build_payload(
+                                assembly.result,
+                                list(assembly.items),
+                                duration_ms=assembly.duration_ms,
+                                status="COMPLETE",
+                            )
+                    if build is not None:
+                        recorder.attach_context_build(build)
+                        recorder.record_context(
+                            {
+                                "strategy": build["strategy"],
+                                "variantId": case.variant_id,
+                                "itemCount": len(build["items"]),
+                                "tokenBudget": build["tokenBudget"],
+                                "originalTokens": build["originalTokens"],
+                                "workingTokens": build["workingTokens"],
+                                "requiredRetained": build["requiredRetained"],
+                                "budgetFit": build["budgetFit"],
+                                "tokenizerVersion": build["tokenizerVersion"],
+                                "counts": build["counts"],
+                            }
+                        )
+                    else:
+                        recorder.record_context(
+                            {
+                                "strategy": case.context_strategy,
+                                "variantId": case.variant_id,
+                                "status": "FAILED",
+                                "errorCode": "CONTEXT_BUILD_FAILED",
+                                "tokenizerVersion": CONSERVATIVE_TOKENIZER_VERSION,
+                            }
+                        )
+
+                    recorder.mark_judgment_started()
+                    fixed_answer = agent_result.answer
+                    if not agent_result.degraded:
+                        guard_report = guardrail.check(agent_result.answer, agent_result.observations)
+                        record_output_guardrail(recorder, guard_report)
+                        fixed_answer = guard_report.fixed_answer
+                        record_treatment_audits(recorder, agent_result.audits, agent_result.observations)
+                    working_text = _working_context_text(agent_result, builder, turn)
+                    judgment = judge_context_run(
+                        case, agent_result, fixed_answer, executor.results, catalog_names, working_text
+                    )
+                    judgment.duration_ms = round((time.perf_counter() - started) * 1000)
+                    judgment.rounds = sum(1 for m in agent_result.messages if getattr(m, "type", "") == "ai")
+                    prompt, completion, estimated = _extract_tokens(agent_result)
+                    judgment.prompt_tokens = prompt
+                    judgment.completion_tokens = completion
+                    judgment.tokens_estimated = estimated
+                    judgment.error = agent_result.context_error if agent_result.degraded else None
+                    judgment.context_error = agent_result.context_error
+                    judgment.run_key = recorder.record.run_key
+                    judgment.repeat_index = repeat_index
+                    status, category = classify_failure(judgment.error)
+                    judgment.validity = validity_of(status)
+                    judgment.error_category = category or None
+
+                    recorder.record_judgment(asdict(judgment))
+                    if status == "COMPLETE":
+                        recorder.record_output(answer_excerpt=fixed_answer, audit_codes=[])
+                    recorder.complete(status=status, error_category=category or None, error_text=judgment.error)
+                    recorder.record.visible_tools = list(agent_result.loaded_tools) if agent_result.loaded_tools else []
+                    report.variant_runs.append(
+                        VariantRunOutcome(
+                            case_id=case.case_id,
+                            variant_id=case.variant_id,
+                            judgment=judgment,
+                            record=recorder.record,
+                            agent_mode=mode_value,
+                        )
+                    )
+                    report.run_records.append(recorder.record)
+                    print(
+                        f"  {case.case_id}/{case.variant_id}/{mode_key} "
+                        f"required_retained={judgment.required_retained} "
+                        f"tokens {judgment.original_tokens}->{judgment.working_tokens} "
+                        f"validity={judgment.validity}"
+                    )
+                    await asyncio.sleep(inter_run_delay_s)
+                    continue
+
+                # ── 裸 tool calling / LangGraph ReAct:喂入原始或压缩后的上下文 ──
+                build_result: ContextBuildResult | None
+                try:
+                    fed_message, system_prompt, fed_text, build_result = _plain_feed(builder, case, counter)
+                except ValueError as exc:
+                    # 强制项超预算等构建失败:按 INVALID 运行收尾,不中断批次
+                    recorder.record_context(
+                        {
+                            "strategy": case.context_strategy,
+                            "variantId": case.variant_id,
+                            "status": "FAILED",
+                            "errorCode": "CONTEXT_BUILD_FAILED",
+                            "note": str(exc),
+                            "tokenizerVersion": CONSERVATIVE_TOKENIZER_VERSION,
+                        }
+                    )
+                    judgment = ContextJudgment(error=str(exc), context_error=str(exc))
+                    judgment.run_key = recorder.record.run_key
+                    judgment.repeat_index = repeat_index
+                    judgment.validity = "INVALID"
+                    judgment.error_category = "CONTEXT_BUILD_FAILED"
+                    recorder.record_judgment(asdict(judgment))
+                    recorder.complete(status="INVALID", error_category="CONTEXT_BUILD_FAILED", error_text=str(exc))
+                    report.variant_runs.append(
+                        VariantRunOutcome(
+                            case_id=case.case_id,
+                            variant_id=case.variant_id,
+                            judgment=judgment,
+                            record=recorder.record,
+                            agent_mode=mode_value,
+                        )
+                    )
+                    report.run_records.append(recorder.record)
+                    continue
+
+                executor = RecordingExecutor(FrozenToolExecutor(frozen), recorder)
+                recording_llm = RecordingLLM(llm, recorder, model)
+                try:
+                    if mode_key == "baseline":
+                        plain_result = await asyncio.wait_for(
+                            naive_run(
+                                message=fed_message,
+                                history=list(case.history),
+                                all_cards=all_cards,
+                                llm=recording_llm,
+                                executor=executor,
+                                system_prompt=system_prompt,
+                            ),
+                            timeout=float(os.getenv("EVAL_RUN_TIMEOUT_S", "300")),
+                        )
+                    else:
+                        plain_result = await asyncio.wait_for(
+                            react_official_run(
+                                message=fed_message,
+                                history=list(case.history),
+                                all_cards=all_cards,
+                                llm=recording_llm,
+                                executor=executor,
+                                system_prompt=system_prompt,
+                            ),
+                            timeout=float(os.getenv("EVAL_RUN_TIMEOUT_S", "300")),
+                        )
+                except TimeoutError:
+                    plain_result = BaselineResult(answer="", error="运行超时(timed out):单运行熔断")
+                except Exception as exc:  # noqa: BLE001 —— 异常降级为一次运行,不中断批次
+                    plain_result = BaselineResult(answer="", error=str(exc))
+
+                if build_result is not None:
+                    build_payload = context_build_payload(
+                        build_result,
+                        list(fixture_items_to_context_items(case.fixture_items)),
+                        duration_ms=0,
                         status="COMPLETE",
                     )
-            if build is not None:
-                recorder.attach_context_build(build)
-                recorder.record_context(
-                    {
-                        "strategy": build["strategy"],
-                        "variantId": case.variant_id,
-                        "itemCount": len(build["items"]),
-                        "tokenBudget": build["tokenBudget"],
-                        "originalTokens": build["originalTokens"],
-                        "workingTokens": build["workingTokens"],
-                        "requiredRetained": build["requiredRetained"],
-                        "budgetFit": build["budgetFit"],
-                        "tokenizerVersion": build["tokenizerVersion"],
-                        "counts": build["counts"],
-                    }
-                )
-            else:
-                recorder.record_context(
-                    {
-                        "strategy": case.context_strategy,
-                        "variantId": case.variant_id,
-                        "status": "FAILED",
-                        "errorCode": "CONTEXT_BUILD_FAILED",
-                        "tokenizerVersion": CONSERVATIVE_TOKENIZER_VERSION,
-                    }
-                )
+                    recorder.attach_context_build(build_payload)
+                    recorder.record_context(
+                        {
+                            "strategy": build_payload["strategy"],
+                            "variantId": case.variant_id,
+                            "agentMode": mode_value,
+                            "tokenBudget": build_payload["tokenBudget"],
+                            "originalTokens": build_payload["originalTokens"],
+                            "workingTokens": build_payload["workingTokens"],
+                            "requiredRetained": build_payload["requiredRetained"],
+                            "tokenizerVersion": build_payload["tokenizerVersion"],
+                            "counts": build_payload["counts"],
+                        }
+                    )
 
-            recorder.mark_judgment_started()
-            fixed_answer = agent_result.answer
-            if not agent_result.degraded:
-                guard_report = guardrail.check(agent_result.answer, agent_result.observations)
-                record_output_guardrail(recorder, guard_report)
-                fixed_answer = guard_report.fixed_answer
-                record_treatment_audits(recorder, agent_result.audits, agent_result.observations)
-            working_text = _working_context_text(agent_result, builder, turn)
-            judgment = judge_context_run(
-                case, agent_result, fixed_answer, executor.results, catalog_names, working_text
-            )
-            judgment.duration_ms = round((time.perf_counter() - started) * 1000)
-            judgment.rounds = sum(1 for m in agent_result.messages if getattr(m, "type", "") == "ai")
-            prompt, completion, estimated = _extract_tokens(agent_result)
-            judgment.prompt_tokens = prompt
-            judgment.completion_tokens = completion
-            judgment.tokens_estimated = estimated
-            judgment.error = agent_result.context_error if agent_result.degraded else None
-            judgment.context_error = agent_result.context_error
-            judgment.run_key = recorder.record.run_key
-            judgment.repeat_index = repeat_index
-            status, category = classify_failure(judgment.error)
-            judgment.validity = validity_of(status)
-            judgment.error_category = category or None
-
-            recorder.record_judgment(asdict(judgment))
-            if status == "COMPLETE":
-                recorder.record_output(answer_excerpt=fixed_answer, audit_codes=[])
-            recorder.complete(status=status, error_category=category or None, error_text=judgment.error)
-            recorder.record.visible_tools = list(agent_result.loaded_tools) if agent_result.loaded_tools else []
-            report.variant_runs.append(
-                VariantRunOutcome(
-                    case_id=case.case_id,
-                    variant_id=case.variant_id,
-                    judgment=judgment,
-                    record=recorder.record,
+                recorder.mark_judgment_started()
+                judgment = _judge_plain_context_run(
+                    case,
+                    plain_result,
+                    executor,
+                    catalog_names,
+                    fed_text,
+                    build_result.report if build_result is not None else None,
+                    react_semantics=(mode_key == "react"),
                 )
-            )
-            report.run_records.append(recorder.record)
-            print(
-                f"  {case.case_id}/{case.variant_id} "
-                f"required_retained={judgment.required_retained} "
-                f"tokens {judgment.original_tokens}->{judgment.working_tokens} "
-                f"validity={judgment.validity}"
-            )
-            await asyncio.sleep(inter_run_delay_s)
+                judgment.duration_ms = round((time.perf_counter() - started) * 1000)
+                judgment.run_key = recorder.record.run_key
+                judgment.repeat_index = repeat_index
+                judgment.context_error = plain_result.error
+                status, category = classify_failure(judgment.error)
+                judgment.validity = validity_of(status)
+                judgment.error_category = category or None
+                recorder.record_judgment(asdict(judgment))
+                if status == "COMPLETE":
+                    recorder.record_output(answer_excerpt=plain_result.answer or "", audit_codes=[])
+                recorder.complete(status=status, error_category=category or None, error_text=judgment.error)
+                recorder.record.visible_tools = sorted(card.name for card in all_cards)
+                report.variant_runs.append(
+                    VariantRunOutcome(
+                        case_id=case.case_id,
+                        variant_id=case.variant_id,
+                        judgment=judgment,
+                        record=recorder.record,
+                        agent_mode=mode_value,
+                    )
+                )
+                report.run_records.append(recorder.record)
+                print(
+                    f"  {case.case_id}/{case.variant_id}/{mode_key} "
+                    f"tool_correct={judgment.tool_correct} "
+                    f"tokens {judgment.original_tokens}->{judgment.working_tokens} "
+                    f"validity={judgment.validity}"
+                )
+                await asyncio.sleep(inter_run_delay_s)
     return report
 
 
@@ -571,26 +852,37 @@ def summarize_by_variant(report: ContextEvalReport) -> dict[str, dict[str, Any]]
     grouped: dict[str, list[ContextJudgment]] = {}
     for outcome in report.variant_runs:
         grouped.setdefault(outcome.variant_id, []).append(outcome.judgment)
-    summary: dict[str, dict[str, Any]] = {}
-    for variant_id, judgments in sorted(grouped.items()):
-        valid = [j for j in judgments if j.validity != "INVALID"]
-        summary[variant_id] = {
-            "total_runs": len(judgments),
-            "valid_runs": len(valid),
-            "invalid_runs": len(judgments) - len(valid),
-            "required_retained_runs": sum(1 for j in valid if j.required_retained),
-            "mean_required_retention_rate": (
-                statistics.mean(j.required_retention_rate for j in valid) if valid else 0.0
-            ),
-            "missing_required_fact_runs": sum(1 for j in valid if j.missing_required_facts),
-            "forbidden_fact_leak_runs": sum(1 for j in valid if j.forbidden_facts_in_answer),
-            "injection_isolated_runs": sum(1 for j in valid if j.injection_isolated),
-            "tool_correct_runs": sum(1 for j in valid if j.tool_correct),
-            "mean_original_tokens": round(statistics.mean(j.original_tokens for j in valid)) if valid else 0,
-            "mean_working_tokens": round(statistics.mean(j.working_tokens for j in valid)) if valid else 0,
-            "mean_duration_ms": round(statistics.mean(j.duration_ms for j in valid)) if valid else 0,
-        }
-    return summary
+    return {key: _aggregate_judgments(judgments) for key, judgments in sorted(grouped.items())}
+
+
+def summarize_by_group(report: ContextEvalReport) -> dict[str, dict[str, Any]]:
+    """联动对照聚合:键 = f"{variant_id}:{agent_mode}"(发布侧按同键投影)。"""
+
+    grouped: dict[str, list[ContextJudgment]] = {}
+    for outcome in report.variant_runs:
+        grouped.setdefault(f"{outcome.variant_id}:{outcome.agent_mode}", []).append(outcome.judgment)
+    return {key: _aggregate_judgments(judgments) for key, judgments in sorted(grouped.items())}
+
+
+def _aggregate_judgments(judgments: list[ContextJudgment]) -> dict[str, Any]:
+    valid = [j for j in judgments if j.validity != "INVALID"]
+    return {
+        "total_runs": len(judgments),
+        "valid_runs": len(valid),
+        "invalid_runs": len(judgments) - len(valid),
+        "required_retained_runs": sum(1 for j in valid if j.required_retained),
+        "mean_required_retention_rate": (
+            statistics.mean(j.required_retention_rate for j in valid) if valid else 0.0
+        ),
+        "missing_required_fact_runs": sum(1 for j in valid if j.missing_required_facts),
+        "forbidden_fact_leak_runs": sum(1 for j in valid if j.forbidden_facts_in_answer),
+        "injection_isolated_runs": sum(1 for j in valid if j.injection_isolated),
+        "tool_correct_runs": sum(1 for j in valid if j.tool_correct),
+        "number_hallucination_runs": sum(1 for j in valid if j.number_hallucinations),
+        "mean_original_tokens": round(statistics.mean(j.original_tokens for j in valid)) if valid else 0,
+        "mean_working_tokens": round(statistics.mean(j.working_tokens for j in valid)) if valid else 0,
+        "mean_duration_ms": round(statistics.mean(j.duration_ms for j in valid)) if valid else 0,
+    }
 
 
 def render_markdown(report: ContextEvalReport) -> str:
@@ -632,11 +924,58 @@ def render_markdown(report: ContextEvalReport) -> str:
 
 
 def _report_payload(report: ContextEvalReport) -> dict[str, Any]:
+    linkage = tuple(report.agent_modes) != ("treatment",)
+    if linkage:
+        # 联动对照:变体 × 实现方式双维展开,组键 f"{variant}:{agent_mode}"
+        by_group = summarize_by_group(report)
+        min_valid = int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5"))
+        groups = {
+            key: {"required": min_valid, "valid": agg["valid_runs"], "met": agg["valid_runs"] >= min_valid}
+            for key, agg in by_group.items()
+        }
+        return {
+            "experiment_type": "context-link",
+            "generated_at": date.today().isoformat(),
+            "model": report.model,
+            "case_count": report.case_count,
+            "runs_per_case": report.runs_per_variant,
+            "agent_modes": list(report.agent_modes),
+            "validity_threshold": {
+                "min_valid_per_group": min_valid,
+                "groups": groups,
+                "met": all(row["met"] for row in groups.values()),
+            },
+            "by_group": by_group,
+            "variant_runs": [
+                {
+                    "case_id": outcome.case_id,
+                    "variant_id": outcome.variant_id,
+                    "agent_mode": outcome.agent_mode,
+                    "judgment": asdict(outcome.judgment),
+                }
+                for outcome in report.variant_runs
+            ],
+            "run_records": _run_records_payload(report),
+        }
+    by_variant = summarize_by_variant(report)
+    # 门槛与编排轨道同规则(发布校验消费):每"组"(此处=策略变体)VALID ≥ min
+    min_valid = int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5"))
+    groups = {
+        variant: {"required": min_valid, "valid": agg["valid_runs"], "met": agg["valid_runs"] >= min_valid}
+        for variant, agg in by_variant.items()
+    }
     return {
+        "experiment_type": "context-strategy",
         "generated_at": date.today().isoformat(),
         "model": report.model,
         "case_count": report.case_count,
-        "by_variant": summarize_by_variant(report),
+        "runs_per_case": report.runs_per_variant,
+        "validity_threshold": {
+            "min_valid_per_group": min_valid,
+            "groups": groups,
+            "met": all(row["met"] for row in groups.values()),
+        },
+        "by_variant": by_variant,
         "variant_runs": [
             {
                 "case_id": outcome.case_id,
@@ -645,27 +984,32 @@ def _report_payload(report: ContextEvalReport) -> dict[str, Any]:
             }
             for outcome in report.variant_runs
         ],
-        "run_records": [
-            {
-                "run_key": record.run_key,
-                "case_id": record.case_id,
-                "agent_mode": record.agent_mode,
-                "variant_id": record.variant_id,
-                "repeat_index": record.repeat_index,
-                "status": record.status,
-                "validity": validity_of(record.status),
-                "error_category": record.error_category,
-                "run_id": record.run_id,
-            }
-            for record in report.run_records
-        ],
+        "run_records": _run_records_payload(report),
     }
+
+
+def _run_records_payload(report: ContextEvalReport) -> list[dict[str, Any]]:
+    return [
+        {
+            "run_key": record.run_key,
+            "case_id": record.case_id,
+            "agent_mode": record.agent_mode,
+            "variant_id": record.variant_id,
+            "repeat_index": record.repeat_index,
+            "status": record.status,
+            "validity": validity_of(record.status),
+            "error_category": record.error_category,
+            "run_id": record.run_id,
+        }
+        for record in report.run_records
+    ]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="长上下文压缩对照")
     parser.add_argument("--runs", type=int, default=1, help="每变体重复次数")
     parser.add_argument("--model", type=str, default=os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"))
+    parser.add_argument("--linkage", action="store_true", help="联动对照:原始/压缩内容分别跑三组实现")
     parser.add_argument("--no-write-report", action="store_true")
     args = parser.parse_args(argv)
 
@@ -674,7 +1018,15 @@ def main(argv: list[str] | None = None) -> int:
     if not cases:
         print("库内没有 ctx-* 对照变体;先执行 changes/20260821-long-context-cases.sql")
         return 1
-    report = asyncio.run(run_context_eval(cases=cases, model=args.model, runs_per_variant=args.runs, data=data))
+    report = asyncio.run(
+        run_context_eval(
+            cases=cases,
+            model=args.model,
+            runs_per_variant=args.runs,
+            data=data,
+            agent_modes=LINKAGE_MODES if args.linkage else ("treatment",),
+        )
+    )
     md = render_markdown(report)
     if not args.no_write_report:
         out = _REPO_ROOT / "docs" / "eval" / f"{date.today().strftime('%Y%m%d')}_长上下文压缩对照.md"

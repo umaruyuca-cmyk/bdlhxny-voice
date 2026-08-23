@@ -18,12 +18,40 @@ from bdlh_runtime.tools.search import (
     ToolSearchIndex,
 )
 
-#: 场景标签 → 功能 toolset（3–4 行量级；不含身份标签）。
+#: 通用工具组(全部 96 个通用工具的功能组;复杂多工具用例依赖)
+_GENERIC_TOOLSETS = frozenset(
+    {
+        "web_read",
+        "geo_travel",
+        "calendar_task_project",
+        "personal_utils",
+        "code_git_ci",
+        "database_report",
+        "file_docs",
+        "mail_messaging",
+        "legal_compliance",
+        "cloud_knowledge",
+        "commerce",
+        "spreadsheet_data",
+        "audio_video",
+        "browser_computer",
+        "crm_support",
+        "device_home",
+        "education",
+        "health_fitness",
+        "image_design",
+    }
+)
+
+#: 场景标签 → 功能 toolset。
+#: "general" 含全部工具组(复杂多工具用例的默认场景);
+#: 金融场景保持原有定向装载;未识别场景回落 research。
 SCENE_TOOLSETS: dict[str, frozenset[str]] = {
     "market": frozenset({"market_read", "fundamental_read", "news_read"}),
     "portfolio": frozenset({"portfolio_read", "financial_profile_read", "planning_compute"}),
     "research": frozenset({"market_read", "fundamental_read", "news_read", "planning_compute"}),
     "watch": frozenset({"market_read", "portfolio_read", "financial_profile_read"}),
+    "general": _GENERIC_TOOLSETS | frozenset({"market_read", "fundamental_read", "news_read", "planning_compute"}),
 }
 
 _DEFAULT_SCENE = "research"

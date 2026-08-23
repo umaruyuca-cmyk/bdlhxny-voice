@@ -229,7 +229,7 @@ def client(fake_data: FakeDataClient) -> TestClient:
 def test_health_is_public(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["service"] == "touchstone-run-api"
+    assert response.json()["service"] == "run-api"
 
 
 def test_interactive_docs_are_disabled(client: TestClient) -> None:
@@ -552,3 +552,51 @@ def test_select_case_views_filters_ids_and_skips_ctx_variants() -> None:
     assert [view["id"] for view in picked] == ["research-01", "ctx-port-01"]
     default_only = run_api._select_case_views(catalog, None)
     assert [view["id"] for view in default_only] == ["research-01", "chat-01"]
+
+def test_context_cases_list_ctx_library_metadata(client: TestClient, fake_data: FakeDataClient) -> None:
+    """长上下文库端点:只列带对照变体的用例,带条目构成与 token 估算。"""
+    response = client.get("/api/v1/context-cases", headers={"Authorization": "Bearer test-token"})
+    assert response.status_code == 200
+    cases = response.json()
+    assert [case["case_id"] for case in cases] == ["ctx-mini-port"]
+    meta = cases[0]
+    assert meta["item_count"] == 1
+    assert meta["item_counts"]["required"] == 1
+    assert meta["token_estimate"] > 0
+    assert meta["variants"]["budgeted-comp"]["token_budget"] == 12288
+
+
+def test_context_compress_runs_builder_without_llm(client: TestClient, fake_data: FakeDataClient) -> None:
+    """压缩测试端点:只跑构建器,返回逐条决策与 token 口径,无模型调用。"""
+    response = client.post(
+        "/api/v1/context-compress",
+        headers={"Authorization": "Bearer test-token"},
+        json={"case_id": "ctx-mini-port"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "COMPLETE"
+    assert body["strategy"] == "budgeted"
+    assert body["token_budget"] == 12288
+    assert body["required_retained"] is True
+    assert body["working_tokens"] <= body["token_budget"]
+    assert body["decisions"] and body["decisions"][0]["action"] in {"kept", "compressed", "referenced", "omitted"}
+
+
+def test_context_compress_rejects_unknown_case(client: TestClient, fake_data: FakeDataClient) -> None:
+    response = client.post(
+        "/api/v1/context-compress",
+        headers={"Authorization": "Bearer test-token"},
+        json={"case_id": "no-such-case"},
+    )
+    assert response.status_code == 400
+    assert "未知" in response.json()["detail"]
+
+
+def test_context_link_batch_rejects_unknown_case(client: TestClient, fake_data: FakeDataClient) -> None:
+    response = client.post(
+        "/api/v1/context-link-batches",
+        headers={"Authorization": "Bearer test-token"},
+        json={"case_ids": ["nope"], "runs": 1},
+    )
+    assert response.status_code == 400

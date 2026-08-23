@@ -62,8 +62,9 @@ def _quote_call() -> AIMessage:
     )
 
 
-def test_scoped_mapping_has_four_scenes():
-    assert set(SCENE_TOOLSETS) == {"market", "portfolio", "research", "watch"}
+def test_scoped_mapping_has_five_scenes():
+    """general 场景含全部工具组(复杂多工具用例);金融四场景保持定向装载。"""
+    assert set(SCENE_TOOLSETS) == {"market", "portfolio", "research", "watch", "general"}
 
 
 def test_load_scoped_market_excludes_portfolio(registry_snapshot):
