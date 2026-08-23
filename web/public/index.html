@@ -110,6 +110,7 @@
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
         <li><a href="#dashboard">对照实验数据</a></li>
+        <li><a href="#context">上下文压缩对照</a></li>
         <li><a href="#guide">快速指引</a></li>
       </ul>
     </aside>
@@ -118,6 +119,8 @@
 <h2 id="dashboard">对照实验数据</h2>
 <div id="homeBanner"><div class="placeholder-block">正在读取…</div></div>
 <div id="statCards"><div class="placeholder-block">正在读取关键数字…</div></div>
+    <h2 id="context">上下文压缩对照</h2>
+<div id="contextPreview"></div>
     <h2 id="guide">快速指引</h2>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px">
   <div style="background:#fff;border:1px solid var(--doc-border);border-radius:10px;padding:16px 18px">
@@ -175,6 +178,11 @@
       }
     })
     .catch(function () { /* 缺数据保持占位 */ });
+  // 上下文压缩预览(独立加载,不依赖正式批次)
+  var ctxEl = document.getElementById("contextPreview");
+  if (ctxEl && SHOWCASE.renderContextPreview) {
+    ctxEl.innerHTML = SHOWCASE.renderContextPreview();
+  }
 })();
 </script>
 </body>

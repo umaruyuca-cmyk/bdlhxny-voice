@@ -230,6 +230,11 @@ const announceScript = `
       }
     })
     .catch(function () { /* 缺数据保持占位 */ });
+  // 上下文压缩预览(独立加载,不依赖正式批次)
+  var ctxEl = document.getElementById("contextPreview");
+  if (ctxEl && SHOWCASE.renderContextPreview) {
+    ctxEl.innerHTML = SHOWCASE.renderContextPreview();
+  }
 })();
 </script>`;
 
@@ -249,6 +254,11 @@ const ANNOUNCE = {
       title: "对照实验数据",
       html: `<div id="homeBanner"><div class="placeholder-block">正在读取…</div></div>
 <div id="statCards"><div class="placeholder-block">正在读取关键数字…</div></div>`,
+    },
+    {
+      id: "context",
+      title: "上下文压缩对照",
+      html: `<div id="contextPreview"></div>`,
     },
     {
       id: "guide",

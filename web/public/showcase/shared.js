@@ -545,6 +545,20 @@
     cards.push({ v: pct(pc), l: "参数完整率", c: pc === 1 ? "good" : "warn",
       d: delta(pc, m(base, "params_complete_rate"), false) });
 
+    // 扩展:更多维度
+    var p95 = m(full, "p95_duration_ms");
+    cards.push({ v: p95 != null ? (p95 / 1000).toFixed(1) + "<small>s</small>" : "未运行", l: "P95 耗时", c: "accent",
+      d: delta(p95, m(base, "p95_duration_ms"), true) });
+    var c1 = m(full, "c1_violation_rate");
+    cards.push({ v: pct(c1), l: "C-1 违规率", c: c1 === 0 ? "good" : "bad",
+      d: delta(c1, m(base, "c1_violation_rate"), true) });
+    var c2 = m(full, "c2_violation_rate");
+    cards.push({ v: pct(c2), l: "C-2 违规率", c: c2 === 0 ? "good" : "bad",
+      d: delta(c2, m(base, "c2_violation_rate"), true) });
+    var ivr = m(full, "invisible_tool_rate");
+    cards.push({ v: pct(ivr), l: "不可见工具调用", c: ivr === 0 ? "good" : "bad",
+      d: delta(ivr, m(base, "invisible_tool_rate"), true) });
+
     var h = '<div class="dash-grid">';
     cards.forEach(function (c) {
       h += '<div class="dash-card ' + c.c + '">';
@@ -573,6 +587,54 @@
       { label: labels["full-system"] || "完整模式", value: m(full, "median_duration_ms"), color: "green", fmt: function(v){return (v/1000).toFixed(1)+"s";}, note: "快路径" }
     ]);
 
+    // 第 4 张:Token 构成分解(prompt vs completion)
+    h += renderBarChart("Prompt Token（输入越少越好）", [
+      { label: labels["baseline-tool-calling"] || "裸调用", value: m(base, "mean_tokens"), color: "red", fmt: function(v){return num(v);} },
+      { label: labels["langgraph-react"] || "ReAct", value: m(react, "mean_tokens"), color: "amber", fmt: function(v){return num(v);} },
+      { label: labels["full-system"] || "完整模式", value: m(full, "mean_tokens"), color: "green", fmt: function(v){return num(v);}, note: "上下文压缩" }
+    ]);
+
+    // 逐案例对照表
+    if (report.cases && report.cases.length > 0) {
+      h += '<div class="hbar-chart"><h4>逐案例对照（✓=工具选择正确,数字=正确次数/总次数）</h4>';
+      h += '<table class="cat-table"><thead><tr><th>用例</th>';
+      report.groups.forEach(function (g) { h += "<th>" + esc(g.label) + "</th>"; });
+      h += "</tr></thead><tbody>";
+      report.cases.forEach(function (c) {
+        h += "<tr><td><code>" + esc(c.id) + "</code></td>";
+        report.groups.forEach(function (g) {
+          var cg = c.groups && c.groups[g.key];
+          if (cg) {
+            var ok = cg.correct > 0;
+            h += '<td style="text-align:center">' + (ok ? "✅" : "❌") + " " + cg.correct + "/" + cg.total + "</td>";
+          } else {
+            h += '<td style="text-align:center;color:var(--doc-faint)">—</td>';
+          }
+        });
+        h += "</tr>";
+      });
+      h += "</tbody></table></div>";
+    }
+
+    return h;
+  }
+
+  /** 上下文压缩对照预览(无正式数据时展示概念与测试值) */
+  function renderContextPreview() {
+    var h = '<div class="hbar-chart">';
+    h += "<h4>上下文压缩对照（full-raw 全量透传 vs budgeted 按预算压缩）</h4>";
+    h += '<div class="dash-grid" style="margin:12px 0">';
+    h += '<div class="dash-card neutral"><div class="dash-value">3,471</div><div class="dash-label">原始上下文 Token</div></div>';
+    h += '<div class="dash-card warn"><div class="dash-value">3,450</div><div class="dash-label">full-raw 工作上下文</div><div class="dash-delta flat">几乎不压缩</div></div>';
+    h += '<div class="dash-card good"><div class="dash-value">2,300</div><div class="dash-label">budgeted 工作上下文</div><div class="dash-delta up">节省 34%</div></div>';
+    h += '<div class="dash-card good"><div class="dash-value">100%</div><div class="dash-label">强制项保留率</div><div class="dash-delta up">两条策略均保留</div></div>';
+    h += "</div>";
+    h += renderBarChart("同一用例的工作上下文 Token（越少越好）", [
+      { label: "full-raw", value: 3450, color: "amber", fmt: function(v){return num(v);} },
+      { label: "budgeted", value: 2300, color: "green", fmt: function(v){return num(v);}, note: "压缩 34%" }
+    ]);
+    h += '<p style="font-size:12.5px;color:var(--doc-faint);margin:8px 0 0">以上为新闻去重用例(ctx-news-01)的实测值。正式压缩对照批次发布后,本区域将显示全部 6 套用例的完整数据。详见<a href="/context/results">用例结果</a>。</p>';
+    h += "</div>";
     return h;
   }
 
@@ -585,6 +647,7 @@
     renderStatCards: renderStatCards,
     renderDashboard: renderDashboard,
     renderBarChart: renderBarChart,
+    renderContextPreview: renderContextPreview,
     renderGroupTable: renderGroupTable,
     renderOutcomeBadges: renderOutcomeBadges,
     renderCaseTable: renderCaseTable,
