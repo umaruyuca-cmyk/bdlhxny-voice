@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import pytest
-from tests.helpers_direct_response import DeterministicDirectResponseModel
 
 from bdlh_runtime.runtime.errors import ConfigurationError
 from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import (
     LlmDirectResponseModel,
     create_direct_response_model,
 )
+from tests.helpers_direct_response import DeterministicDirectResponseModel
 
 
 def test_direct_response_factory_no_llm_raises():

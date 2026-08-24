@@ -48,9 +48,7 @@ def test_forbidden_blocks_write_and_jailbreak() -> None:
 def test_composite_task_does_not_get_a_skill_route() -> None:
     """复合任务必须返回 None，由 Understand / GoalAction 自己选能力。"""
 
-    choice = _router()(
-        "找出最近一个月半导体板块涨幅最高的五家，再判断它们和我的持仓是否存在产业链关系"
-    )
+    choice = _router()("找出最近一个月半导体板块涨幅最高的五家，再判断它们和我的持仓是否存在产业链关系")
     assert choice is None
 
 
@@ -160,10 +158,7 @@ class _FakeClient:
 
 def _embedding_payload(texts: list[str]) -> dict:
     # 索引与向量配对、列表顺序打乱：验证编码器按 index 还原输入顺序。
-    data = [
-        {"index": i, "embedding": [float(len(text)), 1.0]}
-        for i, text in enumerate(texts)
-    ]
+    data = [{"index": i, "embedding": [float(len(text)), 1.0]} for i, text in enumerate(texts)]
     return {"data": list(reversed(data))}
 
 

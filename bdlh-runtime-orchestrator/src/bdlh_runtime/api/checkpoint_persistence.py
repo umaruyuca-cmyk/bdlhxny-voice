@@ -11,7 +11,7 @@ from bdlh_runtime.cognitive.checkpoint import (
     extract_checkpoint,
     new_checkpoint_id,
 )
-from bdlh_runtime.cognitive.contracts import CognitiveState, InputEvent, PublicResponse
+from bdlh_runtime.cognitive.contracts import CognitiveState, InputEvent
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.runtime.run_registry import RunLocation
 from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH
@@ -108,9 +108,7 @@ def load_resume_checkpoint(
         return checkpoint
     if not checkpoint_id:
         return None
-    location = (
-        application.run_registry.get(run_id, owner) if application.run_registry is not None else None
-    )
+    location = application.run_registry.get(run_id, owner) if application.run_registry is not None else None
     thread_id = (location.thread_id if location else None) or (state or {}).get("thread_id") or run_id
     message = ""
     final = (state or {}).get("final_response") if isinstance(state, dict) else None
@@ -151,9 +149,7 @@ def mint_pause_checkpoint(
         checkpoint = existing
     else:
         checkpoint_id = (
-            (existing_state or {}).get("checkpoint_id")
-            if isinstance(existing_state, dict)
-            else None
+            (existing_state or {}).get("checkpoint_id") if isinstance(existing_state, dict) else None
         ) or new_checkpoint_id(run_id)
         event = InputEvent(
             event_id=f"pause:{run_id}",

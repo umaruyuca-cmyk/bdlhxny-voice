@@ -4,7 +4,6 @@ import pytest
 
 from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType, InputEvent
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
-from tests.helpers_understand import RuleBasedUnderstandModel
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainBudget,
@@ -15,6 +14,7 @@ from bdlh_runtime.domains.contracts import (
 )
 from bdlh_runtime.domains.dispatcher import DomainDispatcher
 from bdlh_runtime.domains.registry import DomainRegistry
+from tests.helpers_understand import RuleBasedUnderstandModel
 
 
 class Selector:

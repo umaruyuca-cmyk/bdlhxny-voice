@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from tests.helpers_memory import StubMemoryStore
 
 from bdlh_runtime.integrations.mcp.routing_policy import (
     get_route,
     translate_arguments,
 )
+from tests.helpers_memory import StubMemoryStore
 
 # ── StubMemoryStore 行为 ──
 

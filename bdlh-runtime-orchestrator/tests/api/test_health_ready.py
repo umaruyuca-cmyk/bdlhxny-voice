@@ -151,10 +151,7 @@ def test_ready_503_when_remote_memory_down(monkeypatch):
     )
     response = client.get("/api/v1/ready")
     assert response.status_code == 503
-    assert any(
-        item["name"] == "memory_service" and not item["ok"]
-        for item in response.json()["checks"]
-    )
+    assert any(item["name"] == "memory_service" and not item["ok"] for item in response.json()["checks"])
 
 
 def test_production_startup_fails_when_java_actuator_down(monkeypatch):
@@ -216,6 +213,4 @@ def test_ready_503_when_development_missing_internal_token(monkeypatch):
         )
     )
     assert report.ready is False
-    assert any(
-        item.name == "config.java_data_internal_token" and not item.ok for item in report.checks
-    )
+    assert any(item.name == "config.java_data_internal_token" and not item.ok for item in report.checks)

@@ -24,10 +24,7 @@ class ReadinessReport:
         return {
             "status": "READY" if self.ready else "NOT_READY",
             "service": "bdlh-runtime-orchestrator",
-            "checks": [
-                {"name": item.name, "ok": item.ok, "detail": item.detail}
-                for item in self.checks
-            ],
+            "checks": [{"name": item.name, "ok": item.ok, "detail": item.detail} for item in self.checks],
         }
 
 

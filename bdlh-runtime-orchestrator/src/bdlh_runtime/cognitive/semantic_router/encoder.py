@@ -91,9 +91,7 @@ class QwenEmbeddingEncoder:
                 response.raise_for_status()
                 payload = response.json()
         except Exception as exc:  # noqa: BLE001
-            raise EncoderUnavailableError(
-                f"Qwen 向量服务不可用（{self._endpoint}）：{type(exc).__name__}"
-            ) from exc
+            raise EncoderUnavailableError(f"Qwen 向量服务不可用（{self._endpoint}）：{type(exc).__name__}") from exc
         try:
             data = sorted(payload["data"], key=lambda item: item["index"])
             return [list(map(float, item["embedding"])) for item in data]

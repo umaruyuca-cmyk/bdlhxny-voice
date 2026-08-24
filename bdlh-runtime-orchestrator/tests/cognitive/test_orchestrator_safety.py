@@ -9,7 +9,6 @@ from bdlh_runtime.cognitive.contracts import (
     InputEvent,
 )
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
-from tests.helpers_understand import RuleBasedUnderstandModel
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainBudget,
@@ -24,6 +23,7 @@ from bdlh_runtime.guardrails import (
     GuardrailResult,
     GuardrailStage,
 )
+from tests.helpers_understand import RuleBasedUnderstandModel
 
 
 def _event() -> InputEvent:

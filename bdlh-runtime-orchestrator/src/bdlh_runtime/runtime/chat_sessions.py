@@ -62,9 +62,7 @@ class ChatSessionStore(Protocol):
 
     def get_verified_entity_state(self, session_id: str, user_id: str | None) -> dict | None: ...
 
-    def set_verified_entity_state(
-        self, session_id: str, user_id: str | None, state: dict | None
-    ) -> None: ...
+    def set_verified_entity_state(self, session_id: str, user_id: str | None, state: dict | None) -> None: ...
 
     def delete(self, session_id: str, user_id: str | None) -> bool: ...
 
@@ -165,9 +163,7 @@ class InMemoryChatSessionStore:
             state = session.verified_entity_state
             return dict(state) if isinstance(state, dict) else None
 
-    def set_verified_entity_state(
-        self, session_id: str, user_id: str | None, state: dict | None
-    ) -> None:
+    def set_verified_entity_state(self, session_id: str, user_id: str | None, state: dict | None) -> None:
         with self._lock:
             session = self._sessions.get(self._key(session_id, user_id))
             if session is None:

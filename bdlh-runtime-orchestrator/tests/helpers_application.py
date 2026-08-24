@@ -103,8 +103,7 @@ def build_isolated_application(
     finance_runtime = create_finance_runtime(
         capability_registry=capability_registry,
         topic_capabilities={
-            topic: topic_capabilities_for(topic)
-            for topic in ("news", "money_flow", "industry", "web_research")
+            topic: topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")
         },
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,

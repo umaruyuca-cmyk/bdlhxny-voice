@@ -17,9 +17,7 @@ class TurnDecision(StrEnum):
     FRESH = "fresh"  # 无 pending，正常新开/继续无书签路径
 
 
-ASK_WHICH_PROMPT = (
-    "当前还有未完成的分析。回复「继续」以接着刚才的问题，或说明你想换一个新问题。"
-)
+ASK_WHICH_PROMPT = "当前还有未完成的分析。回复「继续」以接着刚才的问题，或说明你想换一个新问题。"
 
 _RESUME_EXACT = frozenset(
     {

@@ -48,9 +48,7 @@ class ImpactExecutor:
             return PortfolioValuationBuilder().build(
                 positions_observation=Observation.model_validate(arguments["positions_observation"]),
                 account_observation=Observation.model_validate(arguments["account_observation"]),
-                quote_observations=[
-                    Observation.model_validate(item) for item in arguments["quote_observations"]
-                ],
+                quote_observations=[Observation.model_validate(item) for item in arguments["quote_observations"]],
                 authenticated_user_id=arguments["authenticated_user_id"],
             )
         if capability == POSITIONS_CAPABILITY:

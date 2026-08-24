@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers_memory import StubMemoryStore
-
 from bdlh_runtime.memory.recall import recall_semantic_memory
 from bdlh_runtime.memory.remote import RemoteMemoryStore
 from bdlh_runtime.memory.writer import MemoryWriter
+from tests.helpers_memory import StubMemoryStore
 
 
 @pytest.mark.asyncio

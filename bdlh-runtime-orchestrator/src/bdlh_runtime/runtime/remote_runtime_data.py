@@ -183,9 +183,7 @@ class RemoteChatSessionStore:
         state = session.verified_entity_state
         return dict(state) if isinstance(state, dict) else None
 
-    def set_verified_entity_state(
-        self, session_id: str, user_id: str | None, state: dict[str, Any] | None
-    ) -> None:
+    def set_verified_entity_state(self, session_id: str, user_id: str | None, state: dict[str, Any] | None) -> None:
         self._client.call(
             "PUT",
             f"/internal/v1/runtime/sessions/{session_id}/verified-entity",

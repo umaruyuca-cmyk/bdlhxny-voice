@@ -151,9 +151,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
 
         # 「继续」等口令回放挂起前的真实用户目标；代码澄清答案仍用本句。
         session_after_route = chat_sessions.get(session.session_id, user_id) or session
-        prior_user_messages = [
-            item.content for item in session_after_route.messages if item.role == "user"
-        ]
+        prior_user_messages = [item.content for item in session_after_route.messages if item.role == "user"]
         cognitive_message = resolve_resume_message(
             user_message=message,
             route=route,
@@ -228,9 +226,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         session_id=session.session_id,
                         message=cognitive_message,
                         enabled_skills=(
-                            frozenset(payload.enabled_skill_ids)
-                            if payload.enabled_skill_ids is not None
-                            else None
+                            frozenset(payload.enabled_skill_ids) if payload.enabled_skill_ids is not None else None
                         ),
                     ),
                     observer=CognitiveExecutionObserverAdapter(progress),
@@ -364,9 +360,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 cognitive_state(run_id, session.session_id, response, user_id),
             )
             # Esc pause 可能已写入 pending；完成路径不得盲目清掉可恢复书签。
-            pause_requested = (
-                application.run_control is not None and application.run_control.is_pause_requested(run_id)
-            )
+            pause_requested = application.run_control is not None and application.run_control.is_pause_requested(run_id)
             if pause_requested:
                 from bdlh_runtime.cognitive.checkpoint import build_checkpoint
                 from bdlh_runtime.cognitive.contracts import PublicResponse

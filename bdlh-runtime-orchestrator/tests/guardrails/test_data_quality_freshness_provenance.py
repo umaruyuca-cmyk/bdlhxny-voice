@@ -41,9 +41,7 @@ def _ok_observation(**overrides: object) -> dict:
 
 
 def test_freshness_blocks_stale_quality_status() -> None:
-    payload = _ok_observation(
-        data_quality={"completeness": 1.0, "freshness": "CURRENT", "quality_status": "STALE"}
-    )
+    payload = _ok_observation(data_quality={"completeness": 1.0, "freshness": "CURRENT", "quality_status": "STALE"})
     hit = evaluate_freshness(payload)
     assert hit is not None
     assert hit[0] == "DATA_STALE"
@@ -73,9 +71,7 @@ def test_provenance_blocks_missing_list_on_success_observation() -> None:
 
 
 def test_provenance_blocks_incomplete_record() -> None:
-    payload = _ok_observation(
-        provenance=[{"source": "provider-a", "tool": "quote", "retrieved_at": ""}]
-    )
+    payload = _ok_observation(provenance=[{"source": "provider-a", "tool": "quote", "retrieved_at": ""}])
     hit = evaluate_provenance_depth(payload)
     assert hit is not None
     assert hit[0] == "PROVENANCE_INCOMPLETE"

@@ -1,5 +1,4 @@
-"""认知内核：契约与受控编排（产品唯一主路径）。
-"""
+"""认知内核：契约与受控编排（产品唯一主路径）。"""
 
 from .contracts import (
     ACTION_NOT_ENABLED,

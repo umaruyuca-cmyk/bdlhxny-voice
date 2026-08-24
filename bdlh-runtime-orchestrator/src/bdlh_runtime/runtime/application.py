@@ -70,9 +70,7 @@ def create_application(
     if not settings.llm_api_key:
         raise ConfigurationError("必须配置 LLM_API_KEY（或 DEEPSEEK_API_KEY）")
     if not settings.fastpath_embedder_base_url:
-        raise ConfigurationError(
-            "生产快路径要求 Qwen 向量服务：请设置 QWEN3_BASE_URL / FASTPATH_EMBEDDER_BASE_URL"
-        )
+        raise ConfigurationError("生产快路径要求 Qwen 向量服务：请设置 QWEN3_BASE_URL / FASTPATH_EMBEDDER_BASE_URL")
     if settings.memory_mode != "remote":
         raise ConfigurationError("BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品路径移除")
     if not settings.memory_service_base_url:
@@ -145,8 +143,7 @@ def create_application(
     finance_runtime = create_finance_runtime(
         capability_registry=capability_registry,
         topic_capabilities={
-            topic: topic_capabilities_for(topic)
-            for topic in ("news", "money_flow", "industry", "web_research")
+            topic: topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")
         },
         gateway_adapter=gateway_adapter,
         web_search_adapter=web_search_adapter,
@@ -155,9 +152,7 @@ def create_application(
         deep_research_executor=deep_research_executor,
         deep_research_enabled=settings.deep_research_enabled and deep_infra_ready,
         execution_environment=(
-            settings.environment
-            if settings.environment in {"production", "development"}
-            else "production"
+            settings.environment if settings.environment in {"production", "development"} else "production"
         ),
     )
     domain_registry = DomainRegistry()

@@ -171,9 +171,7 @@ def build_runtime(executor: FakeFinanceExecutor) -> FinanceRuntime:
 def _topic_map() -> dict[str, list[str]]:
     from bdlh_runtime.cognitive.topic_hints import topic_capabilities_for
 
-    return {
-        topic: topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")
-    }
+    return {topic: topic_capabilities_for(topic) for topic in ("news", "money_flow", "industry", "web_research")}
 
 
 _TOPIC_CAPABILITIES = _topic_map()
@@ -537,9 +535,7 @@ async def test_suitability_appends_valuation_when_snapshot_quotes_ready() -> Non
                 return PortfolioValuationBuilder().build(
                     positions_observation=Observation.model_validate(payload["positions_observation"]),
                     account_observation=Observation.model_validate(payload["account_observation"]),
-                    quote_observations=[
-                        Observation.model_validate(item) for item in payload["quote_observations"]
-                    ],
+                    quote_observations=[Observation.model_validate(item) for item in payload["quote_observations"]],
                     authenticated_user_id=payload["authenticated_user_id"],
                 )
             if capability == "market.get_realtime_quote":

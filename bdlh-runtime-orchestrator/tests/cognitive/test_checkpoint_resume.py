@@ -8,7 +8,6 @@ from bdlh_runtime.cognitive.contracts import (
     CognitiveActionType,
     CognitiveState,
     InputEvent,
-    PublicResponse,
 )
 from bdlh_runtime.cognitive.goal_schema import GoalSpec, SuccessCriterion
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator

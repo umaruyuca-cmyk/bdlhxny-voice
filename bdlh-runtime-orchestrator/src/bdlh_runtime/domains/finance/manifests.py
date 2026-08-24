@@ -21,12 +21,8 @@ _OUTCOME_SLOTS: dict[str, tuple[str, str]] = {
 
 def project_skill_manifest(skill: SkillRecord, snapshot: RegistrySnapshot) -> SkillManifest:
     """把一条 SkillRecord 投影为运行时 SkillManifest。"""
-    required_ops = frozenset(
-        DomainOperation(code) for code, required in skill.operations if required
-    )
-    optional_ops = frozenset(
-        DomainOperation(code) for code, required in skill.operations if not required
-    )
+    required_ops = frozenset(DomainOperation(code) for code, required in skill.operations if required)
+    optional_ops = frozenset(DomainOperation(code) for code, required in skill.operations if not required)
     required_caps = frozenset(name for name, required in skill.capabilities if required)
     optional_caps = frozenset(name for name, required in skill.capabilities if not required)
     toolsets: set[str] = set()
@@ -38,7 +34,8 @@ def project_skill_manifest(skill: SkillRecord, snapshot: RegistrySnapshot) -> Sk
         skill.skill_id,
         ("FinancialDomainOutcome", "stock_research_result"),
     )
-    status = skill.status if skill.status in {"CURRENT", "FOUNDATION", "TARGET", "EXPERIMENTAL", "RETIRED"} else "FOUNDATION"
+    allowed_status = {"CURRENT", "FOUNDATION", "TARGET", "EXPERIMENTAL", "RETIRED"}
+    status = skill.status if skill.status in allowed_status else "FOUNDATION"
     return SkillManifest(
         skill_id=skill.skill_id,
         skill_version=skill.skill_version,

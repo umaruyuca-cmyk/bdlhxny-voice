@@ -14,7 +14,7 @@ from uuid import uuid4
 from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
 
 from .base import MemoryRecord
-from .writer import MemoryWriteResult, MemoryWriter
+from .writer import MemoryWriter, MemoryWriteResult
 
 logger = logging.getLogger(__name__)
 

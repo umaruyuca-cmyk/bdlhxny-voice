@@ -73,7 +73,4 @@ def assert_java_reachable_for_startup(
 
     result = probe_java_data_plane(base_url)
     if not result.ok:
-        raise ConfigurationError(
-            "Java Data Plane 不可达，拒绝启动: "
-            f"{base_url}/actuator/health ({result.detail})"
-        )
+        raise ConfigurationError(f"Java Data Plane 不可达，拒绝启动: {base_url}/actuator/health ({result.detail})")

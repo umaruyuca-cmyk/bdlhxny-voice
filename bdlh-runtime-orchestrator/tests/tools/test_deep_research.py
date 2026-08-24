@@ -6,6 +6,8 @@ import json
 
 import pytest
 from tests.registry.seeded_store import build_seeded_store
+from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
+from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
 
 from bdlh_runtime.registry import (
     allowed_capabilities,
@@ -27,8 +29,6 @@ from bdlh_runtime.tools.deep_research import (
 from bdlh_runtime.tools.deep_research.atomic_search import AtomicSearchRequest
 from bdlh_runtime.tools.deep_research.bailian_provider import ProcessRateLimiter
 from bdlh_runtime.tools.deep_research.contracts import ResearchFinding, ResearchSource
-from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
-from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
 
 
 def _request(**kwargs) -> DeepResearchRequest:

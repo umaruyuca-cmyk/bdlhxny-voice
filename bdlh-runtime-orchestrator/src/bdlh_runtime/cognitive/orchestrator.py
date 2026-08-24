@@ -169,9 +169,7 @@ class CognitiveOrchestrator:
             # select：保留 goals，仅用新消息重选行动
             action = await self._select_action(event, understood=None)
             if state.goals:
-                action = action.model_copy(
-                    update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
-                )
+                action = action.model_copy(update={"related_goal_ids": [goal.goal_id for goal in state.goals]})
             return await self._action_loop(
                 event=event,
                 state=state,
@@ -201,9 +199,7 @@ class CognitiveOrchestrator:
         )
         action = await self._select_action(event, understood=understood)
         if state.goals:
-            action = action.model_copy(
-                update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
-            )
+            action = action.model_copy(update={"related_goal_ids": [goal.goal_id for goal in state.goals]})
         return await self._action_loop(
             event=event,
             state=state,
@@ -379,9 +375,7 @@ class CognitiveOrchestrator:
         if isinstance(continuation, CognitiveAction):
             action = continuation
             if state.goals:
-                action = action.model_copy(
-                    update={"related_goal_ids": [goal.goal_id for goal in state.goals]}
-                )
+                action = action.model_copy(update={"related_goal_ids": [goal.goal_id for goal in state.goals]})
             if return_next_action:
                 return action
             return await self._action_loop(

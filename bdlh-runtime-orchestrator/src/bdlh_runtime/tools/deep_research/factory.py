@@ -41,9 +41,7 @@ def create_deep_research_executor(
             api_key=getattr(settings, "bailian_web_search_api_key", None),
             endpoint=getattr(settings, "bailian_web_search_endpoint", None),
             timeout_seconds=float(getattr(settings, "bailian_web_search_timeout_seconds", 20.0) or 20.0),
-            rate_limit_per_minute=int(
-                getattr(settings, "bailian_web_search_rate_limit_per_minute", 30) or 30
-            ),
+            rate_limit_per_minute=int(getattr(settings, "bailian_web_search_rate_limit_per_minute", 30) or 30),
         )
         if not getattr(provider, "configured", False):
             provider = None

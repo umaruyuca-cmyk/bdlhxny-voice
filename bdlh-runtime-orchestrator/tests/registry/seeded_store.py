@@ -199,10 +199,7 @@ def build_seeded_store() -> InMemoryRegistryStore:
             ),
             capabilities=frozenset(
                 {
-                    *(
-                        (name, name not in {"research.web_search", "research.deep_search"})
-                        for name in SUITABILITY_CAPS
-                    ),
+                    *((name, name not in {"research.web_search", "research.deep_search"}) for name in SUITABILITY_CAPS),
                     ("research.web_search", False),
                     ("research.deep_search", False),
                 }

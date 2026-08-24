@@ -60,9 +60,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=20_000)
     regenerate: bool = False
     # 会话级 Skill 开关快照：None=未提供，[]=本对话全部关闭。
-    enabled_skill_ids: list[str] | None = Field(
-        default=None, alias="enabledSkillIds", max_length=32
-    )
+    enabled_skill_ids: list[str] | None = Field(default=None, alias="enabledSkillIds", max_length=32)
 
     @field_validator("enabled_skill_ids")
     @classmethod

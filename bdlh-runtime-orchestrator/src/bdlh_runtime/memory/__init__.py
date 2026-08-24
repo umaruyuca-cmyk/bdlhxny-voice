@@ -6,7 +6,7 @@
 
 from .base import MemoryRecord, MemoryStore
 from .recall import MemoryRecallResult, recall_semantic_memory
-from .writer import MemoryWriteResult, MemoryWriter
+from .writer import MemoryWriter, MemoryWriteResult
 
 __all__ = [
     "MemoryRecord",

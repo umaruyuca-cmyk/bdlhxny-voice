@@ -107,9 +107,7 @@ def test_engine_insufficient_when_snapshot_mock() -> None:
         snapshot=_snapshot(data_mode=FinancialDataMode.MOCK),
     )
     assert assessment.result == "INSUFFICIENT_INFORMATION"
-    assert any(
-        item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in assessment.required_conditions
-    )
+    assert any(item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in assessment.required_conditions)
 
 
 def test_engine_insufficient_when_snapshot_unavailable() -> None:
@@ -118,9 +116,7 @@ def test_engine_insufficient_when_snapshot_unavailable() -> None:
         snapshot=_snapshot(data_mode=FinancialDataMode.UNAVAILABLE),
     )
     assert assessment.result == "INSUFFICIENT_INFORMATION"
-    assert any(
-        item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in assessment.required_conditions
-    )
+    assert any(item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in assessment.required_conditions)
 
 
 def test_engine_blocks_conservative_with_high_band() -> None:
@@ -131,7 +127,9 @@ def test_engine_blocks_conservative_with_high_band() -> None:
     assert assessment.market_risk_proxy is not None
     assert assessment.market_risk_proxy.band == "HIGH"
     assert assessment.result == "CURRENTLY_NOT_SUITABLE"
-    assert any(item.rule_id == "SUIT-RISK-LEVEL-001" and item.outcome == "BLOCK" for item in assessment.rule_evaluations)
+    assert any(
+        item.rule_id == "SUIT-RISK-LEVEL-001" and item.outcome == "BLOCK" for item in assessment.rule_evaluations
+    )
 
 
 def test_engine_blocks_when_mdd_exceeds_tolerance() -> None:

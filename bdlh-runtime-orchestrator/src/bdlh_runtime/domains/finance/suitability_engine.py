@@ -37,9 +37,7 @@ class SuitabilityEngine:
     def __init__(self, rule_set: SuitabilityV0RuleSet | None = None) -> None:
         resolved = rule_set or default_suitability_v0_rule_set()
         if resolved.status == "REVIEW_CHANGES_REQUIRED":
-            raise ValueError(
-                "SUITABILITY_RULE_SET_BLOCKED: REVIEW_CHANGES_REQUIRED rule sets cannot be assembled"
-            )
+            raise ValueError("SUITABILITY_RULE_SET_BLOCKED: REVIEW_CHANGES_REQUIRED rule sets cannot be assembled")
         self._rule_set = resolved
 
     @property
@@ -232,10 +230,7 @@ class SuitabilityEngine:
                     verification_source="adr_004_approval",
                 )
             )
-        if (
-            self._rule_set.suitable_requires_confirmed_proposed_allocation
-            and not proposed_allocation_confirmed
-        ):
+        if self._rule_set.suitable_requires_confirmed_proposed_allocation and not proposed_allocation_confirmed:
             required.append(
                 SuitabilityCondition(
                     condition_id="SUITABILITY_PROPOSED_AMOUNT_REQUIRED",
@@ -243,11 +238,7 @@ class SuitabilityEngine:
                     verification_source="user_confirmed_proposed_allocation",
                 )
             )
-        if (
-            self._rule_set.status == "APPROVED"
-            and proposed_allocation_confirmed
-            and not required
-        ):
+        if self._rule_set.status == "APPROVED" and proposed_allocation_confirmed and not required:
             return (
                 "SUITABLE",
                 [],
@@ -316,9 +307,7 @@ class SuitabilityEngine:
             annualization_trading_days=thresholds.annualization_trading_days,
         )
 
-    def _rule_research_coverage(
-        self, research: StockResearchResult, evidence: list[str]
-    ) -> SuitabilityRuleEvaluation:
+    def _rule_research_coverage(self, research: StockResearchResult, evidence: list[str]) -> SuitabilityRuleEvaluation:
         level = research.confidence.level
         ok = research.coverage == "COMPLETE" and level in {"MEDIUM", "HIGH"}
         return SuitabilityRuleEvaluation(
@@ -336,20 +325,23 @@ class SuitabilityEngine:
             limitations=[] if ok else ["Research coverage or confidence below suitability gate"],
         )
 
-    def _rule_data_authenticity(
-        self, snapshot: FinancialSnapshot, evidence: list[str]
-    ) -> SuitabilityRuleEvaluation:
+    def _rule_data_authenticity(self, snapshot: FinancialSnapshot, evidence: list[str]) -> SuitabilityRuleEvaluation:
         mode = snapshot.data_mode
         confirmed = mode == FinancialDataMode.USER_CONFIRMED and any(
             item.confirmation_ref for item in snapshot.data_references
         )
         live_ok = mode == FinancialDataMode.LIVE and not snapshot.is_mock
         completeness_ok = snapshot.completeness in {"COMPLETE", "PARTIAL"}
-        ok = (live_ok or confirmed) and completeness_ok and mode not in {
-            FinancialDataMode.MOCK,
-            FinancialDataMode.UNAVAILABLE,
-            FinancialDataMode.TEST_FIXTURE,
-        }
+        ok = (
+            (live_ok or confirmed)
+            and completeness_ok
+            and mode
+            not in {
+                FinancialDataMode.MOCK,
+                FinancialDataMode.UNAVAILABLE,
+                FinancialDataMode.TEST_FIXTURE,
+            }
+        )
         return SuitabilityRuleEvaluation(
             rule_id="SUIT-DATA-AUTHENTICITY-001",
             outcome="PASS" if ok else "UNKNOWN",
@@ -541,9 +533,7 @@ class SuitabilityEngine:
             evidence_refs=list(evidence),
         )
 
-    def _rule_liquidity(
-        self, snapshot: FinancialSnapshot, evidence: list[str]
-    ) -> SuitabilityRuleEvaluation:
+    def _rule_liquidity(self, snapshot: FinancialSnapshot, evidence: list[str]) -> SuitabilityRuleEvaluation:
         liquidity = snapshot.liquidity
         if (
             liquidity is None
@@ -623,9 +613,7 @@ class SuitabilityEngine:
             if horizon == "SHORT_TERM" and band == "HIGH":
                 outcome = "BLOCK"
                 break
-            if (horizon == "SHORT_TERM" and band == "MEDIUM") or (
-                horizon == "MEDIUM_TERM" and band == "HIGH"
-            ):
+            if (horizon == "SHORT_TERM" and band == "MEDIUM") or (horizon == "MEDIUM_TERM" and band == "HIGH"):
                 outcome = "CONDITIONAL"
         return SuitabilityRuleEvaluation(
             rule_id="SUIT-GOAL-HORIZON-001",

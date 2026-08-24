@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 from tests.tools.deep_research_eval.harness import run_gold_suite
+from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
+from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
 
 from bdlh_runtime.tools.deep_research import (
     DeepResearchRequest,
     run_deep_research,
 )
 from bdlh_runtime.tools.deep_research.graph import build_deep_research_graph
-from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
-from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
 
 
 @pytest.mark.asyncio

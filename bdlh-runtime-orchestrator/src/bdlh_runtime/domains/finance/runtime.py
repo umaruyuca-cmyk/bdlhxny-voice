@@ -37,8 +37,8 @@ from .planner import FinancePlanner
 from .research_builder import StockResearchResultBuilder
 from .snapshot_builder import (
     ACCOUNT_CAPABILITY,
-    POSITIONS_CAPABILITY,
     PORTFOLIO_VALUATION_CAPABILITY,
+    POSITIONS_CAPABILITY,
     USER_SNAPSHOT_CAPABILITIES,
     ExecutionEnvironment,
     FinancialSnapshotBuilder,
@@ -297,10 +297,7 @@ class FinanceRuntime:
                             retryable=True,
                         )
 
-                if (
-                    request.requires_financial_snapshot
-                    or request.financial_intent in _IMPACT_INTENTS
-                ):
+                if request.requires_financial_snapshot or request.financial_intent in _IMPACT_INTENTS:
                     await self._try_append_portfolio_valuation(state)
 
                 if plan.analysis_capability is None:
@@ -408,9 +405,7 @@ class FinanceRuntime:
             state.limitations.append("Current portfolio valuation unavailable: contract violation")
             return
         if valued.status not in {"SUCCESS", "PARTIAL"}:
-            state.limitations.append(
-                valued.error_message or "Current portfolio valuation unavailable"
-            )
+            state.limitations.append(valued.error_message or "Current portfolio valuation unavailable")
             return
         state.observations.append(valued)
         state.tool_calls_used += 1
@@ -494,8 +489,7 @@ class FinanceRuntime:
 
         status: str
         if snapshot.completeness == "COMPLETE" and (
-            (portfolio_impact and portfolio_impact.current_exposure)
-            or (goal_impact and goal_impact.affected_goal_ids)
+            (portfolio_impact and portfolio_impact.current_exposure) or (goal_impact and goal_impact.affected_goal_ids)
         ):
             status = "COMPLETE"
         elif snapshot.completeness == "LIMITED" or errors:

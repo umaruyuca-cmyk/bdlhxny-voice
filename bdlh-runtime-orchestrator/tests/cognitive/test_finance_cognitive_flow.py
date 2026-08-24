@@ -4,7 +4,6 @@ import pytest
 
 from bdlh_runtime.cognitive.contracts import CognitiveActionType, InputEvent
 from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
-from tests.helpers_understand import RuleBasedUnderstandModel
 from bdlh_runtime.domains.contracts import (
     ConfidenceAssessment,
     DomainFact,
@@ -28,6 +27,7 @@ from bdlh_runtime.domains.finance.contracts import (
     SuitabilityAssessment,
     SuitabilityCondition,
 )
+from tests.helpers_understand import RuleBasedUnderstandModel
 
 
 def _event(
@@ -61,9 +61,7 @@ class FinanceDispatcher:
         self.ambiguous = ambiguous
         self.requests: list[object] = []
         self.suitability_condition_id = "SUITABILITY_RULE_SET_APPROVAL_REQUIRED"
-        self.suitability_condition_description = (
-            "Suitability rules require an approved ADR-004 rule set"
-        )
+        self.suitability_condition_description = "Suitability rules require an approved ADR-004 rule set"
 
     async def dispatch(self, request: object) -> DomainOutcome:
         self.requests.append(request)
@@ -410,9 +408,7 @@ async def test_suitability_user_facts_confirmation_required_surfaces_profile_con
     store = InMemoryVerifiedEntityStore()
     dispatcher = FinanceDispatcher()
     dispatcher.suitability_condition_id = "USER_FACTS_CONFIRMATION_REQUIRED"
-    dispatcher.suitability_condition_description = (
-        "用户金融事实未确认或不可用，请打开金融资料确认后再评估"
-    )
+    dispatcher.suitability_condition_description = "用户金融事实未确认或不可用，请打开金融资料确认后再评估"
     app = _app(dispatcher, store)
     await app.run(_event("贵州茅台今天怎么样", event_id="event-1"))
     dispatcher.requests.clear()

@@ -84,14 +84,17 @@ def rule_based_understand(message: str, *, goal_id_prefix: str = "g") -> Underst
 
     missing: list[str] = []
     finance_topics = [topic for topic in topics if topic in {"news", "money_flow", "industry"}]
-    if not instruments and not suitability and finance_topics:
-        missing.append("instrument")
-    elif (
+    if (
         not instruments
         and not suitability
-        and not topics
-        and re.search(r"(?:股票|个股|证券|标的|行情|估值|走势)", text)
-        and not re.search(r"(?:持仓|组合|我的账户)", text)
+        and finance_topics
+        or (
+            not instruments
+            and not suitability
+            and not topics
+            and re.search(r"(?:股票|个股|证券|标的|行情|估值|走势)", text)
+            and not re.search(r"(?:持仓|组合|我的账户)", text)
+        )
     ):
         missing.append("instrument")
 

@@ -14,9 +14,7 @@ from .fastpath_data import FASTPATH_ROUTES
 from .router import SemanticRouter
 
 
-def fastpath_routes(
-    *, score_thresholds: Mapping[str, float] | None = None
-) -> list[Route]:
+def fastpath_routes(*, score_thresholds: Mapping[str, float] | None = None) -> list[Route]:
     dispositions = {"RESPOND": RouteDisposition.RESPOND, "BLOCK": RouteDisposition.BLOCK}
     return [
         Route(

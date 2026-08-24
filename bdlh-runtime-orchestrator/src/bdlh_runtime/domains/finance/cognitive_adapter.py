@@ -14,6 +14,7 @@ from bdlh_runtime.cognitive.contracts import (
     InputEvent,
     InputEventType,
 )
+from bdlh_runtime.cognitive.plugin_gates import finance_skill_enabled as finance_skill_enabled
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainOutcome
 from bdlh_runtime.runtime.turn_router import is_resume_signal
 
@@ -178,8 +179,7 @@ class InMemoryVerifiedEntityStore:
                     status = "SOURCE_VALIDATED"
                 verified_turn = int(entity_payload.get("verified_turn") or turn or 0)
                 entity_ref = str(
-                    entity_payload.get("entity_ref")
-                    or f"instrument:{candidate.canonical_symbol}@{candidate.exchange}"
+                    entity_payload.get("entity_ref") or f"instrument:{candidate.canonical_symbol}@{candidate.exchange}"
                 )
                 self._entities[key] = VerifiedInstrumentEntity(
                     candidate=candidate,
@@ -219,12 +219,7 @@ class InMemoryVerifiedEntityStore:
             return
 
 
-from bdlh_runtime.cognitive.plugin_gates import finance_skill_enabled as finance_skill_enabled
-
-
-_SKILL_KNOWLEDGE_UNAVAILABLE_REASON = (
-    "当前知识回答能力暂不可用，请稍后重试。"
-)
+_SKILL_KNOWLEDGE_UNAVAILABLE_REASON = "当前知识回答能力暂不可用，请稍后重试。"
 
 _GENERAL_CHAT_UNAVAILABLE_REASON = "当前对话能力暂不可用，请稍后重试。"
 
@@ -525,9 +520,10 @@ class FinanceCognitiveContinuation:
             ]
             if user_actionable:
                 next_steps = [item.description for item in user_actionable]
-                needs_facts = any(
-                    item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in user_actionable
-                ) or assessment.result == "INSUFFICIENT_INFORMATION"
+                needs_facts = (
+                    any(item.condition_id == "USER_FACTS_CONFIRMATION_REQUIRED" for item in user_actionable)
+                    or assessment.result == "INSUFFICIENT_INFORMATION"
+                )
                 if needs_facts:
                     next_steps.extend(
                         [
@@ -565,9 +561,7 @@ class FinanceCognitiveContinuation:
                 )
             limitations = list(
                 dict.fromkeys(
-                    list(outcome.limitations)
-                    + list(assessment.limitations)
-                    + [item.description for item in required]
+                    list(outcome.limitations) + list(assessment.limitations) + [item.description for item in required]
                 )
             )
             if limitations:
@@ -606,9 +600,7 @@ def _impact_communication_plan(outcome: FinancialDomainOutcome) -> Communication
     if outcome.portfolio_impact is not None:
         exposure = outcome.portfolio_impact.current_exposure
         items = [f"{key}={value:.2f}%" for key, value in sorted(exposure.items())] or ["暂无可用持仓权重"]
-        sections.append(
-            CommunicationSection(section_type="FINDINGS", title="组合暴露", items=items)
-        )
+        sections.append(CommunicationSection(section_type="FINDINGS", title="组合暴露", items=items))
         summary = "已完成组合暴露面评估。"
         structure = "PORTFOLIO_IMPACT"
     else:
@@ -620,15 +612,11 @@ def _impact_communication_plan(outcome: FinancialDomainOutcome) -> Communication
                 f"影响级别：{outcome.goal_impact.impact_level}",
                 *items,
             ]
-        sections.append(
-            CommunicationSection(section_type="FINDINGS", title="目标规划影响", items=items)
-        )
+        sections.append(CommunicationSection(section_type="FINDINGS", title="目标规划影响", items=items))
         summary = f"目标规划影响级别：{outcome.goal_impact.impact_level}。"
         structure = "GOAL_PLANNING"
     if outcome.limitations:
-        sections.append(
-            CommunicationSection(section_type="LIMITATIONS", title="限制", items=list(outcome.limitations))
-        )
+        sections.append(CommunicationSection(section_type="LIMITATIONS", title="限制", items=list(outcome.limitations)))
     kind = "ANSWER" if outcome.status == "COMPLETE" else "LIMITED"
     return CommunicationPlan(
         response_kind=kind,  # type: ignore[arg-type]
@@ -667,14 +655,10 @@ _FINANCE_QUERY_CUES = re.compile(
 
 def _looks_like_finance_query(message: str) -> bool:
     """有代码或金融意图词才视为金融提问；避免普通闲聊被当标的名。"""
-    if _CODE_PATTERN.search(message):
-        return True
-    if _FINANCE_QUERY_CUES.search(message):
+    if _CODE_PATTERN.search(message) or _FINANCE_QUERY_CUES.search(message):
         return True
     # 「什么是贵州茅台」：知识前缀但带发行人，仍应解析标的（纯概念题已在上游分流）。
-    if message.startswith(("什么是", "解释一下")) and _candidate_name(message):
-        return True
-    return False
+    return bool(message.startswith(("什么是", "解释一下")) and _candidate_name(message))
 
 
 def _first_hint(message: str, mapping: dict[str, str]) -> str | None:

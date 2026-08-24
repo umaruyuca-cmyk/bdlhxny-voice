@@ -162,15 +162,12 @@ class Settings:
         jwt_secret = os.getenv("JWT_SECRET")
         memory_mode = os.getenv("BDLH_MEMORY_MODE", "remote").strip().lower()
         if memory_mode != "remote":
-            raise ValueError(
-                "BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品配置移除"
-            )
+            raise ValueError("BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品配置移除")
         return cls(
             environment=environment,
             api_prefix=os.getenv("BDLH_RUNTIME_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS", "30")),
-            auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", "true").lower()
-            in {"1", "true", "yes", "on"},
+            auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", "true").lower() in {"1", "true", "yes", "on"},
             jwt_secret=jwt_secret,
             financial_task_worker_enabled=os.getenv("BDLH_FINANCIAL_TASK_WORKER_ENABLED", "false").lower()
             in {"1", "true", "yes", "on"},
@@ -201,10 +198,8 @@ class Settings:
             ),
             llm_api_key=_first_env("LLM_API_KEY", "DEEPSEEK_API_KEY"),
             qwen3_base_url=os.getenv("QWEN3_BASE_URL"),
-            fastpath_embedder_base_url=os.getenv("FASTPATH_EMBEDDER_BASE_URL")
-            or os.getenv("QWEN3_BASE_URL"),
-            fastpath_embedder_api_key=os.getenv("FASTPATH_EMBEDDER_API_KEY")
-            or os.getenv("QWEN3_API_KEY"),
+            fastpath_embedder_base_url=os.getenv("FASTPATH_EMBEDDER_BASE_URL") or os.getenv("QWEN3_BASE_URL"),
+            fastpath_embedder_api_key=os.getenv("FASTPATH_EMBEDDER_API_KEY") or os.getenv("QWEN3_API_KEY"),
             fastpath_embedder_model=_first_env(
                 "FASTPATH_EMBEDDER_MODEL",
                 "MEM0_EMBEDDER_MODEL",

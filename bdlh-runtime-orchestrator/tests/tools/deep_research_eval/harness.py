@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
+from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
+
 from bdlh_runtime.guardrails import evaluate_research_observation
 from bdlh_runtime.tools.deep_research import (
     DEEP_SEARCH_CAPABILITY,
@@ -18,8 +21,6 @@ from bdlh_runtime.tools.deep_research import (
 )
 from bdlh_runtime.tools.deep_research.atomic_search import AtomicSearchBatch, AtomicSearchHit
 from bdlh_runtime.tools.deep_research.bailian_provider import sanitize_snippet
-from tests.tools.helpers_atomic_search import FakeAtomicSearchPort
-from tests.tools.helpers_deep_research_model import RuleBasedDeepResearchModel
 
 GOLD_PATH = Path(__file__).with_name("gold_cases.json")
 

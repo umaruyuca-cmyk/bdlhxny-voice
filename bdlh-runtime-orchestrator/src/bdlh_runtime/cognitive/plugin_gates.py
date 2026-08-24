@@ -8,9 +8,7 @@ from __future__ import annotations
 import re
 
 #: finance 域当前全部 Skill 的 Registry 裸 id；控制台发送「finance.」前缀形式。
-FINANCE_SKILL_IDS = frozenset(
-    {"stock-research", "portfolio-health", "suitability-evaluation"}
-)
+FINANCE_SKILL_IDS = frozenset({"stock-research", "portfolio-health", "suitability-evaluation"})
 
 _FINANCE_PLUGIN_SIGNAL = re.compile(
     r"(?:股票|个股|证券|标的|行情|走势|估值|市盈率|市净率|市销率|研报|持仓|组合|"
@@ -28,10 +26,7 @@ def finance_skill_enabled(enabled_skills: frozenset[str] | None) -> bool:
     """会话是否显式启用了任一 finance Skill。"""
     if not enabled_skills:
         return False
-    return any(
-        item in FINANCE_SKILL_IDS or item.startswith("finance.")
-        for item in enabled_skills
-    )
+    return any(item in FINANCE_SKILL_IDS or item.startswith("finance.") for item in enabled_skills)
 
 
 def message_suggests_finance_plugin(message: str) -> bool:
@@ -39,10 +34,6 @@ def message_suggests_finance_plugin(message: str) -> bool:
     text = message.strip()
     if not text:
         return False
-    if _FINANCE_PLUGIN_SIGNAL.search(text):
+    if _FINANCE_PLUGIN_SIGNAL.search(text) or _FINANCE_KNOWLEDGE.search(text):
         return True
-    if _FINANCE_KNOWLEDGE.search(text):
-        return True
-    if re.search(r"(?<!\d)\d{6}(?!\d)", text):
-        return True
-    return False
+    return bool(re.search(r"(?<!\d)\d{6}(?!\d)", text))
