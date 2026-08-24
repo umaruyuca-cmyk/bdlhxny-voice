@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from bdlh_runtime.runtime.errors import ConfigurationError
-from bdlh_runtime.runtime.run_registry import (
+from bdlh_runtime.infra.errors import ConfigurationError
+from bdlh_runtime.infra.run_registry import (
     InMemoryRunRegistry,
     RunLocation,
     create_run_registry,

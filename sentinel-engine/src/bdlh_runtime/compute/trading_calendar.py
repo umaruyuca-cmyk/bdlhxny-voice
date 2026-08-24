@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-logger = logging.getLogger("bdlh_runtime.domain.trading_calendar")
+logger = logging.getLogger("bdlh_runtime.compute.trading_calendar")
 
 
 class AShareTradingCalendar:

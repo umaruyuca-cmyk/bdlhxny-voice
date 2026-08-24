@@ -9,7 +9,7 @@ from typing import Any
 from bdlh_runtime.domains.plugin import DomainContinuationRouter, DomainPlugin
 from bdlh_runtime.domains.registry import DomainRegistry
 from bdlh_runtime.guardrails.policies import CompositePlanGuardrail, DefaultPlanGuardrail
-from bdlh_runtime.runtime.manifest_validation import validate_descriptor_against_registry
+from bdlh_runtime.infra.manifest_validation import validate_descriptor_against_registry
 
 
 @dataclass

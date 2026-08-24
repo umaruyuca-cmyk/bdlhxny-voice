@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from bdlh_runtime.contracts.history import AnalysisHistoryRecord
-from bdlh_runtime.runtime.history import InMemoryAnalysisHistoryStore, create_history_store
+from bdlh_runtime.infra.history import InMemoryAnalysisHistoryStore, create_history_store
 
 
 def _record(**overrides) -> AnalysisHistoryRecord:
@@ -46,7 +46,7 @@ def test_list_by_thread_permission_isolation():
 
 
 def test_create_history_store_always_refuses():
-    from bdlh_runtime.runtime.errors import ConfigurationError
+    from bdlh_runtime.infra.errors import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="Java Data Plane"):
         create_history_store()

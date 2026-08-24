@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from bdlh_runtime.domain.trading_calendar import AShareTradingCalendar
+from bdlh_runtime.compute.trading_calendar import AShareTradingCalendar
 
 
 def test_weekend_is_not_trading_day():
@@ -48,7 +48,7 @@ def test_previous_trading_day_returns_self_if_trading_day():
 
 def test_heuristic_holiday_table_2026():
     """启发式（无 exchange_calendars 时）的 2026 节假日表。"""
-    from bdlh_runtime.domain.trading_calendar import _heuristic_is_trading_day
+    from bdlh_runtime.compute.trading_calendar import _heuristic_is_trading_day
 
     # 元旦（周四）休市
     assert _heuristic_is_trading_day(date(2026, 1, 1)) is False

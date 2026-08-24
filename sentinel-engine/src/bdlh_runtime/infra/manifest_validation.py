@@ -3,14 +3,14 @@
 manifest 是 Registry Snapshot 的运行时投影；Capability Registry 是「有哪些能力」
 的唯一真源。冲突时以 Registry 为准并使启动失败，不允许运行时静默跳过。
 
-放在 ``runtime/`` 下（而非 ``domains/``）因为它需要同时依赖 ``tools`` 与
+放在 ``infra/`` 下（而非 ``domains/``）因为它需要同时依赖 ``tools`` 与
 ``domains``——校验职责上移到应用装配层以保持内核纯净度。
 """
 
 from __future__ import annotations
 
 from bdlh_runtime.domains.manifests import DomainDescriptor, SkillManifest
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.errors import ConfigurationError
 from bdlh_runtime.tools.capabilities import CapabilityRegistry, ToolsetName
 
 

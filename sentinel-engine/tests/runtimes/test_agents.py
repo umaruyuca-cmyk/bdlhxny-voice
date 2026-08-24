@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.errors import ConfigurationError
 from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import (
     LlmDirectResponseModel,
     create_direct_response_model,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from bdlh_runtime.cognitive.contracts import InputEvent, InputEventType
 from bdlh_runtime.domains.finance.cognitive_adapter import InMemoryVerifiedEntityStore
 from bdlh_runtime.domains.finance.contracts import FinancialInstrument, InstrumentCandidate
-from bdlh_runtime.runtime.chat_sessions import (
+from bdlh_runtime.infra.chat_sessions import (
     ChatSessionVerifiedEntityPersistence,
     InMemoryChatSessionStore,
 )

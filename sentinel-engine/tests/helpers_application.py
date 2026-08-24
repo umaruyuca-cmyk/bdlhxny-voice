@@ -4,7 +4,7 @@ Use ``build_isolated_application`` for unit/API tests that must exercise HTTP
 routes or Cognitive wiring **without** ``create_application`` production
 fail-closed gates (Java / LLM / Qwen / Remote Memory).
 
-Product startup remains ``bdlh_runtime.runtime.application.create_application``.
+Product startup remains ``bdlh_runtime.infra.application.create_application``.
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from __future__ import annotations
 from typing import Any
 
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import AgentRuntimeApplication
-from bdlh_runtime.runtime.chat_sessions import InMemoryChatSessionStore
-from bdlh_runtime.runtime.history import InMemoryAnalysisHistoryStore
-from bdlh_runtime.runtime.run_control import RunControlPlane
-from bdlh_runtime.runtime.run_registry import InMemoryRunRegistry
-from bdlh_runtime.runtime.run_state import InMemoryRunStateReader
-from bdlh_runtime.runtime.tasks import InMemoryNotificationOutbox, InMemoryTaskStore
+from bdlh_runtime.infra.application import AgentRuntimeApplication
+from bdlh_runtime.infra.chat_sessions import InMemoryChatSessionStore
+from bdlh_runtime.infra.history import InMemoryAnalysisHistoryStore
+from bdlh_runtime.infra.run_control import RunControlPlane
+from bdlh_runtime.infra.run_registry import InMemoryRunRegistry
+from bdlh_runtime.infra.run_state import InMemoryRunStateReader
+from bdlh_runtime.infra.tasks import InMemoryNotificationOutbox, InMemoryTaskStore
 from tests.helpers_direct_response import DeterministicDirectResponseModel
 from tests.helpers_encoder import LexicalEncoder
 from tests.helpers_memory import StubMemoryStore
@@ -57,18 +57,18 @@ def build_isolated_application(
     )
     from bdlh_runtime.domains.assembly import AssemblyContext, assemble_domains
     from bdlh_runtime.domains.dispatcher import DomainDispatcher
+    from bdlh_runtime.infra.chat_sessions import ChatSessionVerifiedEntityPersistence
+    from bdlh_runtime.infra.scheduler import (
+        FinancialTaskScheduler,
+        FinancialTaskWakeupHandler,
+        NotificationOutboxWorker,
+    )
     from bdlh_runtime.integrations.mcp.adapter import create_adapter_from_settings
     from bdlh_runtime.registry.menu import (
         allowed_capabilities,
         apply_feature_gates,
         effective_operations,
         eligible_capabilities,
-    )
-    from bdlh_runtime.runtime.chat_sessions import ChatSessionVerifiedEntityPersistence
-    from bdlh_runtime.runtime.scheduler import (
-        FinancialTaskScheduler,
-        FinancialTaskWakeupHandler,
-        NotificationOutboxWorker,
     )
     from bdlh_runtime.tools.analysis_capability import create_analysis_capability
     from bdlh_runtime.tools.capabilities import load_capability_registry

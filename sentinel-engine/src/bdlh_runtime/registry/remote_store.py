@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
+from bdlh_runtime.infra.remote_runtime_data import RuntimeDataClient
 
 from .models import (
     CapabilityRecord,

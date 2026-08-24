@@ -198,7 +198,7 @@ def create_understand_model(
 ) -> UnderstandModel:
     """装配 Understand：产品路径必须有 LLM。"""
     if llm is None:
-        from bdlh_runtime.runtime.errors import ConfigurationError
+        from bdlh_runtime.infra.errors import ConfigurationError
 
         raise ConfigurationError("Understand 需要 LLM；产品路径不允许规则替身装配")
     return LlmUnderstandModel(

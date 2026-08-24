@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.errors import ConfigurationError
 
 from .defaults import DEFAULT_RUNTIME_ALLOWED_OPERATIONS
 from .models import RegistrySnapshot

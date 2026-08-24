@@ -24,7 +24,7 @@ class PythonAnalysisCapabilityAdapter:
     """当前默认实现：调用本地 Python Analysis Engine。"""
 
     def analyze(self, analysis_input: AnalysisInput) -> AnalysisResult:
-        from bdlh_runtime.domain.analysis_engine import analyze
+        from bdlh_runtime.compute.analysis_engine import analyze
 
         return analyze(analysis_input)
 

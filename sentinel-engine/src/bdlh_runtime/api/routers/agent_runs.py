@@ -11,9 +11,9 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
 from bdlh_runtime.cognitive.contracts import InputEvent
-from bdlh_runtime.runtime.run_registry import RunLocation
-from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
-from bdlh_runtime.runtime.turn_router import TurnDecision, TurnRoute, is_resume_signal, resolve_resume_message
+from bdlh_runtime.infra.run_registry import RunLocation
+from bdlh_runtime.infra.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
+from bdlh_runtime.infra.turn_router import TurnDecision, TurnRoute, is_resume_signal, resolve_resume_message
 
 from ..checkpoint_persistence import (
     load_resume_checkpoint,

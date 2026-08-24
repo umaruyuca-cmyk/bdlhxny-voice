@@ -12,7 +12,7 @@ from bdlh_runtime.cognitive.contracts import (
 )
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH
+from bdlh_runtime.infra.runtime_path import COGNITIVE_RUNTIME_PATH
 from tests.helpers_application import build_isolated_application
 
 

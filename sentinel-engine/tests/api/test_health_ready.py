@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import create_application
-from bdlh_runtime.runtime.dependency_probes import ProbeResult
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.application import create_application
+from bdlh_runtime.infra.dependency_probes import ProbeResult
+from bdlh_runtime.infra.errors import ConfigurationError
 from tests.helpers_application import build_isolated_application
 from tests.helpers_registry import seeded_snapshot
 
@@ -42,7 +42,7 @@ def _full_prod_settings(**overrides) -> Settings:
 
 def test_health_is_liveness_only(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        "bdlh_runtime.infra.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
     )
     client = TestClient(_app())
@@ -54,11 +54,11 @@ def test_health_is_liveness_only(monkeypatch):
 
 def test_ready_fails_when_deep_research_enabled_without_bailian(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        "bdlh_runtime.infra.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
     )
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        "bdlh_runtime.infra.readiness.probe_memory_service",
         lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", True, "HTTP 200"),
     )
     client = TestClient(
@@ -83,11 +83,11 @@ def test_ready_fails_when_deep_research_enabled_without_bailian(monkeypatch):
 
 def test_ready_ok_when_java_probe_passes(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        "bdlh_runtime.infra.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
     )
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        "bdlh_runtime.infra.readiness.probe_memory_service",
         lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", True, "HTTP 200"),
     )
     client = TestClient(
@@ -110,11 +110,11 @@ def test_ready_ok_when_java_probe_passes(monkeypatch):
 
 def test_ready_503_when_java_unreachable(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        "bdlh_runtime.infra.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
     )
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        "bdlh_runtime.infra.readiness.probe_memory_service",
         lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", True, "HTTP 200"),
     )
     client = TestClient(
@@ -133,11 +133,11 @@ def test_ready_503_when_java_unreachable(monkeypatch):
 
 def test_ready_503_when_remote_memory_down(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        "bdlh_runtime.infra.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
     )
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_memory_service",
+        "bdlh_runtime.infra.readiness.probe_memory_service",
         lambda base_url, timeout_seconds=2.0: ProbeResult("memory_service", False, "down"),
     )
     client = TestClient(
@@ -156,7 +156,7 @@ def test_ready_503_when_remote_memory_down(monkeypatch):
 
 def test_production_startup_fails_when_java_actuator_down(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.dependency_probes.probe_java_data_plane",
+        "bdlh_runtime.infra.dependency_probes.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
     )
     with pytest.raises(ConfigurationError, match="Java Data Plane 不可达"):
@@ -177,7 +177,7 @@ def test_production_requires_internal_token():
 def test_development_startup_fails_when_java_actuator_down(monkeypatch):
     """G3：development 与 production 一样，Java 不可达则拒绝启动。"""
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.dependency_probes.probe_java_data_plane",
+        "bdlh_runtime.infra.dependency_probes.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", False, "down"),
     )
     with pytest.raises(ConfigurationError, match="Java Data Plane 不可达"):
@@ -189,7 +189,7 @@ def test_development_startup_fails_when_java_actuator_down(monkeypatch):
 
 def test_ready_503_when_development_missing_internal_token(monkeypatch):
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.readiness.probe_java_data_plane",
+        "bdlh_runtime.infra.readiness.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "HTTP 200"),
     )
     settings = Settings(
@@ -203,7 +203,7 @@ def test_ready_503_when_development_missing_internal_token(monkeypatch):
     app = build_isolated_application(settings=Settings(auth_required=False))
     from types import SimpleNamespace
 
-    from bdlh_runtime.runtime.readiness import evaluate_readiness
+    from bdlh_runtime.infra.readiness import evaluate_readiness
 
     report = evaluate_readiness(
         SimpleNamespace(

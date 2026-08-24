@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.errors import ConfigurationError
 
 
 @dataclass(frozen=True)

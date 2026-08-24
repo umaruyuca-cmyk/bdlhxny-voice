@@ -151,7 +151,7 @@ async def test_llm_understand_rejects_registered_capability_token() -> None:
 
 
 def test_create_understand_model_without_llm_raises() -> None:
-    from bdlh_runtime.runtime.errors import ConfigurationError
+    from bdlh_runtime.infra.errors import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="Understand 需要 LLM"):
         create_understand_model(None)

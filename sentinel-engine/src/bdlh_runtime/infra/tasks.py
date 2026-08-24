@@ -16,7 +16,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.errors import ConfigurationError
 
 
 def utc_now() -> datetime:

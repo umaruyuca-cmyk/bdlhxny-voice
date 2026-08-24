@@ -159,7 +159,7 @@
 **实施要求**：
 
 1. `events.py` 以 pydantic 定义 `WatchEvent`（字段同 WO-T1-1）与 `WatchRule` 视图模型；`dedupe_key` 生成函数集中于此（规则 × 触发窗口 × 方向）；
-2. 包注释引用设计文档 §4.8；`watch/` 不得 import `cognitive/`、`guardrails/` 以外的引擎内部件之外的内容——即仅允许依赖 `runtime/`、`domain/`、`contracts/`（内核纯净度测试要求：先读 `sentinel-engine/tests/architecture/test_kernel_purity.py` 确认既有断言口径，新增包不得引入域字面量）。
+2. 包注释引用设计文档 §4.8；`watch/` 不得 import `cognitive/`、`guardrails/` 以外的引擎内部件之外的内容——即仅允许依赖 `infra/`、`compute/`、`contracts/`（内核纯净度测试要求：先读 `sentinel-engine/tests/architecture/test_kernel_purity.py` 确认既有断言口径，新增包不得引入域字面量）。
 
 **验证方式**：`uv run pytest -q` 全绿（含架构纯净度门禁）。
 
@@ -177,9 +177,9 @@
 
 **保留引用**（只读复用，先读后用）：
 
-- `sentinel-engine/src/bdlh_runtime/runtime/scheduler.py`（M6 调度回路，事件源的挂载点）
-- `sentinel-engine/src/bdlh_runtime/runtime/tasks.py`、`runtime/remote_tasks.py`（M6 价格任务底座：`financial_task` 轮询与结果获取）
-- `sentinel-engine/src/bdlh_runtime/domain/trading_calendar.py`（交易日 / 交易时段判定）
+- `sentinel-engine/src/bdlh_runtime/infra/scheduler.py`（M6 调度回路，事件源的挂载点）
+- `sentinel-engine/src/bdlh_runtime/infra/tasks.py`、`runtime/remote_tasks.py`（M6 价格任务底座：`financial_task` 轮询与结果获取）
+- `sentinel-engine/src/bdlh_runtime/compute/trading_calendar.py`（交易日 / 交易时段判定）
 - `sentinel-engine/src/bdlh_runtime/tools/java_data_adapter.py`（持仓与行情相关数据面调用）
 
 **实施要求**：
@@ -215,7 +215,7 @@
 - 对应设计：§4.5（唤醒态）、§4.6（记忆召回注入）
 - 处置清单：`sentinel-engine/src/bdlh_runtime/watch/wakeup.py`【新增】
 
-**保留引用**：`sentinel-engine/src/bdlh_runtime/runtime/remote_runtime_data.py`（持仓 / 画像取数）、`sentinel-engine/src/bdlh_runtime/memory/recall.py`（L3 召回）、`sentinel-engine/src/bdlh_runtime/runtime/application.py`（引擎装配入口，唤醒运行经此处进入）。
+**保留引用**：`sentinel-engine/src/bdlh_runtime/infra/remote_runtime_data.py`（持仓 / 画像取数）、`sentinel-engine/src/bdlh_runtime/memory/recall.py`（L3 召回）、`sentinel-engine/src/bdlh_runtime/infra/application.py`（引擎装配入口，唤醒运行经此处进入）。
 
 **实施要求**：
 
@@ -237,9 +237,9 @@
 |---|---|
 | `sentinel-engine/src/bdlh_runtime/watch/notify.py` | 【新增】（解读结果 → 通知写入） |
 | `sentinel-engine/src/bdlh_runtime/api/routers/notifications.py` | 【修改】（新增 `POST /{id}/followup`） |
-| `sentinel-engine/src/bdlh_runtime/runtime/chat_sessions.py` | 【修改】（支持携带初始事件上下文建会话） |
+| `sentinel-engine/src/bdlh_runtime/infra/chat_sessions.py` | 【修改】（支持携带初始事件上下文建会话） |
 
-**保留引用**：`sentinel-engine/src/bdlh_runtime/runtime/remote_run_state.py`（run 引用持久化）；Java 侧 `NotificationController`（先读 `sentinel-data/src/main/java/com/bdlh/runtime/api/NotificationController.java` 确认既有通知契约，复用不落新表）。
+**保留引用**：`sentinel-engine/src/bdlh_runtime/infra/remote_run_state.py`（run 引用持久化）；Java 侧 `NotificationController`（先读 `sentinel-data/src/main/java/com/bdlh/runtime/api/NotificationController.java` 确认既有通知契约，复用不落新表）。
 
 **实施要求**：
 
@@ -260,7 +260,7 @@
 | 文件 | 处置 |
 |---|---|
 | `sentinel-engine/src/bdlh_runtime/api/routers/demo_events.py` | 【新增】 |
-| `sentinel-engine/src/bdlh_runtime/runtime/application.py` | 【修改】（仅 `demo_mode=true` 时注册该路由） |
+| `sentinel-engine/src/bdlh_runtime/infra/application.py` | 【修改】（仅 `demo_mode=true` 时注册该路由） |
 
 **实施要求**：
 
@@ -342,7 +342,7 @@
 | `sentinel-engine/src/bdlh_runtime/engine/__init__.py`、`engine/loop.py`、`engine/loader.py` | 【新增】 |
 | `sentinel-engine/prompts/system_base.md`、`prompts/scene_chat.md`、`prompts/scene_direct.md` | 【新增】 |
 
-**保留引用**：`sentinel-engine/src/bdlh_runtime/runtime/llm.py`（`create_llm`，LangChain `ChatOpenAI` 构造）；`sentinel-engine/src/bdlh_runtime/cognitive/semantic_router/`（快路径，整包保留）。
+**保留引用**：`sentinel-engine/src/bdlh_runtime/infra/llm.py`（`create_llm`，LangChain `ChatOpenAI` 构造）；`sentinel-engine/src/bdlh_runtime/cognitive/semantic_router/`（快路径，整包保留）。
 
 **实施要求**：
 
@@ -398,7 +398,7 @@
 
 | 文件 / 目录 | 处置 |
 |---|---|
-| `sentinel-engine/src/bdlh_runtime/runtime/application.py` | 【修改】（装配切换至 `engine/`；删除域插件装配段） |
+| `sentinel-engine/src/bdlh_runtime/infra/application.py` | 【修改】（装配切换至 `engine/`；删除域插件装配段） |
 | `sentinel-engine/src/bdlh_runtime/cognitive/understand.py`、`cognitive/goal_action_selector.py`、`cognitive/goal_schema.py` | 【删除】（伪 function calling 与规则路由） |
 | `sentinel-engine/src/bdlh_runtime/domains/` 整包 | 【删除】（域插件框架，C-5） |
 | `sentinel-engine/src/bdlh_runtime/registry/`（如仅服务于域插件装配） | 【删除】（先确认无其他引用） |

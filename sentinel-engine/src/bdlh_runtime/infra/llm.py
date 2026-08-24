@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-logger = logging.getLogger("bdlh_runtime.runtime.llm")
+logger = logging.getLogger("bdlh_runtime.infra.llm")
 
 DEFAULT_LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 DEFAULT_LLM_MODEL = "glm-4.7"

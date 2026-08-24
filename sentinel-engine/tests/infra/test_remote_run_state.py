@@ -15,8 +15,8 @@ from tests.cognitive.test_checkpoint_resume import (
 from bdlh_runtime.api.checkpoint_persistence import extract_checkpoint
 from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType, InputEvent
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainRequest
-from bdlh_runtime.runtime.remote_run_state import JavaDataPlaneRunStateStore
-from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
+from bdlh_runtime.infra.remote_run_state import JavaDataPlaneRunStateStore
+from bdlh_runtime.infra.remote_runtime_data import RuntimeDataClient
 
 
 @dataclass

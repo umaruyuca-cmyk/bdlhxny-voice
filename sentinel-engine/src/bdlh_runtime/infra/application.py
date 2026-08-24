@@ -312,8 +312,8 @@ def _create_memory(settings: Settings) -> Any:
         raise ConfigurationError("BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品路径移除")
     if not settings.memory_service_base_url or not settings.memory_service_internal_token:
         raise ConfigurationError("Remote Memory Service 需要 MEMORY_SERVICE_BASE_URL 与 MEMORY_SERVICE_INTERNAL_TOKEN")
+    from bdlh_runtime.infra.remote_runtime_data import RuntimeDataClient
     from bdlh_runtime.memory.remote import RemoteMemoryStore
-    from bdlh_runtime.runtime.remote_runtime_data import RuntimeDataClient
 
     if not settings.java_api_base_url or not settings.java_data_internal_token:
         raise ConfigurationError("Remote Memory Store 写入 Outbox 需要 Java Data Plane 服务凭证")

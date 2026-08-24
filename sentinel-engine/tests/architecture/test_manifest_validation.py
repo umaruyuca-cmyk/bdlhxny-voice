@@ -11,8 +11,8 @@ from tests.helpers_registry import build_default_capability_registry, seeded_sna
 
 from bdlh_runtime.domains.finance.manifests import build_finance_descriptor
 from bdlh_runtime.domains.manifests import DomainDescriptor, SkillManifest
-from bdlh_runtime.runtime.errors import ConfigurationError
-from bdlh_runtime.runtime.manifest_validation import (
+from bdlh_runtime.infra.errors import ConfigurationError
+from bdlh_runtime.infra.manifest_validation import (
     validate_descriptor_against_registry,
 )
 
@@ -24,7 +24,7 @@ SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "bdlh_runtime"
 
 FORBIDDEN_MANIFEST_PREFIXES: tuple[str, ...] = (
     "bdlh_runtime.domains.finance",
-    "bdlh_runtime.domain",
+    "bdlh_runtime.compute",
     "bdlh_runtime.integrations",
     "bdlh_runtime.tools",
 )

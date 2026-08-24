@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from bdlh_runtime.contracts.history import AnalysisHistoryRecord
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.errors import ConfigurationError
 
 
 class AnalysisHistoryStore(Protocol):

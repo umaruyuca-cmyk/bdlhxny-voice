@@ -6,9 +6,9 @@ from tests.helpers_registry import seeded_snapshot
 from bdlh_runtime.cognitive.semantic_router.encoder import QwenEmbeddingEncoder
 from bdlh_runtime.cognitive.semantic_router.fastpath_data import MODEL_FASTPATH_THRESHOLDS
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import _fastpath_encoder, _fastpath_thresholds, create_application
-from bdlh_runtime.runtime.dependency_probes import ProbeResult
-from bdlh_runtime.runtime.errors import ConfigurationError
+from bdlh_runtime.infra.application import _fastpath_encoder, _fastpath_thresholds, create_application
+from bdlh_runtime.infra.dependency_probes import ProbeResult
+from bdlh_runtime.infra.errors import ConfigurationError
 
 
 def _full_prod_settings(**overrides) -> Settings:
@@ -29,7 +29,7 @@ def _full_prod_settings(**overrides) -> Settings:
 
 def _patch_remote_assembly(monkeypatch) -> None:
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.dependency_probes.probe_java_data_plane",
+        "bdlh_runtime.infra.dependency_probes.probe_java_data_plane",
         lambda base_url, timeout_seconds=2.0: ProbeResult("java_data_plane", True, "ok"),
     )
     monkeypatch.setattr(
@@ -93,8 +93,8 @@ def test_product_domains_follow_registry_snapshot():
 
 
 def test_isolated_helper_keeps_in_memory_stores():
-    from bdlh_runtime.runtime.history import InMemoryAnalysisHistoryStore
-    from bdlh_runtime.runtime.run_registry import InMemoryRunRegistry
+    from bdlh_runtime.infra.history import InMemoryAnalysisHistoryStore
+    from bdlh_runtime.infra.run_registry import InMemoryRunRegistry
 
     app = build_isolated_application()
     assert isinstance(app.run_registry, InMemoryRunRegistry)
@@ -167,15 +167,15 @@ def test_java_api_base_url_selects_remote_stores(monkeypatch):
 
     _patch_remote_assembly(monkeypatch)
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.remote_runtime_data.create_remote_runtime_stores",
+        "bdlh_runtime.infra.remote_runtime_data.create_remote_runtime_stores",
         _fake_remote,
     )
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.remote_tasks.create_remote_task_stores",
+        "bdlh_runtime.infra.remote_tasks.create_remote_task_stores",
         _fake_remote_tasks,
     )
     monkeypatch.setattr(
-        "bdlh_runtime.runtime.remote_run_state.create_remote_run_state_store",
+        "bdlh_runtime.infra.remote_run_state.create_remote_run_state_store",
         _fake_run_state,
     )
 

@@ -12,8 +12,8 @@ import asyncio
 
 from fastapi import APIRouter, FastAPI, Response
 
-from bdlh_runtime.runtime.application import AgentRuntimeApplication
-from bdlh_runtime.runtime.readiness import evaluate_readiness
+from bdlh_runtime.infra.application import AgentRuntimeApplication
+from bdlh_runtime.infra.readiness import evaluate_readiness
 
 from .auth import JwtAuthenticator
 from .context import ApiContext
@@ -46,7 +46,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
         nonlocal worker_task
         if not application.settings.financial_task_worker_enabled:
             return
-        from bdlh_runtime.runtime.scheduler import run_worker_loop
+        from bdlh_runtime.infra.scheduler import run_worker_loop
 
         worker_task = asyncio.create_task(
             run_worker_loop(

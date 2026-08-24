@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bdlh_runtime.domain.indicators import (
+from bdlh_runtime.compute.indicators import (
     atr_series,
     exponential_moving_average_series,
     macd_series,

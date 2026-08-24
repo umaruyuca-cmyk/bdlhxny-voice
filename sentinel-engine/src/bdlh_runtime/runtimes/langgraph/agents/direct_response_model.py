@@ -57,7 +57,7 @@ class LlmDirectResponseModel:
 def create_direct_response_model(llm: Any) -> DirectResponseModel:
     """装配直接问答模型：产品路径必须有 LLM。"""
     if llm is None:
-        from bdlh_runtime.runtime.errors import ConfigurationError
+        from bdlh_runtime.infra.errors import ConfigurationError
 
         raise ConfigurationError("Direct response 需要 LLM；产品路径不允许确定性替身装配")
     return LlmDirectResponseModel(llm)

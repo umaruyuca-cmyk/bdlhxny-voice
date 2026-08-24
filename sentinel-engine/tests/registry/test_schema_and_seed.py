@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from bdlh_runtime.infra.errors import ConfigurationError
 from bdlh_runtime.registry import InMemoryRegistryStore, load_and_validate
-from bdlh_runtime.runtime.errors import ConfigurationError
 
 from .seeded_store import build_seeded_store
 

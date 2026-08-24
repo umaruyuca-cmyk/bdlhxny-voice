@@ -10,9 +10,9 @@ import logging
 from typing import Any
 
 from bdlh_runtime.cognitive.contracts import PublicResponse
-from bdlh_runtime.runtime.context import RunContext
-from bdlh_runtime.runtime.recovery import graph_config
-from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
+from bdlh_runtime.infra.context import RunContext
+from bdlh_runtime.infra.recovery import graph_config
+from bdlh_runtime.infra.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
 
 from .schemas import RunResponse
 

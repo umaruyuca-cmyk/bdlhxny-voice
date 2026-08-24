@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from bdlh_runtime.runtime.run_state import RunStateStore
+from bdlh_runtime.infra.run_state import RunStateStore
 
 from .auth import AuthenticationError, JwtAuthenticator
 from .identity import effective_user_id

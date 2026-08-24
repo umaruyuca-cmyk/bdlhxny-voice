@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from bdlh_runtime.runtime.llm import DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL
+from bdlh_runtime.infra.llm import DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL
 
 
 def _first_env(*names: str, default: str | None = None) -> str | None:

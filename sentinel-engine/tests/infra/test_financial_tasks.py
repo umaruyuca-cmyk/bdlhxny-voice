@@ -20,12 +20,12 @@ from bdlh_runtime.domains.finance.contracts import (
     MarketSnapshot,
     StockResearchResult,
 )
-from bdlh_runtime.runtime.scheduler import (
+from bdlh_runtime.infra.scheduler import (
     FinancialTaskScheduler,
     FinancialTaskWakeupHandler,
     NotificationOutboxWorker,
 )
-from bdlh_runtime.runtime.tasks import (
+from bdlh_runtime.infra.tasks import (
     FinancialTask,
     FinancialTaskStatus,
     InMemoryNotificationOutbox,

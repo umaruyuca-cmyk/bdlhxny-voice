@@ -27,7 +27,7 @@ KERNEL_TARGETS: tuple[str, ...] = (
 # 2. 禁止被内核依赖的领域模块前缀（相对包路径）
 FORBIDDEN_PREFIXES: tuple[str, ...] = (
     "bdlh_runtime.domains.finance",
-    "bdlh_runtime.domain",  # 金融确定性计算引擎
+    "bdlh_runtime.compute",  # 金融确定性计算引擎
     "bdlh_runtime.integrations",  # 供应商适配
     "bdlh_runtime.tools",  # Capability 实现与 Adapter 路由
 )
@@ -61,7 +61,7 @@ def _imported_modules(tree: ast.AST) -> set[str]:
 
 
 def _relative_import_targets(tree: ast.AST, file_path: Path) -> set[str]:
-    """把相对 import 解析为绝对包路径，避免 `from ..domain import x` 逃过检查。"""
+    """把相对 import 解析为绝对包路径，避免 `from ..compute import x` 逃过检查。"""
     package_parts = ["bdlh_runtime", *file_path.relative_to(SRC_ROOT).parts[:-1]]
     targets: set[str] = set()
     for node in ast.walk(tree):

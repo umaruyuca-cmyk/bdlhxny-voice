@@ -162,7 +162,7 @@ def _lookback_date_range(lookback_days: int) -> tuple[str, str]:
     """
     from datetime import date, timedelta
 
-    from bdlh_runtime.domain.trading_calendar import create_trading_calendar
+    from bdlh_runtime.compute.trading_calendar import create_trading_calendar
 
     calendar = create_trading_calendar()
     end = date.today()

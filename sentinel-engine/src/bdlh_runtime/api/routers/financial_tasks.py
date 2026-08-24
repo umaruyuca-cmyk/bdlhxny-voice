@@ -22,7 +22,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         authorization: str | None = Header(default=None),
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> dict[str, Any]:
-        from bdlh_runtime.runtime.tasks import (
+        from bdlh_runtime.infra.tasks import (
             FinancialTask,
             FinancialTaskStatus,
             PriceThresholdCondition,
@@ -114,7 +114,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         task_id: str,
         authorization: str | None = Header(default=None),
     ) -> dict[str, Any]:
-        from bdlh_runtime.runtime.tasks import TERMINAL_TASK_STATUSES, FinancialTaskStatus, utc_now
+        from bdlh_runtime.infra.tasks import TERMINAL_TASK_STATUSES, FinancialTaskStatus, utc_now
 
         user_id = ctx.authenticated_task_user(authorization)
         task = application.task_store.get(task_id, user_id)

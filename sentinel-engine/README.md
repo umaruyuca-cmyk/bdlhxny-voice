@@ -22,10 +22,10 @@ tools/                统一工具目录：本地 pydantic 工具 + MCP ToolCard
 governance/           治理中间件（现 guardrails/ 演化，T2）
 context/              上下文组装器（会话态 / 唤醒态）
 memory/               L3 记忆客户端（Remote Memory Service）
-domain/               确定性计算（零框架依赖）：指标 / 风险 / 交易日历
+compute/              确定性计算（零框架依赖）：指标 / 风险 / 交易日历
 integrations/mcp/     MCP 接入
 observations/         Observation 标准化
-runtime/              装配、运行控制、checkpoint、任务调度
+infra/                装配、运行控制、checkpoint、任务调度
 prompts/              prompt 资产（独立文件、版本化、eval 门禁）
 domains/              【RETIRED】域插件框架，T2 物理删除（统一工具目录取代）
 ```

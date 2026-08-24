@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from bdlh_runtime.compute.analysis_engine import analyze
 from bdlh_runtime.contracts.analysis import AnalysisInput
 from bdlh_runtime.contracts.observation import DataQuality
-from bdlh_runtime.domain.analysis_engine import analyze
 from bdlh_runtime.tools.java_data_adapter import (
     HttpJavaDataAdapter,
     create_java_adapter,

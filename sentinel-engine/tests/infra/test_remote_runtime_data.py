@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from bdlh_runtime.contracts.history import AnalysisHistoryRecord
-from bdlh_runtime.runtime.remote_runtime_data import (
+from bdlh_runtime.infra.remote_runtime_data import (
     RemoteAnalysisHistoryStore,
     RemoteChatSessionStore,
     RemoteRunRegistry,
     RuntimeDataClient,
 )
-from bdlh_runtime.runtime.run_registry import RunLocation
+from bdlh_runtime.infra.run_registry import RunLocation
 
 
 @dataclass

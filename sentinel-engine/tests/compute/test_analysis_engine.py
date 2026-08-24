@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from bdlh_runtime.compute.analysis_engine import analyze
 from bdlh_runtime.contracts.analysis import AnalysisInput
 from bdlh_runtime.contracts.observation import DataQuality
-from bdlh_runtime.domain.analysis_engine import analyze
 
 # 确定性合成K线：60 根缓涨序列（与 mock 不同，这里手工构造便于断言）
 _SYNTHETIC_BARS = [

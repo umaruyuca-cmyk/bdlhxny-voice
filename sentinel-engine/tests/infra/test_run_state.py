@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import AgentRuntimeApplication
-from bdlh_runtime.runtime.run_state import InMemoryRunStateReader, RunStateReader
+from bdlh_runtime.infra.application import AgentRuntimeApplication
+from bdlh_runtime.infra.run_state import InMemoryRunStateReader, RunStateReader
 
 
 def test_inmemory_put_load_roundtrip():

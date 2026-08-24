@@ -13,8 +13,8 @@ from bdlh_runtime.cognitive.checkpoint import (
 )
 from bdlh_runtime.cognitive.contracts import CognitiveState, InputEvent
 from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
-from bdlh_runtime.runtime.run_registry import RunLocation
-from bdlh_runtime.runtime.runtime_path import COGNITIVE_RUNTIME_PATH
+from bdlh_runtime.infra.run_registry import RunLocation
+from bdlh_runtime.infra.runtime_path import COGNITIVE_RUNTIME_PATH
 
 from .projections import cognitive_state
 

@@ -23,7 +23,7 @@ from bdlh_runtime.contracts.analysis import AnalysisInput, AnalysisResult
 from . import indicators as ind
 from . import risk as risk_metrics
 
-logger = logging.getLogger("bdlh_runtime.domain.analysis_engine")
+logger = logging.getLogger("bdlh_runtime.compute.analysis_engine")
 
 # 分析引擎版本号，随计算逻辑变更递增（写入 methodology_version 供溯源）
 ENGINE_VERSION = "python-analysis.v2"

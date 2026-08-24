@@ -220,7 +220,7 @@ def test_model_thresholds_are_wired_through_catalog() -> None:
 
 def test_fastpath_factory_always_qwen() -> None:
     from bdlh_runtime.config import Settings
-    from bdlh_runtime.runtime.application import _fastpath_encoder, _fastpath_thresholds
+    from bdlh_runtime.infra.application import _fastpath_encoder, _fastpath_thresholds
 
     prod_settings = Settings(
         environment="production",

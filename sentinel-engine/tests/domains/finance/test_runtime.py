@@ -6,13 +6,13 @@ from typing import Any
 import pytest
 from tests.helpers_registry import seeded_snapshot
 
+from bdlh_runtime.compute.analysis_engine import analyze
 from bdlh_runtime.contracts.analysis import AnalysisInput, AnalysisResult
 from bdlh_runtime.contracts.observation import (
     DataQuality,
     Observation,
     ProvenanceRecord,
 )
-from bdlh_runtime.domain.analysis_engine import analyze
 from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation
 from bdlh_runtime.domains.finance.authorization import (
     ANALYSIS_CAPABILITY,

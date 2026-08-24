@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtime.application import create_application
+from bdlh_runtime.infra.application import create_application
 
 _settings = Settings.from_environment()
 
