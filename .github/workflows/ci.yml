@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bdlh-runtime-orchestrator
+        working-directory: sentinel-engine
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bdlh-memory-service
+        working-directory: sentinel-memory
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bdlh-runtime-data
+        working-directory: sentinel-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -55,6 +55,8 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
+      - name: Materialize application.yml
+        run: cp src/main/resources/application.example.yml src/main/resources/application.yml
       - name: Maven test
         run: mvn -B -ntp test
 

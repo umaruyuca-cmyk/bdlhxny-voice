@@ -21,9 +21,10 @@
 
 ## 当前基线
 
-→ [20260817_补齐portfolio_transactions表.md](./20260817_补齐portfolio_transactions表.md)
+→ [20260818_run_projection_checkpoint.md](./20260818_run_projection_checkpoint.md)
 
 历史基线：
 
 - [20260817_空库全量初始化.md](./20260817_空库全量初始化.md)
 - [20260817_SQL字段注释整理.md](./20260817_SQL字段注释整理.md)
+- [20260817_补齐portfolio_transactions表.md](./20260817_补齐portfolio_transactions表.md)

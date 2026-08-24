@@ -11,6 +11,8 @@ CREATE TABLE runtime.run_projection (
     next_stage VARCHAR(128),
     final_response JSONB,
     interrupts JSONB NOT NULL DEFAULT '[]'::jsonb,
+    checkpoint_id VARCHAR(255),
+    cognitive_checkpoint JSONB,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -25,6 +27,8 @@ COMMENT ON COLUMN runtime.run_projection.status IS '运行状态（编排侧状�
 COMMENT ON COLUMN runtime.run_projection.next_stage IS '下一阶段/节点提示（可空）';
 COMMENT ON COLUMN runtime.run_projection.final_response IS '最终对外响应 JSON（可空，运行中为空）';
 COMMENT ON COLUMN runtime.run_projection.interrupts IS '中断/待办列表 JSON 数组';
+COMMENT ON COLUMN runtime.run_projection.checkpoint_id IS 'L0 Cognitive checkpoint_id；Pause/ASK_USER 时非空';
+COMMENT ON COLUMN runtime.run_projection.cognitive_checkpoint IS 'L0 CognitiveCheckpoint JSON，供三游标恢复；完成路径可空';
 COMMENT ON COLUMN runtime.run_projection.updated_at IS '最近更新时间';
 
 CREATE TABLE runtime.run_event (

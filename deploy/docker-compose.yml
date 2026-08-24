@@ -73,7 +73,7 @@ services:
 
   bdlh-runtime-orchestrator:
     build:
-      context: ../bdlh-runtime-orchestrator
+      context: ../sentinel-engine
       dockerfile: Dockerfile
     container_name: bdlh-runtime-orchestrator
     restart: unless-stopped
@@ -137,7 +137,7 @@ services:
 
   bdlh-runtime-data:
     build:
-      context: ../bdlh-runtime-data
+      context: ../sentinel-data
       dockerfile: Dockerfile
     container_name: bdlh-runtime-data
     restart: unless-stopped
@@ -146,10 +146,9 @@ services:
     environment:
       # 以下变量统一来自 deploy/.env（模板见 .env.example）
       # 容器内必须监听 0.0.0.0:8080（与下方端口映射/健康检查及 JAVA_API_BASE_URL 对齐）；
-      # 环境变量优先级高于 jar 内 application-dev.yml 的回环绑定。
+      # 环境变量覆盖 jar 内由 application.example.yml 生成的配置。
       SERVER_ADDRESS: 0.0.0.0
       SERVER_PORT: 8080
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       PG_URL: ${PG_URL}
       PG_USER: ${PG_USER}
       PG_PASSWORD: ${PG_PASSWORD}
@@ -183,7 +182,7 @@ services:
 
   bdlh-memory-service:
     build:
-      context: ../bdlh-memory-service
+      context: ../sentinel-memory
       dockerfile: Dockerfile
     container_name: bdlh-memory-service
     restart: unless-stopped
@@ -217,7 +216,7 @@ services:
 
   bdlh-web-search-adapter:
     build:
-      context: ../bdlh-web-search-adapter
+      context: ../sentinel-search
       dockerfile: Dockerfile
     container_name: bdlh-web-search-adapter
     restart: unless-stopped

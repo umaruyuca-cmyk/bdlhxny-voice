@@ -1,151 +1,74 @@
-# BDLH Agent Runtime — 通用 Agent Runtime / 编排内核
+# Sentinel —— 主动式持仓看护 Agent
 
-> 认知编排 + 领域 Skill 插件 + 统一能力网关 + 四时点治理 + 确定性计算隔离。
-> 金融（股票客观研究、用户适配性评估）是挂载其上的**第一个 Domain Skill**，不是内核本身。
+> 一个 7×24 盯着你的持仓、出事了会主动来找你的投资陪护 Agent。
+> 监视优先、对话次之：事件驱动主动解读，通知之后可以追问；问答能力完整保留。
+> 只读红线：不做交易、不出具投资适当性结论。
 
-## 项目定位
+**产品设计与架构唯一真源：[docs/architecture/00-Sentinel产品设计与架构.md](docs/architecture/00-Sentinel产品设计与架构.md)**（2026-08-18 全新设计，旧设计文档已整体清除，Git 历史可追溯）。实施执行：[docs/prompts/00-Sentinel实施Prompt.md](docs/prompts/00-Sentinel实施Prompt.md)。
 
-内核负责与业务领域无关的那部分：把「理解意图 → 选择行动 → 调度领域 → 受控调用外部能力 → 标准化观察 → 确定性计算 → 治理后表达」固定为可测试、可降级、可审计的链路。具体业务以 Skill 形式挂载，新增 Skill 或 Domain 只需注册，不改内核。
+## 架构速览
 
-| 层 | 归属 | 说明 |
-|---|---|---|
-| API / Auth、认知编排、领域调度、能力网关、观察层、治理、持久化 | 内核 | 描述中不含金融词汇也成立，可迁移到非金融场景 |
-| Domain Runtime（当前唯一实例：`finance`） | 领域 | Skill 宿主：校验、选 Skill、授权求交、组装结果 |
-| Skill（stock-research / portfolio-health / suitability-evaluation） | 领域 | 单一业务能力实现，配合确定性引擎产出结构化结果 |
+```text
+事件源（价格轮询 / 晨报定时 / 演示注入）
+        ↓ WatchEvent（边沿触发 + 去重幂等）
+唤醒调度 → 上下文组装（持仓 + 画像 + 目标记忆）
+        ↓
+   Agent 引擎（问答与看护共用）
+   统一工具目录（本地 pydantic + MCP）→ 工具装载 scoped | tool search
+   → LLM 自主 tool calling 循环 → 每次调用过治理中间件（只读/权限/预算/审计）
+        ↓
+结构化事件解读 → 通知中心 → 追问（携带事件上下文进入问答链路）
+```
 
-定位说明见 [01-BDLH-Agent-Runtime定位与Skill扩展说明.md](docs/architecture/01-BDLH-Agent-Runtime定位与Skill扩展说明.md)，权威架构见 [00-BDLH-Agent-Runtime统一生产架构.md](docs/architecture/00-BDLH-Agent-Runtime统一生产架构.md)。
-
-**当前实施状态：默认用户编排路径已是 Cognitive + Finance；Java Data Plane、Memory Service 与 RocketMQ 基础代码已存在。入口与 Registry 正按开发阶段全量重写，旧 Root Graph、旧字段和双路径不得恢复。** 准确状态见架构文档 §3 与 §20。
+核心设计原则：**模型提议，代码裁决**——路由与语义判断交给模型（embedding 快路径 + tool calling），权限与边界由代码强制（治理中间件 + 场景化工具装载）。
 
 ## 技术栈
 
-- **Agent 编排（唯一）**: Python 3.11+ + FastAPI + LangGraph（`bdlh-runtime-orchestrator`，端口 8090）
-- **Java Data Plane**: Java 17 + Spring Boot（`bdlh-runtime-data`，端口 8081）；当前承载认证与 L4 用户事实，目标按 ADR-017 扩展为单 JVM 模块化数据平面（Runtime Data、Registry、Outbox 与消息适配）
-- **前端**: 独立 Nginx 静态站点（`bdlh-runtime-console`）
-- **外部数据**: cn-financial / akshare-one MCP + Web Search Wrapper（`bdlh-web-search-adapter`）
-- **数据库**: 单实例 PostgreSQL 16，按 `business/runtime/registry/checkpoint/memory` schema 与 Role 隔离；当前不建设 PostgreSQL HA 集群；Redis 7 仅作可选缓存与限流
-- **消息基础设施（目标）**: 单 NameServer + 单 Broker/Proxy RocketMQ；数据库事件统一经 Transactional Outbox 发布，消费者使用 Inbox 幂等
-- **模型**: DeepSeek；确定性金融计算不依赖模型
-- **可选记忆（目标）**: 独立 Python Memory Service + Mem0（L3 语义记忆，复用单实例 PostgreSQL 的 `memory` schema，失败降级为无记忆）
-- **部署**: Docker Compose + Nginx
+- **Agent 引擎**：Python 3.11+ / FastAPI / LangGraph（`sentinel-engine`，端口 8090）；LLM 走 OpenAI 兼容接口（默认智谱 GLM）；Qwen embedding 做语义路由与工具检索
+- **数据面**：Java 17 + Spring Boot（`sentinel-data`，端口 8081）：认证、持仓、风险画像、持久化真源
+- **前端**：Nginx 静态站（`sentinel-console`）：看护 dashboard + 追问抽屉 + 契约测试
+- **外部能力**：MCP（akshare-one / cn-financial）+ 受控 Web 检索（`sentinel-search`）
+- **存储**：PostgreSQL 16（业务 / 运行时 / 目录）+ MySQL（身份权限）；RocketMQ 可选（Outbox 模式，消费者幂等）
+- **部署**：Docker Compose 一键起全栈
 
-历史 Java Agent 链路已从仓库移除；Java 服务不得恢复 Agent/LLM/领域编排，但允许按 ADR-017 承载确定性的结构化数据、事务、Outbox 和消息适配。
+## 快速开始
 
-## 文档索引
-
-### 当前权威文档
-
-| 文档 | 说明 |
-|------|------|
-| [00-BDLH-Agent-Runtime仓库文件管理树.md](docs/00-BDLH-Agent-Runtime仓库文件管理树.md) | 每个目录放什么、哪些文件仍有效、新文件落在哪里 |
-| [00-BDLH-Agent-Runtime统一生产架构.md](docs/architecture/00-BDLH-Agent-Runtime统一生产架构.md) | 生产架构唯一权威基线 |
-| [00-BDLH-Agent-Runtime生产架构.drawio](docs/architecture/00-BDLH-Agent-Runtime生产架构.drawio) | 配套架构图 |
-| [01-BDLH-Agent-Runtime定位与Skill扩展说明.md](docs/architecture/01-BDLH-Agent-Runtime定位与Skill扩展说明.md) | 定位与扩展面说明（非决策来源） |
-| [00-BDLH-Agent-Runtime生产开发实施Prompt.md](docs/prompts/00-BDLH-Agent-Runtime生产开发实施Prompt.md) | 唯一生产开发执行 Prompt |
-| [00-BDLH-Agent-Runtime生产审查规范.md](docs/reviews/00-BDLH-Agent-Runtime生产审查规范.md) | 审查门禁与判定规则 |
-| [01-BDLH-Agent-Runtime当前生产就绪审查报告.md](docs/reviews/01-BDLH-Agent-Runtime当前生产就绪审查报告.md) | 最新一次全局审查快照 |
-
-### 架构决策记录（ADR）
-
-| ADR | 主题 | 状态 |
-|---|---|---|
-| [ADR-004](docs/architecture/ADR-004-Suitability-v0规则阈值与校准.md) | Suitability v0 规则阈值与校准 | `PROPOSED`，未批准前不得进生产规则 |
-| [ADR-009](docs/architecture/ADR-009-Runtime-Domain-Skill定位与命名.md) | Runtime / Domain / Skill 三层定位与命名 | `APPROVED` |
-| [ADR-010](docs/architecture/ADR-010-SkillManifest与DomainDispatcher契约.md) | Skill Manifest 与 Domain Dispatcher 契约 | `APPROVED`（descriptor/manifest 切片已落地） |
-| [ADR-011](docs/architecture/ADR-011-Memory分层与晋升边界.md) | Memory 五层分层与晋升边界 | `APPROVED` |
-| [ADR-012](docs/architecture/ADR-012-多Skill与多Agent演进门槛.md) | 多 Skill 与多 Agent 演进门槛 | `APPROVED` |
-| [ADR-013](docs/architecture/ADR-013-RAG作为可插拔KnowledgeSkill的边界.md) | RAG 作为可插拔 Knowledge Skill 的边界 | `APPROVED`（实施未排期） |
-| [ADR-014](docs/architecture/ADR-014-系统截断与用户截断Pause-Resume与会话入口路由.md) | 系统/用户截断 Pause·Resume 与 Turn Router | `APPROVED` |
-| [ADR-015](docs/architecture/ADR-015-Context组装服务与压缩策略.md) | Context 组装与压缩（挂靠 ADR-011） | `APPROVED` |
-| [ADR-016](docs/architecture/ADR-016-固定复合DeepResearchTool.md) | 固定复合 Deep Research Tool | `APPROVED`（生产切流仍受门禁） |
-| [ADR-017](docs/architecture/ADR-017-DataPlane-RocketMQ与MemoryService部署边界.md) | Java Data Plane、单实例 PostgreSQL、单节点 RocketMQ 与独立 Memory Service | `APPROVED` |
-
-### 设计、评审与运维
-
-| 文档 | 说明 |
-|------|------|
-| [04-Runtime定位升级修改意见.md](docs/reviews/04-Runtime定位升级修改意见.md) | 定位升级的依据与执行清单 |
-| [02-M2股票研究下沉-字段来源矩阵与实施报告.md](docs/reviews/02-M2股票研究下沉-字段来源矩阵与实施报告.md) | M2 字段来源矩阵 |
-| [03-M3前置数据契约差距与实施状态.md](docs/archive/reviews/03-M3前置数据契约差距与实施状态.md) | M3 前置数据契约历史报告 |
-| [历史审查索引.md](docs/reviews/历史审查索引.md) | 已清理审查报告的来源与去向 |
-| [cognitive / domains](bdlh-runtime-orchestrator/src/bdlh_runtime) | Python 编排与 Finance Skill 插件（Cognitive 主路径） |
-| [DOMAIN_DEPLOYMENT.md](deploy/DOMAIN_DEPLOYMENT.md) | HTTPS 路由、MCP 子域名与公网端口收口手册 |
-| [schema.sql](db/schema.sql) | 数据库建表语句 |
-| [docker-compose.yml](deploy/docker-compose.yml) | 容器化部署配置 |
-
-`docs/archive/` 下是版本演进档案、旧 Java 链路时期图与旧提案，只用于追溯，不指导开发。当前唯一配套架构图是 `docs/architecture/00-BDLH-Agent-Runtime生产架构.drawio`。
-
-## 配置
-
-全项目共用一份配置清单：
-
-1. 复制 [`deploy/.env.example`](deploy/.env.example) 为 `deploy/.env`
-2. 按每条中文注释填写真实值（`.env` 不要入库）
-3. 启动：`docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`
-
-各服务只读取自己需要的键；不要再为 Python/Java/Memory/Search 各维护一份分散 `.env`。
+1. 复制 [`deploy/.env.example`](deploy/.env.example) 为 `deploy/.env`，按中文注释填写（`.env` 不入库）
+2. 一键起全栈：
 
 ```powershell
-# Python 编排服务（Agent 唯一编排入口）：运行全量回归
-Set-Location bdlh-runtime-orchestrator
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
+```
+
+本机直跑开发：
+
+```powershell
+# Agent 引擎
+Set-Location sentinel-engine
+uv sync --extra dev
 uv run pytest -q
+uv run uvicorn bdlh_runtime.main:app --reload --host 127.0.0.1 --port 8090
 
-# Java 用户与认证数据服务：本地默认加载 application-dev.yml
-Set-Location bdlh-runtime-data
+# 数据面（首次先复制 application.example.yml 为 application.yml 并按本机改配置）
+Set-Location sentinel-data
 mvn spring-boot:run
-curl http://localhost:8080/actuator/health
-start http://localhost:8080/docs
 ```
-
-生产端口与路由归属（Nginx 收口、Python 8090、Java 8081）见架构文档 §4.1 与 §17；本地端口可能与生产不同，以各服务配置为准。
-
-## Agent Run 回放
-
-对话流会返回 `agent_run` 事件及稳定的 `runId`。运行审计记录由 Python 编排服务提供（生产经 Nginx 收口，架构文档 §4.1 要求 `/api/v1/agent-runs*` 路由到 Python）：
-
-```bash
-curl "http://localhost:8090/api/v1/agent-runs?limit=20"
-curl "http://localhost:8090/api/v1/agent-runs/{runId}"
-```
-
-回放只保存工具 Action、Observation、策略拒绝、错误摘要和最终回答，不保存模型隐藏思维链。`run_id` 与 `thread_id` 语义不同，不得混用。
 
 ## 项目结构
 
+```text
+├── docs/                               # 00-仓库文件管理树（文件归属规则）
+│   ├── architecture/00-…产品设计与架构  # 唯一设计真源
+│   └── prompts/00-…实施Prompt          # 实施执行真源（工单集）
+├── sentinel-engine/          # Python：Agent 引擎 + 看护环 + 工具目录 + 治理
+├── sentinel-data/                  # Java：数据面（认证 / 持仓 / 画像 / 持久化）
+├── sentinel-console/               # Nginx 静态前端与契约测试
+├── sentinel-memory/                # L3 语义记忆独立服务
+├── sentinel-search/            # 公开资料检索封装
+├── db/                                 # 空库全量 schema 与 seed；应用启动不执行 DDL
+└── deploy/                             # Docker Compose、Nginx 与部署配置
 ```
-BDLH Agent Runtime/
-├── README.md
-├── docs/
-│   ├── architecture/            # 权威架构、ADR、配套架构图
-│   ├── prompts/                 # 唯一生产开发执行 Prompt
-│   ├── reviews/                 # 审查规范、就绪报告、阶段实施报告与修改意见
-│   └── archive/                 # 历史档案（旧架构版本、旧图、旧提案，不指导开发）
-├── bdlh-runtime-orchestrator/          # Python + LangGraph：Agent 编排唯一实现
-│   ├── src/bdlh_runtime/  # api / cognitive / domains / tools / observations / guardrails / domain
-│   └── tests/                   # 含 tests/architecture 内核纯净度门禁
-├── bdlh-runtime-data/           # Java：认证与用户金融数据服务（对 Agent 只读）
-├── bdlh-runtime-console/          # 独立 Nginx 静态前端与前端契约测试
-├── bdlh-web-search-adapter/          # 公开资料检索封装
-├── db/                          # 空库全量 schema 与初始 seed；应用启动不执行
-├── deploy/                      # Docker Compose、Nginx 与部署手册
-```
-
-`stock-wrapper` 与 `skills/stock-analysis-skill` 均已退出仓库；勿再部署或配置 `STOCK_WRAPPER_*`。  
-当前可插拔 Skill 在 `bdlh-runtime-orchestrator` 的 `domains/finance/`（Manifest 注册）。
 
 ## 分支管理
 
-单人开发采用 `main` + `dev` 两分支：
-
-| 分支 | 用途 |
-| --- | --- |
-| `main` | 默认开发与发布分支，当前工作区默认使用 |
-| `dev` | 预发布验证分支，需要隔离联调时可切出使用 |
-
-日常直接在 `main` 上开发提交；`dev` 仅在需要隔离验证时使用。不再使用多 worktree 多分支并行模式。
-
-```powershell
-git status                 # 查看当前改动
-git add . && git commit    # 提交
-git push origin main       # 推送
-```
+单人开发 `main` + `dev` 两分支：日常直接在 `main` 提交；`dev` 仅在需要隔离验证时使用。

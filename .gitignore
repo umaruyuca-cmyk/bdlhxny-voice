@@ -1,10 +1,12 @@
 # 历史本地配置（当前不再自动加载）
-bdlh-runtime-data/src/main/resources/application-local.yml
-bdlh-runtime-data/src/main/resources/application-local.properties
+sentinel-data/src/main/resources/application-local.yml
+sentinel-data/src/main/resources/application-local.properties
 
-# 生产密钥配置（本地保留，git 只跟踪 resources 下的 application.example.yml 模板）
-bdlh-runtime-data/src/main/resources/application-dev.yml
-bdlh-runtime-data/src/main/resources/application-prod.yml
+# Java 运行配置：仓库只跟踪 application.example.yml，本地复制为 application.yml
+sentinel-data/src/main/resources/application.yml
+# 历史 Spring profile 文件，不再使用
+sentinel-data/src/main/resources/application-dev.yml
+sentinel-data/src/main/resources/application-prod.yml
 
 # 环境变量文件
 .env

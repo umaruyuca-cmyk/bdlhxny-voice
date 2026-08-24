@@ -6,7 +6,7 @@
 services:
   bdlh-runtime-console:
     build:
-      context: ../bdlh-runtime-console
+      context: ../sentinel-console
       dockerfile: Dockerfile
     container_name: bdlh-runtime-console
     restart: unless-stopped

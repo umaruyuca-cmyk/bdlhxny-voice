@@ -9,7 +9,7 @@
 | 用途 | 公网地址 | Nginx 上游 |
 | --- | --- | --- |
 | 网站与前端 | `https://bdlhxny.com` | Frontend `127.0.0.1:8082` |
-| Python Agent API | `https://bdlhxny.com/api/v1/chat/*`、`/api/v1/conversations*`、`/api/v1/agent-runs*`、`/api/v1/financial-tasks*`、`/api/v1/notifications*` | `127.0.0.1:8090` |
+| Python Agent API | `https://bdlhxny.com/api/v1/chat/*`、`/api/v1/conversations*`、`/api/v1/agent-runs*`、`/api/v1/financial-tasks*`、`/api/v1/notifications*`、`/api/v1/watch-rules*`（Sentinel 重构后新增；`financial-tasks` 将由 watch-rules 承接） | `127.0.0.1:8090` |
 | Java 认证与用户数据 | `https://bdlhxny.com/api/auth/*`、`/api/portfolio/*`、`/api/user/*` 等 | `127.0.0.1:8081` |
 | Web Search | `https://bdlhxny.com/api/search` | `127.0.0.1:3002/api/search` |
 | akshare Streamable HTTP MCP | 无（内对内回环，不公网暴露） | `127.0.0.1:8083/mcp` |
@@ -36,7 +36,7 @@ sudo systemctl reload nginx
 
 不得再用通用 `location /api/` 把全部流量打到单一上游。路由必须明确为：
 
-- `/api/v1/chat/*`、`/api/v1/conversations*`、`/api/v1/agent-runs*`、`/api/v1/financial-tasks*`、`/api/v1/notifications*` → Python Orchestrator；
+- `/api/v1/chat/*`、`/api/v1/conversations*`、`/api/v1/agent-runs*`、`/api/v1/financial-tasks*`、`/api/v1/notifications*`、`/api/v1/watch-rules*` → Python Orchestrator；
 - `/api/auth/*`、`/api/portfolio/*`、`/api/user/*` 等用户数据与认证 → Java Backend；
 - `/api/search` → Web Search Adapter；
 - 其他页面 → Frontend；

@@ -8,7 +8,7 @@
 2. 以其中**最新一份**为当前基线（见 [execution/README.md](./execution/README.md)）
 3. 用**一个超级管理员**按该文件顺序跑 SQL
 
-**当前基线：** [execution/20260817_补齐portfolio_transactions表.md](./execution/20260817_补齐portfolio_transactions表.md)
+**当前基线：** [execution/20260818_run_projection_checkpoint.md](./execution/20260818_run_projection_checkpoint.md)
 
 ## 目录结构
 
@@ -17,7 +17,7 @@
 | `execution/` | 每次 DB 更新追加一份执行说明（管理入口） |
 | `postgresql/bootstrap.sql` | 角色与 Schema 初始化 |
 | `postgresql/schema/` | 全量表结构 |
-| `postgresql/seed/` | 全量种子（当前仅 Registry） |
+| `postgresql/seed/` | 全量种子（能力目录 + `demo_` 前缀演示数据，二者分文件） |
 | `mysql/user_schema.sql` | 认证/用户模块（独立 MySQL，可选） |
 
 已删除：`postgresql/upgrades/`（全量约定下不再使用增量脚本）。

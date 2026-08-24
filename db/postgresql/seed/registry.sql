@@ -83,11 +83,12 @@ INSERT INTO registry.bdlh_runtime_capability_toolset(capability_name, toolset_na
     ('portfolio.build_current_valuation', 'portfolio_read'),
     ('user.get_risk_profile', 'financial_profile_read');
 
--- Skill（stock-research + portfolio-health 默认启用；suitability 仍由请求快照路径驱动）
+-- Skill（stock-research + portfolio-health 默认启用；forecast 为第二 Domain 玩具 Skill；suitability 仍由请求快照路径驱动）
 INSERT INTO registry.bdlh_runtime_skill(skill_id, skill_version, domain, status, enabled) VALUES
     ('stock-research', '1.0.0', 'finance', 'CURRENT', TRUE),
     ('portfolio-health', '1.0.0', 'finance', 'CURRENT', TRUE),
-    ('suitability-evaluation', '1.0.0', 'finance', 'FOUNDATION', FALSE);
+    ('suitability-evaluation', '1.0.0', 'finance', 'FOUNDATION', FALSE),
+    ('forecast', '1.0.0', 'weather', 'EXPERIMENTAL', TRUE);
 
 INSERT INTO registry.bdlh_runtime_skill_operation(skill_id, operation_code, required) VALUES
     ('stock-research', 'READ_MARKET_DATA', TRUE),
@@ -101,7 +102,8 @@ INSERT INTO registry.bdlh_runtime_skill_operation(skill_id, operation_code, requ
     ('suitability-evaluation', 'READ_PORTFOLIO', TRUE),
     ('suitability-evaluation', 'READ_PROFILE', TRUE),
     ('suitability-evaluation', 'RUN_ANALYSIS', TRUE),
-    ('suitability-evaluation', 'READ_PUBLIC_RESEARCH', FALSE);
+    ('suitability-evaluation', 'READ_PUBLIC_RESEARCH', FALSE),
+    ('forecast', 'READ_PUBLIC_RESEARCH', TRUE);
 
 INSERT INTO registry.bdlh_runtime_skill_capability(skill_id, capability_name, required) VALUES
     ('stock-research', 'market.resolve_instrument', TRUE),
