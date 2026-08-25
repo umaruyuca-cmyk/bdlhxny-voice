@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Session 交叉验证 · 实例展示</title>
+<meta name="description" content="同页展示原始 Session、四种上下文策略、压缩前后数据和 4×3 Agent 交叉结果。">
+<link rel="stylesheet" href="../docs/docs.css">
+<link rel="stylesheet" href="../showcase/examples.css">
+<link rel="stylesheet" href="session-cross.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <div class="topbar-actions">
+      <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+    <button class="side-btn" id="sideBtn" type="button" aria-label="展开导航">导航</button>
+  </div>
+</header>
+<div class="docs-layout">
+  <aside class="docs-side" id="docsSide">
+    <nav class="side-tree" aria-label="站点模块导航">
+    <a class="side-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
+        <ul>
+          <li><a href="/about/">系统定位与架构</a></li>
+          <li><a href="/about/banks">题库与数据</a></li>
+          <li><a href="/about/repo">仓库与复现</a></li>
+        </ul>
+      </details>
+    <details class="side-group here" open>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
+        <ul>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/" class="active">Session 交叉验证</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
+        <ul>
+          <li><a href="/experiment/">实验设计</a></li>
+          <li><a href="/experiment/cases">固定题库</a></li>
+          <li><a href="/experiment/reproduce">如何复现</a></li>
+        </ul>
+      </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
+        <ul>
+          <li><a href="/context/">压缩算法</a></li>
+          <li><a href="/context/library">长上下文库</a></li>
+          <li><a href="/context/design">长短对照设计</a></li>
+          <li><a href="/context/results">用例结果</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
+        <ul>
+          <li><a href="/judging/">指标定义</a></li>
+          <li><a href="/judging/metrics">批次指标总表</a></li>
+          <li><a href="/judging/judge">判官说明</a></li>
+          <li><a href="/judging/invalid">无效运行与口径</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
+        <ul>
+          <li><a href="/tools/">全部工具</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
+        <ul>
+          <li><a href="/cases/">全部用例</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
+        <ul>
+          <li><a href="/engine/">Agent 循环</a></li>
+          <li><a href="/engine/loading">工具装载</a></li>
+          <li><a href="/engine/catalog">工具目录</a></li>
+          <li><a href="/engine/governance">治理中间件</a></li>
+          <li><a href="/engine/guardrail">输出护栏</a></li>
+          <li><a href="/engine/tools">工具清单</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
+        <ul>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/run-api">私有运行 API</a></li>
+          <li><a href="/ops/artifacts">工件与发布</a></li>
+          <li><a href="/ops/deploy">部署与边界</a></li>
+          <li><a href="/ops/roadmap">路线图</a></li>
+        </ul>
+      </details>
+  </nav>
+    <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
+
+  </aside>
+  <main class="docs-main">
+    <div class="detail-layout">
+      <aside class="page-toc" aria-label="本页目录">
+        <h4 class="page-toc-title">本页目录</h4>
+        <ul>
+          <li><a href="#object">实验对象</a></li>
+          <li><a href="#conditions">交叉条件</a></li>
+          <li><a href="#comparison">压缩前后</a></li>
+          <li><a href="#matrix">交叉结果</a></li>
+        </ul>
+      </aside>
+      <div class="detail-body">
+        <div class="example-head">
+          <div>
+            <h1>Session 交叉验证</h1>
+            <p>一页看清同一份 Session 如何生成四种上下文输入，并分别交给三种 Agent 实现。当前只完成展示框架，不包含验证数据。</p>
+          </div>
+          <span class="example-state">尚未运行</span>
+        </div>
+
+        <div class="note"><strong>统一条件</strong>：原始 Session、当前问题、模型、温度、可见工具、冻结 Mock 数据和评判标准保持一致。四种策略独立生成输入；只有“按预算选择和压缩”使用项目压缩算法。</div>
+
+        <h2 id="object">实验对象</h2>
+        <div class="example-toolbar">
+          <div class="example-control">
+            <label for="sessionSelector">长上下文 Session</label>
+            <select id="sessionSelector" disabled><option>暂无已发布交叉验证实例</option></select>
+          </div>
+          <div class="example-control">
+            <label>Session 版本 / 原文哈希</label>
+            <input value="—" disabled>
+          </div>
+          <a class="btn ghost" href="/context/library">查看长上下文库</a>
+        </div>
+        <div class="frame-grid">
+          <section class="frame-card">
+            <span class="frame-kicker">Current question</span>
+            <h3>当前问题</h3>
+            <div class="empty-state">暂无已发布的当前问题</div>
+          </section>
+          <section class="frame-card">
+            <span class="frame-kicker">Session profile</span>
+            <h3>原始 Session 构成</h3>
+            <dl class="field-list">
+              <div><dt>事件数</dt><dd>—</dd></div>
+              <div><dt>用户 / 助手消息</dt><dd>—</dd></div>
+              <div><dt>工具调用对</dt><dd>—</dd></div>
+              <div><dt>原始 Token</dt><dd>—</dd></div>
+            </dl>
+          </section>
+        </div>
+
+        <h2 id="conditions">四种上下文 × 三种 Agent</h2>
+        <p>行表示上下文处理方式，列表示 Agent 实现方式。这样能分别观察“上下文处理差异”和“Agent 编排差异”，不会把两类变量混在一起。</p>
+        <div class="condition-table">
+          <table>
+            <thead><tr><th>上下文方式</th><th>处理说明</th><th>裸 Tool Calling</th><th>LangGraph ReAct</th><th>完整工程模式</th></tr></thead>
+            <tbody>
+              <tr><td><strong>完整 Session</strong></td><td>不压缩，作为原文基准</td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td></tr>
+              <tr><td><strong>最近窗口</strong></td><td>仅保留预算内最近事件</td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td></tr>
+              <tr><td><strong>一次摘要</strong></td><td>较早历史压成一份摘要</td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td></tr>
+              <tr><td><strong>按预算选择和压缩</strong></td><td>使用项目算法选择表示方式</td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td><td><span class="matrix-empty">待运行</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="comparison">压缩前和压缩后</h2>
+        <p>选择一种上下文方式后，左侧固定显示完整原始 Session，右侧显示该方式实际发送给模型的上下文。页面不得只展示压缩率而隐藏文本变化。</p>
+        <div class="compare-toolbar" aria-label="上下文方式">
+          <button class="compare-tab active" type="button" disabled>完整 Session</button>
+          <button class="compare-tab" type="button" disabled>最近窗口</button>
+          <button class="compare-tab" type="button" disabled>一次摘要</button>
+          <button class="compare-tab" type="button" disabled>按预算选择和压缩</button>
+        </div>
+        <div class="frame-grid three">
+          <section class="frame-card"><span class="frame-kicker">Original</span><h3>原始 Token</h3><div class="empty-state compact">—</div></section>
+          <section class="frame-card"><span class="frame-kicker">Working</span><h3>模型输入 Token</h3><div class="empty-state compact">—</div></section>
+          <section class="frame-card"><span class="frame-kicker">Reduction</span><h3>压缩比例</h3><div class="empty-state compact">—</div></section>
+        </div>
+        <div class="compare-grid">
+          <section class="compare-pane">
+            <span class="frame-kicker">Before</span>
+            <h3>压缩前：完整 Session</h3>
+            <p class="pane-meta">按时间顺序展示用户、助手、工具调用和工具返回</p>
+            <div class="empty-state">暂无原始 Session 发布数据</div>
+          </section>
+          <div class="compare-arrow" aria-hidden="true">→</div>
+          <section class="compare-pane">
+            <span class="frame-kicker">After</span>
+            <h3>压缩后：实际模型输入</h3>
+            <p class="pane-meta">展示最终消息、摘要、引用以及省略说明</p>
+            <div class="empty-state">暂无编译后的模型输入数据</div>
+          </section>
+        </div>
+        <div class="bucket-strip" aria-label="事件处理结果">
+          <div class="bucket-slot"><b>原文保留</b><span>— 个事件</span></div>
+          <div class="bucket-slot"><b>压缩表示</b><span>— 个事件</span></div>
+          <div class="bucket-slot"><b>引用保留</b><span>— 个事件</span></div>
+          <div class="bucket-slot"><b>省略</b><span>— 个事件</span></div>
+        </div>
+
+        <h2 id="matrix">交叉验证结果</h2>
+        <p>有正式运行后，每个单元格展示有效运行数、任务成功、工具选择、约束保留、Token、时长和运行工件入口。当前不执行验证，因此全部保持空值。</p>
+        <div class="matrix-frame">
+          <table>
+            <thead><tr><th>上下文方式</th><th>裸 Tool Calling</th><th>LangGraph ReAct</th><th>完整工程模式</th></tr></thead>
+            <tbody>
+              <tr><td>完整 Session</td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td></tr>
+              <tr><td>最近窗口</td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td></tr>
+              <tr><td>一次摘要</td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td></tr>
+              <tr><td>按预算选择和压缩</td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td><td><span class="matrix-empty">暂无数据</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../docs/docs.js"></script>
+</body>
+</html>

@@ -1,212 +1,286 @@
 {
-  "generated_from": "db/postgresql/changes/20260821-long-context-cases.sql",
+  "generated_from": "三套场景化冻结 Session @ git a950545ab913",
+  "generated_at": "2026-08-24T09:02:16.160Z",
+  "git_commit": "a950545ab913cb832641b11481e570e2e495ad18",
   "tokenizer_version": "conservative-cjk1-latin4-v1",
-  "cases": [
+  "kind": "scenario-frozen-session-corpus",
+  "entries": [
     {
-      "case_id": "ctx-port-01",
-      "title": "长持仓上下文中的风险与换房目标",
-      "direction": "金融 · 组合诊断",
-      "scene": "portfolio",
-      "authenticated": true,
-      "message": "我的持仓现在值多少钱，主要风险在哪里，是否影响18个月后的换房计划？",
-      "item_count": 564,
-      "token_estimate": 8847,
-      "item_counts": {
-        "required": 11,
-        "compressible": 528,
-        "reference_only": 0,
-        "distractor": 25
+      "id": "ctx-session-product-evolution-01",
+      "kind": "Session（场景化冻结）",
+      "kind_key": "session",
+      "title": "产品边界与长上下文文库演进 Session",
+      "summary": "从公开只读实验平台、Mock Tools、数据库边界一路讨论到长上下文文库替换，包含多次误解纠正、真实文件读取和最终范围收敛。",
+      "disclosure": "根据项目讨论脉络和仓库真实文件整理的可复现评测 Session，不是未经编辑的原始聊天逐字稿。",
+      "tokenizer_version": "conservative-cjk1-latin4-v1",
+      "stats": {
+        "event_count": 124,
+        "user_messages": 45,
+        "assistant_messages": 47,
+        "tool_pairs": 16,
+        "failed_tool_pairs": 2,
+        "first_at": "2026-08-18T09:20:00+08:00",
+        "last_at": "2026-08-23T10:43:00.000Z"
       },
-      "has_injection": true,
-      "has_cross_user": true,
-      "has_stale": true,
-      "required_fact_keys": [
-        "portfolio_total",
-        "cash",
-        "positions_value",
-        "house_goal",
-        "cash_gap"
+      "original_tokens": 26332,
+      "source_session_hash": "sha256:8c75c090f2124de262711dd0ada13af6325379dd28d77c539ef22e9f0bb4e8c8",
+      "source_materials": [
+        "docs/context/长上下文构建与压缩.md",
+        "docs/context/Session交叉验证设计.md",
+        "docs/product/产品目标与使用方式.md",
+        "web/scripts/generate-context-library.mjs"
       ],
-      "variants": {
-        "full_raw": {
-          "strategy": "full",
-          "token_budget": 65536
+      "current_question": "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。",
+      "strategies": [
+        {
+          "variant_id": "full-session",
+          "title": "完整 Session",
+          "strategy_version": "full-session-v1",
+          "token_budget": 65536,
+          "original_tokens": 26332,
+          "working_tokens": 26326,
+          "compression_pct": 0,
+          "kept": 124,
+          "compressed": 0,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 47,
+          "compiled_context_hash": "sha256:d9d79565eb17d3d12363228d6aee8d4cfe5598faf469470d70ae1f2a3bf3987c"
         },
-        "budgeted_comp": {
-          "strategy": "budgeted",
-          "token_budget": 12288
+        {
+          "variant_id": "recent-window",
+          "title": "最近窗口",
+          "strategy_version": "recent-window-v1",
+          "token_budget": 8192,
+          "original_tokens": 26332,
+          "working_tokens": 7807,
+          "compression_pct": 70,
+          "kept": 13,
+          "compressed": 0,
+          "referenced": 0,
+          "omitted": 111,
+          "build_duration_ms": 30,
+          "compiled_context_hash": "sha256:eb4c0b5b41e147245692135d8951e7bafda6e3e207243130b9024de54d0b8426"
+        },
+        {
+          "variant_id": "single-summary",
+          "title": "一次性摘要",
+          "strategy_version": "single-summary-v1",
+          "token_budget": 8192,
+          "original_tokens": 26332,
+          "working_tokens": 3919,
+          "compression_pct": 85,
+          "kept": 2,
+          "compressed": 122,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 27,
+          "compiled_context_hash": "sha256:9edea56927f8f2c22107ca097c16649222af6ef072de14b31087f3e7e7fc16e4"
+        },
+        {
+          "variant_id": "budgeted-session",
+          "title": "按预算选择和压缩",
+          "strategy_version": "budgeted-session-v1",
+          "token_budget": 8192,
+          "original_tokens": 26332,
+          "working_tokens": 8055,
+          "compression_pct": 69,
+          "kept": 25,
+          "compressed": 99,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 113,
+          "compiled_context_hash": "sha256:556c0966ab79f840c5008d73f347364334d72e0ae3c55c40e0a55cc153fa77f8"
         }
-      },
-      "txt": "/showcase-data/context-library/ctx-port-01.txt"
+      ],
+      "txt": "/showcase-data/context-library/ctx-session-product-evolution-01.txt"
     },
     {
-      "case_id": "ctx-val-01",
-      "title": "多期财务与估值口径",
-      "direction": "金融 · 估值口径",
-      "scene": "research",
-      "authenticated": false,
-      "message": "按当前数据解释宁德时代估值所处区间，并列出最影响结论的三个假设。",
-      "item_count": 25,
-      "token_estimate": 603,
-      "item_counts": {
-        "required": 5,
-        "compressible": 18,
-        "reference_only": 0,
-        "distractor": 2
+      "id": "ctx-session-context-engine-debug-01",
+      "kind": "Session（场景化冻结）",
+      "kind_key": "session",
+      "title": "上下文编译、预算与 Agent 循环排查 Session",
+      "summary": "围绕四种策略、工具调用配对、多因子评分和最终模型请求预算进行连续代码审查，保留搜索失败、假设修正与实现边界。",
+      "disclosure": "使用当前仓库源码作为冻结工具结果，并按代码审查流程整理的可复现 Session。",
+      "tokenizer_version": "conservative-cjk1-latin4-v1",
+      "stats": {
+        "event_count": 26,
+        "user_messages": 5,
+        "assistant_messages": 7,
+        "tool_pairs": 7,
+        "failed_tool_pairs": 1,
+        "first_at": "2026-08-21T02:00:00.000Z",
+        "last_at": "2026-08-21T03:20:00.000Z"
       },
-      "has_injection": false,
-      "has_cross_user": false,
-      "has_stale": true,
-      "required_fact_keys": [
-        "pe_ttm_current",
-        "industry_pe_median",
-        "report_period"
+      "original_tokens": 29192,
+      "source_session_hash": "sha256:411105407f68f76c1b8fe59cd2881c83e7a537a4ad93d6594e11b18fb8e32cb9",
+      "source_materials": [
+        "engine/src/bdlh_runtime/session/compiler.py",
+        "engine/src/bdlh_runtime/session/serializer.py",
+        "engine/src/bdlh_runtime/context/builder.py",
+        "engine/src/bdlh_runtime/context/scoring.py",
+        "engine/src/bdlh_runtime/engine/loop.py",
+        "docs/context/长上下文构建与压缩.md"
       ],
-      "variants": {
-        "full_raw": {
-          "strategy": "full",
-          "token_budget": 65536
+      "current_question": "请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。",
+      "strategies": [
+        {
+          "variant_id": "full-session",
+          "title": "完整 Session",
+          "strategy_version": "full-session-v1",
+          "token_budget": 65536,
+          "original_tokens": 29192,
+          "working_tokens": 29189,
+          "compression_pct": 0,
+          "kept": 26,
+          "compressed": 0,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 88,
+          "compiled_context_hash": "sha256:d927b15d873fd170f5574a6c4c456382f402fec440aea9933d70c636580d8fa9"
         },
-        "budgeted_comp": {
-          "strategy": "budgeted",
-          "token_budget": 12288
+        {
+          "variant_id": "recent-window",
+          "title": "最近窗口",
+          "strategy_version": "recent-window-v1",
+          "token_budget": 8192,
+          "original_tokens": 29192,
+          "working_tokens": 6632,
+          "compression_pct": 77,
+          "kept": 5,
+          "compressed": 0,
+          "referenced": 0,
+          "omitted": 21,
+          "build_duration_ms": 46,
+          "compiled_context_hash": "sha256:77c4d73033333dedfb991b21406f2f73bbbd2f1af22ae3893e85e2ced1d453bb"
+        },
+        {
+          "variant_id": "single-summary",
+          "title": "一次性摘要",
+          "strategy_version": "single-summary-v1",
+          "token_budget": 8192,
+          "original_tokens": 29192,
+          "working_tokens": 3421,
+          "compression_pct": 88,
+          "kept": 1,
+          "compressed": 25,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 44,
+          "compiled_context_hash": "sha256:0f7e3596aaff11e186fe40f6539cf74ae85c425c3b3593eedb9f9504c57e19cd"
+        },
+        {
+          "variant_id": "budgeted-session",
+          "title": "按预算选择和压缩",
+          "strategy_version": "budgeted-session-v1",
+          "token_budget": 8192,
+          "original_tokens": 29192,
+          "working_tokens": 8019,
+          "compression_pct": 73,
+          "kept": 1,
+          "compressed": 25,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 195,
+          "compiled_context_hash": "sha256:44e6b59e96b1e0b1933a99b8c54f39a054002e1f5a56c57805e963d139539c55"
         }
-      },
-      "txt": "/showcase-data/context-library/ctx-val-01.txt"
+      ],
+      "txt": "/showcase-data/context-library/ctx-session-context-engine-debug-01.txt"
     },
     {
-      "case_id": "ctx-news-01",
-      "title": "新闻去重、时效与注入防御",
-      "direction": "金融 · 新闻去重",
-      "scene": "news",
-      "authenticated": false,
-      "message": "宁德时代最近两周有什么重要消息？去重后按重要性列出，注明来源和时间。",
-      "item_count": 54,
-      "token_estimate": 1594,
-      "item_counts": {
-        "required": 4,
-        "compressible": 28,
-        "reference_only": 0,
-        "distractor": 22
+      "id": "ctx-session-database-deploy-01",
+      "kind": "Session（场景化冻结）",
+      "kind_key": "session",
+      "title": "PostgreSQL、数据服务与云部署一致性 Session",
+      "summary": "从手工 SQL、迁移脚本、本地 5432、data 服务职责到云部署配置进行连续审计，包含错误路径、需求纠正和压缩工件追溯要求。",
+      "disclosure": "使用当前仓库 SQL、配置和 Java 源码作为冻结工具结果，并按部署审计流程整理的可复现 Session。",
+      "tokenizer_version": "conservative-cjk1-latin4-v1",
+      "stats": {
+        "event_count": 31,
+        "user_messages": 5,
+        "assistant_messages": 6,
+        "tool_pairs": 10,
+        "failed_tool_pairs": 1,
+        "first_at": "2026-08-22T01:30:00.000Z",
+        "last_at": "2026-08-22T02:55:00.000Z"
       },
-      "has_injection": true,
-      "has_cross_user": false,
-      "has_stale": true,
-      "required_fact_keys": [
-        "distinct_events",
-        "official_first"
+      "original_tokens": 27472,
+      "source_session_hash": "sha256:ddda2fdc34cd98924b574de43605dac0a7a03cda4db0c0705e6be570c30a223a",
+      "source_materials": [
+        "db/docs/01-数据库总体设计.md",
+        "db/postgresql/setup/init.sql",
+        "db/postgresql/changes/20260823-trim-simple-add-complex.sql",
+        "data/src/main/resources/application.yaml",
+        "data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java",
+        "deploy/docker-compose.yml",
+        "deploy/docker-compose.cloud.yml",
+        "deploy/README.md"
       ],
-      "variants": {
-        "full_raw": {
-          "strategy": "full",
-          "token_budget": 49152
+      "current_question": "请使用只读工具审计 db/postgresql/setup/init.sql、db/postgresql/changes/20260823-trim-simple-add-complex.sql、data/src/main/resources/application.yaml、data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java、deploy/docker-compose.yml 与 deploy/docker-compose.cloud.yml。判断“SQL 由维护者手动执行、本地 PostgreSQL 使用 5432、data 只负责受控读写、压缩工件可完整追溯、所有模块可云部署”是否一致，并列出三个最高风险差距。不要执行 SQL、不要连接数据库、不要修改文件。",
+      "strategies": [
+        {
+          "variant_id": "full-session",
+          "title": "完整 Session",
+          "strategy_version": "full-session-v1",
+          "token_budget": 65536,
+          "original_tokens": 27472,
+          "working_tokens": 27468,
+          "compression_pct": 0,
+          "kept": 31,
+          "compressed": 0,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 80,
+          "compiled_context_hash": "sha256:3c9e8c0d8e91cfef8f3099d03e84b0e7965e679b2ee06304c689df96f82fe248"
         },
-        "budgeted_comp": {
-          "strategy": "budgeted",
-          "token_budget": 10240
+        {
+          "variant_id": "recent-window",
+          "title": "最近窗口",
+          "strategy_version": "recent-window-v1",
+          "token_budget": 8192,
+          "original_tokens": 27472,
+          "working_tokens": 7688,
+          "compression_pct": 72,
+          "kept": 7,
+          "compressed": 0,
+          "referenced": 0,
+          "omitted": 24,
+          "build_duration_ms": 47,
+          "compiled_context_hash": "sha256:738831546869a062cc54cfb7749395ef2af78cf473d14661d7bd1a1293d6b8e6"
+        },
+        {
+          "variant_id": "single-summary",
+          "title": "一次性摘要",
+          "strategy_version": "single-summary-v1",
+          "token_budget": 8192,
+          "original_tokens": 27472,
+          "working_tokens": 3911,
+          "compression_pct": 86,
+          "kept": 2,
+          "compressed": 29,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 47,
+          "compiled_context_hash": "sha256:290a6340d66261fcc988a6e0f9cab467cdab269e76170f2f78da050a016e3f11"
+        },
+        {
+          "variant_id": "budgeted-session",
+          "title": "按预算选择和压缩",
+          "strategy_version": "budgeted-session-v1",
+          "token_budget": 8192,
+          "original_tokens": 27472,
+          "working_tokens": 6809,
+          "compression_pct": 75,
+          "kept": 1,
+          "compressed": 30,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 168,
+          "compiled_context_hash": "sha256:3a09612397d677a3efba289969085ed5e1ca722e787e360510c56dff9e8c6059"
         }
-      },
-      "txt": "/showcase-data/context-library/ctx-news-01.txt"
-    },
-    {
-      "case_id": "ctx-weather-01",
-      "title": "出行天气长序列",
-      "direction": "其他 · 出行天气",
-      "scene": "knowledge",
-      "authenticated": false,
-      "message": "这个周末去杭州两日游，根据最近一个月的天气情况，我需要带伞吗？早晚温差大不大？",
-      "item_count": 94,
-      "token_estimate": 1511,
-      "item_counts": {
-        "required": 3,
-        "compressible": 90,
-        "reference_only": 0,
-        "distractor": 1
-      },
-      "has_injection": false,
-      "has_cross_user": false,
-      "has_stale": true,
-      "required_fact_keys": [
-        "hangzhou_rain_days_recent_week",
-        "temp_range_morning",
-        "temp_range_noon"
       ],
-      "variants": {
-        "full_raw": {
-          "strategy": "full",
-          "token_budget": 32768
-        },
-        "budgeted_comp": {
-          "strategy": "budgeted",
-          "token_budget": 8192
-        }
-      },
-      "txt": "/showcase-data/context-library/ctx-weather-01.txt"
-    },
-    {
-      "case_id": "ctx-manual-01",
-      "title": "长文档关键事实检索",
-      "direction": "其他 · 长文档手册",
-      "scene": "knowledge",
-      "authenticated": false,
-      "message": "智能网关 GW-200 的指示灯红色常亮代表什么？怎么恢复？",
-      "item_count": 14,
-      "token_estimate": 336,
-      "item_counts": {
-        "required": 3,
-        "compressible": 10,
-        "reference_only": 0,
-        "distractor": 1
-      },
-      "has_injection": false,
-      "has_cross_user": false,
-      "has_stale": true,
-      "required_fact_keys": [
-        "red_solid_meaning",
-        "recovery"
-      ],
-      "variants": {
-        "full_raw": {
-          "strategy": "full",
-          "token_budget": 32768
-        },
-        "budgeted_comp": {
-          "strategy": "budgeted",
-          "token_budget": 8192
-        }
-      },
-      "txt": "/showcase-data/context-library/ctx-manual-01.txt"
-    },
-    {
-      "case_id": "ctx-chat-01",
-      "title": "长历史闲聊快路径",
-      "direction": "闲聊 · 长历史",
-      "scene": "chitchat",
-      "authenticated": false,
-      "message": "在吗",
-      "item_count": 43,
-      "token_estimate": 799,
-      "item_counts": {
-        "required": 1,
-        "compressible": 40,
-        "reference_only": 0,
-        "distractor": 2
-      },
-      "has_injection": true,
-      "has_cross_user": false,
-      "has_stale": false,
-      "required_fact_keys": [],
-      "variants": {
-        "full_raw": {
-          "strategy": "full",
-          "token_budget": 16384
-        },
-        "budgeted_comp": {
-          "strategy": "budgeted",
-          "token_budget": 4096
-        }
-      },
-      "txt": "/showcase-data/context-library/ctx-chat-01.txt"
+      "txt": "/showcase-data/context-library/ctx-session-database-deploy-01.txt"
     }
-  ]
+  ],
+  "note": "主文库只展示完整 Session。对话为可复现实验整理语料；仓库真实文档、源码、SQL 和配置只作为冻结工具结果出现。每套原文独立派生完整透传、最近窗口、一次摘要和按预算压缩四种输入。"
 }

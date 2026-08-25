@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>我的测试</title>
+<meta name="description" content="当前匿名身份发起的测试任务:进度、结果与取消;匿名结果不进入公告指标。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <div class="topbar-actions">
+      <a class="topbar-mytests" href="/test/">我的测试</a>
+      <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
+    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
+    <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
+    <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+    <button class="side-btn" id="sideBtn" type="button" aria-label="展开导航">导航</button>
+  </div>
+</header>
+<div class="docs-layout">
+  <aside class="docs-side" id="docsSide">
+    <nav class="side-tree" aria-label="站点模块导航">
+    <a class="side-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
+        <ul>
+          <li><a href="/about/">系统定位与架构</a></li>
+          <li><a href="/about/banks">题库与数据</a></li>
+          <li><a href="/about/repo">仓库与复现</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
+        <ul>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
+        <ul>
+          <li><a href="/experiment/compression">压缩用例</a></li>
+          <li><a href="/experiment/comparison">对比用例</a></li>
+        </ul>
+      </details>
+    <a class="side-item active" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
+        <ul>
+          <li><a href="/context/">压缩算法</a></li>
+          <li><a href="/context/library">长上下文库</a></li>
+          <li><a href="/context/design">长短对照设计</a></li>
+          <li><a href="/context/results">用例结果</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
+        <ul>
+          <li><a href="/judging/">指标定义</a></li>
+          <li><a href="/judging/metrics">指标定义总表</a></li>
+          <li><a href="/judging/judge">判官说明</a></li>
+          <li><a href="/judging/invalid">无效运行与口径</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
+        <ul>
+          <li><a href="/tools/">全部工具</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
+        <ul>
+          <li><a href="/cases/">全部用例</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
+        <ul>
+          <li><a href="/engine/">Agent 循环</a></li>
+          <li><a href="/engine/loading">工具装载</a></li>
+          <li><a href="/engine/catalog">工具目录</a></li>
+          <li><a href="/engine/governance">治理中间件</a></li>
+          <li><a href="/engine/guardrail">输出护栏</a></li>
+          <li><a href="/engine/tools">工具清单</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
+        <ul>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/run-api">私有运行 API</a></li>
+          <li><a href="/ops/artifacts">工件与发布</a></li>
+          <li><a href="/ops/deploy">部署与边界</a></li>
+          <li><a href="/ops/roadmap">路线图</a></li>
+        </ul>
+      </details>
+  </nav>
+    <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
+  </aside>
+  <main class="docs-main">
+<div class="detail-layout">
+      <aside class="page-toc" aria-label="本页目录">
+      <h4 class="page-toc-title">本页目录</h4>
+      <ul>
+        <li><a href="#notice">匿名测试结果说明</a></li>
+        <li><a href="#jobs">任务列表</a></li>
+        <li><a href="#reading">口径说明</a></li>
+      </ul>
+    </aside>
+      <div class="detail-body">
+        <h1>我的测试</h1>
+<h2 id="notice">匿名测试结果说明</h2>
+<div class="note"><strong>匿名测试结果</strong>:只代表本次选择的用例、工具和运行条件,不进入公告指标,也不会自动公开。任务与单元进度持久化在服务端,关闭或刷新页面不会停止任务;重新进入本页可继续查看。</div>
+    <h2 id="jobs">任务列表</h2>
+<p id="jobLoadState" class="lab-note">正在读取…</p>
+<div id="jobList"><div class="placeholder-block">正在读取…</div></div>
+    <h2 id="reading">口径说明</h2>
+<ul>
+  <li>取消只阻止尚未开始的单元;已产生的运行与费用保留,任务显示「已取消」或「部分完成」。</li>
+  <li>无效运行(服务错误、超时等)单独显示,不自动补跑。</li>
+  <li>服务重启后的中断任务标记为「已中断」,已完成单元保留,可重新发起而不丢失历史。</li>
+  <li>匿名身份由浏览器 HttpOnly Cookie 标识,清除浏览器数据后无法恢复这些记录。</li>
+</ul>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/docs/docs.js"></script>
+
+<script>
+(function () {
+  "use strict";
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+  var STATUS_LABEL = {
+    QUEUED: "排队中", RUNNING: "运行中", COMPLETE: "完成", FAILED: "失败",
+    CANCELLED: "已取消", INTERRUPTED: "已中断", PARTIAL: "部分完成",
+  };
+  var SCOPE_LABEL = {
+    "comparison-full": "对比用例(三种 Agent)",
+    "context-only": "生成四份上下文(0 个 Agent 运行)",
+    "current-combo": "运行当前组合(1 个运行)",
+    "full-matrix": "完整 4×3(12 个运行)",
+  };
+  var ACTIVE = { QUEUED: 1, RUNNING: 1 };
+  var listEl = document.getElementById("jobList");
+  var stateEl = document.getElementById("jobLoadState");
+  var openDetails = {}; // job_id -> true(展开态,重渲染后保持)
+
+  function check(res) {
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }
+
+  function statusBadge(status) {
+    var cls = status === "COMPLETE" ? "ok" : (ACTIVE[status] ? "run" : "off");
+    return '<span class="tag ' + cls + '">' + esc(STATUS_LABEL[status] || status) + "</span>";
+  }
+
+  function progressHtml(done, total) {
+    var pct = total ? Math.round((done / total) * 100) : 0;
+    return '<div class="prog"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
+      '<small>' + done + " / " + total + " 个单元</small>";
+  }
+
+  function cardHtml(j) {
+    var target = j.test_type === "COMPARISON_CASE"
+      ? ("用例 " + esc(j.case_id || "—"))
+      : ("Session " + esc(j.session_id || "—"));
+    var custom = j.custom_conditions ? ' <span class="tag off">自定义条件</span>' : "";
+    var actions = "";
+    if (ACTIVE[j.status]) {
+      actions += ' <button type="button" data-cancel="' + esc(j.job_id) + '">取消</button>';
+    }
+    actions += ' <button type="button" data-toggle="' + esc(j.job_id) + '">' +
+      (openDetails[j.job_id] ? "收起结果" : "查看结果") + "</button>";
+    return '<div class="job-card" id="job-' + esc(j.job_id) + '">' +
+      '<div class="job-head">' + statusBadge(j.status) +
+      "<b>" + esc(SCOPE_LABEL[j.execution_scope] || j.execution_scope) + "</b>" + custom +
+      '<span class="job-time">' + esc(j.created_at || "") + "</span></div>" +
+      '<div class="job-meta">' + target + " · 任务号 <code>" + esc(j.job_id) + "</code></div>" +
+      progressHtml(j.completed_units || 0, j.total_units || 0) +
+      '<div class="job-actions">' + actions + "</div>" +
+      '<div class="job-detail" id="detail-' + esc(j.job_id) + '">' +
+      (openDetails[j.job_id] ? '<div class="placeholder-block">读取中…</div>' : "") + "</div>" +
+      "</div>";
+  }
+
+  function render(jobs) {
+    if (!jobs.length) {
+      stateEl.textContent = "";
+      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 或 <a href="/experiment/comparison">对比用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
+      return;
+    }
+    stateEl.textContent = "共 " + jobs.length + " 个任务,按创建时间倒序;运行中的任务每 5 秒自动刷新。";
+    listEl.innerHTML = jobs.map(cardHtml).join("");
+    Array.prototype.forEach.call(listEl.querySelectorAll("[data-cancel]"), function (btn) {
+      btn.addEventListener("click", function () {
+        btn.disabled = true;
+        fetch("/api/v1/public/test-jobs/" + btn.getAttribute("data-cancel") + "/cancel", { method: "POST" })
+          .then(load, load);
+      });
+    });
+    Array.prototype.forEach.call(listEl.querySelectorAll("[data-toggle]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-toggle");
+        if (openDetails[id]) delete openDetails[id]; else openDetails[id] = true;
+        load();
+      });
+    });
+    Object.keys(openDetails).forEach(function (id) { loadDetail(id); });
+  }
+
+  function load() {
+    return fetch("/api/v1/public/test-jobs", { cache: "no-store" }).then(check).then(render).catch(function (err) {
+      stateEl.textContent = "";
+      listEl.innerHTML = '<div class="placeholder-block">运行服务不可达(' + esc(err.message) +
+        ")。纯静态部署不提供任务查询;需要 engine 服务与 <code>/api/v1/public/</code> 反代。</div>";
+    });
+  }
+
+  function unitRow(u, label) {
+    var ok = u.task_success ? '<span class="tag ok">成功</span>' : '<span class="tag off">未成功</span>';
+    var inval = u.validity === "INVALID" ? ' <span class="tag off">无效</span>' : "";
+    return "<tr><td>" + esc(label || u.unit_id) + "</td><td>" + ok + inval + "</td><td>" +
+      esc(u.actual_agent_steps || "—") + "</td><td>" + esc(u.stop_reason || "—") + "</td><td>" +
+      esc(u.duration_ms || "—") + " ms</td></tr>";
+  }
+
+  function renderDetail(id, payload) {
+    var box = document.getElementById("detail-" + id);
+    if (!box) return;
+    var result = payload.result || {};
+    var units = payload.units || [];
+    var html = "";
+    if (payload.test_type === "COMPARISON_CASE") {
+      html += "<h4>三种 Agent 结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
+      Object.keys(result.by_agent || {}).forEach(function (mode) {
+        var a = result.by_agent[mode];
+        html += "<tr><td>" + esc(mode) + "</td><td>" + a.success_count + "/" + a.total_runs + "</td><td>" +
+          a.valid_runs + "/" + a.invalid_runs + "</td><td>" +
+          esc(a.duration_ms_min) + " / " + esc(a.duration_ms_median) + " / " + esc(a.duration_ms_max) +
+          "</td><td>" + esc(a.duration_ms_stdev == null ? "—" : a.duration_ms_stdev) + "</td></tr>";
+      });
+      html += "</tbody></table>";
+      if ((result.invalid_runs || []).length) {
+        html += '<p><small>无效运行(' + result.invalid_runs.length + ",不自动补跑):" +
+          result.invalid_runs.map(function (r) { return esc(r.unit_id); }).join("、") + "</small></p>";
+      }
+      html += "<h4>逐次运行(" + units.length + ")</h4><table><thead><tr><th>单元</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
+      units.forEach(function (u) { html += unitRow(u, u.agent_mode_id + " × 第" + (u.repeat_index + 1) + "次"); });
+      html += "</tbody></table>";
+      units.forEach(function (u) {
+        html += '<details class="metric-def"><summary>' + esc(u.unit_id) + " 回答与调用</summary>" +
+          "<p><small>回答:" + esc((u.answer || "").slice(0, 300)) + "</small></p>" +
+          '<pre class="cat-schema">' + esc(JSON.stringify(u.tool_calls || [], null, 1)) + "</pre></details>";
+      });
+    } else if (payload.execution_scope === "context-only") {
+      var stats = result.stats || {};
+      html += "<h4>四份上下文工件</h4><table><thead><tr><th>方式</th><th>压缩前</th><th>压缩后</th></tr></thead><tbody>";
+      ["full-session", "recent-window", "single-summary", "budgeted-session"].forEach(function (v) {
+        html += "<tr><td>" + esc(v) + "</td><td>" + esc((stats.original_tokens || {})[v]) +
+          "</td><td>" + esc((stats.working_tokens || {})[v]) + "</td></tr>";
+      });
+      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「完整 4×3」。</small></p>";
+    } else {
+      html += "<h4>矩阵单元</h4><table><thead><tr><th>上下文 × Agent</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
+      units.forEach(function (u) {
+        html += unitRow(u, (u.context_variant || "") + " × " + u.agent_mode_id);
+      });
+      html += "</tbody></table>";
+      var hashes = result.frozen_artifact_hashes || {};
+      html += '<p><small>冻结工件哈希(三种 Agent 复用同一批):' +
+        Object.keys(hashes).map(function (v) { return esc(v) + " → <code>" + String(hashes[v]).slice(0, 18) + "…</code>"; }).join(" · ") +
+        "</small></p>";
+    }
+    if (payload.error) html += '<p><small>错误:' + esc(payload.error) + "</small></p>";
+    box.innerHTML = html;
+  }
+
+  function loadDetail(id) {
+    fetch("/api/v1/public/test-jobs/" + id + "/results", { cache: "no-store" }).then(check)
+      .then(function (payload) { renderDetail(id, payload); })
+      .catch(function (err) {
+        var box = document.getElementById("detail-" + id);
+        if (box) box.innerHTML = '<div class="placeholder-block">结果读取失败:' + esc(err.message) + "</div>";
+      });
+  }
+
+  load();
+  setInterval(load, 5000);
+})();
+</script>
+</body>
+</html>

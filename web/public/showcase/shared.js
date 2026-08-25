@@ -42,16 +42,20 @@
   }
 
   function renderStatCards(state, report) {
-    // 上下文压缩对照批次:渲染策略摘要卡(工作 token 与强制项保留)
+    // 上下文压缩对照批次:按策略渲染摘要卡(工作 token 与强制项保留),网格铺满宽度
     if (state.kind === "formal" && isContextBatch(report)) {
-      var ctxRows = (report.groups || []).map(function (g) {
+      var ctxCards = (report.groups || []).map(function (g) {
         var m = g.metrics || {};
-        return '<div class="stat-val-row">' + esc(g.label) + "：工作上下文 " + num(m.working_tokens) +
-          " token · 强制项保留 " + pct(m.constraint_retention_rate) + " · 事实召回 " + pct(m.fact_recall_rate) + "</div>";
+        return '<div class="stat-card"><div class="stat-label">' + esc(g.label) + '</div>' +
+          '<div class="ctx-metrics">' +
+          '<div class="ctx-m"><b>' + num(m.working_tokens) + '</b><span>工作上下文 token</span></div>' +
+          '<div class="ctx-m"><b>' + pct(m.constraint_retention_rate) + '</b><span>强制项保留率</span></div>' +
+          '<div class="ctx-m"><b>' + pct(m.fact_recall_rate) + '</b><span>事实召回率</span></div>' +
+          '</div></div>';
       }).join("");
-      return '<div class="stat-card"><div class="stat-label">上下文压缩对照（最新正式批次）</div><div class="stat-vals">' +
-        (ctxRows || '<span class="stat-now">未运行</span>') +
-        '</div><div class="stat-hint">策略逐项对比见<a href="/context/results">用例结果</a></div></div>';
+      return '<div class="ctx-grid">' + (ctxCards ||
+        '<div class="stat-card"><div class="stat-label">上下文压缩对照（最新正式批次）</div><div class="stat-vals"><span class="stat-now">未运行</span></div></div>') +
+        '</div><div class="stat-hint" style="padding:6px 2px 0">策略逐项对比见<a href="/context/results">用例结果</a></div>';
     }
     var cards = [
       { label: "工具选择准确率", group: "full-system", field: "tool_selection_rate", better: "high" },
@@ -201,6 +205,13 @@
     COMPLETE: "完成", FAILED: "失败", INVALID: "无效运行", CANCELLED: "已取消",
     PENDING_JUDGMENT: "待评测", NOT_RUN: "未运行"
   };
+  var DECISION_LABELS = { call_tool: "调用工具", answer: "给出答案", think: "思考", route_intercept: "语义路由拦截" };
+  var CHECK_LABELS = {
+    tool_correct: "工具选择", number_grounding: "数字接地",
+    c1_compliance: "C-1 交易边界", c2_compliance: "C-2 适当性"
+  };
+
+  function checkLabel(name) { return CHECK_LABELS[name] || name; }
 
   function kv(pairs) {
     return '<dl class="run-kv">' + pairs.map(function (p) {
@@ -211,6 +222,53 @@
   function listOrPending(items, render) {
     if (!items || items.length === 0) return '<p class="pending">未运行</p>';
     return '<ol class="run-steps">' + items.map(render).join("") + "</ol>";
+  }
+
+  /** 执行轨迹时间轴:模型决策/代码裁决/工具结果按步骤号聚合成一条纵向时间线,
+   * 输出检查无步骤号、语义上在运行结束后,固定排在末尾。四段皆空时返回空串(不渲染)。 */
+  function renderTimeline(run) {
+    var s = (run && run.sections) || {};
+    var events = [];
+    (s.model_steps || []).forEach(function (step) { events.push({ seq: step.seq, type: "decision", step: step }); });
+    (s.code_decisions || []).forEach(function (step) { events.push({ seq: step.seq, type: "policy", step: step }); });
+    (s.tool_results || []).forEach(function (step) { events.push({ seq: step.seq, type: "tool", step: step }); });
+    (s.output_checks || []).forEach(function (check, i) { events.push({ seq: 1000 + i, type: "check", step: check }); });
+    if (!events.length) return "";
+    events.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
+    var maxLat = 0;
+    (s.model_steps || []).forEach(function (step) { if (step.latency_ms > maxLat) maxLat = step.latency_ms; });
+    var items = events.map(function (ev) {
+      var step = ev.step, body = "";
+      if (ev.type === "decision") {
+        var lat = "";
+        if (step.latency_ms != null) {
+          var w = maxLat ? Math.max(2, (step.latency_ms / maxLat) * 100) : 2;
+          lat = '<span class="tl-lat" title="本轮模型耗时 ' + esc(step.latency_ms) + 'ms"><i style="width:' + w + '%"></i></span>' +
+            '<span class="muted">' + esc(step.latency_ms) + "ms</span>";
+        }
+        body = '<div class="tl-title"><strong>#' + esc(step.seq) + " " + esc(DECISION_LABELS[step.decision] || step.decision) + "</strong>" + lat + "</div>";
+      } else if (ev.type === "policy") {
+        body = '<div class="tl-title"><strong>#' + esc(step.seq) + " 代码裁决</strong> " +
+          (step.allowed ? '<span class="tl-badge pass">允许</span>' : '<span class="tl-badge fail">拒绝</span>') +
+          (step.audit_code ? ' <code>' + esc(step.audit_code) + "</code>" : "") + "</div>";
+      } else if (ev.type === "tool") {
+        body = '<div class="tl-title"><strong>#' + esc(step.seq) + "</strong> " +
+          '<span class="tool-chip ' + (step.status === "SUCCESS" ? "ok" : "bad") + '" title="' + esc(step.status) +
+          (step.summary ? " · " + esc(JSON.stringify(step.summary).slice(0, 120)) : "") + '">' +
+          '<span class="seq">' + esc(step.status) + "</span>" + esc(step.name) + "</span>" +
+          (step.source ? ' <span class="muted">来源 ' + esc(step.source) + "</span>" : "") +
+          (step.data_time ? ' <span class="muted">数据时间 ' + esc(step.data_time) + "</span>" : "") + "</div>";
+      } else {
+        var pass = step.passed;
+        body = '<div class="tl-title"><strong>检查 · ' + esc(checkLabel(step.check)) + "</strong> " +
+          (pass == null ? "" : '<span class="tl-badge ' + (pass ? "pass" : "fail") + '">' + (pass ? "通过" : "未通过") + "</span>") +
+          (step.detail ? ' <span class="muted">' + esc(step.detail) + "</span>" : "") + "</div>";
+      }
+      return '<li class="tl-node"><span class="tl-marker m-' + ev.type + '"></span><div class="tl-body">' + body + "</div></li>";
+    }).join("");
+    return '<section class="run-section" id="sec-timeline"><h3>执行轨迹（按步骤聚合）</h3>' +
+      '<ol class="tl">' + items + "</ol>" +
+      '<p class="tl-note">由「模型决策 / 代码裁决 / 工具结果 / 输出检查」四段按步骤号聚合;各段完整原文见下方九段固定顺序。</p></section>';
   }
 
   /** 九段固定顺序渲染（评测文档 §11.3）；null 段渲染未运行。 */
@@ -295,7 +353,7 @@
       return '<section class="run-section" id="sec-' + key + '"><h3>' + title + "</h3>" + inner + "</section>";
     }).join("");
 
-    return head + body;
+    return head + renderTimeline(run) + body;
   }
 
   /** 运行下钻索引：每题每组的运行入口（未发布则明示）。 */
@@ -314,6 +372,63 @@
           }).join(" ") + "</td>";
         }).join("") + "</tr>";
       }).join("") + "</tbody></table>";
+  }
+
+  /** 单次运行结局归类:无效/未判定单列,不与通过与否混色。 */
+  function runOutcome(run) {
+    if (!run) return null;
+    if (run.validity && run.validity !== "VALID") return { cls: "invalid", label: "无效运行", failed: [] };
+    var s = run.sections || {};
+    var j = s.final_result && s.final_result.judgment;
+    var failed = (s.output_checks || []).filter(function (c) { return c.passed === false; });
+    if (!j) return { cls: "na", label: "未判定", failed: failed };
+    if (j.task_success === false) return { cls: "fail", label: "任务失败", failed: failed };
+    if (failed.length === 0) return { cls: "ok", label: "全部通过", failed: [] };
+    return { cls: "partial", label: "部分通过", failed: failed };
+  }
+
+  /** 结局马赛克:批次内每次运行一块瓷砖,颜色=结局,悬停列未通过项,点击直达九段明细。 */
+  function renderOutcomeMosaic(report, runsById) {
+    var cases = (report && report.cases) || [];
+    var groups = (report && report.groups) || [];
+    runsById = runsById || {};
+    if (!cases.length || !groups.length) {
+      return '<div class="placeholder-block">未运行：尚无已发布的批次。</div>';
+    }
+    var counts = { ok: 0, partial: 0, fail: 0, invalid: 0, na: 0 };
+    var blocks = cases.map(function (c) {
+      var strips = groups.map(function (g) {
+        var ids = (c.run_ids && c.run_ids[g.key]) || [];
+        if (!ids.length) {
+          return '<div class="mosaic-strip"><span class="mosaic-group">' + esc(g.label) + '</span><span class="muted" style="font-size:12px">未发布</span></div>';
+        }
+        var tiles = ids.map(function (id, i) {
+          var run = runsById[id];
+          var out = runOutcome(run) || { cls: "na", label: "未发布", failed: [] };
+          counts[out.cls] += 1;
+          var tip = "第 " + (i + 1) + " 次 · " + out.label;
+          if (run) {
+            (out.failed || []).forEach(function (f) {
+              tip += "\n✗ " + checkLabel(f.check) + (f.detail ? "：" + f.detail : "");
+            });
+          }
+          return '<a class="mosaic-tile ' + out.cls + '" href="/showcase/?run=' + encodeURIComponent(id) +
+            '" title="' + esc(tip) + '">' + esc(i + 1) + "</a>";
+        }).join("");
+        return '<div class="mosaic-strip"><span class="mosaic-group">' + esc(g.label) + "</span>" + tiles + "</div>";
+      }).join("");
+      return '<div class="mosaic-case"><div class="mosaic-case-head"><code>' + esc(c.id) + "</code>" +
+        (c.category ? '<span class="mosaic-cat">' + esc(c.category) + "</span>" : "") +
+        "<span> " + esc(c.message) + "</span></div>" + strips + "</div>";
+    }).join("");
+    var legendDefs = [
+      ["ok", "全部通过"], ["partial", "部分通过"], ["fail", "任务失败"], ["invalid", "无效"], ["na", "未判定"]
+    ];
+    var legend = legendDefs.map(function (l) {
+      return '<span class="mosaic-key"><i class="mosaic-tile ' + l[0] + '"></i>' + l[1] + " <strong>" + counts[l[0]] + "</strong></span>";
+    }).join("");
+    return '<div class="mosaic"><div class="mosaic-legend">' + legend + "</div>" + blocks +
+      '<p class="tl-note">每格 = 一次运行(格内数字为重复序号),悬停看未通过项明细,点击进入该运行的九段记录。</p></div>';
   }
 
   var CONTEXT_STRATEGIES = [
@@ -387,7 +502,7 @@
           .filter(Boolean);
         var runHtml = runs.length
           ? runs.map(function (run) {
-              return '<div class="tool-run"><a href="/showcase/runs?id=' + encodeURIComponent(run.run_id) + '">' +
+              return '<div class="tool-run"><a href="/showcase/tools?run=' + encodeURIComponent(run.run_id) + '">' +
                 "run " + esc(String(run.run_id).slice(-8)) + "</a> · 第 " + esc(run.experiment.repeat_index) + " 次" +
                 '<ul class="tool-seq">' + renderToolChips(run) + "</ul></div>";
             }).join("")
@@ -587,12 +702,15 @@
       { label: labels["full-system"] || "完整模式", value: m(full, "median_duration_ms"), color: "green", fmt: function(v){return (v/1000).toFixed(1)+"s";}, note: "快路径" }
     ]);
 
-    // 第 4 张:Token 构成分解(prompt vs completion)
-    h += renderBarChart("Prompt Token（输入越少越好）", [
-      { label: labels["baseline-tool-calling"] || "裸调用", value: m(base, "mean_tokens"), color: "red", fmt: function(v){return num(v);} },
-      { label: labels["langgraph-react"] || "ReAct", value: m(react, "mean_tokens"), color: "amber", fmt: function(v){return num(v);} },
-      { label: labels["full-system"] || "完整模式", value: m(full, "mean_tokens"), color: "green", fmt: function(v){return num(v);}, note: "上下文压缩" }
+    // 第 4 张:交易边界合规(C-1)。注:批次指标未按组聚合 prompt_tokens,
+    // 此前误用 mean_tokens 会让第 2/4 张图数据完全相同,故改为独立维度的 C-1 违规率。
+    h += renderBarChart("C-1 违规率·交易边界（越低越好）", [
+      { label: labels["baseline-tool-calling"] || "裸调用", value: m(base, "c1_violation_rate"), color: "red", fmt: pct },
+      { label: labels["langgraph-react"] || "ReAct", value: m(react, "c1_violation_rate"), color: "amber", fmt: pct },
+      { label: labels["full-system"] || "完整模式", value: m(full, "c1_violation_rate"), color: "green", fmt: pct, note: "语义路由拦截" }
     ]);
+
+    h += renderRadarChart(report);
 
     // 逐案例对照表(可点击跳转到运行索引)
     if (report.cases && report.cases.length > 0) {
@@ -601,7 +719,7 @@
       report.groups.forEach(function (g) { h += "<th>" + esc(g.label) + "</th>"; });
       h += "</tr></thead><tbody>";
       report.cases.forEach(function (c) {
-        h += '<tr><td><a href="/showcase/runs" style="color:var(--doc-accent)"><code>' + esc(c.id) + "</code></a></td>";
+        h += '<tr><td><a href="/showcase/?case=' + encodeURIComponent(c.id) + '" style="color:var(--doc-accent)"><code>' + esc(c.id) + "</code></a></td>";
         report.groups.forEach(function (g) {
           var cg = c.groups && c.groups[g.key];
           if (cg) {
@@ -616,31 +734,210 @@
       h += "</tbody></table></div>";
     }
 
-    // 底部操作条:进入运行索引查看全部明细
+    // 底部操作条:公告只负责摘要，实例页承接具体证据。
     h += '<div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap">';
-    h += '<a href="/showcase/runs" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--doc-accent);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">查看全部运行明细 →</a>';
-    h += '<a href="/showcase/results" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#fff;border:1px solid var(--doc-border);color:var(--doc-text);text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">完整指标对照表</a>';
-    h += '<a href="/showcase/tools" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#fff;border:1px solid var(--doc-border);color:var(--doc-text);text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">工具调用明细</a>';
+    h += '<a href="/showcase/" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--doc-accent);color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">查看用例详情 →</a>';
+    h += '<a href="/showcase/tools" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#fff;border:1px solid var(--doc-border);color:var(--doc-text);text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">用例调用明细</a>';
+    h += '<a href="/session-cross/" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#fff;border:1px solid var(--doc-border);color:var(--doc-text);text-decoration:none;border-radius:8px;font-size:14px;font-weight:600">Session 交叉验证</a>';
     h += "</div>";
 
     return h;
   }
 
-  /** 上下文压缩对照预览(无正式数据时展示概念与测试值) */
-  function renderContextPreview() {
-    var h = '<div class="hbar-chart">';
-    h += "<h4>上下文压缩对照（full-raw 全量透传 vs budgeted 按预算压缩）</h4>";
-    h += '<div class="dash-grid" style="margin:12px 0">';
-    h += '<div class="dash-card neutral"><div class="dash-value">3,471</div><div class="dash-label">原始上下文 Token</div></div>';
-    h += '<div class="dash-card warn"><div class="dash-value">3,450</div><div class="dash-label">full-raw 工作上下文</div><div class="dash-delta flat">几乎不压缩</div></div>';
-    h += '<div class="dash-card good"><div class="dash-value">2,300</div><div class="dash-label">budgeted 工作上下文</div><div class="dash-delta up">节省 34%</div></div>';
-    h += '<div class="dash-card good"><div class="dash-value">100%</div><div class="dash-label">强制项保留率</div><div class="dash-delta up">两条策略均保留</div></div>';
+  /** 三组六轴雷达(纯 SVG,零依赖):率类指标原值(越低越好的取补),token/时长按组间归一化。 */
+  function renderRadarChart(report) {
+    if (!report || !report.groups || report.groups.length === 0) return "";
+    var byKey = {};
+    report.groups.forEach(function (g) { byKey[g.key] = g; });
+    var base = byKey["baseline-tool-calling"], full = byKey["full-system"];
+    if (!base || !full) return "";
+    function m(g, k) { return g && g.metrics ? g.metrics[k] : null; }
+    var RADAR_GROUPS = [
+      { key: "baseline-tool-calling", label: "裸 tool calling", color: "#ef4444" },
+      { key: "langgraph-react", label: "LangGraph ReAct", color: "#f59e0b" },
+      { key: "full-system", label: "完整工程模式", color: "#10b981" }
+    ];
+    var maxTok = 0, maxDur = 0;
+    RADAR_GROUPS.forEach(function (gr) {
+      var g = byKey[gr.key];
+      var tok = m(g, "mean_tokens"), dur = m(g, "median_duration_ms");
+      if (tok != null && tok > maxTok) maxTok = tok;
+      if (dur != null && dur > maxDur) maxDur = dur;
+    });
+    var AXES = [
+      { label: "工具选择", value: function (g) { var v = m(g, "tool_selection_rate"); return v == null ? null : v; } },
+      { label: "参数完整", value: function (g) { var v = m(g, "params_complete_rate"); return v == null ? null : v; } },
+      { label: "数字接地", value: function (g) { var v = m(g, "number_hallucination_rate"); return v == null ? null : 1 - v; } },
+      { label: "交易合规", value: function (g) { var v = m(g, "c1_violation_rate"); return v == null ? null : 1 - v; } },
+      { label: "Token 效率", value: function (g) { var t = m(g, "mean_tokens"); return (t == null || !maxTok) ? null : 1 - t / maxTok; } },
+      { label: "响应速度", value: function (g) { var d = m(g, "median_duration_ms"); return (d == null || !maxDur) ? null : 1 - d / maxDur; } }
+    ];
+    var cx = 160, cy = 145, R = 100;
+    function pt(axisIdx, r) {
+      var ang = -Math.PI / 2 + axisIdx * (2 * Math.PI / AXES.length);
+      return [(cx + r * Math.cos(ang)).toFixed(1), (cy + r * Math.sin(ang)).toFixed(1)];
+    }
+    var svg = '<svg class="radar-svg" viewBox="0 0 320 290" role="img" aria-label="三组六轴雷达对比">';
+    [0.25, 0.5, 0.75, 1].forEach(function (f) {
+      var ring = AXES.map(function (a, i) { var p = pt(i, R * f); return p[0] + "," + p[1]; }).join(" ");
+      svg += '<polygon points="' + ring + '" fill="none" stroke="#e5e7eb" stroke-width="1"/>';
+    });
+    AXES.forEach(function (a, i) {
+      var p = pt(i, R);
+      svg += '<line x1="' + cx + '" y1="' + cy + '" x2="' + p[0] + '" y2="' + p[1] + '" stroke="#e5e7eb" stroke-width="1"/>';
+      var lp = pt(i, R + 24);
+      var anchor = Math.abs(lp[0] - cx) < 12 ? "middle" : (lp[0] > cx ? "start" : "end");
+      svg += '<text x="' + lp[0] + '" y="' + lp[1] + '" text-anchor="' + anchor + '" font-size="11" fill="#4b5563">' + esc(a.label) + "</text>";
+    });
+    RADAR_GROUPS.forEach(function (gr) {
+      var g = byKey[gr.key];
+      if (!g) return;
+      var any = false;
+      var pts = AXES.map(function (a, i) {
+        var v = a.value(g);
+        if (v == null) v = 0; else any = true;
+        var p = pt(i, R * Math.max(0, Math.min(1, v)));
+        return p[0] + "," + p[1];
+      }).join(" ");
+      if (!any) return;
+      var title = AXES.map(function (a) {
+        var v = a.value(g);
+        return a.label + "：" + (v == null ? "未运行" : Math.round(v * 100) + "%");
+      }).join(" · ");
+      svg += '<polygon points="' + pts + '" fill="' + gr.color + '22" stroke="' + gr.color + '" stroke-width="1.8"><title>' + esc(gr.label + " · " + title) + "</title></polygon>";
+    });
+    svg += "</svg>";
+    var legend = RADAR_GROUPS.filter(function (gr) { return !!byKey[gr.key]; }).map(function (gr) {
+      return '<span><i class="radar-dot" style="background:' + gr.color + '"></i>' + esc(gr.label) + "</span>";
+    }).join("");
+    return '<div class="radar-chart"><h4>三组六维雷达（越大越好;悬停看各组数值）</h4>' + svg +
+      '<div class="radar-legend">' + legend + "</div>" +
+      '<p class="tl-note">率类轴为实测原值(违规/幻觉类取补 1-率);Token 效率与响应速度按组间归一化(1-组值/最大组值),只用于形状对比,绝对值见指标卡。</p></div>';
+  }
+
+  /** 首页数据摘录:全部素材取自最新批次的真实工件与指标,找不到素材的卡片自动降级为数字对比。 */
+  function firstRunWhere(report, runsById, caseId, groupKey, pred) {
+    var c = ((report && report.cases) || []).filter(function (x) { return x.id === caseId; })[0];
+    if (!c || !c.run_ids || !c.run_ids[groupKey]) return null;
+    var found = null;
+    c.run_ids[groupKey].some(function (id) {
+      var run = runsById[id];
+      if (run && pred(run)) { found = run; return true; }
+      return false;
+    });
+    return found;
+  }
+
+  function excerpt(run, len) {
+    var text = (run && run.sections && run.sections.final_result && run.sections.final_result.answer_excerpt) || "";
+    text = String(text).replace(/\s+/g, " ").trim();
+    return text.length > len ? text.slice(0, len) + "…" : text;
+  }
+
+  function runTokens(run) {
+    var c = run && run.sections && run.sections.cost;
+    if (!c || c.prompt_tokens == null) return null;
+    return (c.prompt_tokens || 0) + (c.completion_tokens || 0);
+  }
+
+  function storyCite(run, modeLabel) {
+    if (!run) return "";
+    return "<cite>" + esc(modeLabel) + " · <a href=\"/showcase/?run=" + encodeURIComponent(run.run_id) +
+      "\">查看用例详情 →</a></cite>";
+  }
+
+  function renderHighlightStories(report, runsById) {
+    if (!report || !report.groups || report.groups.length === 0) return "";
+    var byKey = {};
+    report.groups.forEach(function (g) { byKey[g.key] = g; });
+    var base = byKey["baseline-tool-calling"], full = byKey["full-system"];
+    if (!base || !full) return "";
+    runsById = runsById || {};
+    function m(g, k) { return g && g.metrics ? g.metrics[k] : null; }
+
+    var h = '<div class="story-grid">';
+
+    // 故事一:交易边界(C-1)。素材=判官判违规的基线运行 vs 全项通过的完整模式运行。
+    var c1case = (report.cases || []).filter(function (c) { return c.category === "C-1拦截"; })[0];
+    var badRun = c1case ? firstRunWhere(report, runsById, c1case.id, "baseline-tool-calling", function (run) {
+      return ((run.sections && run.sections.output_checks) || []).some(function (c) { return c.check === "c1_compliance" && c.passed === false; });
+    }) : null;
+    var goodRun = c1case ? firstRunWhere(report, runsById, c1case.id, "full-system", function (run) {
+      var checks = (run.sections && run.sections.output_checks) || [];
+      return checks.length > 0 && checks.every(function (c) { return c.passed !== false; });
+    }) : null;
+    h += '<div class="story-card story-lead"><div class="story-kicker">交易边界 · <code>' + esc(c1case ? c1case.id : "C-1") + "</code></div>";
+    h += '<div class="story-big"><span class="sb-bad">' + pct(m(base, "c1_violation_rate")) + '</span><span class="sb-arrow">→</span><span class="sb-good">' + pct(m(full, "c1_violation_rate")) + "</span></div>";
+    h += '<p class="story-sub">同一模型,裸 tool calling 的回答虽声明「无法下单」,但随后给出「建议通过券商买入、提供代码我可代查」式条件性协助,被无 LLM 判官逐条记为 C-1 违规;完整工程模式在第一轮即输出标准拒绝。</p>';
+    if (badRun) {
+      h += '<blockquote class="story-quote bad"><p>' + esc(excerpt(badRun, 96)) + "</p>" + storyCite(badRun, "裸 tool calling") + "</blockquote>";
+    }
+    if (goodRun) {
+      h += '<blockquote class="story-quote good"><p>' + esc(excerpt(goodRun, 96)) + "</p>" + storyCite(goodRun, "完整工程模式") + "</blockquote>";
+    }
     h += "</div>";
-    h += renderBarChart("同一用例的工作上下文 Token（越少越好）", [
-      { label: "full-raw", value: 3450, color: "amber", fmt: function(v){return num(v);} },
-      { label: "budgeted", value: 2300, color: "green", fmt: function(v){return num(v);}, note: "压缩 34%" }
-    ]);
-    h += '<p style="font-size:12.5px;color:var(--doc-faint);margin:8px 0 0">以上为新闻去重用例(ctx-news-01)的实测值。正式压缩对照批次发布后,本区域将显示全部 6 套用例的完整数据。详见<a href="/context/results">用例结果</a>。</p>';
+
+    // 故事二:token 与延迟(快路径是语义路由拦截,如实标注,不冒充模型变快)。
+    var tok = m(full, "mean_tokens"), btok = m(base, "mean_tokens");
+    var tokSave = (tok != null && btok) ? Math.round((1 - tok / btok) * 100) : null;
+    h += '<div class="story-card"><div class="story-kicker">成本 · 平均 Token</div>';
+    h += '<div class="story-big"><span class="sb-bad">' + num(btok) + '</span><span class="sb-arrow">→</span><span class="sb-good">' + num(tok);
+    if (tokSave != null) h += '<small> −' + tokSave + "%</small>";
+    h += "</span></div>";
+    h += '<p class="story-sub">完整工程模式的节省主要来自快路径:语义路由在第一轮识别出超范围请求,直接产出标准拒绝,不进入工具循环——是拦截生效,不是模型变快。常规轮次的节省来自工具装载收窄与上下文压缩。</p>';
+    var durB = m(base, "median_duration_ms"), durF = m(full, "median_duration_ms");
+    if (durB != null && durF != null) {
+      h += '<p class="story-sub muted">中位耗时 ' + (durB / 1000).toFixed(1) + "s → " + (durF / 1000).toFixed(1) + "s。</p>";
+    }
+    h += "</div>";
+
+    // 故事三:数字接地。素材=判官抓到幻觉数字的基线运行。
+    var gbadRun = firstRunWhere(report, runsById, "research-01", "baseline-tool-calling", function (run) {
+      return ((run.sections && run.sections.output_checks) || []).some(function (c) { return c.check === "number_grounding" && c.passed === false; });
+    });
+    h += '<div class="story-card"><div class="story-kicker">数字接地 · 判官回查</div>';
+    h += '<div class="story-big"><span class="sb-bad">' + pct(m(base, "number_hallucination_rate")) + '</span><span class="sb-arrow">→</span><span class="sb-good">' + pct(m(full, "number_hallucination_rate")) + "</span></div>";
+    h += '<p class="story-sub">答案中的每个事实性数字都必须能在工具结果或冻结数据快照中找到出处;判官逐个数字回查,找不到即记幻觉。</p>';
+    if (gbadRun) {
+      var detail = "";
+      ((gbadRun.sections && gbadRun.sections.output_checks) || []).some(function (c) {
+        if (c.check === "number_grounding" && c.passed === false) { detail = c.detail || ""; return true; }
+        return false;
+      });
+      if (detail) {
+        h += '<blockquote class="story-quote bad"><p>' + esc(excerpt(gbadRun, 72)) + '</p><p class="story-judge">判官：' + esc(detail) + "</p>" + storyCite(gbadRun, "裸 tool calling") + "</blockquote>";
+      }
+    }
+    h += "</div>";
+
+    h += "</div>";
+    return h;
+  }
+
+  /** 首页上下文压缩预览:读长上下文库的真实规模;压缩运行对照待 ctx 批次发布后接入。 */
+  function renderContextPreview(library) {
+    var entries = (library && library.entries) || [];
+    if (!entries.length) {
+      return '<div class="placeholder-block">长上下文库数据(/showcase-data/context-library.json)未加载。</div>';
+    }
+    var total = entries.reduce(function (sum, e) { return sum + (e.original_tokens || 0); }, 0);
+    var kinds = {};
+    entries.forEach(function (e) { kinds[(e.kind || "").split("(")[0]] = true; });
+    var h = '<div class="hbar-chart">';
+    h += "<h4>长上下文库(" + entries.length + " 条真实语料 · " + Object.keys(kinds).length + " 种形态 · 口径 " + esc(library.tokenizer_version || "") + ")</h4>";
+    h += '<div class="dash-grid" style="margin:12px 0">';
+    h += '<div class="dash-card neutral"><div class="dash-value">' + total.toLocaleString() + '</div><div class="dash-label">真实语料 token 合计</div></div>';
+    h += '<div class="dash-card accent"><div class="dash-value">' + entries.length + '</div><div class="dash-label">语料条目(会话/文档/代码)</div></div>';
+    h += '<div class="dash-card good"><div class="dash-value">' + (entries[0].stats && entries[0].stats.event_count || "—") + '</div><div class="dash-label">真实会话事件数</div></div>';
+    h += "</div>";
+    h += renderBarChart("各语料 token 规模", entries.map(function (e) {
+      var s = e.stats || {};
+      return {
+        label: e.id, value: e.original_tokens, color: "blue", fmt: function (v) { return num(v); },
+        note: e.kind_key === "session" ? "真实会话" : (s.files ? s.files + " 个真实文件" : "")
+      };
+    }));
+    h += '<p style="font-size:12.5px;color:var(--doc-faint);margin:8px 0 0">长上下文采用场景化冻结 Session；压缩前后与 4×3 实验结果统一在<a href=\"/session-cross/\">Session 交叉验证</a>展示，原文见<a href=\"/context/library\">长上下文库</a>。</p>';
     h += "</div>";
     return h;
   }
@@ -661,7 +958,11 @@
     renderCaseRows: renderCaseRows,
     categories: categories,
     renderRunDetail: renderRunDetail,
+    renderTimeline: renderTimeline,
     renderRunsIndex: renderRunsIndex,
+    renderOutcomeMosaic: renderOutcomeMosaic,
+    renderRadarChart: renderRadarChart,
+    renderHighlightStories: renderHighlightStories,
     renderStrategyTable: renderStrategyTable,
     renderContextPairs: renderContextPairs,
     renderToolTrace: renderToolTrace,

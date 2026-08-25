@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>批次概览 · 实证展示</title>
-<meta name="description" content="实证展示入口:证据方式、发布链路与最新正式批次数字卡。">
+<title>用例详情 · 实例展示</title>
+<meta name="description" content="展示公告页所选实例的固定输入、约束、工具范围与期望行为。">
 <link rel="stylesheet" href="/docs/docs.css">
+<link rel="stylesheet" href="/showcase/examples.css">
 </head>
 <body>
 <header class="topbar">
@@ -34,22 +35,22 @@
         </ul>
       </details>
     <details class="side-group here" open>
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
         <ul>
-          <li><a href="/showcase/" class="active">批次概览</a></li>
-          <li><a href="/showcase/results">对照结果</a></li>
-          <li><a href="/showcase/tools">工具调用明细</a></li>
-          <li><a href="/showcase/runs">单次运行</a></li>
+          <li><a href="/showcase/" class="active">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
           <li><a href="/experiment/">实验设计</a></li>
           <li><a href="/experiment/cases">固定题库</a></li>
           <li><a href="/experiment/reproduce">如何复现</a></li>
         </ul>
       </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
         <ul>
@@ -66,6 +67,18 @@
           <li><a href="/judging/metrics">批次指标总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
+        <ul>
+          <li><a href="/tools/">全部工具</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
+        <ul>
+          <li><a href="/cases/">全部用例</a></li>
         </ul>
       </details>
     <details class="side-group">
@@ -95,78 +108,72 @@
   <main class="docs-main">
 
 <div class="detail-layout">
-      <aside class="page-toc" aria-label="本页目录">
-      <h4 class="page-toc-title">本页目录</h4>
-      <ul>
-        <li><a href="#what">这是什么</a></li>
-        <li><a href="#flow">从固定用例到公开证据</a></li>
-        <li><a href="#latest">最新正式批次</a></li>
-      </ul>
-    </aside>
-      <div class="detail-body">
-    <section class="hero">
-      <p class="hero-kicker">SHOWCASE · 实证展示</p>
-      <h1>固定用例，实证对照</h1>
-      <p class="hero-lead">本站是 Agent 实现方式对照的<strong>结果展示层</strong>。所有数字来自发布校验后的真实运行工件；尚未运行的字段显示「未运行」，不用估算值。</p>
-      <div class="hero-actions">
-        <a class="btn" href="/showcase/results">查看对照结果</a>
-        <a class="btn ghost" href="/context/results">上下文压缩对照</a>
-        <a class="btn ghost" href="/showcase/tools">工具调用明细</a>
-        <a class="btn ghost" href="/judging/">评判标准</a>
+  <aside class="page-toc" aria-label="本页目录">
+    <h4 class="page-toc-title">本页目录</h4>
+    <ul>
+      <li><a href="#instance">当前实例</a></li>
+      <li><a href="#input">固定输入与条件</a></li>
+      <li><a href="#expectation">期望行为</a></li>
+    </ul>
+  </aside>
+  <div class="detail-body">
+    <div class="example-head">
+      <div>
+        <h1>用例详情</h1>
+        <p>这里只展示公告页中选中的具体实例，不重复公告页的系统介绍、批次指标和结果摘要。</p>
       </div>
-    </section>
-
-    <h2 id="what">这是什么</h2>
-    <p>同一题库、同一模型、同一份冻结数据，对照裸 tool calling、LangGraph 官方 ReAct 与完整工程模式三种实现方式，以及四种上下文处理策略。实验怎么读、指标怎么算，见<a href="/judging/">指标定义</a>。</p>
-    <div class="note"><strong>证据方式：</strong>全部指标由代码断言产生，无 LLM 判官；无效运行不计入成功率；发布工件经字段白名单与脱敏校验。</div>
-
-    <h2 id="flow">从固定用例到公开证据</h2>
-    <div class="flow">固定用例（数据库为唯一数据来源）
-  → 项目所有者经私有运行 API 发起批次
-  → 三种编排 × 冻结工具数据执行
-  → 运行工件落盘
-  → 发布脚本投影（白名单 + 校验）
-  → showcase-data 静态数据 → 本页渲染</div>
-
-    <h2 id="latest">最新正式批次</h2>
-    <div id="homeBanner"></div>
-    <div class="stat-grid" id="statGrid"></div>
-    <p class="stat-note" id="statNote">指标卡读取 <code>/showcase-data/index.json</code>；首页只展示最新<strong>有效</strong>批次，未达门槛的批次可在对照结果页查看并注明原因。</p>
-  </div>
+      <span class="example-state">暂无已发布数据</span>
     </div>
+
+    <div class="note"><strong>数据规则</strong>：本页只读取公开发布的实例工件。没有已发布实例时保持空状态，不使用演示数字或估算结果填充。</div>
+
+    <h2 id="instance">当前实例</h2>
+    <div class="example-toolbar">
+      <div class="example-control">
+        <label for="caseSelector">公告页实例</label>
+        <select id="caseSelector" disabled><option>暂无可选实例</option></select>
+      </div>
+      <div class="example-control">
+        <label>用例版本</label>
+        <input value="—" disabled>
+      </div>
+      <a class="btn ghost" href="/">返回公告页</a>
+    </div>
+
+    <h2 id="input">固定输入与条件</h2>
+    <div class="frame-grid">
+      <section class="frame-card">
+        <span class="frame-kicker">Case input</span>
+        <h3>问题与场景</h3>
+        <dl class="field-list">
+          <div><dt>题号</dt><dd>暂无数据</dd></div>
+          <div><dt>场景</dt><dd>暂无数据</dd></div>
+          <div><dt>问题原文</dt><dd>暂无数据</dd></div>
+          <div><dt>登录状态</dt><dd>暂无数据</dd></div>
+        </dl>
+      </section>
+      <section class="frame-card">
+        <span class="frame-kicker">Fixed conditions</span>
+        <h3>固定实验条件</h3>
+        <dl class="field-list">
+          <div><dt>模型</dt><dd>暂无数据</dd></div>
+          <div><dt>可见工具</dt><dd>暂无数据</dd></div>
+          <div><dt>Mock 数据版本</dt><dd>暂无数据</dd></div>
+          <div><dt>上下文版本</dt><dd>暂无数据</dd></div>
+        </dl>
+      </section>
+    </div>
+
+    <h2 id="expectation">期望行为</h2>
+    <div class="frame-grid three">
+      <section class="frame-card"><span class="frame-kicker">Required</span><h3>应调用</h3><div class="empty-state compact">等待用例金标公开字段</div></section>
+      <section class="frame-card"><span class="frame-kicker">Forbidden</span><h3>禁止调用</h3><div class="empty-state compact">等待用例金标公开字段</div></section>
+      <section class="frame-card"><span class="frame-kicker">Output</span><h3>回答约束</h3><div class="empty-state compact">等待用例金标公开字段</div></section>
+    </div>
+  </div>
+</div>
   </main>
 </div>
 <script src="/docs/docs.js"></script>
-<script src="/showcase/shared.js"></script>
-<script>
-(function () {
-  "use strict";
-  fetch("/showcase-data/index.json", { cache: "no-store" })
-    .then(function (res) { if (!res.ok) throw new Error("no index"); return res.json(); })
-    .then(function (index) {
-      var state = SHOWCASE.homeState(index);
-      document.getElementById("homeBanner").innerHTML = SHOWCASE.renderHomeBanner(state);
-      var cardsPromise;
-      if (state.kind === "formal") {
-        cardsPromise = fetch("/showcase-data/batches/" + state.batch.batch_id + "/report.json", { cache: "no-store" })
-          .then(function (res) { return res.ok ? res.json() : null; })
-          .catch(function () { return null; });
-      } else {
-        cardsPromise = Promise.resolve(null);
-      }
-      cardsPromise.then(function (report) {
-        document.getElementById("statGrid").innerHTML = SHOWCASE.renderStatCards(state, report);
-      });
-    })
-    .catch(function () {
-      document.getElementById("homeBanner").innerHTML = SHOWCASE.renderHomeBanner({ kind: "nodata" });
-      document.getElementById("statGrid").innerHTML = SHOWCASE.renderStatCards({ kind: "nodata" }, null);
-    });
-})();
-</script>
-
-
-
-
 </body>
 </html>

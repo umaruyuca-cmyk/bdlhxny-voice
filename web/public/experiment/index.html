@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>实验设计 · 对照实验</title>
-<meta name="description" content="编排对照的三组实现、冻结工具数据、金标路由与变量隔离。">
+<title>实验 · 压缩用例与对比用例</title>
+<meta name="description" content="实验模块只有压缩用例与对比用例两个入口。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -13,6 +13,7 @@
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
     <div class="topbar-actions">
+      <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
     <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
@@ -34,22 +35,21 @@
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
         <ul>
-          <li><a href="/showcase/">批次概览</a></li>
-          <li><a href="/showcase/results">对照结果</a></li>
-          <li><a href="/showcase/tools">工具调用明细</a></li>
-          <li><a href="/showcase/runs">单次运行</a></li>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group here" open>
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
-          <li><a href="/experiment/" class="active">实验设计</a></li>
-          <li><a href="/experiment/cases">固定题库</a></li>
-          <li><a href="/experiment/reproduce">如何复现</a></li>
+          <li><a href="/experiment/compression" class="active">压缩用例</a></li>
+          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
         <ul>
@@ -63,7 +63,7 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
           <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">批次指标总表</a></li>
+          <li><a href="/judging/metrics">指标定义总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -105,36 +105,9 @@
     <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
   </aside>
   <main class="docs-main">
-<div class="detail-layout">
-      <aside class="page-toc" aria-label="本页目录">
-      <h4 class="page-toc-title">本页目录</h4>
-      <ul>
-        <li><a href="#groups">三组实现</a></li>
-        <li><a href="#frozen">冻结工具数据与金标路由</a></li>
-        <li><a href="#interleave">交错运行与重复</a></li>
-        <li><a href="#process">过程管理</a></li>
-        <li><a href="#deeplink">从汇总到单次运行</a></li>
-      </ul>
-    </aside>
-      <div class="detail-body">
-        <h1>实验设计 · 对照实验</h1>
-<h2 id="groups">三组实现</h2>
-<p>同一题库、同一 LLM、同一份冻结工具数据,唯一变量是编排形态:</p>
-<ul>
-  <li><strong>裸 tool calling(基线)</strong>:LLM 原生 tool calling——全量工具、无 Guardrail、无 Selective Loading、无快路径、无输出护栏;</li>
-  <li><strong>LangGraph 官方 ReAct(对照组)</strong>:<code>create_react_agent</code> 框架默认编排(ToolNode 统一执行,无治理;recursion_limit=50);</li>
-  <li><strong>完整工程模式(本系统)</strong>:G1-G7 治理中间件 + Selective Tool Loading + 语义快路径 + 输出护栏。</li>
-</ul>
-    <h2 id="frozen">冻结工具数据与金标路由</h2>
-<p>三组共用同一份冻结返回(fixture 集 <code>ab-eval</code>,存 <code>fixture_tool_responses</code> 表),隔离外部服务与数据变化——工具执行质量不是变量。完整模式组用<strong>金标路由</strong>(按题库快路径标注分流),隔离路由误差,让对照只度量编排本身。</p>
-    <h2 id="interleave">交错运行与重复</h2>
-<p>同一题的 N 次重复之间,三组顺序按确定性种子洗牌、题序按重复轮转,避免先跑组总是遇到更好的服务状态;同一种子可完整复现执行序。每题每组默认跑 5 次。</p>
-    <h2 id="process">过程管理</h2>
-<p>批次执行中可<strong>协作取消</strong>(已开始的模型调用等待完成,不硬杀;已完成部分照常落库,批次以 CANCELLED 收尾);可设<strong>批次 token 上限</strong>,累计消耗达到后停止发起新运行(跳过计数与无效运行区分)。</p>
-    <h2 id="deeplink">从汇总到单次运行</h2>
-<p>每个汇总数字都能回溯:批次报告的每格指标 → <code>run_key</code> → <code>run_id</code> → 单次运行的九段工件与事件流;本轮实验每题按序调用了哪些工具,见<a href="/showcase/tools">工具调用明细</a>。另见<a href="/showcase/runs">单次运行</a>与<a href="/ops/artifacts">工件与发布</a>。</p>
-      </div>
-    </div>
+    
+<p>实验模块只有两个入口:<a href="/experiment/compression">压缩用例</a>(三个长 Session × 四种上下文方式 × 三种 Agent)与<a href="/experiment/comparison">对比用例</a>(固定用例 × 三种 Agent × 重复 3 或 5 次)。即将进入压缩用例。</p>
+<meta http-equiv="refresh" content="0; url=/experiment/compression/">
   </main>
 </div>
 <script src="/docs/docs.js"></script>

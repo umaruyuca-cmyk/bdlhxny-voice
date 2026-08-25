@@ -5,19 +5,24 @@ import assert from "node:assert/strict";
 /**
  * /lab 私有侧契约：页面存在且可调用运行 API；但公开镜像物理排除 lab/，
  * 公开页面（/showcase、/docs）不得链接 /lab、不得出现后端调用。
+ * 例外：实验模块两个页面(压缩用例/对比用例)允许调用 /api/v1/public/* 匿名测试接口。
  */
 
 const PUBLIC_PAGES = [
   ["", "index"],
   ["about", "index"], ["about", "banks"], ["about", "repo"],
   ["showcase", "index"], ["showcase", "results"], ["showcase", "tools"], ["showcase", "runs"],
-  ["experiment", "index"], ["experiment", "cases"], ["experiment", "reproduce"],
+  ["experiment", "index"], ["experiment", "compression"], ["experiment", "comparison"],
+  ["test", "index"],
   ["context", "index"], ["context", "library"], ["context", "design"], ["context", "results"],
   ["judging", "index"], ["judging", "metrics"], ["judging", "judge"], ["judging", "invalid"],
   ["engine", "index"], ["engine", "loading"], ["engine", "catalog"],
   ["engine", "governance"], ["engine", "guardrail"], ["engine", "tools"],
   ["ops", "index"], ["ops", "run-api"], ["ops", "artifacts"], ["ops", "deploy"], ["ops", "roadmap"],
 ];
+
+/** 实验两页:唯一允许匿名公开测试接口的公开页。 */
+const PUBLIC_API_PAGES = new Set(["experiment/compression", "experiment/comparison", "test/index"]);
 
 async function readPublicPage(dir, page) {
   const rel = dir ? `../public/${dir}/${page}.html` : `../public/${page}.html`;
@@ -67,14 +72,16 @@ test("/lab 工具可见集勾选区（GT-5）：加载目录、快捷操作与�
   }
 });
 
-test("/lab 模型接入（模型切换）：快速切换/提供商预设/Key 选填/测试连接接线", async () => {
+test("/lab 模型接入:env 唯一真源,页面无账号级配置,仅保留连通性测试", async () => {
   const index = await readFile(new URL("../public/lab/index.html", import.meta.url), "utf8");
-  assert.match(index, /\/api\/v1\/llm-config/, "需调用配置读写端点");
   assert.match(index, /\/api\/v1\/llm-config\/test/, "需接通连通性测试端点");
-  assert.match(index, /id="modelQuick"/, "需提供模型快速切换下拉");
-  assert.match(index, /id="llmProvider"/, "需提供提供商预设下拉");
-  assert.match(index, /id="llmApiKey" type="password"/, "密钥输入必须为 password 型(不回显)");
-  assert.match(index, /按当前账号绑定/, "需说明配置与账号绑定");
+  assert.match(index, /env 是唯一真源/, "需说明配置来自服务端环境");
+  assert.match(index, /LLM_BASE_URL/, "需指明配置的环境变量名");
+  // 账号级配置模块已删除:不得再有读写端点、密钥输入与提供商预设
+  assert.doesNotMatch(index, /["']\/api\/v1\/llm-config["']/, "不得调用配置读写端点(已删除)");
+  assert.ok(!index.includes("llmApiKey"), "不得出现密钥输入框");
+  assert.ok(!index.includes("llmProvider"), "不得出现提供商预设下拉");
+  assert.ok(!index.includes("modelQuick"), "不得出现模型快速切换下拉");
 });
 
 test("/lab 批次过程管理（任务四）：取消、预算与运行详情下钻均已接线", async () => {
@@ -88,17 +95,28 @@ test("/lab 批次过程管理（任务四）：取消、预算与运行详情下
   }
 });
 
-test("公开页面不链接 /lab(登录唯一入口是弹窗)、不出现后端调用", async () => {
+test("公开页面不链接 /lab(登录唯一入口是弹窗)、不出现后端调用(实验两页仅允许匿名公开接口)", async () => {
   for (const [dir, page] of PUBLIC_PAGES) {
     const html = await readPublicPage(dir, page);
     assert.ok(!html.includes('href="/lab'), `${dir || "root"}/${page}.html 不得链接运行台(登录走弹窗)`);
-    if (`${dir}/${page}` === "ops/run-api") {
+    const key = dir ? `${dir}/${page}` : page;
+    if (key === "ops/run-api") {
       // 私有 API 的文档页:正文列出端点是职责,但不得发起任何真实调用
       assert.doesNotMatch(html, /fetch\(|XMLHttpRequest|axios/, "ops/run-api 文档页不得发起真实后端调用");
+    } else if (PUBLIC_API_PAGES.has(key)) {
+      // 实验两页:只允许匿名公开测试接口,不得触碰维护者端点
+      assert.doesNotMatch(html, /\/api\/v1\/(?!public\/)/, `${key} 只允许 /api/v1/public/ 匿名测试接口`);
     } else {
-      assert.doesNotMatch(html, /\/api\/v1\//, `${dir}/${page}.html 不得出现后端 API`);
+      assert.doesNotMatch(html, /\/api\/v1\//, `${dir || "root"}/${page}.html 不得出现后端 API`);
     }
-    assert.doesNotMatch(html, /<input|<form|<textarea/, `${dir}/${page}.html 不得出现输入控件`);
+    if (!PUBLIC_API_PAGES.has(key)) {
+      if (key.startsWith("showcase/")) {
+        // showcase 空框架页:允许 disabled 占位控件,禁止表单
+        assert.doesNotMatch(html, /<form/, `${key} 不得出现表单提交`);
+      } else {
+        assert.doesNotMatch(html, /<input|<form|<textarea/, `${dir || "root"}/${page}.html 不得出现输入控件`);
+      }
+    }
   }
 });
 
@@ -116,9 +134,17 @@ test("登录遮罩:公开页登录不跳转;运行台隐藏入口登录后才可
   const css = await readFile(new URL("../public/docs/docs.css", import.meta.url), "utf8");
   assert.match(css, /\.topbar-lab\s*\{[^}]*display:\s*none/, "运行台入口默认不可见");
   // 遮罩表单由共享脚本运行时注入,公开页 HTML 源保持零输入控件
+  // (实验两页的勾选/单选是匿名测试配置控件;showcase 空框架页的 disabled 占位为纯展示)
   for (const [dir, page] of PUBLIC_PAGES) {
+    const key = dir ? `${dir}/${page}` : page;
+    if (PUBLIC_API_PAGES.has(key)) continue;
     const html = await readPublicPage(dir, page);
-    assert.doesNotMatch(html, /<input|<textarea/, `${dir || "root"}/${page}.html HTML 源不得出现输入控件`);
+    const isShowcaseFrame = key.startsWith("showcase/");
+    if (isShowcaseFrame) {
+      assert.doesNotMatch(html, /<input(?![^>]*disabled)/, `${key} 的 input 只能是 disabled 占位`);
+    } else {
+      assert.doesNotMatch(html, /<input|<textarea/, `${dir || "root"}/${page}.html HTML 源不得出现输入控件`);
+    }
   }
 });
 

@@ -8,6 +8,11 @@ import { redirectFor } from "./scripts/redirect-map.mjs";
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8082", 10);
 const publicDirectory = fileURLToPath(new URL("./public/", import.meta.url));
+// 开发代理:把匿名公共测试接口转发到本地 engine,「实验 / 我的测试」页可端到端联调。
+// 默认开启并指向本地 engine(127.0.0.1:8090,与 deploy/.env 的 ENGINE_PORT 一致);
+// 设 RUN_API_PROXY=off 可恢复纯静态行为(与公开部署一致),或指向其他地址。
+const runApiProxyRaw = process.env.RUN_API_PROXY || "http://127.0.0.1:8090";
+const runApiProxy = /^(off|0|false|none)$/i.test(runApiProxyRaw) ? "" : runApiProxyRaw.replace(/\/+$/, "");
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -36,6 +41,24 @@ const server = http.createServer(async (request, response) => {
 });
 
 async function serveStatic(requestPath, request, response) {
+  // 开发代理(可选):仅匿名公共测试接口,仅显式配置 RUN_API_PROXY 时启用
+  if (runApiProxy && requestPath.startsWith("/api/v1/public/")) {
+    const target = new URL(runApiProxy + request.url);
+    const proxied = http.request(
+      target,
+      { method: request.method, headers: { ...request.headers, host: target.host } },
+      (upstream) => {
+        response.writeHead(upstream.statusCode || 502, upstream.headers);
+        upstream.pipe(response);
+      },
+    );
+    proxied.on("error", () => {
+      response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("运行服务不可达:engine 未启动或 RUN_API_PROXY 配置错误");
+    });
+    request.pipe(proxied);
+    return;
+  }
   // 旧路径 301(任务六 §11:/docs/* 页面与 /showcase/context 迁至七模块新位置;
   // /docs/ 下的 css/js 资产保留原位,不在映射内)
   const redirect = redirectFor(requestPath);
@@ -45,14 +68,24 @@ async function serveStatic(requestPath, request, response) {
     return;
   }
   // 模块前缀(机甲首页 + 六模块):无尾斜杠 302 到模块首页;{page} 自动补 .html
-  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/lab", "/experiment", "/context", "/judging", "/engine", "/ops"];
+  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/session-cross", "/lab", "/experiment", "/test", "/context", "/judging", "/engine", "/ops"];
   if (MODULE_PREFIXES.includes(requestPath)) {
     response.writeHead(302, { Location: requestPath + "/" });
     response.end();
     return;
   }
+  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/session-cross/", "/lab/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/"];
+  // 模块子页带尾斜杠(/experiment/compression/)301 去斜杠:子页是 *.html 文件
+  // 不是目录;目录索引(如 /experiment/ 自身)除外。与 nginx 的去斜杠 rewrite 同口径。
+  if (requestPath !== "/" && requestPath.endsWith("/")) {
+    const stripped = requestPath.replace(/\/+$/, "");
+    if (DIRECTORY_INDEX.some((prefix) => stripped.startsWith(prefix) && stripped !== prefix)) {
+      response.writeHead(301, { Location: stripped });
+      response.end();
+      return;
+    }
+  }
   let target = requestPath;
-  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/lab/", "/experiment/", "/context/", "/judging/", "/engine/", "/ops/"];
   if (requestPath === "/") target = "/index.html";
   else if (DIRECTORY_INDEX.includes(requestPath)) target = requestPath + "index.html";
   else {

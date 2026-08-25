@@ -141,18 +141,18 @@
               if (f.kind && c.kind !== f.kind) return false;
               if (f.scene && c.scene !== f.scene) return false;
               if (!q) return true;
-              return (c.id + " " + (c.title || "") + " " + (c.checks && c.checks.category || "") + " " + (c.message || "")).toLowerCase().indexOf(q.toLowerCase()) >= 0;
+              return (c.id + " " + (c.title || "") + " " + (c.kind_label || "") + " " + (c.message || "")).toLowerCase().indexOf(q.toLowerCase()) >= 0;
             });
           },
           renderRows: function (rows) {
             return rows.map(function (c) {
               return "<tr>" +
                 '<td><a href="/cases/detail.html?id=' + encodeURIComponent(c.id) + '"><code>' + esc(c.id) + "</code></a></td>" +
-                "<td>" + esc(c.checks && c.checks.category || c.title || "—") + "</td>" +
+                "<td>" + esc(c.title || "—") + "</td>" +
                 '<td><span class="cat-badge kind-' + c.kind + '">' + esc(c.kind_label) + "</span></td>" +
                 "<td>" + esc(c.scene) + "</td>" +
-                "<td>" + (c.authenticated ? "是" : "否") + "</td>" +
                 "<td>" + (c.tool_count || 0) + "</td>" +
+                '<td><a href="/experiment/comparison?case_id=' + encodeURIComponent(c.id) + '">进入实验</a></td>' +
                 "</tr>";
             }).join("");
           }
@@ -234,70 +234,35 @@
         if (!c) throw new Error("未找到用例: " + id);
         document.title = c.id + " · 用例库";
 
-        var checks = c.checks || {};
-        var expectedTools = checks.expected_tools || [];
-        var expectedOrder = checks.expected_order || [];
-        var absentTools = checks.absent_tools || [];
-        var expectedParams = checks.expected_params || null;
-        var note = checks.note || "";
+        var allowed = c.allowed_tools || [];
 
         var h = '<div class="cat-detail-card">';
         h += "<h2><code>" + esc(c.id) + "</code></h2>";
         h += '<p style="margin-top:4px"><span class="cat-badge kind-' + c.kind + '">' + esc(c.kind_label) + "</span>";
-        if (checks.category) h += ' <strong style="margin-left:8px">' + esc(checks.category) + "</strong>";
         if (c.title) h += " · " + esc(c.title);
         h += "</p>";
 
         h += '<div class="cat-meta">';
+        h += '<span class="cat-meta-item">类型 <strong>' + esc(c.test_type || "COMPARISON_CASE") + "</strong></span>";
         h += '<span class="cat-meta-item">场景 <strong>' + esc(c.scene) + "</strong></span>";
-        h += '<span class="cat-meta-item">需登录 <strong>' + (c.authenticated ? "是" : "否") + "</strong></span>";
         h += '<span class="cat-meta-item">版本 <strong>v' + c.current_version + "</strong></span>";
-        h += '<span class="cat-meta-item">Token 预算 <strong>' + (c.token_budget || "—") + "</strong></span>";
         h += '<span class="cat-meta-item">状态 <strong>' + esc(c.status) + "</strong></span>";
         h += "</div>";
 
-        // 问题描述(核心内容,突出展示)
         h += '<h3 style="margin-top:20px">问题描述</h3>';
         h += '<div style="background:#f8f9fc;border-left:3px solid var(--doc-accent);border-radius:0 8px 8px 0;padding:16px 20px;font-size:14.5px;line-height:1.7;color:var(--doc-text)">' + esc(c.message) + "</div>";
 
-        // 期望工具链
-        if (expectedTools.length > 0) {
-          h += '<h3 style="margin-top:24px">期望工具(' + expectedTools.length + " 个)</h3>";
-          if (expectedOrder.length === expectedTools.length) {
-            h += '<p style="font-size:12.5px;color:var(--doc-faint);margin-bottom:8px">按期望调用顺序:</p>';
-            h += '<ol class="cat-tool-chain">';
-            expectedOrder.forEach(function (t, i) {
-              h += '<li><a href="/tools/detail.html?name=' + encodeURIComponent(t) + '"><code>' + esc(t) + "</code></a></li>";
-            });
-            h += "</ol>";
-          } else {
-            h += '<ul style="list-style:none;padding:0">';
-            expectedTools.forEach(function (t) {
-              h += '<li style="padding:6px 0;border-bottom:1px solid #eef1f6"><a href="/tools/detail.html?name=' + encodeURIComponent(t) + '"><code>' + esc(t) + "</code></a></li>";
-            });
-            h += "</ul>";
-          }
+        // 标准工具范围(含目标工具与干扰工具;不标注哪一个是目标工具,不展示评判配置)
+        if (allowed.length > 0) {
+          h += '<h3 style="margin-top:24px">标准工具范围(' + allowed.length + " 个)</h3>";
+          h += "<p>" + allowed.map(function (t) {
+            return '<a href="/tools/detail.html?name=' + encodeURIComponent(t) + '"><code>' + esc(t) + "</code></a>";
+          }).join(" · ") + "</p>";
         }
 
-        // 期望参数
-        if (expectedParams) {
-          h += '<h3 style="margin-top:20px">期望参数</h3>';
-          h += '<pre class="cat-schema">' + esc(JSON.stringify(expectedParams, null, 2)) + "</pre>";
-        }
-
-        // 禁止工具
-        if (absentTools.length > 0) {
-          h += '<h3 style="margin-top:20px">禁止调用的工具(' + absentTools.length + " 个)</h3>";
-          h += "<p>" + absentTools.map(function (t) {
-            return '<span class="cat-badge risk-high">' + esc(t) + "</span>";
-          }).join(" ") + "</p>";
-        }
-
-        // 备注
-        if (note) {
-          h += '<h3 style="margin-top:20px">设计说明</h3>';
-          h += '<p style="font-size:13px;color:var(--doc-dim)">' + esc(note) + "</p>";
-        }
+        h += '<h3 style="margin-top:24px">进入实验</h3>';
+        h += '<p><a class="btn" href="/experiment/comparison?case_id=' + encodeURIComponent(c.id) + '">用三种 Agent 对比运行该用例</a></p>';
+        h += '<p style="font-size:12.5px;color:var(--doc-faint)">重复次数只允许 3 或 5(9 或 15 个运行);评判配置、Mock 返回与内部 gold 不进入公开页面与模型输入。</p>';
 
         h += "</div>";
         h += '<p><a href="/cases/">← 返回用例列表</a></p>';

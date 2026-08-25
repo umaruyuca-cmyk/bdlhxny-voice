@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>工具调用明细 · 实证展示</title>
-<meta name="description" content="本轮批次每题每组的按序工具调用链:调用了哪些工具、什么顺序、成功与否。">
+<title>用例调用明细 · 实例展示</title>
+<meta name="description" content="展示公告页所选实例的逐步工具调用、参数、冻结 Mock 返回与状态。">
 <link rel="stylesheet" href="/docs/docs.css">
+<link rel="stylesheet" href="/showcase/examples.css">
 </head>
 <body>
 <header class="topbar">
@@ -34,22 +35,22 @@
         </ul>
       </details>
     <details class="side-group here" open>
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
         <ul>
-          <li><a href="/showcase/">批次概览</a></li>
-          <li><a href="/showcase/results">对照结果</a></li>
-          <li><a href="/showcase/tools" class="active">工具调用明细</a></li>
-          <li><a href="/showcase/runs">单次运行</a></li>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools" class="active">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
           <li><a href="/experiment/">实验设计</a></li>
           <li><a href="/experiment/cases">固定题库</a></li>
           <li><a href="/experiment/reproduce">如何复现</a></li>
         </ul>
       </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
         <ul>
@@ -66,6 +67,18 @@
           <li><a href="/judging/metrics">批次指标总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
+        <ul>
+          <li><a href="/tools/">全部工具</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
+        <ul>
+          <li><a href="/cases/">全部用例</a></li>
         </ul>
       </details>
     <details class="side-group">
@@ -95,62 +108,56 @@
   <main class="docs-main">
 
 <div class="detail-layout">
-      <aside class="page-toc" aria-label="本页目录">
-      <h4 class="page-toc-title">本页目录</h4>
-      <ul>
-        <li><a href="#what">本轮实验跑了什么、调了哪些工具</a></li>
-        <li><a href="#list">调用明细列表(读发布产物)</a></li>
-      </ul>
-    </aside>
-      <div class="detail-body">
-    <h2 id="what">本轮实验跑了什么、调了哪些工具</h2>
-    <p>上一栏是最新已发布批次<strong>逐题 × 逐组 × 逐次运行</strong>的工具调用序列:每道题展示了问题原文、每组实现(裸 tool calling / LangGraph ReAct / 完整工程模式)每次运行的<strong>按序调用链</strong>——顺序即真实调用顺序(#n 为步骤号),绿色为成功、红色为失败或被拦截;未产生工具调用的运行如实标注「无工具调用」。点击题目行展开,点击 run 号进入该运行的九段明细。</p>
-    <h2 id="list">调用明细列表(读发布产物)</h2>
-    <div id="toolTrace"><div class="placeholder-block">正在读取已发布批次与逐运行工件…</div></div>
-
-  </div>
+  <aside class="page-toc" aria-label="本页目录">
+    <h4 class="page-toc-title">本页目录</h4>
+    <ul>
+      <li><a href="#run">实例与运行</a></li>
+      <li><a href="#summary">执行摘要</a></li>
+      <li><a href="#trace">逐步调用链</a></li>
+    </ul>
+  </aside>
+  <div class="detail-body">
+    <div class="example-head">
+      <div>
+        <h1>用例调用明细</h1>
+        <p>只展示公告页实例对应的实际调用证据：谁调用、调用什么、参数是什么、冻结 Mock 返回什么以及最终状态。</p>
+      </div>
+      <span class="example-state">暂无已发布数据</span>
     </div>
+
+    <div class="note"><strong>展示边界</strong>：本页不重复批次指标和产品介绍。工具返回必须标记为冻结 Mock；没有运行工件时不生成示例调用链。</div>
+
+    <h2 id="run">实例与运行</h2>
+    <div class="example-toolbar">
+      <div class="example-control">
+        <label for="traceCaseSelector">公告页实例</label>
+        <select id="traceCaseSelector" disabled><option>暂无可选实例</option></select>
+      </div>
+      <div class="example-control">
+        <label for="runSelector">Agent 模式 / 运行</label>
+        <select id="runSelector" disabled><option>暂无已发布运行</option></select>
+      </div>
+      <a class="btn ghost" href="/showcase/">查看用例详情</a>
+    </div>
+
+    <h2 id="summary">执行摘要</h2>
+    <div class="frame-grid three">
+      <section class="frame-card"><span class="frame-kicker">Route</span><h3>工具选择</h3><div class="empty-state compact">工具选择与顺序暂无数据</div></section>
+      <section class="frame-card"><span class="frame-kicker">Execution</span><h3>调用结果</h3><div class="empty-state compact">成功、失败与拦截暂无数据</div></section>
+      <section class="frame-card"><span class="frame-kicker">Evidence</span><h3>证据定位</h3><div class="empty-state compact">run_id 与工件哈希暂无数据</div></section>
+    </div>
+
+    <h2 id="trace">逐步调用链</h2>
+    <div class="trace-frame" aria-label="工具调用明细空表">
+      <div class="trace-head">
+        <span>步骤</span><span>Agent 模式</span><span>工具</span><span>调用参数</span><span>冻结 Mock 返回</span><span>状态</span>
+      </div>
+      <div class="trace-empty">暂无已发布的调用明细。实例运行并发布后，按真实调用顺序逐行展示。</div>
+    </div>
+  </div>
+</div>
   </main>
 </div>
 <script src="/docs/docs.js"></script>
-<script src="/showcase/shared.js"></script>
-<script>
-(function () {
-  "use strict";
-  fetch("/showcase-data/index.json", { cache: "no-store" })
-    .then(function (res) { if (!res.ok) throw new Error("no index"); return res.json(); })
-    .then(function (index) {
-      var latest = index.latest_batch;
-      if (!latest) throw new Error("no batch");
-      return fetch("/showcase-data/batches/" + latest.batch_id + "/report.json", { cache: "no-store" });
-    })
-    .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (report) {
-      if (!report) throw new Error("批次产物缺失");
-      var ids = [];
-      (report.cases || []).forEach(function (c) {
-        Object.keys(c.run_ids || {}).forEach(function (group) {
-          (c.run_ids[group] || []).forEach(function (id) { if (ids.indexOf(id) === -1) ids.push(id); });
-        });
-      });
-      if (!ids.length) throw new Error("批次不含已发布运行");
-      return Promise.all(ids.map(function (id) {
-        return fetch("/showcase-data/runs/" + encodeURIComponent(id) + ".json", { cache: "no-store" })
-          .then(function (res) { return res.ok ? res.json() : null; })
-          .catch(function () { return null; });
-      })).then(function (runs) {
-        var byId = {};
-        runs.forEach(function (run) { if (run) byId[run.run_id] = run; });
-        document.getElementById("toolTrace").innerHTML = SHOWCASE.renderToolTrace(report, byId);
-      });
-    })
-    .catch(function (err) {
-      document.getElementById("toolTrace").innerHTML =
-        '<div class="placeholder-block">未运行:(' + SHOWCASE.esc(err.message) + ")。批次发布并附带逐运行工件后,本页自动出现。</div>";
-    });
-})();
-</script>
-
-
 </body>
 </html>

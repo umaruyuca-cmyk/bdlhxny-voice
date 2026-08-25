@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>长上下文库 · 上下文压缩</title>
-<meta name="description" content="库内长上下文条目的元信息列表:token 规模、内容方向、条目构成与原文下载。">
+<meta name="description" content="三套完整的场景化冻结 Session,用于长上下文与压缩策略的可复现实验。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -13,6 +13,7 @@
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
     <div class="topbar-actions">
+      <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
     <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
@@ -34,22 +35,21 @@
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
         <ul>
-          <li><a href="/showcase/">批次概览</a></li>
-          <li><a href="/showcase/results">对照结果</a></li>
-          <li><a href="/showcase/tools">工具调用明细</a></li>
-          <li><a href="/showcase/runs">单次运行</a></li>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
-          <li><a href="/experiment/">实验设计</a></li>
-          <li><a href="/experiment/cases">固定题库</a></li>
-          <li><a href="/experiment/reproduce">如何复现</a></li>
+          <li><a href="/experiment/compression">压缩用例</a></li>
+          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
     <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
         <ul>
@@ -63,7 +63,7 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
           <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">批次指标总表</a></li>
+          <li><a href="/judging/metrics">指标定义总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -109,19 +109,22 @@
       <aside class="page-toc" aria-label="本页目录">
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
-        <li><a href="#about">本页是什么</a></li>
-        <li><a href="#list">上下文列表</a></li>
-        <li><a href="#compress">压缩测试(登录后可用)</a></li>
+        <li><a href="#about">语料设计</a></li>
+        <li><a href="#list">语料列表</a></li>
       </ul>
     </aside>
       <div class="detail-body">
         <h1>长上下文库 · 上下文压缩</h1>
-<h2 id="about">本页是什么</h2>
-<p>上下文压缩实验的语料库存在 PostgreSQL(<code>changes/20260821-long-context-cases.sql</code>,批量条目由确定性公式生成、有业务含义)。本页列出每套长上下文的基础信息:<strong>token 规模(保守口径估算)、内容方向、条目构成(强制/可压缩/仅引用/干扰)、两条变体的预算</strong>;原文不直接铺在页面上,以 <code>.txt</code> 提供下载。</p>
-    <h2 id="list">上下文列表</h2>
+<h2 id="about">语料设计</h2>
+<p>主文库只展示<strong>完整、连续的 Session</strong>。仓库中的文档、源码、SQL 和配置不会直接拼成顶层用例,而是作为对话过程中的冻结工具结果出现。当前三套用例分别覆盖:</p>
+<ul>
+  <li><strong>产品与架构演进</strong>:多轮需求澄清、误解纠正、设计文件读取和最终范围收敛;</li>
+  <li><strong>上下文引擎排查</strong>:编译器、预算、评分与 Agent 循环的连续代码审查;</li>
+  <li><strong>数据库与云部署</strong>:手工 SQL、data 服务、本地 5432 和云部署配置的一致性审计。</li>
+</ul>
+<p>三套内容都明确标注为<strong>场景化冻结 Session</strong>:对话按真实开发流程整理,工具返回取自仓库文件快照,用于稳定复现实验,不冒充未经编辑的聊天逐字稿。同一份 Session 独立派生完整透传、最近窗口、一次摘要和按预算压缩四种输入。旧的六套结构化夹具仍可供引擎回归使用,但不再属于主文库展示语料。</p>
+    <h2 id="list">语料列表</h2>
 <div id="libraryList"><div class="placeholder-block">正在读取长上下文库…</div></div>
-    <h2 id="compress">压缩测试(登录后可用)</h2>
-<div id="compressPanel" class="placeholder-block"><p>压缩测试按钮仅在登录后显示:点击后按该用例的压缩变体预算现场执行一次构建器,展示原始/工作 token、逐条决策与保留率——不发起模型调用,不产生费用。</p></div>
       </div>
     </div>
   </main>

@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "analysis.run_analysis",
-      "description": "对标准化数据执行确定性金融分析",
+      "description": "对标准化数据执行确定性分析",
       "domain": "analysis",
       "adapter": "local",
       "read_only": true,
@@ -1640,7 +1640,7 @@
     },
     {
       "name": "market.get_realtime_quote",
-      "description": "查询标的最新行情",
+      "description": "查询标的最新报价",
       "domain": "market",
       "adapter": "mcp",
       "read_only": true,
@@ -1855,7 +1855,7 @@
     },
     {
       "name": "portfolio.build_current_valuation",
-      "description": "基于最新行情做确定性估值重算",
+      "description": "基于最新报价做确定性估值重算",
       "domain": "portfolio",
       "adapter": "local",
       "read_only": true,
@@ -1904,7 +1904,7 @@
     },
     {
       "name": "portfolio.get_current_positions",
-      "description": "读取当前用户持仓列表",
+      "description": "读取当前用户账户持有列表",
       "domain": "portfolio",
       "adapter": "java",
       "read_only": true,
@@ -2430,7 +2430,7 @@
     },
     {
       "name": "user.get_risk_profile",
-      "description": "读取当前用户风险画像与金融档案",
+      "description": "读取当前用户风险画像与档案",
       "domain": "user",
       "adapter": "java",
       "read_only": true,

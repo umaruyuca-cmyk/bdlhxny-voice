@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>用例结果 · 上下文压缩</title>
-<meta name="description" content="策略比较与联动对照表读实际批次产物;正反例成对展示。">
+<meta name="description" content="压缩实验结果以公告页正式发布为准;未发布时统一空状态。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -13,6 +13,7 @@
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
     <div class="topbar-actions">
+      <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
     <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
@@ -34,22 +35,21 @@
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实证展示</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
         <ul>
-          <li><a href="/showcase/">批次概览</a></li>
-          <li><a href="/showcase/results">对照结果</a></li>
-          <li><a href="/showcase/tools">工具调用明细</a></li>
-          <li><a href="/showcase/runs">单次运行</a></li>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>对照实验</summary>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
-          <li><a href="/experiment/">实验设计</a></li>
-          <li><a href="/experiment/cases">固定题库</a></li>
-          <li><a href="/experiment/reproduce">如何复现</a></li>
+          <li><a href="/experiment/compression">压缩用例</a></li>
+          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
     <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
         <ul>
@@ -63,7 +63,7 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
           <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">批次指标总表</a></li>
+          <li><a href="/judging/metrics">指标定义总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -110,56 +110,41 @@
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
         <li><a href="#strategies">四种策略</a></li>
-        <li><a href="#table">策略比较表(读实际工件)</a></li>
-        <li><a href="#linkage">联动对照(原始 vs 压缩 × 三组实现)</a></li>
+        <li><a href="#table">策略与联动对照(读正式发布索引)</a></li>
         <li><a href="#pairs">正反例成对展示</a></li>
       </ul>
     </aside>
       <div class="detail-body">
         <h1>用例结果 · 上下文压缩</h1>
 <h2 id="strategies">四种策略</h2>
-<p>固定 Agent 实现方式,对照四种上下文处理策略:<strong>full</strong>(全量)、<strong>recent-n</strong>(最近 N 条)、<strong>single-summary</strong>(一次性摘要)、<strong>budgeted</strong>(按预算选择压缩)。模型窗口容纳不下 full 时该策略显示「不适用」,不把截断输入冒充 full。</p>
-<div class="flow">原始上下文(有业务意义的数据,不凑长度)
-→ 分类:强制保留 / 可压缩 / 仅引用 / 干扰信息
-→ 按策略选择与压缩
-→ 工作上下文(≤ 预算)
-→ 保留率、召回率、引用完整率、净成本</div>
-    <h2 id="table">策略比较表(读实际工件)</h2>
-<div id="strategyTable"><div class="placeholder-block"><p>未运行:尚无已发布的上下文对照批次。</p></div></div>
-    <h2 id="linkage">联动对照(原始 vs 压缩 × 三组实现)</h2>
-<p>发布联动批次后,此处按「变体 × 实现方式」六格展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离——比较同一实现下压缩格相对原始格的保持度。</p><div id="linkageTable"><div class="placeholder-block"><p>未运行:尚无已发布的联动对照批次。</p></div></div>
+<p>固定 Agent 实现方式,对照四种上下文处理策略:<strong>full-session</strong>(完整透传)、<strong>recent-window</strong>(最近窗口)、<strong>single-summary</strong>(一次摘要)、<strong>budgeted-session</strong>(按预算压缩,本项目算法)。模型窗口容纳不下 full 时该策略显示「不适用」,不把截断输入冒充 full。</p>
+<p>各 Session 四种方式的<strong>编译统计</strong>(压缩前后 Token、事件处理桶)见<a href="/context/library">长上下文库</a>;<strong>实验结果</strong>(4×3 单次样本矩阵)在<a href="/experiment/compression">压缩用例实验</a>发起运行,正式数字经维护者审核发布后出现在<a href="/#compression">公告页压缩结果区</a>。</p>
+    <h2 id="table">策略与联动对照(读正式发布索引)</h2>
+<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按「变体 × 实现方式」展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离。</div></div>
     <h2 id="pairs">正反例成对展示</h2>
-<p>同一用例的成功运行与失败运行并排展示,标注唯一变化的策略与来自校验器的失败原因;没有失败样本时显示「暂无失败样本」,且完整批次始终可查。</p><div id="contextPairs"><div class="placeholder-block"><p>未运行。</p></div></div>
+<p>同一用例的成功运行与失败运行并排展示,标注唯一变化的策略与来自校验器的失败原因;没有失败样本时显示「暂无失败样本」,且完整批次始终可查。</p><div id="contextPairs"><div class="placeholder-block">尚未发布。</div></div>
       </div>
     </div>
   </main>
 </div>
 <script src="/docs/docs.js"></script>
 
-<script src="/showcase/shared.js"></script>
 <script>
 (function () {
   "use strict";
-  fetch("/showcase-data/index.json", { cache: "no-store" })
-    .then(function (res) { if (!res.ok) throw new Error("no index"); return res.json(); })
-    .then(function (index) {
-      var latest = index.latest_batch;
-      if (!latest) throw new Error("no batch");
-      return fetch("/showcase-data/batches/" + latest.batch_id + "/report.json", { cache: "no-store" });
-    })
+  // 只读正式发布索引;为空保持空状态(不回退旧批次索引)
+  fetch("/showcase-data/publications/index.json", { cache: "no-store" })
     .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (report) {
-      if (!report) throw new Error("no report");
-      if (report.experiment_type === "context-link") {
-        document.getElementById("strategyTable").innerHTML =
-          '<div class="placeholder-block">最新发布批次为联动对照;策略比较表待纯压缩批次发布后出现。</div>';
-        document.getElementById("linkageTable").innerHTML = SHOWCASE.renderLinkageTable(report);
-      } else {
-        document.getElementById("strategyTable").innerHTML = SHOWCASE.renderStrategyTable(report);
+    .then(function (index) {
+      var pubs = (index && index.formal_publications) || [];
+      if (!pubs.length) return;
+      var box = document.getElementById("strategyTable");
+      if (box) {
+        box.innerHTML = '<p class="lab-note">最新正式发布:' + String(pubs[0].published_at || "") +
+          "(批次 " + String(pubs[0].batch_id || "").slice(0, 8) + ")。逐项指标与实例下钻见<a href="/#compression">公告页压缩结果区</a>;本页不再单独维护第二份结果展示。</p>";
       }
-      document.getElementById("contextPairs").innerHTML = SHOWCASE.renderContextPairs(report);
     })
-    .catch(function () { /* 缺数据保持占位 */ });
+    .catch(function () { /* 缺索引保持占位 */ });
 })();
 </script>
 </body>

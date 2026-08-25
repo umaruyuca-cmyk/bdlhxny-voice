@@ -1,0 +1,2402 @@
+# ctx-session-context-engine-debug-01 · 场景化冻结 Session
+# 使用当前仓库源码作为冻结工具结果，并按代码审查流程整理的可复现 Session。
+# 26 个事件 · 2026-08-21 ~ 2026-08-21
+# source_session_hash: sha256:411105407f68f76c1b8fe59cd2881c83e7a537a4ad93d6594e11b18fb8e32cb9
+# 当前问题: 请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。
+
+[0001] 2026-08-21T02:00:00.000Z 用户
+我们已经有完整透传、最近窗口、一次摘要和按预算压缩，但我担心只是文档上有四种名字，代码实际没有统一管理模型输入预算。先做代码审查，不要修改。
+
+[0002] 2026-08-21T02:04:00.000Z 助手
+我会从 Session 编译入口、上下文构建器和 Agent 循环三层核对。先看编译器怎样把同一 Session 变成四份输入，再看预算是否覆盖历史、当前问题和工具 schema。
+
+[0003] 2026-08-21T02:06:00.000Z 工具调用 code.read
+  参数 {"path":"engine/src/bdlh_runtime/session/compiler.py"}
+[0004] 2026-08-21T02:07:00.000Z 工具结果(success) — 冻结 Mock
+读取路径: engine/src/bdlh_runtime/session/compiler.py
+冻结范围: 第 1-369 行，共 369 行
+----- 文件内容开始 -----
+"""四种上下文策略的 Session 派生输入编译器。
+
+一份冻结 Session → 四份派生输入(full-session / recent-window /
+single-summary / budgeted-session),每份生成后计算 hash 并冻结成工件;
+三个 Agent 模式必须读取同一份工件,不得各自重新生成。
+
+编译器输入只有 session + variant 配置 + 公共系统规则——结构上无法读取
+gold,答案泄漏在接口层面被阻断。
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from bdlh_runtime.context import (
+    ContextBuildRequest,
+    ContextBuildResult,
+    ContextBuilder,
+    ContextClassification,
+    ContextItem,
+    ContextMessage,
+    ContextRole,
+    ContextStrategy,
+    ItemScore,
+    MultiFactorScorer,
+    HistorySummarizer,
+    QWEN_TIKTOKEN_VERSION,
+    TokenCounter,
+    TIKTOKEN_TOKENIZER_VERSION,
+    counter_from_env,
+)
+
+from .loader import SessionCase, canonical_json_hash
+from .serializer import SerializedItem, serialize_session
+
+#: variants 配置中的 strategy 名 → 构建器策略
+STRATEGY_BY_NAME: dict[str, ContextStrategy] = {
+    "full": ContextStrategy.FULL,
+    "full-session": ContextStrategy.FULL,
+    "recent-n": ContextStrategy.RECENT_N,
+    "recent-window": ContextStrategy.RECENT_N,
+    "single-summary": ContextStrategy.SINGLE_SUMMARY,
+    "budgeted": ContextStrategy.BUDGETED,
+    "budgeted-session": ContextStrategy.BUDGETED,
+}
+
+#: budgeted 早期实现的算法版本号(与 run_telemetry 的 structured-text-v1 对齐)
+STRUCTURED_TEXT_ALGO_VERSION = "structured-text-v1"
+
+
+@dataclass(frozen=True)
+class BuildMetrics:
+    """摘要/压缩构建本身的成本(single-summary 模型摘要时由调用方填入)。"""
+
+    model_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: float = 0.0
+
+
+@dataclass(frozen=True)
+class CompiledContext:
+    """一份派生输入工件(variants.compiled_context_artifact_required_fields 全集)。"""
+
+    case_id: str
+    case_version: int
+    source_session_hash: str
+    variant_id: str
+    strategy_version: str
+    token_budget: int
+    compiled_messages: tuple[ContextMessage, ...]
+    compiled_context_hash: str
+    input_event_ids: tuple[str, ...]
+    kept_event_ids: tuple[str, ...]
+    compressed_event_ids: tuple[str, ...]
+    referenced_event_ids: tuple[str, ...]
+    omitted_event_ids: tuple[str, ...]
+    original_tokens: int
+    working_tokens: int
+    build_duration_ms: int
+    build_model_calls: int
+    build_input_tokens: int
+    build_output_tokens: int
+    build_cost: float
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    strategy: str = ""
+    required_retained: bool = True
+    budget_fit: bool = True
+    #: 计数口径版本(conservative-*/tiktoken-*);同批次内禁止混用两种口径
+    tokenizer_version: str = ""
+    #: 多因子评分明细(公式五/六;仅 budgeted v2 启用时非空)
+    scores: tuple[ItemScore, ...] = field(default_factory=tuple)
+    #: 评分权重版本(仅 budgeted v2 启用时非空,否则空串)
+    scoring_version: str = ""
+    #: 底层构建结果(冻结喂入用;不进入机器可读工件)
+    build_result: ContextBuildResult | None = None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "case_id": self.case_id,
+            "case_version": self.case_version,
+            "source_session_hash": self.source_session_hash,
+            "variant_id": self.variant_id,
+            "strategy": self.strategy,
+            "strategy_version": self.strategy_version,
+            "token_budget": self.token_budget,
+            "compiled_messages": [
+                {"role": message.role, "content": message.content}
+                for message in self.compiled_messages
+            ],
+            "compiled_context_hash": self.compiled_context_hash,
+            "input_event_ids": list(self.input_event_ids),
+            "kept_event_ids": list(self.kept_event_ids),
+            "compressed_event_ids": list(self.compressed_event_ids),
+            "referenced_event_ids": list(self.referenced_event_ids),
+            "omitted_event_ids": list(self.omitted_event_ids),
+            "original_tokens": self.original_tokens,
+            "working_tokens": self.working_tokens,
+            "build_duration_ms": self.build_duration_ms,
+            "build_model_calls": self.build_model_calls,
+            "build_input_tokens": self.build_input_tokens,
+            "build_output_tokens": self.build_output_tokens,
+            "build_cost": self.build_cost,
+            "warnings": list(self.warnings),
+            "required_retained": self.required_retained,
+            "budget_fit": self.budget_fit,
+            "tokenizer_version": self.tokenizer_version,
+            "scores": [_score_payload(row) for row in self.scores],
+            "scoring_version": self.scoring_version,
+        }
+
+
+def _score_payload(row: ItemScore) -> dict[str, Any]:
+    return {
+        "item_id": row.item_id,
+        "factors": dict(row.factors),
+        "priority": row.priority,
+        "representation": row.representation,
+        "representation_tokens": row.representation_tokens,
+        "selection_value": row.selection_value,
+    }
+
+
+class SessionCompiler:
+    """编译入口;同一 Session 的四份派生输入共用一个实例保证口径一致。
+
+    口径选择由环境变量控制(整批必须单一口径,中途不得切换):
+    - ``LLM_TOKENIZER=tiktoken`` → tiktoken 精确计数,其余保守口径;
+    - ``BUDGETED_SCORING=multi-factor-v2`` → budgeted 变体走公式五/六(v2);
+    - summarizer/scorer 也可显式注入(单测用),注入优先于环境变量。
+    """
+
+    def __init__(
+        self,
+        builder: ContextBuilder | None = None,
+        counter: TokenCounter | None = None,
+        *,
+        tokenizer_version: str | None = None,
+        summarizer: HistorySummarizer | None = None,
+        scorer: MultiFactorScorer | None = None,
+    ) -> None:
+        if counter is None or tokenizer_version is None:
+            env_counter, env_version = counter_from_env()
+            counter = counter or env_counter
+            tokenizer_version = tokenizer_version or env_version
+        self._counter: TokenCounter = counter
+        self.tokenizer_version: str = tokenizer_version
+        self._builder = builder or ContextBuilder(
+            counter=self._counter,
+            summarizer=summarizer,
+            scorer=scorer,
+        )
+
+    @classmethod
+    def from_env(cls, *, llm_summary: bool = False) -> "SessionCompiler":
+        """按环境变量装配:BUDGETED_SCORING(v2 评分)、LLM_SUMMARY(LLM 摘要)。
+
+        未设置的开关保持既有基准行为(v1 排序、抽取式摘要),
+        保证 v1/v2、抽取式/LLM 摘要可做受控对照。
+        LLM 摘要默认启用「生成一次后冻结」缓存(engine/var/cache/),
+        ``LLM_SUMMARY_FREEZE=0`` 关闭。
+        """
+
+        from bdlh_runtime.context import scorer_from_env
+
+        summarizer = None
+        if llm_summary:
+            from .llm_summary import LLMSummarizer
+
+            summarizer = LLMSummarizer(
+                cache_path=(Path(__file__).resolve().parents[3] / "var" / "cache" / "llm-summary.json")
+            )
+        return cls(scorer=scorer_from_env(), summarizer=summarizer)
+
+    def compile(
+        self,
+        session: SessionCase,
+        variant: dict[str, Any],
+        *,
+        common_rules: str,
+        build_metrics: BuildMetrics | None = None,
+    ) -> CompiledContext:
+        strategy = STRATEGY_BY_NAME.get(str(variant.get("strategy") or ""))
+        if strategy is None:
+            raise ValueError(f"未知上下文策略: {variant.get('strategy')!r}")
+        variant_id = str(variant["variant_id"])
+        token_budget = int(variant["token_budget"])
+
+        serialized: tuple[SerializedItem, ...] = serialize_session(session)
+        question_sequence = session.events[-1].seq + 1
+        items: list[ContextItem] = [
+            ContextItem(
+                # item id 与 loop.assemble_model_context 对齐,冻结喂入可按 id 命中
+                item_id="system-prompt",
+                content=common_rules,
+                classification=ContextClassification.REQUIRED,
+                role=ContextRole.SYSTEM,
+                priority=100000,
+                sequence=-1000,
+                bare=True,
+            )
+        ]
+        items.extend(entry.item for entry in serialized)
+        items.append(
+            ContextItem(
+                item_id="current-question",
+                content=session.current_question,
+                classification=ContextClassification.REQUIRED,
+                role=ContextRole.USER_DATA,
+                priority=100000,
+                sequence=question_sequence,
+                conversation=True,
+            )
+        )
+
+        reserved = dict(variant.get("reserved_tokens") or {})
+        # LLM 摘要器按次记录用量:编译开始前清零,结束后取回(single-summary 之外恒为 0)
+        take_usage = getattr(self._builder.summarizer, "take_usage", None)
+        if callable(take_usage):
+            take_usage()
+        started = time.perf_counter()
+        built = self._builder.build(
+            ContextBuildRequest(
+                items=tuple(items),
+                token_budget=token_budget,
+                strategy=strategy,
+                owner_id=None,
+                # recent-window 由预算主导,条数上限取全部条目(说明 §3.2)
+                recent_n=len(items),
+                summary_recent_tokens=int(
+                    reserved.get("recent_session_events")
+                    or reserved.get("recent_session_events_max")
+                    or 1024
+                ),
+                summary_max_tokens=int(reserved.get("history_summary_max") or 2560),
+            )
+        )
+        duration_ms = round((time.perf_counter() - started) * 1000)
+
+        event_ids_by_item = {entry.item.item_id: list(entry.event_ids) for entry in serialized}
+        kept: list[str] = []
+        compressed: list[str] = []
+        referenced: list[str] = []
+        omitted: list[str] = []
+        for decision in built.report.decisions:
+            ids = event_ids_by_item.get(decision.item_id, [])
+            action = decision.action.value
+            if not ids:
+                continue  # 公共规则/当前问题等非事件条目不进入事件桶
+            if action == "kept":
+                kept.extend(ids)
+            elif action == "compressed":
+                compressed.extend(ids)
+            elif action == "referenced":
+                referenced.extend(ids)
+            else:  # omitted / isolated(跨用户隔离按省略计)
+                omitted.extend(ids)
+
+        metrics, usage_warnings = self._collect_metrics(build_metrics, take_usage)
+        payload_messages = [
+            {"role": message.role, "content": message.content} for message in built.messages
+        ]
+        # v2 评分启用时,strategy_version 升级为评分版本,保证受控对照口径可辨
+        strategy_version = str(variant.get("strategy_version") or strategy.value)
+        if built.report.scoring_version:
+            strategy_version = built.report.scoring_version
+        compiled_hash = canonical_json_hash(
+            {
+                "case_id": session.session_id,
+                "case_version": session.session_version,
+                "source_session_hash": session.source_hash,
+                "variant_id": variant_id,
+                "strategy_version": strategy_version,
+                "token_budget": token_budget,
+                "messages": payload_messages,
+                "kept_event_ids": kept,
+                "compressed_event_ids": compressed,
+                "referenced_event_ids": referenced,
+                "omitted_event_ids": omitted,
+            }
+        )
+        warnings = list(built.report.warnings)
+        warnings.extend(f"summary: {row}" for row in usage_warnings)
+        warnings.append(f"algo_version={STRUCTURED_TEXT_ALGO_VERSION}")
+        if self.tokenizer_version == TIKTOKEN_TOKENIZER_VERSION:
+            warnings.append(
+                "tokenizer=cl100k_base 为 OpenAI 词表近似口径(非 Qwen 词表),跨口径数据不可直接比较"
+            )
+        elif self.tokenizer_version == QWEN_TIKTOKEN_VERSION:
+            warnings.append(
+                "tokenizer=qwen 官方词表精确口径(与模型实际切分高度一致;若模型带扩展词表略有偏差),跨口径数据不可直接比较"
+            )
+        return CompiledContext(
+            case_id=session.session_id,
+            case_version=session.session_version,
+            source_session_hash=session.source_hash,
+            variant_id=variant_id,
+            strategy_version=strategy_version,
+            token_budget=token_budget,
+            compiled_messages=built.messages,
+            compiled_context_hash=compiled_hash,
+            input_event_ids=session.event_ids,
+            kept_event_ids=tuple(kept),
+            compressed_event_ids=tuple(compressed),
+            referenced_event_ids=tuple(referenced),
+            omitted_event_ids=tuple(omitted),
+            original_tokens=built.report.original_tokens,
+            working_tokens=built.report.working_tokens,
+            build_duration_ms=duration_ms,
+            build_model_calls=metrics.model_calls,
+            build_input_tokens=metrics.input_tokens,
+            build_output_tokens=metrics.output_tokens,
+            build_cost=metrics.cost,
+            warnings=tuple(warnings),
+            strategy=strategy.value,
+            required_retained=built.report.required_retained,
+            budget_fit=built.report.budget_fit,
+            tokenizer_version=self.tokenizer_version,
+            scores=tuple(built.report.scores),
+            scoring_version=built.report.scoring_version,
+            build_result=built,
+        )
+
+    @staticmethod
+    def _collect_metrics(
+        build_metrics: BuildMetrics | None, take_usage: Any
+    ) -> tuple[BuildMetrics, list[str]]:
+        """优先显式 build_metrics;否则取摘要器自记用量(LLM 摘要降级事件一并入 warnings)。"""
+
+        if build_metrics is not None:
+            return build_metrics, []
+        if not callable(take_usage):
+            return BuildMetrics(), []
+        usage = take_usage()
+        if usage is None:
+            return BuildMetrics(), []
+        return (
+            BuildMetrics(
+                model_calls=usage.model_calls,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cost=usage.cost,
+            ),
+            list(getattr(usage, "warnings", []) or []),
+        )
+
+----- 文件内容结束 -----
+
+[0005] 2026-08-21T02:13:00.000Z 助手
+编译器已经统一序列化 Session，并把公共规则和当前问题作为 required 条目。四种策略最终都经过 ContextBuilder，但这只是统一入口，不等于四种都使用自研压缩算法。
+
+[0006] 2026-08-21T02:17:00.000Z 用户
+我不想听概念，继续看 ContextBuilder。尤其是 recent-window 会不会把工具调用和结果拆开，budgeted 到底按什么选。
+
+[0007] 2026-08-21T02:19:00.000Z 工具调用 code.read
+  参数 {"path":"engine/src/bdlh_runtime/context/builder.py"}
+[0008] 2026-08-21T02:20:00.000Z 工具结果(success) — 冻结 Mock
+读取路径: engine/src/bdlh_runtime/context/builder.py
+冻结范围: 第 1-514 行，共 514 行
+----- 文件内容开始 -----
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from .compression import ContextCompressor, StructuredTextCompressor
+from .models import (
+    ContextAction,
+    ContextBudgetError,
+    ContextBuildRequest,
+    ContextBuildResult,
+    ContextClassification,
+    ContextDecision,
+    ContextItem,
+    ContextMessage,
+    ContextReport,
+    ContextRole,
+    ContextStrategy,
+    ContextWindowError,
+    ItemScore,
+)
+from .scoring import MultiFactorScorer
+from .summary import ExtractiveSummarizer, HistorySummarizer
+from .token_count import ConservativeTokenCounter, TokenCounter
+
+
+class ContextBuilder:
+    def __init__(
+        self,
+        counter: TokenCounter | None = None,
+        compressor: ContextCompressor | None = None,
+        summarizer: HistorySummarizer | None = None,
+        scorer: MultiFactorScorer | None = None,
+    ) -> None:
+        self._counter = counter or ConservativeTokenCounter()
+        self._compressor = compressor or StructuredTextCompressor()
+        # single-summary 基准的独立摘要器:与 budgeted 使用的 StructuredTextCompressor 分离
+        self._summarizer = summarizer or ExtractiveSummarizer()
+        # budgeted v2 多因子评分器(公式五/六);None=保持 v1 直接 priority 排序
+        self._scorer = scorer
+
+    @property
+    def summarizer(self) -> HistorySummarizer:
+        """当前注入的摘要器(LLM 摘要器在此暴露用量,供编译器取回)。"""
+
+        return self._summarizer
+
+    @property
+    def scorer(self) -> MultiFactorScorer | None:
+        return self._scorer
+
+    def build(self, request: ContextBuildRequest) -> ContextBuildResult:
+        eligible, isolated = self._separate_owner_data(request)
+        original_tokens = sum(self._counter.count(self._render(item, item.content)) for item in request.items)
+        scores: tuple[ItemScore, ...] = ()
+
+        if request.strategy is ContextStrategy.FULL:
+            selected, decisions = self._build_full(eligible, request.token_budget)
+        elif request.strategy is ContextStrategy.RECENT_N:
+            selected, decisions = self._build_recent(eligible, request)
+        elif request.strategy is ContextStrategy.SINGLE_SUMMARY:
+            selected, decisions = self._build_single_summary(eligible, request)
+        elif self._scorer is not None:
+            # budgeted v2:多因子评分(公式五)+ 性价比选择(公式六)
+            selected, decisions, scores = self._build_budgeted_v2(eligible, request)
+        else:
+            selected, decisions = self._build_budgeted(eligible, request)
+
+        decisions.extend(isolated)
+        messages = self._to_messages(selected)
+        working_tokens = sum(self._counter.count(message.content) for message in messages)
+        if working_tokens > request.token_budget:
+            raise ContextWindowError(working_tokens, request.token_budget)
+        required_ids = tuple(
+            item.item_id for item in request.items if item.classification is ContextClassification.REQUIRED
+        )
+        retained_required_ids = tuple(
+            decision.item_id
+            for decision in decisions
+            if decision.item_id in required_ids
+            and decision.action in {ContextAction.KEPT, ContextAction.COMPRESSED, ContextAction.REFERENCED}
+        )
+        warnings = []
+        if set(required_ids) != set(retained_required_ids):
+            warnings.append("one or more required context items were not retained")
+        if working_tokens > request.token_budget:
+            warnings.append("working context exceeds the configured token budget")
+
+        report = ContextReport(
+            strategy=request.strategy,
+            token_budget=request.token_budget,
+            original_tokens=original_tokens,
+            working_tokens=working_tokens,
+            required_item_ids=required_ids,
+            retained_required_item_ids=retained_required_ids,
+            decisions=tuple(decisions),
+            warnings=tuple(warnings),
+            scores=scores,
+            # 评分只作用于 budgeted;其余策略不受注入 scorer 影响(受控对照前提)
+            scoring_version=(
+                self._scorer.weights.version
+                if self._scorer is not None and request.strategy is ContextStrategy.BUDGETED
+                else ""
+            ),
+        )
+        return ContextBuildResult(messages=messages, report=report)
+
+    def _separate_owner_data(self, request: ContextBuildRequest) -> tuple[list[ContextItem], list[ContextDecision]]:
+        eligible = []
+        isolated = []
+        for item in request.items:
+            if request.owner_id and item.owner_id and item.owner_id != request.owner_id:
+                input_tokens = self._counter.count(self._render(item, item.content))
+                isolated.append(
+                    ContextDecision(
+                        item_id=item.item_id,
+                        action=ContextAction.ISOLATED,
+                        reason="item belongs to a different user scope",
+                        input_tokens=input_tokens,
+                        output_tokens=0,
+                        source_id=item.source_id,
+                    )
+                )
+                continue
+            eligible.append(item)
+        return eligible, isolated
+
+    def _build_full(
+        self, items: list[ContextItem], token_budget: int
+    ) -> tuple[list[tuple[ContextItem, str]], list[ContextDecision]]:
+        selected = [(item, self._render(item, item.content)) for item in self._ordered(items)]
+        total = sum(self._counter.count(rendered) for _, rendered in selected)
+        if total > token_budget:
+            raise ContextWindowError(total, token_budget)
+        decisions = [self._decision(item, ContextAction.KEPT, "full strategy", rendered) for item, rendered in selected]
+        return selected, decisions
+
+    def _build_recent(
+        self, items: list[ContextItem], request: ContextBuildRequest
+    ) -> tuple[list[tuple[ContextItem, str]], list[ContextDecision]]:
+        """recent-window 基准:公共系统规则等 required 始终保留,再从最后一个
+        事件向前选择完整条目,直到预算或 recent_n 条数上限;选中项按原序输出。
+        工具调用/结果配对由序列化层合并为单条目,窗口天然不拆对。"""
+
+        required = [item for item in items if item.classification is ContextClassification.REQUIRED]
+        selected, decisions, remaining = self._keep_required(required, request.token_budget)
+        optional = [
+            item for item in items if item.classification is not ContextClassification.REQUIRED
+        ]
+        ordered = self._ordered(optional)
+
+        window: list[ContextItem] = []
+        window_full = False
+        for item in reversed(ordered):
+            if len(window) >= request.recent_n:
+                window_full = True
+                break
+            tokens = self._counter.count(self._render(item, item.content))
+            if tokens > remaining:
+                break
+            window.append(item)
+            remaining -= tokens
+        window.reverse()
+        kept_ids = {item.item_id for item in window}
+
+        for item in ordered:
+            rendered = self._render(item, item.content)
+            if item.item_id in kept_ids:
+                selected.append((item, rendered))
+                decisions.append(self._decision(item, ContextAction.KEPT, "within recent window", rendered))
+            else:
+                reason = "outside recent-n window" if window_full else "token budget exhausted"
+                decisions.append(self._decision(item, ContextAction.OMITTED, reason, ""))
+        return selected, decisions
+
+    def _build_single_summary(
+        self, items: list[ContextItem], request: ContextBuildRequest
+    ) -> tuple[list[tuple[ContextItem, str]], list[ContextDecision]]:
+        """single-summary 独立基准:required 原文保留 + 最近事件原文保留
+        (summary_recent_tokens)+ 更早事件一次性摘要(summary_max_tokens)。
+        摘要器与 budgeted 的规则压缩器分离,不读取 priority/gold。"""
+
+        required = [item for item in items if item.classification is ContextClassification.REQUIRED]
+        selected, decisions, remaining = self._keep_required(required, request.token_budget)
+        optional = self._ordered(
+            item for item in items if item.classification is not ContextClassification.REQUIRED
+        )
+
+        recent: list[ContextItem] = []
+        recent_used = 0
+        recent_budget = min(request.summary_recent_tokens, remaining)
+        for item in reversed(optional):
+            tokens = self._counter.count(self._render(item, item.content))
+            if recent_used + tokens > recent_budget:
+                break
+            recent.insert(0, item)
+            recent_used += tokens
+        earlier = optional[: len(optional) - len(recent)]
+        recent_ids = {item.item_id for item in recent}
+
+        summary_item: ContextItem | None = None
+        if earlier:
+            summary_budget = min(request.summary_max_tokens, max(0, remaining - recent_used))
+            summary_text = self._summarizer.summarize(
+                [self._render(item, item.content) for item in earlier], summary_budget, self._counter
+            )
+            if summary_text:
+                summary_item = ContextItem(
+                    item_id="history-summary",
+                    content=summary_text,
+                    classification=ContextClassification.COMPRESSIBLE,
+                    role=ContextRole.USER_DATA,
+                    sequence=earlier[0].sequence,
+                    source_id=",".join(item.item_id for item in earlier[:8]),
+                )
+                summary_rendered = self._render(summary_item, summary_item.content)
+                if self._counter.count(summary_rendered) > remaining - recent_used:
+                    summary_item = None
+
+        if summary_item is not None:
+            selected.append((summary_item, self._render(summary_item, summary_item.content)))
+        for item in earlier:
+            decisions.append(
+                self._decision(
+                    item,
+                    ContextAction.COMPRESSED if summary_item is not None else ContextAction.OMITTED,
+                    "represented by single history summary"
+                    if summary_item is not None
+                    else "history summary could not fit the remaining budget",
+                    "",
+                )
+            )
+        for item in recent:
+            rendered = self._render(item, item.content)
+            selected.append((item, rendered))
+            decisions.append(self._decision(item, ContextAction.KEPT, "recent event kept verbatim", rendered))
+        return selected, decisions
+
+    def _build_budgeted(
+        self, items: list[ContextItem], request: ContextBuildRequest
+    ) -> tuple[list[tuple[ContextItem, str]], list[ContextDecision]]:
+        required = [item for item in items if item.classification is ContextClassification.REQUIRED]
+        selected, decisions, remaining = self._keep_required(required, request.token_budget)
+
+        candidates = [
+            item
+            for item in items
+            if item.classification
+            in {
+                ContextClassification.COMPRESSIBLE,
+                ContextClassification.REFERENCE_ONLY,
+            }
+        ]
+        candidates.sort(key=lambda item: (-item.priority, item.sequence, item.item_id))
+
+        for index, item in enumerate(candidates):
+            original_rendered = self._render(item, item.content)
+            original_tokens = self._counter.count(original_rendered)
+            if remaining <= 0:
+                decisions.append(self._decision(item, ContextAction.OMITTED, "token budget exhausted", ""))
+                continue
+
+            if item.classification is ContextClassification.REFERENCE_ONLY:
+                value = self._reference(item, original_tokens)
+                action = ContextAction.REFERENCED
+                reason = "reference-only item represented by source metadata"
+            else:
+                remaining_candidates = max(1, len(candidates) - index)
+                fair_share = max(request.minimum_compressed_tokens, remaining // remaining_candidates)
+                header_tokens = self._counter.count(self._render(item, ""))
+                target = min(
+                    original_tokens,
+                    max(request.minimum_compressed_tokens, int(original_tokens * request.compression_ratio)),
+                    max(0, fair_share - header_tokens),
+                )
+                value = self._compressor.compress(item, target, self._counter)
+                action = ContextAction.KEPT if value == item.content else ContextAction.COMPRESSED
+                reason = "fits budget without compression" if action is ContextAction.KEPT else "compressed to budget"
+
+            rendered = self._render(item, value)
+            tokens = self._counter.count(rendered)
+            if value and tokens <= remaining:
+                selected.append((item, rendered))
+                remaining -= tokens
+                decisions.append(self._decision(item, action, reason, rendered))
+            else:
+                decisions.append(self._decision(item, ContextAction.OMITTED, "item does not fit remaining budget", ""))
+
+        for item in items:
+            if item.classification is ContextClassification.DISTRACTOR:
+                decisions.append(
+                    self._decision(
+                        item,
+                        ContextAction.ISOLATED,
+                        "distractor excluded from budgeted working context",
+                        "",
+                    )
+                )
+
+        selected.sort(key=lambda pair: (pair[0].sequence, pair[0].item_id))
+        return selected, decisions
+
+    def _build_budgeted_v2(
+        self, items: list[ContextItem], request: ContextBuildRequest
+    ) -> tuple[list[tuple[ContextItem, str]], list[ContextDecision], tuple[ItemScore, ...]]:
+        """公式五/六驱动选择(设计稿 §4):按 selection_value 降序遍历,
+        每条目依次尝试 完整→压缩(fair_share 上限)→引用;全部放不下才省略。
+
+        - REQUIRED 语义不变;公平份额保留为单条压缩目标的上限约束;
+        - 排序值用「header+压缩目标」的确定性估算,接受前按实际压缩结果复核预算;
+        - 引用表示排序键恒 -1.0,防止低分母抢占完整/压缩名额(§3.3 陷阱);
+        - 依赖闭包:被选中条目引用的来源条目若被省略,至少以引用表示补入。
+        """
+
+        assert self._scorer is not None
+        required = [item for item in items if item.classification is ContextClassification.REQUIRED]
+        selected, decisions, remaining = self._keep_required(required, request.token_budget)
+
+        candidates = [
+            item
+            for item in items
+            if item.classification in {ContextClassification.COMPRESSIBLE, ContextClassification.REFERENCE_ONLY}
+        ]
+        candidate_ids = {item.item_id for item in candidates}
+        # 公平份额按「必需项后剩余预算 ÷ 候选数」一次性冻结,保证排序值确定
+        fair_share = max(request.minimum_compressed_tokens, remaining // max(1, len(candidates)))
+
+        priorities: dict[str, float] = {}
+        full_tokens: dict[str, int] = {}
+        compress_target: dict[str, int] = {}
+        pairs: list[tuple[float, int, str, str, ContextItem]] = []
+        for item in candidates:
+            priority, _factors = self._scorer.priority(item)
+            priorities[item.item_id] = priority
+            full = self._counter.count(self._render(item, item.content))
+            full_tokens[item.item_id] = full
+            if item.classification is ContextClassification.COMPRESSIBLE and full > 0:
+                pairs.append(
+                    (self._scorer.selection_value(priority, full), item.sequence, item.item_id, "full", item)
+                )
+                header = self._counter.count(self._render(item, ""))
+                target = min(
+                    full,
+                    max(
+                        request.minimum_compressed_tokens,
+                        int(full * request.compression_ratio),
+                    ),
+                    max(0, fair_share - header),
+                )
+                compress_target[item.item_id] = target
+                if target > 0:
+                    # 排序用估算 token(header+目标长度);接受时按实际压缩结果复核
+                    estimate = max(1, header + target)
+                    pairs.append(
+                        (self._scorer.selection_value(priority, estimate), item.sequence, item.item_id, "compressed", item)
+                    )
+            # 引用表示是兜底,排序键恒 -1.0:只在该条目完整/压缩都放不下时才会轮到
+            pairs.append((-1.0, item.sequence, item.item_id, "reference", item))
+        pairs.sort(key=lambda row: (-row[0], row[1], row[2], {"full": 0, "compressed": 1, "reference": 2}[row[3]]))
+
+        chosen: dict[str, tuple[str, str]] = {}  # item_id -> (representation, rendered)
+        for _value, _sequence, _item_id, representation, item in pairs:
+            if item.item_id in chosen:
+                continue  # 已有更优表示
+            if representation == "full":
+                rendered = self._render(item, item.content)
+            elif representation == "compressed":
+                compressed = self._compressor.compress(item, compress_target[item.item_id], self._counter)
+                rendered = self._render(item, compressed)
+                if not compressed.strip() or not rendered.strip():
+                    continue
+            else:  # reference:排序键恒 -1.0,天然只在完整/压缩都放不下时兜底
+                rendered = self._render(item, self._reference(item, full_tokens[item.item_id]))
+            tokens = self._counter.count(rendered)
+            if tokens > remaining:
+                continue  # 按实际表示复核预算;尝试更短表示(后续对)
+            selected.append((item, rendered))
+            remaining -= tokens
+            chosen[item.item_id] = (representation, rendered)
+
+        # 依赖闭包(设计稿 §4 步骤 5):被选中条目引用的来源若被省略,补引用表示
+        for item in candidates:
+            target = item.source_id
+            if (
+                target
+                and target != item.item_id
+                and target in candidate_ids
+                and target not in chosen
+                and item.item_id in chosen
+            ):
+                source_item = next(row for row in candidates if row.item_id == target)
+                rendered = self._render(
+                    source_item, self._reference(source_item, full_tokens[source_item.item_id])
+                )
+                tokens = self._counter.count(rendered)
+                if tokens <= remaining:
+                    selected.append((source_item, rendered))
+                    remaining -= tokens
+                    chosen[source_item.item_id] = ("reference", rendered)
+
+        score_rows: list[ItemScore] = []
+        for item in candidates:
+            representation, rendered = chosen.get(item.item_id, ("omitted", ""))
+            score_rows.append(
+                self._scorer.score(
+                    item,
+                    representation=representation,
+                    representation_tokens=self._counter.count(rendered),
+                )
+            )
+        for item in candidates:
+            if item.item_id in chosen:
+                representation = chosen[item.item_id][0]
+                action = ContextAction.KEPT if representation == "full" else (
+                    ContextAction.COMPRESSED if representation == "compressed" else ContextAction.REFERENCED
+                )
+                score = next(row for row in score_rows if row.item_id == item.item_id)
+                decisions.append(
+                    self._decision(
+                        item,
+                        action,
+                        f"v2 {representation} selection_value={score.selection_value:.6f} priority={score.priority:.4f}",
+                        chosen[item.item_id][1],
+                    )
+                )
+            else:
+                decisions.append(self._decision(item, ContextAction.OMITTED, "v2 no representation fits remaining budget", ""))
+        for item in items:
+            if item.classification is ContextClassification.DISTRACTOR:
+                decisions.append(
+                    self._decision(item, ContextAction.ISOLATED, "distractor excluded from budgeted working context", "")
+                )
+
+        selected.sort(key=lambda pair: (pair[0].sequence, pair[0].item_id))
+        return selected, decisions, tuple(score_rows)
+
+    def _keep_required(
+        self, required: list[ContextItem], token_budget: int
+    ) -> tuple[list[tuple[ContextItem, str]], list[ContextDecision], int]:
+        selected = []
+        decisions = []
+        required_tokens = 0
+        for item in self._ordered(required):
+            rendered = self._render(item, item.content)
+            required_tokens += self._counter.count(rendered)
+            selected.append((item, rendered))
+            decisions.append(self._decision(item, ContextAction.KEPT, "required item", rendered))
+        if required_tokens > token_budget:
+            raise ContextBudgetError(required_tokens, token_budget)
+        return selected, decisions, token_budget - required_tokens
+
+    def _decision(
+        self,
+        item: ContextItem,
+        action: ContextAction,
+        reason: str,
+        output: str,
+    ) -> ContextDecision:
+        return ContextDecision(
+            item_id=item.item_id,
+            action=action,
+            reason=reason,
+            input_tokens=self._counter.count(self._render(item, item.content)),
+            output_tokens=self._counter.count(output),
+            source_id=item.source_id,
+        )
+
+    def _render(self, item: ContextItem, content: str) -> str:
+        if item.bare:
+            return content
+        if item.conversation:
+            # 对话消息形态:不加 item 头;不可信工具内容仍需包裹
+            if not item.trusted or item.role is ContextRole.UNTRUSTED_DATA:
+                return f"<untrusted-data>\n{content}\n</untrusted-data>"
+            return content
+        source = f" source={item.source_id}" if item.source_id else ""
+        header = f"[context item={item.item_id} type={item.classification.value}{source}]"
+        body = f"{header}\n{content}"
+        if not item.trusted or item.role is ContextRole.UNTRUSTED_DATA:
+            return f"<untrusted-data>\n{body}\n</untrusted-data>"
+        return body
+
+    @staticmethod
+    def _reference(item: ContextItem, original_tokens: int) -> str:
+        source = item.source_id or item.item_id
+        return f"[reference source={source} original_tokens={original_tokens}]"
+
+    def _to_messages(self, selected: Iterable[tuple[ContextItem, str]]) -> tuple[ContextMessage, ...]:
+        """指令合并为一条 system;普通数据条目合并为一条 user;
+        conversation 条目(Session 历史、当前问题)逐条保持角色与顺序。"""
+
+        instruction_parts = []
+        data_parts = []
+        conversation: list[ContextMessage] = []
+        for item, rendered in selected:
+            if item.conversation:
+                role = "assistant" if item.role is ContextRole.ASSISTANT else "user"
+                conversation.append(ContextMessage(role=role, content=rendered))
+            elif item.role in {ContextRole.SYSTEM, ContextRole.INSTRUCTION} and item.trusted:
+                instruction_parts.append(rendered)
+            else:
+                data_parts.append(rendered)
+
+        messages = []
+        if instruction_parts:
+            messages.append(ContextMessage(role="system", content="\n\n".join(instruction_parts)))
+        if data_parts:
+            messages.append(ContextMessage(role="user", content="\n\n".join(data_parts)))
+        messages.extend(conversation)
+        return tuple(messages)
+
+    @staticmethod
+    def _ordered(items: Iterable[ContextItem]) -> list[ContextItem]:
+        return sorted(items, key=lambda item: (item.sequence, item.item_id))
+
+----- 文件内容结束 -----
+
+[0009] 2026-08-21T02:25:00.000Z 助手
+构建器按 ContextItem 选择，Session serializer 如果把工具调用和结果合并为同一个 item，就能保持配对；否则 recent-window 仅按条目结尾截取会有拆对风险。还要继续看 serializer。
+
+[0010] 2026-08-21T02:27:00.000Z 工具调用 code.read
+  参数 {"path":"engine/src/bdlh_runtime/session/serializer.py"}
+[0011] 2026-08-21T02:28:00.000Z 工具结果(success) — 冻结 Mock
+读取路径: engine/src/bdlh_runtime/session/serializer.py
+冻结范围: 第 1-140 行，共 140 行
+----- 文件内容开始 -----
+"""Session 事件 → ContextItem 序列化(不读取 gold)。
+
+转换规则:
+- ``user_message`` / ``assistant_message`` → conversation 条目,保持对话消息
+  形态与顺序,可被四种策略统一选择/压缩;
+- ``tool_call`` + 紧随的 ``tool_result`` → 合并为**一条**不可信数据条目
+  (调用与结果不可拆开),工具返回按不可信数据处理;
+- 事件正文不带任何评测标注(gold 里的 classification/priority 不会进入这里)。
+
+budgeted 策略使用的 priority 是确定性启发(用户消息 > 助手消息 > 工具结果),
+属于 structured-text-v1 早期实现的一部分,不是文档中的多因子重要度。
+
+序列化末尾统一补引用元数据(公式五因子输入):
+- ``superseded``:同 source_id 的条目出现更晚 observed_at 时,旧条标记为已取代
+  (staleness/source_quality 因子输入;时间相同取更晚 sequence 者为最新);
+- ``cited_by``:条目 source_id 指向另一条目 item_id 时建立反向引用
+  (citation_dependency 因子输入;确定性排序,同输入同输出)。
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+from dataclasses import dataclass
+
+from bdlh_runtime.context import ContextClassification, ContextItem, ContextRole
+
+from .loader import SessionCase, SessionEvent
+
+#: budgeted 早期实现的确定性启发优先级(非多因子公式)
+PRIORITY_USER_MESSAGE = 10
+PRIORITY_ASSISTANT_MESSAGE = 5
+PRIORITY_TOOL_PAIR = 3
+
+
+@dataclass(frozen=True)
+class SerializedItem:
+    """一个条目及其覆盖的原始事件 id(工具对覆盖 call+result 两个事件)。"""
+
+    item: ContextItem
+    event_ids: tuple[str, ...]
+
+
+def serialize_session(session: SessionCase) -> tuple[SerializedItem, ...]:
+    """把有序事件流转换为构建器条目;配对错误在 loader 阶段已拦截。"""
+
+    serialized: list[SerializedItem] = []
+    index = 0
+    events = session.events
+    while index < len(events):
+        event = events[index]
+        if event.type == "tool_call":
+            paired_result = events[index + 1] if index + 1 < len(events) else None
+            if paired_result is None or paired_result.type != "tool_result":
+                raise ValueError(f"tool_call {event.event_id} 缺少紧邻结果(loader 校验应已拦截)")
+            serialized.append(_tool_pair_item(event, paired_result))
+            index += 2
+            continue
+        serialized.append(_message_item(event))
+        index += 1
+    return tuple(_apply_reference_metadata(serialized))
+
+
+def _apply_reference_metadata(serialized: list[SerializedItem]) -> list[SerializedItem]:
+    """补 superseded 与 cited_by;两者都只来自条目自带元数据,确定性计算。"""
+
+    items = [entry.item for entry in serialized]
+    item_ids = {item.item_id for item in items}
+
+    # 同 source_id 的最新版本:(observed_at, sequence) 字典序最大者胜
+    latest_by_source: dict[str, tuple[str, int]] = {}
+    for item in items:
+        if not item.source_id:
+            continue
+        version = (item.observed_at or "", item.sequence)
+        current = latest_by_source.get(item.source_id)
+        if current is None or version > current:
+            latest_by_source[item.source_id] = version
+
+    # 反向引用:条目 source_id 指向另一条目 item_id → 被指条目获得 cited_by
+    cited_by: dict[str, list[str]] = {}
+    for item in items:
+        target = item.source_id
+        if target and target != item.item_id and target in item_ids:
+            cited_by.setdefault(target, []).append(item.item_id)
+
+    result: list[SerializedItem] = []
+    for entry in serialized:
+        item = entry.item
+        superseded = False
+        if item.source_id and item.source_id in latest_by_source:
+            superseded = (item.observed_at or "", item.sequence) < latest_by_source[item.source_id]
+        references = tuple(sorted(cited_by.get(item.item_id, [])))
+        if superseded != item.superseded or references != item.cited_by:
+            item = dataclasses.replace(item, superseded=superseded, cited_by=references)
+        result.append(SerializedItem(item=item, event_ids=entry.event_ids))
+    return result
+
+
+def _message_item(event: SessionEvent) -> SerializedItem:
+    assistant = event.type == "assistant_message"
+    return SerializedItem(
+        item=ContextItem(
+            item_id=event.event_id,
+            content=event.content,
+            classification=ContextClassification.COMPRESSIBLE,
+            role=ContextRole.ASSISTANT if assistant else ContextRole.USER_DATA,
+            priority=PRIORITY_ASSISTANT_MESSAGE if assistant else PRIORITY_USER_MESSAGE,
+            source_id=event.source_id or event.event_id,
+            observed_at=event.occurred_at or None,
+            sequence=event.seq,
+            conversation=True,
+        ),
+        event_ids=(event.event_id,),
+    )
+
+
+def _tool_pair_item(call: SessionEvent, result: SessionEvent) -> SerializedItem:
+    rendered_args = json.dumps(call.arguments or {}, ensure_ascii=False, sort_keys=True)
+    status = result.status or "success"
+    lines = [
+        f"tool_call {call.tool_name}({rendered_args})",
+        f"tool_result({status}){f' error_code={result.error_code}' if result.error_code else ''}:",
+        result.content,
+    ]
+    return SerializedItem(
+        item=ContextItem(
+            item_id=call.event_id,
+            content="\n".join(lines),
+            classification=ContextClassification.COMPRESSIBLE,
+            role=ContextRole.UNTRUSTED_DATA,
+            priority=PRIORITY_TOOL_PAIR,
+            source_id=call.source_id or call.event_id,
+            observed_at=result.occurred_at or call.occurred_at or None,
+            sequence=call.seq,
+            trusted=False,
+        ),
+        event_ids=(call.event_id, result.event_id),
+    )
+
+----- 文件内容结束 -----
+
+[0012] 2026-08-21T02:33:00.000Z 助手
+serializer 会把相邻 tool_call 和 tool_result 合并成一个 ContextItem，并保留两个事件 ID，所以策略选择不会从中间拆开工具对。这一点实现与设计一致。
+
+[0013] 2026-08-21T02:41:00.000Z 用户
+那重要度评分呢？之前文档写了 relevance、freshness、failure risk 等，我怕页面已经把它说成正式算法。
+
+[0014] 2026-08-21T02:43:00.000Z 工具调用 code.read
+  参数 {"path":"engine/src/bdlh_runtime/context/scoring.py"}
+[0015] 2026-08-21T02:44:00.000Z 工具结果(success) — 冻结 Mock
+读取路径: engine/src/bdlh_runtime/context/scoring.py
+冻结范围: 第 1-264 行，共 264 行
+----- 文件内容开始 -----
+"""公式五(重要度评分)与公式六(性价比选择值)的确定性实现。
+
+对应《重要度评分与性价比选择公式设计.md》;全部因子只用条目自带元数据,
+不调用外部模型、不学习参数,同一输入同一输出。
+
+启用方式(v2,可选):``ContextBuilder(scorer=MultiFactorScorer(...))``;
+不传 scorer 时 budgeted 保持 v1(直接 priority + 公平份额)行为,便于
+budgeted-v1 与 v2 的受控对照。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from .models import ContextItem, ContextRole, ItemScore
+from .token_count import TokenCounter
+
+SCORING_VERSION = "multi-factor-v2"
+
+#: 各因子半衰期(小时);0 表示不衰减(恒 1.0)
+_HALF_LIFE_HOURS: dict[str, float] = {
+    "market_observation": 5 / 60,
+    "news_evidence": 24.0,
+    "portfolio_fact": 24 * 7,
+    "fundamental_observation": 24 * 90,
+    "tool_result": 24 * 7,
+    "tool_failure": 24 * 7,
+    "user_profile": 0.0,
+    "system_constraint": 0.0,
+    "memory_fact": 0.0,
+}
+_DEFAULT_HALF_LIFE_HOURS = 0.0  # 未知类型不衰减,交由 staleness 处理新旧
+
+#: authority 默认表(None 时按 role/item_type 推导,设计稿 §2.2)
+_AUTHORITY_BY_ROLE: dict[str, float] = {
+    ContextRole.SYSTEM.value: 1.0,
+    ContextRole.INSTRUCTION.value: 1.0,
+}
+_AUTHORITY_BY_TYPE: dict[str, float] = {
+    "system_constraint": 1.0,
+    "case_input": 1.0,
+    "market_observation": 0.9,
+    "portfolio_fact": 0.9,
+    "fundamental_observation": 0.9,
+    "tool_result": 0.9,
+    "memory_fact": 0.7,
+    "assistant_conclusion": 0.5,
+    "news_evidence": 0.2,
+    "web_text": 0.2,
+    "log": 0.2,
+}
+_AUTHORITY_DEFAULT = 0.7  # 用户确认的约束/普通条目
+
+
+@dataclass(frozen=True)
+class ScoringWeights:
+    """公式五权重(场景配置;ws 为减法项单独上限 0.3)。"""
+
+    wr: float
+    wa: float
+    wf: float
+    wq: float
+    wi: float
+    wc: float
+    we: float
+    ws: float
+    scene: str = "default"
+    version: str = SCORING_VERSION
+
+    def validate(self) -> None:
+        names = ("wr", "wa", "wf", "wq", "wi", "wc", "we")
+        for name in names + ("ws",):
+            if getattr(self, name) < 0:
+                raise ValueError(f"scoring weight {name} must be non-negative")
+        total = sum(getattr(self, name) for name in names)
+        if abs(total - 1.0) > 0.001:
+            raise ValueError(f"scoring weights must sum to 1 (got {total:.4f});拒绝静默归一化")
+        if self.ws > 0.3:
+            raise ValueError("staleness weight ws must be <= 0.3 (subtraction term)")
+        if max(getattr(self, name) for name in names) < 0.20:
+            raise ValueError("at least one weight must be >= 0.20")
+
+
+#: 设计稿 §2.3 场景权重表(第一版手工常量,后续用对照评测校准)。
+#: 注:设计稿表格中「看护/知识」两列与「合计 1.00」自相矛盾(原列合计
+#: 1.10/0.85);此处按校验约束修正为合计 1.00,偏离方向:看护 wq 0.15→0.05,
+#: 知识 wa 0.15→0.30(权威度是知识场景核心),default wf 0.05→0.10。
+SCENE_WEIGHTS: dict[str, ScoringWeights] = {
+    "market": ScoringWeights(0.25, 0.15, 0.30, 0.10, 0.10, 0.05, 0.05, 0.10, scene="market"),
+    "research": ScoringWeights(0.25, 0.20, 0.05, 0.15, 0.20, 0.10, 0.05, 0.10, scene="research"),
+    "portfolio": ScoringWeights(0.20, 0.15, 0.10, 0.15, 0.20, 0.10, 0.10, 0.10, scene="portfolio"),
+    "suitability": ScoringWeights(0.20, 0.25, 0.05, 0.15, 0.20, 0.10, 0.05, 0.10, scene="suitability"),
+    "watch": ScoringWeights(0.25, 0.15, 0.20, 0.05, 0.10, 0.10, 0.15, 0.10, scene="watch"),
+    "intercept": ScoringWeights(0.15, 0.25, 0.05, 0.10, 0.30, 0.05, 0.10, 0.10, scene="intercept"),
+    "knowledge": ScoringWeights(0.30, 0.30, 0.05, 0.10, 0.10, 0.10, 0.05, 0.10, scene="knowledge"),
+}
+DEFAULT_WEIGHTS = ScoringWeights(0.25, 0.20, 0.10, 0.15, 0.15, 0.10, 0.05, 0.10, scene="default")
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+@dataclass
+class ScoringContext:
+    """一次构建的评分上下文(引用计数与取代关系由调用方预处理)。"""
+
+    reference_time: datetime | None = None
+    #: 场景"优先保留"清单(task_impact=0.5)与"通常省略"清单(0.2)
+    preferred_ids: frozenset[str] = field(default_factory=frozenset)
+    omit_ids: frozenset[str] = field(default_factory=frozenset)
+
+
+class MultiFactorScorer:
+    """公式五/六的确定性评分器;只读元数据,无副作用。"""
+
+    def __init__(
+        self,
+        weights: ScoringWeights | None = None,
+        *,
+        scene: str = "default",
+        context: ScoringContext | None = None,
+    ) -> None:
+        if weights is None:
+            weights = SCENE_WEIGHTS.get(scene, DEFAULT_WEIGHTS)
+        weights.validate()
+        self.weights = weights
+        self.context = context or ScoringContext()
+
+    # ── 公式五 ────────────────────────────────────────────────────────────
+
+    def priority(self, item: ContextItem) -> tuple[float, dict[str, float]]:
+        factors = {
+            "relevance": self._relevance(item),
+            "authority": self._authority(item),
+            "freshness": self._freshness(item),
+            "source_quality": self._source_quality(item),
+            "task_impact": self._task_impact(item),
+            "citation_dependency": self._citation_dependency(item),
+            "failure_risk": self._failure_risk(item),
+            "staleness": self._staleness(item),
+        }
+        w = self.weights
+        raw = (
+            w.wr * factors["relevance"]
+            + w.wa * factors["authority"]
+            + w.wf * factors["freshness"]
+            + w.wq * factors["source_quality"]
+            + w.wi * factors["task_impact"]
+            + w.wc * factors["citation_dependency"]
+            + w.we * factors["failure_risk"]
+            - w.ws * factors["staleness"]
+        )
+        return min(1.0, max(0.0, raw)), factors
+
+    # ── 公式六 ────────────────────────────────────────────────────────────
+
+    def selection_value(self, priority: float, representation_tokens: int) -> float:
+        if representation_tokens <= 0:
+            return 0.0
+        return priority / representation_tokens
+
+    def score(
+        self,
+        item: ContextItem,
+        *,
+        representation: str,
+        representation_tokens: int,
+    ) -> ItemScore:
+        priority, factors = self.priority(item)
+        return ItemScore(
+            item_id=item.item_id,
+            factors=factors,
+            priority=round(priority, 6),
+            representation=representation,
+            representation_tokens=representation_tokens,
+            selection_value=round(self.selection_value(priority, representation_tokens), 8),
+        )
+
+    # ── 因子实现(全部 [0,1]) ─────────────────────────────────────────────
+
+    @staticmethod
+    def _relevance(item: ContextItem) -> float:
+        return min(1.0, max(0.0, float(item.relevance)))
+
+    @staticmethod
+    def _authority(item: ContextItem) -> float:
+        if item.authority_level is not None:
+            return min(1.0, max(0.0, float(item.authority_level)))
+        by_role = _AUTHORITY_BY_ROLE.get(item.role.value)
+        if by_role is not None:
+            return by_role
+        return _AUTHORITY_BY_TYPE.get(item.item_type, _AUTHORITY_DEFAULT)
+
+    def _freshness(self, item: ContextItem) -> float:
+        half_life = _half_life_of(item.item_type)
+        if half_life <= 0:
+            return 1.0
+        observed = _parse_time(item.observed_at)
+        reference = self.context.reference_time
+        if observed is None or reference is None:
+            return 0.5  # 设计稿 §6:时间缺失取中性值
+        delta_hours = max(0.0, (reference - observed).total_seconds() / 3600)
+        return 0.5 ** (delta_hours / half_life)
+
+    @staticmethod
+    def _source_quality(item: ContextItem) -> float:
+        if item.item_type == "data_quality":
+            return 0.1
+        if item.superseded:
+            return 0.4
+        if item.trusted:
+            return 1.0
+        return 0.7
+
+    def _task_impact(self, item: ContextItem) -> float:
+        if item.item_id in self.context.preferred_ids:
+            return 0.5
+        if item.item_id in self.context.omit_ids:
+            return 0.2
+        # 会话语义:用户消息承载当前任务诉求,助手消息承载结论
+        if item.conversation and item.role is ContextRole.USER_DATA:
+            return 0.5
+        if item.conversation:
+            return 0.4
+        return 0.3
+
+    @staticmethod
+    def _citation_dependency(item: ContextItem) -> float:
+        return min(1.0, len(item.cited_by) / 3)
+
+    @staticmethod
+    def _failure_risk(item: ContextItem) -> float:
+        if item.item_type == "tool_failure":
+            return 0.7
+        return 0.0
+
+    @staticmethod
+    def _staleness(item: ContextItem) -> float:
+        return 1.0 if item.superseded else 0.0
+
+
+def _half_life_of(item_type: str) -> float:
+    return _HALF_LIFE_HOURS.get(item_type, _DEFAULT_HALF_LIFE_HOURS)
+
+
+def scorer_from_env(**kwargs: Any) -> MultiFactorScorer | None:
+    """``BUDGETED_SCORING=multi-factor-v2`` 时返回 v2 评分器,否则 None(v1)。"""
+
+    import os
+
+    mode = (os.getenv("BUDGETED_SCORING") or "").strip().lower()
+    if mode not in {"multi-factor-v2", "multi_factor_v2", "v2"}:
+        return None
+    scene = kwargs.pop("scene", os.getenv("BUDGETED_SCORING_SCENE", "default"))
+    return MultiFactorScorer(scene=scene, **kwargs)
+
+----- 文件内容结束 -----
+
+[0016] 2026-08-21T02:50:00.000Z 助手
+当前已经存在多因子 scorer，但是否启用由环境配置决定，不能只因为文件存在就宣称所有 budgeted 运行都使用 v2。展示必须同时记录 scoring_version 和 tokenizer_version。
+
+[0017] 2026-08-21T02:52:00.000Z 工具调用 code.search
+  参数 {"repository":".","query":"assemble_model_context history_turns tool_schema_tokens"}
+[0018] 2026-08-21T02:53:00.000Z 工具结果(error · SEARCH_INDEX_UNAVAILABLE) — 冻结 Mock
+搜索暂时失败：索引服务未启动。
+
+[0019] 2026-08-21T02:56:00.000Z 助手
+搜索索引不可用不影响继续审查，我会直接读取 Agent 循环。
+
+[0020] 2026-08-21T02:58:00.000Z 工具调用 code.read
+  参数 {"path":"engine/src/bdlh_runtime/engine/loop.py"}
+[0021] 2026-08-21T02:59:00.000Z 工具结果(success) — 冻结 Mock
+读取路径: engine/src/bdlh_runtime/engine/loop.py
+冻结范围: 第 1-620 行，共 791 行
+----- 文件内容开始 -----
+"""Agent 循环（设计文档 §4.3）：bind_tools → 治理中间件 → Observation 回填。
+
+三层闸门：
+- G-α：语义快路径命中闲聊 / 知识 / 禁止则不进入循环、不装载工具；
+- G-β：进入循环后由模型决定是否调用工具（无 tool_calls 即直答）；
+- G-γ：治理中间件预算为上限。
+
+模型输入的上下文拼装统一经 ``ContextBuilder.build()``（长上下文设计 §4）：
+固定上下文条目、不可信数据包裹、跨用户隔离与预算控制都由构建器裁决,
+循环内不允许旁路拼装。系统提示作为 bare 指令条目过构建器(逐字不变)。
+强制项超预算抛 ``ContextBudgetError``/``ContextWindowError``,不静默降级。
+
+系统提示从 ``prompts/`` 文件加载，禁止内联长字符串。
+无 LLM（``create_llm`` 返回 None）时循环不启动，返回 degraded。
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+from bdlh_runtime.context import (
+    ConservativeTokenCounter,
+    ContextBuilder,
+    ContextBuildRequest,
+    ContextBuildResult,
+    ContextClassification,
+    ContextItem,
+    ContextReport,
+    ContextRole,
+    ContextStrategy,
+    ContextWindowError,
+)
+from bdlh_runtime.engine.semantic_router.encoder import Encoder
+from bdlh_runtime.guardrails.contracts import GuardrailContext
+from bdlh_runtime.guardrails.middleware import AuditRecord, GovernanceMiddleware, ToolExecutor
+from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog
+from bdlh_runtime.tools.search import DEFAULT_TOP_K, SEARCH_TOOLS_NAME
+
+from .loader import ToolLoader
+
+logger = logging.getLogger("bdlh_runtime.engine.loop")
+
+_PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
+_FASTPATH_SKIP_LOOP = frozenset({"chitchat", "knowledge", "forbidden"})
+
+#: 未配置 token_budget 时的宽松默认(FULL 透传用;变体执行总是显式带预算)
+_UNBOUNDED_TOKEN_BUDGET = 1_000_000
+
+#: 循环内重新压缩时保留原始消息对象的最近工具轮数(保证 tool_call/结果配对完整)
+_KEEP_RECENT_TOOL_ROUNDS = 2
+
+
+class ChatModel(Protocol):
+    """``create_llm`` 返回的 ChatOpenAI 及测试 FakeChatModel 共用面。"""
+
+    def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> Any: ...
+
+    async def ainvoke(self, messages: Sequence[Any], **kwargs: Any) -> Any: ...
+
+
+@runtime_checkable
+class StreamSink(Protocol):
+    """SSE 观察面：循环内推送 token 分片与 tool.step。"""
+
+    def on_token(self, content: str) -> None: ...
+
+    def on_tool_step(self, payload: dict[str, Any]) -> None: ...
+
+
+class FastpathRouter(Protocol):
+    """语义快路径读取面；``SemanticRouter.route`` 满足本协议。"""
+
+    def route(self, message: str) -> Any: ...
+
+
+@dataclass
+class AgentTurn:
+    """一次会话或唤醒进入循环的输入。"""
+
+    user_id: str
+    message: str
+    scene_tag: str = "research"
+    authenticated: bool = False
+    history: list[dict[str, str]] = field(default_factory=list)
+    context_items: list[str] = field(default_factory=list)
+    context_degraded: bool = False
+    run_id: str = "run"
+    # 长上下文变体执行(任务二):结构化条目 + 策略 + 预算 + 属主隔离
+    context_entries: tuple[ContextItem, ...] = ()
+    context_strategy: str = ContextStrategy.FULL.value
+    token_budget: int = 0
+    owner_id: str | None = None
+
+
+@dataclass
+class AgentResult:
+    """循环或快路径的产出。"""
+
+    answer: str
+    entered_loop: bool
+    loaded_tools: tuple[str, ...] = ()
+    audits: list[AuditRecord] = field(default_factory=list)
+    observations: list[Any] = field(default_factory=list)
+    degraded: bool = False
+    fastpath_name: str | None = None
+    messages: list[Any] = field(default_factory=list)
+    context_report: ContextReport | None = None
+    context_error: str | None = None
+    # 完整构建产物(context_builds 落库与工件 context 段的真源)
+    context_build_result: ContextBuildResult | None = None
+    context_items_used: tuple[ContextItem, ...] = ()
+    context_build_ms: int = 0
+    # 循环内因工具结果增长触发的重新构建次数(每轮预算检查)
+    context_rebuilds: int = 0
+
+
+class AgentLoop:
+    """scoped / search 装载 + 原生 tool calling 循环。"""
+
+    def __init__(
+        self,
+        *,
+        llm: ChatModel | None,
+        catalog: ToolCatalog,
+        executor: ToolExecutor,
+        loader: ToolLoader | None = None,
+        router: FastpathRouter | None = None,
+        session_history_turns: int = 10,
+        max_tool_calls: int = 20,
+        tool_loading: str = "scoped",
+        encoder: Encoder | None = None,
+        context_builder: ContextBuilder | None = None,
+        visible_override: frozenset[str] | None = None,
+        search_top_k: int | None = None,
+    ) -> None:
+        self._llm = llm
+        self._catalog = catalog
+        self._executor = executor
+        self._loader = loader or ToolLoader(catalog, tool_loading=tool_loading, encoder=encoder)
+        self._router = router
+        self._session_history_turns = max(1, session_history_turns)
+        self._max_tool_calls = max(0, max_tool_calls)
+        self._context_builder = context_builder or ContextBuilder(counter=ConservativeTokenCounter())
+        # 循环内预算检查的口径与构建器默认一致(保守估算)
+        self._counter = ConservativeTokenCounter()
+        # GT-4 可见集覆盖:最终可见集 = 装载策略结果 ∩ override(None=不覆盖)。
+        # loaded_names 按交集生成,G1 据此拦截被勾掉的工具(拒绝+审计码)。
+        self._visible_override = visible_override
+        # GT-8 检索档 top_k 批次变量:设置后固定检索条数(覆盖模型自报值,
+        # 单一变量纪律);None=现状(模型自报 1..8,默认 3)。
+        self._search_top_k = search_top_k
+
+    async def run(self, turn: AgentTurn, *, stream: StreamSink | None = None) -> AgentResult:
+        if self._router is not None:
+            choice = self._router.route(turn.message)
+            name = str(getattr(choice, "name", "") or "") if choice is not None else ""
+            if name in _FASTPATH_SKIP_LOOP:
+                canned = getattr(choice, "response", None)
+                if name == "forbidden":
+                    return AgentResult(
+                        answer=str(canned or "该请求不被允许。"),
+                        entered_loop=False,
+                        fastpath_name=name,
+                    )
+                if name == "chitchat" and canned:
+                    return AgentResult(answer=str(canned), entered_loop=False, fastpath_name=name)
+                if self._llm is None:
+                    logger.info("LLM 不可用，快路径直答不启动")
+                    return AgentResult(answer="", entered_loop=False, degraded=True, fastpath_name=name)
+                return await self._direct_answer(turn, fastpath_name=name, stream=stream)
+
+        if self._llm is None:
+            logger.info("LLM 不可用，Agent 循环不启动")
+            return AgentResult(answer="", entered_loop=False, degraded=True)
+
+        middleware = GovernanceMiddleware(
+            self._catalog,
+            context=GuardrailContext(
+                run_id=turn.run_id,
+                authenticated_user_id=turn.user_id or "guest",
+                read_only=True,
+                max_tool_calls=self._max_tool_calls,
+            ),
+        )
+        # 首轮可见工具 Schema 预算预留(循环内每轮重算并复核)
+        initial_cards = self._loader.load_for_turn(turn.scene_tag, authenticated=turn.authenticated)
+        if self._visible_override is not None:
+            initial_cards = [card for card in initial_cards if card.name in self._visible_override]
+        initial_schema_tokens = _tool_schema_tokens(initial_cards, self._counter)
+        try:
+            assembly = assemble_model_context(
+                self._context_builder,
+                system_prompt=load_prompt("system_base.md", "scene_chat.md"),
+                turn=turn,
+                history_turns=self._session_history_turns,
+                tool_schema_tokens=initial_schema_tokens,
+            )
+        except ValueError as exc:  # ContextBudgetError/ContextWindowError:不静默降级
+            logger.warning("上下文构建失败,运行不进入循环:%s", exc)
+            return AgentResult(
+                answer="",
+                entered_loop=False,
+                degraded=True,
+                context_error=str(exc),
+            )
+        messages = assembly.messages
+        context_report = assembly.report
+        max_rounds = self._max_tool_calls + 2
+        last_text = ""
+        loaded_names: tuple[str, ...] = ()
+        observations: list[Any] = []
+        # 循环内预算再检查状态:基础条目、工具轮消息与已折叠轮数
+        base_items = assembly.items
+        tool_round_messages: list[Any] = []
+        folded_rounds = 0
+        context_rebuilds = 0
+
+        async def dispatch(name: str, arguments: dict[str, Any]) -> Any:
+            if name == SEARCH_TOOLS_NAME:
+                return self._loader.run_search(
+                    str(arguments.get("query") or ""),
+                    top_k=self._search_top_k if self._search_top_k is not None else _top_k(arguments),
+                    scene_tag=turn.scene_tag,
+                    authenticated=turn.authenticated,
+                )
+            return await self._executor(name, arguments)
+
+        for _ in range(max_rounds):
+            cards = self._loader.load_for_turn(turn.scene_tag, authenticated=turn.authenticated)
+            if self._visible_override is not None:
+                cards = [card for card in cards if card.name in self._visible_override]
+            loaded_names = tuple(card.name for card in cards)
+            granted = self._loader.granted_scopes(turn.scene_tag, authenticated=turn.authenticated)
+            schema_tokens = _tool_schema_tokens(cards, self._counter)
+            try:
+                messages, rebuilt, rebuild_count, folded_rounds = self._refit_working_context(
+                    turn=turn,
+                    base_items=base_items,
+                    tool_round_messages=tool_round_messages,
+                    current=messages,
+                    schema_tokens=schema_tokens,
+                    folded_rounds=folded_rounds,
+                )
+            except ValueError as exc:  # 循环内超预算:诚实停止,不静默截断
+                logger.warning("循环内上下文超预算,运行停止:%s", exc)
+                return AgentResult(
+                    answer=last_text,
+                    entered_loop=True,
+                    loaded_tools=loaded_names,
+                    audits=middleware.audits,
+                    observations=list(observations),
+                    messages=list(messages),
+                    context_report=context_report,
+                    context_build_result=assembly.result,
+                    context_items_used=assembly.items,
+                    context_build_ms=assembly.duration_ms,
+                    degraded=True,
+                    context_error=str(exc),
+                    context_rebuilds=context_rebuilds,
+                )
+            if rebuilt is not None:
+                context_report = rebuilt.report
+                context_rebuilds += rebuild_count
+            bound = self._llm.bind_tools([_tool_spec(card) for card in cards])
+            response = await _complete_from_model(bound, messages, stream=stream, emit_tokens=True)
+            messages.append(response)
+            tool_round_messages.append(response)
+            calls = _tool_calls_of(response)
+            last_text = _message_text(response)
+            if not calls:
+                return AgentResult(
+                    answer=last_text,
+                    entered_loop=True,
+                    loaded_tools=loaded_names,
+                    audits=middleware.audits,
+                    observations=list(observations),
+                    messages=list(messages),
+                    context_report=context_report,
+                    context_build_result=assembly.result,
+                    context_items_used=assembly.items,
+                    context_build_ms=assembly.duration_ms,
+                    context_rebuilds=context_rebuilds,
+                )
+            for call_id, name, arguments in calls:
+                _emit_tool_step(stream, tool=name, arguments=arguments, status="pending")
+                outcome = await middleware.invoke(
+                    name=name,
+                    arguments=arguments,
+                    loaded_names=loaded_names,
+                    granted_scopes=granted,
+                    authenticated=turn.authenticated,
+                    executor=dispatch,
+                )
+                _emit_tool_outcome(stream, name=name, arguments=arguments, outcome=outcome)
+                if outcome.observation is not None:
+                    observations.append(outcome.observation)
+                tool_message = ToolMessage(
+                    content=_observation_payload(outcome),
+                    tool_call_id=call_id or name,
+                )
+                messages.append(tool_message)
+                tool_round_messages.append(tool_message)
+        return AgentResult(
+            answer=last_text,
+            entered_loop=True,
+            loaded_tools=loaded_names,
+            audits=middleware.audits,
+            observations=list(observations),
+            messages=list(messages),
+            context_report=context_report,
+            context_build_result=assembly.result,
+            context_items_used=assembly.items,
+            context_build_ms=assembly.duration_ms,
+            context_rebuilds=context_rebuilds,
+        )
+
+    def _refit_working_context(
+        self,
+        *,
+        turn: AgentTurn,
+        base_items: tuple[ContextItem, ...],
+        tool_round_messages: list[Any],
+        current: list[Any],
+        schema_tokens: int,
+        folded_rounds: int,
+    ) -> tuple[list[Any], ContextBuildResult | None, int, int]:
+        """每轮模型调用前的预算检查:工作消息(含 Schema 预留)超预算时重建。
+
+        - 最近 ``_KEEP_RECENT_TOOL_ROUNDS`` 轮保留原始消息对象(tool_call/结果
+          配对不可拆),更早的工具轮折叠为不可信数据条目重新过构建器;
+        - 未显式配置预算(``token_budget=0``)时不做检查;
+        - 无更早轮可折叠仍超预算,或重建后仍超预算 → ``ContextWindowError``,
+          诚实失败,不静默截断安全内容。
+
+        返回 (新消息列表, 重建结果或 None, 本次重建次数, 更新后的已折叠轮数)。
+        """
+
+        budget = turn.token_budget
+        if not budget:
+            return current, None, 0, folded_rounds
+        effective = max(1, budget - schema_tokens)
+        if _messages_tokens(current, self._counter) <= effective:
+            return current, None, 0, folded_rounds
+
+        rounds = _split_tool_rounds(tool_round_messages)
+        unfolded = rounds[folded_rounds:]
+        # 至少保留最后一轮原文(最近工具调用/结果);其余按 KEEP 上限保留,更早轮折叠。
+        # 即使没有可折叠轮,降低重建预算也能把基座压得更紧(初始构建会用满预算)。
+        keep = min(_KEEP_RECENT_TOOL_ROUNDS, max(1, len(unfolded) - 1)) if unfolded else 0
+        older = unfolded[: len(unfolded) - keep]
+        recent_rounds = unfolded[len(unfolded) - keep :] if keep else []
+        recent_raw = [message for round_messages in recent_rounds for message in round_messages]
+        extra_items = tuple(
+            _tool_round_item(round_messages, index)
+            for index, round_messages in enumerate(older, start=folded_rounds)
+        )
+        # 重建预算先扣除保留轮(原文不压缩),保证 重建结果+保留轮 ≤ 有效预算
+        recent_tokens = _messages_tokens(recent_raw, self._counter)
+        build_budget = effective - recent_tokens
+        if build_budget <= 0:
+            raise ContextWindowError(_messages_tokens(current, self._counter), effective)
+        rebuilt = self._context_builder.build(
+            ContextBuildRequest(
+                items=tuple(base_items) + extra_items,
+                token_budget=build_budget,
+                strategy=ContextStrategy(turn.context_strategy),
+                owner_id=turn.owner_id,
+            )
+        )
+        messages = _to_langchain_messages(rebuilt) + recent_raw
+        total = _messages_tokens(messages, self._counter)
+        if total > effective:
+            raise ContextWindowError(total, effective)
+        return messages, rebuilt, 1, folded_rounds + len(older)
+
+    async def _direct_answer(
+        self,
+        turn: AgentTurn,
+        *,
+        fastpath_name: str,
+        stream: StreamSink | None = None,
+    ) -> AgentResult:
+        assert self._llm is not None
+        try:
+            assembly = assemble_model_context(
+                self._context_builder,
+                system_prompt=load_prompt("system_base.md", "scene_direct.md"),
+                turn=turn,
+                history_turns=self._session_history_turns,
+            )
+        except ValueError as exc:  # ContextBudgetError/ContextWindowError:不静默降级
+            logger.warning("快路径上下文构建失败:%s", exc)
+            return AgentResult(
+                answer="",
+                entered_loop=False,
+                degraded=True,
+                fastpath_name=fastpath_name,
+                context_error=str(exc),
+            )
+        response = await _complete_from_model(self._llm, assembly.messages, stream=stream, emit_tokens=True)
+        return AgentResult(
+            answer=_message_text(response),
+            entered_loop=False,
+            fastpath_name=fastpath_name,
+            messages=list(assembly.messages) + [response],
+            context_report=assembly.report,
+            context_build_result=assembly.result,
+            context_items_used=assembly.items,
+            context_build_ms=assembly.duration_ms,
+        )
+
+
+def load_prompt(*filenames: str) -> str:
+    """从 ``prompts/`` 加载并拼接；文件缺失即失败，禁止内联兜底。"""
+    chunks: list[str] = []
+    for name in filenames:
+        path = _PROMPTS_DIR / name
+        if not path.is_file():
+            raise FileNotFoundError(f"系统提示文件缺失：{path}")
+        chunks.append(path.read_text(encoding="utf-8").strip())
+    return "\n\n".join(chunks)
+
+
+@dataclass(frozen=True)
+class ContextAssembly:
+    """一次模型上下文拼装的完整产出:消息、构建结果、请求条目与耗时。"""
+
+    messages: list[Any]
+    result: ContextBuildResult
+    items: tuple[ContextItem, ...]
+    duration_ms: int
+
+    @property
+    def report(self) -> ContextReport:
+        return self.result.report
+
+
+def assemble_model_context(
+    builder: ContextBuilder,
+    *,
+    system_prompt: str,
+    turn: AgentTurn,
+    history_turns: int = 10,
+    tool_schema_tokens: int = 0,
+) -> ContextAssembly:
+    """所有模型输入的上下文拼装统一经 ``ContextBuilder.build()``。
+
+    - 系统提示作为 bare 指令条目过构建器(逐字不变,不包 item 头);
+    - 结构化条目(``turn.context_entries``)与遗留字符串条目(``turn.context_items``)
+      全部进入构建器:分类、预算、跨用户隔离与 <untrusted-data> 包裹由构建器裁决;
+    - 对话历史与当前问题以 conversation 条目进入构建器(保持消息角色与顺序),
+      与其余内容共用同一个 Token 预算——修复"构建后才追加历史导致预算不完整";
+    - ``tool_schema_tokens`` 为本轮可见工具 Schema 的保守估算,从预算中预留,
+      修复"工具定义不计入上下文预算"。
+    ``ContextBudgetError``/``ContextWindowError`` 原样抛出(强制项超预算不降级)。
+    """
+
+    items: list[ContextItem] = [
+        ContextItem(
+            item_id="system-prompt",
+            content=system_prompt,
+            classification=ContextClassification.REQUIRED,
+            role=ContextRole.SYSTEM,
+            priority=100000,
+            sequence=-1000,
+            trusted=True,
+            bare=True,
+        )
+    ]
+    if turn.context_degraded:
+        items.append(
+            ContextItem(
+                item_id="context-degraded",
+                content="固定上下文不可用（context_degraded），不得编造缺失事实。",
+                classification=ContextClassification.REQUIRED,
+                role=ContextRole.SYSTEM,
+                priority=90000,
+                sequence=-999,
+                bare=True,
+            )
+        )
+    items.extend(turn.context_entries)
+    for index, text in enumerate(item for item in turn.context_items if item):
+        # 遗留字符串条目:fixture 数据按不可信数据透传(构建器负责包裹与预算)
+        items.append(
+            ContextItem(
+                item_id=f"legacy-context-{index}",
+                content=text,
+                classification=ContextClassification.REQUIRED,
+                role=ContextRole.UNTRUSTED_DATA,
+                priority=0,
+                sequence=10000 + index,
+                trusted=False,
+            )
+        )
+    # 对话历史:截断到 history_turns 轮后以 conversation 条目进入构建器预算
+    trimmed_history = list(turn.history)[-(history_turns * 2) :]
+    for index, entry in enumerate(trimmed_history):
+        content = str(entry.get("content") or "")
+        if not content.strip():
+            continue
+        assistant = str(entry.get("role", "user")) == "assistant"
+        items.append(
+            ContextItem(
+                item_id=f"history-{index}",
+                content=content,
+                classification=ContextClassification.COMPRESSIBLE,
+                role=ContextRole.ASSISTANT if assistant else ContextRole.USER_DATA,
+                priority=20,
+                sequence=5000 + index,
+                conversation=True,
+            )
+        )
+    if turn.message.strip():
+        items.append(
+            ContextItem(
+                item_id="current-question",
+                content=turn.message,
+                classification=ContextClassification.REQUIRED,
+                role=ContextRole.USER_DATA,
+                priority=100000,
+                sequence=6000,
+                conversation=True,
+            )
+        )
+    token_budget = turn.token_budget or _UNBOUNDED_TOKEN_BUDGET
+    if tool_schema_tokens > 0 and turn.token_budget:
+        token_budget = max(1, turn.token_budget - tool_schema_tokens)
+    request = ContextBuildRequest(
+        items=tuple(items),
+        token_budget=token_budget,
+        strategy=ContextStrategy(turn.context_strategy),
+        owner_id=turn.owner_id,
+    )
+    started = time.perf_counter()
+    built: ContextBuildResult = builder.build(request)
+    duration_ms = round((time.perf_counter() - started) * 1000)
+    return ContextAssembly(
+        messages=_to_langchain_messages(built),
+        result=built,
+        items=tuple(items),
+        duration_ms=duration_ms,
+    )
+
+
+def _history_messages(turn: AgentTurn, history_turns: int) -> list[Any]:
+    """仅用于评测重建的旧口径;主链历史已作为 conversation 条目进入构建器。"""
+
+    history = list(turn.history)[-(history_turns * 2) :]
+    messages: list[Any] = []
+    for item in history:
+        role = str(item.get("role", "user"))
+        content = str(item.get("content", ""))
+        if role == "assistant":
+            messages.append(AIMessage(content=content))
+        else:
+            messages.append(HumanMessage(content=content))
+    return messages
+
+
+def _to_langchain_messages(built: ContextBuildResult) -> list[Any]:
+    messages: list[Any] = []
+    for message in built.messages:
+        if message.role == "system":
+            messages.append(SystemMessage(content=message.content))
+        elif message.role == "assistant":
+            messages.append(AIMessage(content=message.content))
+        else:
+            messages.append(HumanMessage(content=message.content))
+    return messages
+
+
+def _top_k(arguments: dict[str, Any]) -> int:
+    raw = arguments.get("top_k", DEFAULT_TOP_K)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = DEFAULT_TOP_K
+    return max(1, min(value, 8))
+
+
+def _tool_spec(card: ToolCard) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": card.name,
+            "description": card.description,
+            "parameters": card.parameters,
+        },
+    }
+
+
+def _tool_schema_tokens(cards: Sequence[ToolCard], counter: ConservativeTokenCounter) -> int:
+    """可见工具 Schema 的保守 Token 估算(bind_tools 绑定内容计入预算口径)。"""
+
+    specs = [_tool_spec(card) for card in cards]
+    return counter.count(json.dumps(specs, ensure_ascii=False, default=str))
+
+
+def _messages_tokens(messages: Sequence[Any], counter: ConservativeTokenCounter) -> int:
+    return sum(counter.count(_message_text(message)) for message in messages)
+
+
+def _split_tool_rounds(tool_round_messages: Sequence[Any]) -> list[list[Any]]:
+    """把循环新增消息切成轮:每个带 tool_calls 的 AIMessage 开启一轮,
+    其后连续的 ToolMessage 归属该轮(轮内配对不可拆)。"""
+
+    rounds: list[list[Any]] = []
+    for message in tool_round_messages:
+        if isinstance(message, AIMessage) or not rounds:
+            rounds.append([message])
+        else:
+----- 文件内容结束 -----
+
+[0022] 2026-08-21T03:06:00.000Z 用户
+这里最关键。我们不能只限制历史条目，然后又把 schema、当前消息和后续 ToolMessage 无限制加回去。
+
+[0023] 2026-08-21T03:11:00.000Z 助手
+对。应以最终发送给模型的请求为预算边界，至少记录系统提示、可见工具 schema、编译后的 Session、当前问题、循环中新消息和输出预留。若 refit 只处理部分条目，页面上的 working_tokens 不能冒充最终请求 token。
+
+[0024] 2026-08-21T03:13:00.000Z 工具调用 file.read
+  参数 {"path":"docs/context/长上下文构建与压缩.md"}
+[0025] 2026-08-21T03:14:00.000Z 工具结果(success) — 冻结 Mock
+读取路径: docs/context/长上下文构建与压缩.md
+冻结范围: 第 1-401 行，共 401 行
+----- 文件内容开始 -----
+# 长上下文构建与压缩
+
+## 1. 目标和边界
+
+固定用例的问题正文通常很短，真正消耗 token 的是问题附带的系统约束、工具定义、用户数据、记忆、行情、新闻和多轮工具结果。因此本设计不压缩固定问题本身，而是压缩一次运行可使用的候选上下文。
+
+目标是：
+
+- 在给定 token 上限内生成模型实际需要的上下文；
+- 用户约束、权限、关键数字、数据时间和证据引用不能因压缩丢失；
+- 被省略的信息仍可通过内部引用追溯；
+- 压缩过程可解释、可测试、可替换；
+- 压缩带来的 token 节省必须大于压缩自身的模型成本；
+- 压缩失败不能绕过安全约束。
+
+本项目不实现跨 Codex、Cursor、OpenCode 的 Session 交接，也不保存通用聊天历史。ContextHub 文档中的可用部分被简化为：上下文条目、按预算选择、多种表示方式、来源追溯和评测对照。
+
+## 2. 输入和输出
+
+### 2.1 输入
+
+上下文构建器接收：
+
+```json
+{
+  "case_id": "portfolio-value-001",
+  "case_version": 3,
+  "scene": "portfolio",
+  "message": "我的持仓现在值多少钱",
+  "snapshot_id": "snap-001",
+  "token_budget": 16000,
+  "allowed_tools": [
+    "portfolio.get_current_positions",
+    "market.get_realtime_quote",
+    "portfolio.build_current_valuation"
+  ],
+  "context_strategy": "budgeted"
+}
+```
+
+### 2.2 输出
+
+上下文构建器输出：
+
+1. `messages`：发送给模型的消息；
+2. `context_report`：说明上下文如何被处理；
+3. `cache_key`：用于复用相同构建结果；
+4. `validation`：关键约束、引用和预算检查结果。
+
+上下文构建结果必须是结构化对象。各模型适配器可以把它渲染为具体消息格式，但不能重新选择或删除内容。
+
+## 3. 上下文条目
+
+候选上下文先被拆成独立条目。每个条目至少包含：
+
+```json
+{
+  "id": "holding-300750",
+  "type": "portfolio_fact",
+  "content": {
+    "symbol": "300750",
+    "weight": 0.18,
+    "quantity": 200
+  },
+  "source_ref": "snapshot://snap-001/positions/300750",
+  "source_time": "2026-08-20T14:32:00+08:00",
+  "authority": "data-service",
+  "trust": "verified",
+  "required": true,
+  "relevance": 0.95,
+  "raw_tokens": 82,
+  "status": "active"
+}
+```
+
+建议类型：
+
+| 类型 | 示例 | 默认处理 |
+|---|---|---|
+| `system_constraint` | 不允许交易、适合度口径 | 强制保留 |
+| `case_input` | 固定问题、场景、权限 | 强制保留 |
+| `watch_event` | 演示注入的价格事件 | 事件用例强制保留 |
+| `user_profile` | 风险承受能力、投资期限 | 结构化保留 |
+| `portfolio_fact` | 持仓、现金、权重 | 结构化保留 |
+| `memory_fact` | 与当前用例相关的已确认事实 | 检索后选择 |
+| `market_observation` | 行情、历史价格 | 保留数字、来源和时间 |
+| `fundamental_observation` | 财务指标和估值输入 | 保留计算依赖项 |
+| `news_evidence` | 新闻标题、摘要、来源 | 去重、检索、必要时摘要 |
+| `tool_failure` | 工具超时、参数错误 | 保留错误签名和状态 |
+| `data_quality` | 过期、缺失、冲突 | 被引用数据必须保留 |
+| `previous_result` | 预设多步用例的上一步结果 | 只保留结构化状态和引用 |
+| `raw_reference` | 长日志、原文、完整响应的位置 | 只在内部保存引用 |
+
+## 4. 来源和指令隔离
+
+上下文中的文字不具有相同权力。系统必须区分“指令”和“数据”。
+
+### 4.1 来源优先级
+
+发生冲突时，按以下顺序处理：
+
+1. 当前系统安全规则；
+2. 当前固定用例和登录身份；
+3. 用户明确确认的约束；
+4. 数据快照和工具返回的结构化事实；
+5. 已确认记忆；
+6. 模型从文本中提取的结论；
+7. 新闻、网页、日志和其他外部文本。
+
+新内容不会自动覆盖高优先级旧内容。替换或撤销约束必须生成明确的新版本，并记录被替换条目。
+
+### 4.2 防止间接提示注入
+
+- 新闻、网页、日志、工具返回和历史模型输出一律放入“数据”区域；
+- 数据中的“忽略之前要求”“调用某工具”等文字不能提升为系统指令；
+- 模型提取的约束或事实必须携带原始来源；
+- 没有来源或与数据快照冲突的提取结果不能进入强制保留集合；
+- 公开工件只展示处理结果和安全摘要，不展示可能包含敏感指令的完整原文。
+
+## 5. 按场景选择上下文
+
+每个场景配置一份普通规则文件，说明哪些内容强制保留、优先保留和通常省略。
+
+| 场景 | 强制保留 | 优先保留 | 通常省略 |
+|---|---|---|---|
+| 行情 | 问题、标的、最新行情、来源、时间 | 相关短期历史 | 无关记忆、长新闻 |
+| 研究 | 问题、C-1/C-2、核心财务指标 | 同行数据、相关新闻、历史估值 | 无关持仓和日志 |
+| 组合 | 问题、身份、全部持仓摘要、风险画像 | 主要标的行情、集中度 | 新闻全文、无关知识 |
+| 适合度 | 问题、身份、风险画像、C-2、披露 | 产品风险、用户期限 | 无关实时行情 |
+| 看护 | 事件、持仓影响、风险画像、来源 | 相关记忆和新闻 | 其他标的信息 |
+| 拦截 | 原始请求、身份、禁止规则 | 拒绝原因 | 行情、持仓和工具数据 |
+| 知识 | 问题、基础系统规则 | 相关知识片段 | 用户持仓和私有记忆 |
+
+规则文件只决定候选范围和硬限制，不能写入预期答案。
+
+## 6. Token 预算
+
+模型窗口不能全部分配给候选上下文。预算至少分成：
+
+```text
+模型最大窗口
+├─ 系统规则
+├─ 固定问题
+├─ 工具定义
+├─ 工作上下文
+├─ Agent 多轮新增工具结果
+├─ 最终输出预留
+└─ 安全余量
+```
+
+示例：模型窗口为 32K 时，可以从以下初始配置开始，再用真实评测调整：
+
+| 部分 | 示例预算 |
+|---|---:|
+| 系统规则和固定问题 | 2K |
+| 工具定义 | 3K |
+| 初始工作上下文 | 15K |
+| 后续工具结果 | 6K |
+| 最终输出 | 4K |
+| 安全余量 | 2K |
+
+预算配置必须按模型 tokenizer 计算。估算 tokenizer 只能作为降级方案，并预留更大的安全余量。
+
+## 7. 压缩步骤
+
+### 7.1 第一步：收集和标准化
+
+从固定用例、数据快照、用户画像、持仓、记忆和工具数据中收集候选条目。统一数字类型、时间格式、来源引用和状态，去除完全重复的条目。
+
+### 7.2 第二步：确定强制保留项
+
+以下内容不参与普通打分淘汰：
+
+- 系统安全规则；
+- 当前固定问题；
+- 当前身份和权限；
+- 用户明确约束；
+- 当前事件；
+- 当前用例的验收条件；
+- 未解决的高风险数据问题；
+- 最终计算依赖的数字、时间和来源。
+
+如果强制保留项本身已经超过预算，本次运行标记为上下文构建失败。系统不能通过删除安全规则继续运行。
+
+### 7.3 第三步：为条目准备不同长度的表示
+
+一个条目可以有以下表示方式：
+
+| 表示方式 | 内容 | 适用情况 |
+|---|---|---|
+| 完整内容 | 原始文本或完整结构 | 很短且关键 |
+| 结构化摘要 | 保留字段、数字、状态、错误签名 | 持仓、行情、日志、工具结果 |
+| 文本摘要 | 对较长自然语言生成短摘要 | 新闻和历史讨论 |
+| 引用 | 只提供类型、hash 和内部位置 | 源文件、完整日志、长原文 |
+| 省略 | 不进入工作上下文 | 低相关且可恢复内容 |
+
+数字、日期、权限和系统规则不能只保留自由文本摘要。
+
+### 7.4 第四步：计算优先级
+
+第一版使用可解释的规则，不训练新模型：
+
+```text
+priority =
+  relevance * wr
+  + authority * wa
+  + freshness * wf
+  + source_quality * wq
+  + task_impact * wi
+  + citation_dependency * wc
+  + failure_risk * we
+  - staleness * ws
+```
+
+权重按场景配置。为了避免长条目占用全部预算，实际选择时使用：
+
+```text
+selection_value = priority / representation_tokens
+```
+
+### 7.5 第五步：在预算内选择
+
+第一版算法按以下顺序执行：
+
+```text
+1. 放入全部强制保留项
+2. 为剩余条目生成可用的不同长度表示
+3. 按 selection_value 从高到低选择
+4. 某条目放不下时，尝试更短表示
+5. 保留被选条目的依赖项和来源引用
+6. 达到预算后停止
+7. 运行完整性检查
+```
+
+后续可以替换为更精确的预算求解方式，但对外行为和报告字段保持不变。
+
+### 7.6 第六步：完整性检查
+
+至少检查：
+
+- 所有强制项仍在；
+- token 总数不超过预算；
+- 每个事实性数字都有来源；
+- 每个引用指向数据快照或内部原始记录；
+- 被选条目的依赖项没有缺失；
+- 过期数据带有明确质量标记；
+- 外部文本没有进入系统指令区域；
+- 公开字段没有真实用户敏感信息。
+
+## 8. Agent 循环中的再次压缩
+
+初始上下文合格并不代表整个运行不会超出窗口。每轮工具调用都会增加 Observation。因此每轮模型调用前都要重新检查预算：
+
+1. 当前轮模型刚提出的工具调用和最近工具结果优先保留；
+2. 已被结构化结果取代的旧工具原文降级为引用；
+3. 重复工具结果合并；
+4. 被最终回答引用的 Observation 不得省略；
+5. 如果仍然超预算，停止继续调用工具并返回明确的预算错误或部分结果。
+
+系统不保存或压缩模型隐藏思维过程，只处理可观察的消息、工具调用和工具结果。
+
+## 9. 稳定内容、动态内容和缓存
+
+### 9.1 稳定内容
+
+以下内容变化较少，可按版本缓存：
+
+- 系统安全规则；
+- 固定用例；
+- 场景规则；
+- 工具定义；
+- 风险披露；
+- 已确认长期记忆。
+
+### 9.2 动态内容
+
+以下内容必须按运行或有效期更新：
+
+- 当前行情；
+- 当前运行选择的数据快照；
+- 当前持仓和现金；
+- 工具执行结果；
+- 数据质量状态。
+
+### 9.3 缓存键
+
+```text
+case_version
++ context_profile_version
++ snapshot_hash
++ compiler_version
++ tokenizer_id
++ tool_catalog_version
+```
+
+命中缓存只节省上下文收集和压缩成本，不允许复用旧的动态工具结果。缓存命中、失效原因和节省时长都进入运行记录。
+
+## 10. 预设多步用例
+
+多步用例每一步完成后只产生结构化状态：
+
+```json
+{
+  "step": 1,
+  "resolved_entities": ["300750"],
+  "selected_facts": ["holding-300750", "risk-profile-01"],
+  "result_refs": ["observation://run-001/2"],
+  "active_constraints": ["C-1", "C-2"]
+}
+```
+
+下一步上下文由固定问题、结构化状态和仍有效的证据重新构建，不直接附加上一步全部自然语言。这样可以评测指代和连续性，同时避免通用会话历史膨胀。
+
+## 11. 上下文处理报告
+
+每次运行保存：
+
+```json
+{
+  "strategy": "budgeted",
+  "compiler_version": "1.0.0",
+  "profile": "portfolio-v1",
+  "token_budget": 16000,
+  "raw_tokens": 42800,
+  "working_tokens": 12150,
+  "compression_ratio": 0.716,
+  "collect_ms": 46,
+  "compress_ms": 138,
+  "cache_hit": false,
+  "required_items": ["system-c1", "case-input", "profile-01"],
+  "selected_items": ["holding-300750", "holding-600519"],
+  "summarized_items": ["news-group-03"],
+  "referenced_items": ["raw-news-22"],
+  "omitted_items": ["memory-irrelevant-08"],
+  "checks": {
+    "required_retained": true,
+    "budget_fit": true,
+    "references_valid": true,
+    "instruction_isolated": true
+  }
+}
+```
+
+公开页面只展示条目类型、数量、选择原因和安全摘要，不展示内部原始内容。
+
+## 12. 失败和降级
+
+| 问题 | 处理 |
+|---|---|
+| tokenizer 不可用 | 使用保守估算并增加安全余量，记录降级 |
+| LLM 摘要失败 | 回退到结构化摘要或引用，不使用空白摘要 |
+| 强制项超过预算 | 运行失败，不删除安全项 |
+| 引用失效 | 运行无效，不能发布 |
+| 来源冲突 | 同时保留冲突值、来源和时间，交给代码规则判断 |
+| 缓存版本不一致 | 缓存失效并重新构建 |
+| 上下文构建超时 | 按用例配置使用最小安全上下文或标记无效 |
+
+## 13. 对照方式
+
+上下文压缩单独比较以下策略，Agent 实现方式、模型、温度、工具数据和数据快照保持不变。四种策略相互独立：只有 `budgeted` 使用项目自研算法，其余三种是行业常见基准；四种方式可以共用安全隔离与记录入口，但**不得**都经过自研压缩，否则实验无法证明自研算法优于基准。
+
+| 策略 | 说明 | 当前实现 |
+|---|---|---|
+| `full` | 在窗口允许时发送全部候选上下文，作为质量与成本上限 | 已实现；超预算直接失败，不静默截断 |
+| `recent-n` | 简单截断基线：公共系统规则等 required 始终保留，从最后一个事件向前选完整条目，达到预算即停 | 已实现（修复：required 不再被窗口截掉） |
+| `single-summary` | 一次性摘要基准：required + 最近事件原文 + 更早事件一次性摘要 | 已实现；摘要器（`summary.py`）与自研规则压缩器分离，默认确定性抽取式，可注入 LLM 摘要 |
+| `budgeted` | 自研：强制保留、结构化压缩、按优先级和公平份额选择 | 已实现（structured-text-v1 早期版本；多因子重要度与 selection_value 仍是设计稿） |
+
+完整自然 Session 的交叉验证（4 策略 × 3 Agent 模式 = 12 组矩阵）、派生工件冻结与 gold 评测见 [Session交叉验证设计.md](Session交叉验证设计.md)。评测指标和有效性规则见 [Agent 对照评测与证据展示.md](../evaluation/Agent对照评测与证据展示.md)。具体的长上下文组成、正反例和网页测试用例见 [固定用例与网页展示.md](../showcase/固定用例与网页展示.md)。
+
+## 14. 当前代码对应关系
+
+基础实现位于 `engine/src/bdlh_runtime/context/`，Session 交叉验证位于 `engine/src/bdlh_runtime/session/`：
+
+| 设计内容 | 当前代码 |
+|---|---|
+| 上下文条目、分类、角色（含 assistant 对话形态）和处理报告 | `context/models.py` |
+| 无模型 tokenizer 时的保守估算 | `context/token_count.py` |
+| 精确计数口径开关：环境变量 `LLM_TOKENIZER=tiktoken` 启用 `TiktokenCounter`（cl100k_base 词表），版本号 `tiktoken-cl100k-base-v1` 写入派生工件 `tokenizer_version` 字段；默认仍为保守口径 `conservative-cjk1-latin4-v1`，`ConservativeTokenCounter` 行为不变。注意：cl100k_base 为 OpenAI 词表近似口径（中文一般每字 0.6~1 token，通常低于保守口径）。另支持 `LLM_TOKENIZER=qwen`：Qwen 官方词表精确口径（`tiktoken-qwen-v1`，151,643 词元，与模型实际切分高度一致；词表需先 `python -m bdlh_runtime.context.token_count --init-qwen` 下载到 `engine/var/cache/`，缺失即报错不静默换口径）。跨口径数据不可直接比较；同批次内禁止混用口径，切换口径必须生成新的 strategy_version 批次 | `context/token_count.py`（`counter_from_env`），接线于 `session/compiler.py` |
+| 去重、JSON 紧凑化、显式省略和来源标记（budgeted 专用） | `context/compression.py` |
+| single-summary 的独立摘要基准（抽取式默认 + 可注入 LLM） | `context/summary.py` |
+| full、recent-window、single-summary、budgeted 四种独立策略 | `context/builder.py` |
+| Session 加载校验、事件序列化（工具对合并）、四派生输入编译与 hash 工件 | `session/loader.py` / `session/serializer.py` / `session/compiler.py` |
+| 冻结 Mock 调度器与 gold 机械评测 | `session/mock_dispatcher.py` / `session/gold_eval.py` |
+| 强制项、预算、跨用户、注入、对照策略与 Session 管线测试 | `tests/context/` / `tests/session/` |
+
+预算口径（已修复并接入 AgentLoop，`engine/loop.py`）：
+
+- 系统提示、结构化条目、对话历史、当前问题全部作为条目进入
+  `ContextBuilder.build()`，共用同一 Token 预算；
+- 可见工具 Schema 通过保守估算从预算预留（`_tool_schema_tokens`），
+  不再游离于预算之外；
+- 每轮模型调用前重新检查工作消息总量：超预算时把更早工具轮折叠为
+  不可信数据条目重建压缩，最近轮保留原文（tool_call/结果配对不拆）；
+  无退让空间则诚实失败（`ContextBudgetError`/`ContextWindowError`）。
+
+当前版本不调用外部 LLM（摘要基准为确定性抽取式；LLM 摘要接口已预留）。
+budgeted 的多因子重要度与 `selection_value` 仍属设计稿
+（[重要度评分与性价比选择公式设计.md](重要度评分与性价比选择公式设计.md)），
+不得在对外描述中当成已实现功能。
+
+----- 文件内容结束 -----
+
+[0026] 2026-08-21T03:20:00.000Z 用户
+最后的问题不要让 Agent 改代码，要让它在长历史里找出仍有效的约束、已经修正的说法和真实实现差距。

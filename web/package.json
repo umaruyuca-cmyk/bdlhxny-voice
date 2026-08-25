@@ -8,6 +8,7 @@
     "start": "node dev-server.js",
     "test": "node --test test/*.test.js",
     "generate:site": "node scripts/generate-site.mjs",
+    "generate:context-sessions": "node scripts/generate-session-context-cases.mjs",
     "generate:context-library": "node scripts/generate-context-library.mjs",
     "publish:showcase": "node scripts/publish-showcase.mjs"
   },

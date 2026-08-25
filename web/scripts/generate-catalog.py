@@ -80,37 +80,42 @@ def gen_tools():
     print(f"tools.json: {len(tools)} tools ← data 服务 /tool-catalog")
 
 def gen_cases():
-    """从 data 服务 /cases 拉取全部用例,投影为前端 JSON。"""
+    """从 data 服务 /cases 拉取用例,投影为公开 JSON。
+
+    投影规则(两类用例口径):只发布新口径对比用例的公开字段——
+    判定标志是 expected_checks 内显式的 test_type=COMPARISON_CASE
+    (data 服务视图不透出 case_definitions.test_type 列;因历史运行
+    外键而被 SQL 保留的旧用例没有该字段,自然被过滤);
+    评判配置(call_relation/mock_fixtures 等)不进入公开 JSON;
+    压缩用例的三个长 Session 由 context-library.json 单独维护,不在用例库。
+    """
     views = _get("/cases")
     cases = []
     for view in views:
         cid = view.get("id") or ""
         checks = view.get("expectedChecks") or {}
-        if cid.startswith("cxm-"):   kind, label = "complex",  "复杂多工具"
-        elif cid.startswith("gt8-"): kind, label = "generic",  "通用工具"
-        elif cid.startswith("neg-"): kind, label = "negative", "负例"
-        elif cid.startswith("ctx-"): kind, label = "context",   "长上下文"
-        else:                        kind, label = "basic",    "基础"
-        expected_tools = checks.get("expected_tools") or []
+        if checks.get("test_type") != "COMPARISON_CASE":
+            continue
+        kind = str(checks.get("category") or "basic")
+        kind_label = str(checks.get("category_label") or kind)
+        allowed_tools = view.get("allowedTools") or []
         cases.append({
             "id": cid,
             "title": view.get("title"),
-            "status": view.get("status"),
+            "status": view.get("status") or "ACTIVE",
             "current_version": view.get("version"),
             "message": view.get("message"),
             "scene": view.get("scene"),
-            "authenticated": view.get("authenticated"),
-            "token_budget": view.get("token_budget"),
-            "public": view.get("public"),
-            "checks": checks,
-            "tool_count": len(expected_tools),
+            "test_type": "COMPARISON_CASE",
             "kind": kind,
-            "kind_label": label,
+            "kind_label": kind_label,
+            "allowed_tools": allowed_tools,
+            "tool_count": len(allowed_tools),
         })
     path = os.path.join(OUT, "cases.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"cases": cases, "total": len(cases)}, f, ensure_ascii=False, indent=2)
-    print(f"cases.json: {len(cases)} cases ← data 服务 /cases")
+    print(f"cases.json: {len(cases)} cases ← data 服务 /cases(仅新口径 COMPARISON_CASE 公开字段)")
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)

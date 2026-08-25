@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>压缩用例 · 实验</title>
+<meta name="description" content="三个长 Session × 四种上下文方式 × 三种 Agent;生成上下文与 Agent 运行拆开,每格单次样本。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <div class="topbar-actions">
+      <a class="topbar-mytests" href="/test/">我的测试</a>
+      <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
+    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
+    <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
+    <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+    <button class="side-btn" id="sideBtn" type="button" aria-label="展开导航">导航</button>
+  </div>
+</header>
+<div class="docs-layout">
+  <aside class="docs-side" id="docsSide">
+    <nav class="side-tree" aria-label="站点模块导航">
+    <a class="side-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
+        <ul>
+          <li><a href="/about/">系统定位与架构</a></li>
+          <li><a href="/about/banks">题库与数据</a></li>
+          <li><a href="/about/repo">仓库与复现</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
+        <ul>
+          <li><a href="/showcase/">用例详情</a></li>
+          <li><a href="/showcase/tools">用例调用明细</a></li>
+          <li><a href="/session-cross/">Session 交叉验证</a></li>
+        </ul>
+      </details>
+    <details class="side-group here" open>
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
+        <ul>
+          <li><a href="/experiment/compression" class="active">压缩用例</a></li>
+          <li><a href="/experiment/comparison">对比用例</a></li>
+        </ul>
+      </details>
+    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
+        <ul>
+          <li><a href="/context/">压缩算法</a></li>
+          <li><a href="/context/library">长上下文库</a></li>
+          <li><a href="/context/design">长短对照设计</a></li>
+          <li><a href="/context/results">用例结果</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
+        <ul>
+          <li><a href="/judging/">指标定义</a></li>
+          <li><a href="/judging/metrics">指标定义总表</a></li>
+          <li><a href="/judging/judge">判官说明</a></li>
+          <li><a href="/judging/invalid">无效运行与口径</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
+        <ul>
+          <li><a href="/tools/">全部工具</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
+        <ul>
+          <li><a href="/cases/">全部用例</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
+        <ul>
+          <li><a href="/engine/">Agent 循环</a></li>
+          <li><a href="/engine/loading">工具装载</a></li>
+          <li><a href="/engine/catalog">工具目录</a></li>
+          <li><a href="/engine/governance">治理中间件</a></li>
+          <li><a href="/engine/guardrail">输出护栏</a></li>
+          <li><a href="/engine/tools">工具清单</a></li>
+        </ul>
+      </details>
+    <details class="side-group">
+        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
+        <ul>
+          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/run-api">私有运行 API</a></li>
+          <li><a href="/ops/artifacts">工件与发布</a></li>
+          <li><a href="/ops/deploy">部署与边界</a></li>
+          <li><a href="/ops/roadmap">路线图</a></li>
+        </ul>
+      </details>
+  </nav>
+    <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
+  </aside>
+  <main class="docs-main">
+<div class="detail-layout">
+      <aside class="page-toc" aria-label="本页目录">
+      <h4 class="page-toc-title">本页目录</h4>
+      <ul>
+        <li><a href="#scope">实验对象与数量口径</a></li>
+        <li><a href="#sessions">三个 Session 概览</a></li>
+        <li><a href="#actions">三个手动操作</a></li>
+        <li><a href="#matrix">4×3 结果矩阵(尚未运行)</a></li>
+      </ul>
+    </aside>
+      <div class="detail-body">
+        <h1>压缩用例 · 实验</h1>
+<h2 id="scope">实验对象与数量口径</h2>
+<p>压缩用例只使用上下文压缩模块维护的<strong>三个版本化长 Session</strong>:产品演进与需求决策、上下文引擎排查、数据库与部署。每个 Session 固定形成 <strong>4 种上下文方式 × 3 种 Agent = 12 个实验条件,每格只运行 1 次</strong>(本次结果为单次样本,不生成平均值或稳定性结论)。三个 Session 全部运行为 36 个运行——页面不提供默认连续执行三个 Session 的按钮。</p>
+<p>三个数量口径全链路分开:<code>repeat_count</code>(压缩用例每格固定 1)/ <code>max_agent_steps</code>(单次运行内模型判断+工具回传的最大步数,服务端配置)/ Agent 实现编号(固定三种)。</p>
+    <h2 id="sessions">三个 Session 概览</h2>
+<div id="sessionList"><div class="placeholder-block">正在读取长上下文库…</div></div>
+<p class="lab-note">当前输入 = Session 最新一条有效用户消息,只发送一次,不进入历史压缩;其之前的事件构成历史。四种方式经过相同的输入构建、Token 统计与工件冻结;只有「按预算压缩」是本项目算法,完整/最近窗口/一次摘要为对照方法。<strong>各 Session 四种方式的压缩前后 Token 明细见<a href="/context/library">长上下文库</a></strong>,本页只维护实验入口,不重复展示第二份数字。</p>
+    <h2 id="actions">三个手动操作</h2>
+<p>三个操作互不自动触发——生成上下文完成后不会自动运行 Agent;Session、算法参数或预算变化后旧工件不能复用,需重新生成。</p>
+<p class="lab-note">操作作用于:<code id="currentSessionId">—</code>(在上方 Session 列表点击「选中该 Session」切换;从长上下文库进入时按链接自动预选)</p>
+<div class="lab-row">
+  <label>上下文方式 <select id="modeSelect"></select></label>
+  <label>Agent 实现 <select id="agentSelect"></select></label>
+</div>
+<p>
+  <button type="button" class="btn" id="btnGenerate">生成四份上下文(0 个 Agent 运行)</button>
+  <button type="button" class="btn" id="btnRunCombo">运行当前组合(1 个运行)</button>
+  <button type="button" class="btn" id="btnRunMatrix">运行完整 4×3(12 个运行)</button>
+</p>
+<div id="compressStatus" class="lab-note">按钮只在点击时调用公开测试接口;页面加载、静态站生成都不会创建实验任务。静态部署(无运行服务)时提交会失败并如实提示。</div>
+    <h2 id="matrix">4×3 结果矩阵(尚未运行)</h2>
+<p>矩阵为 4 行(上下文方式)× 3 列(Agent 实现)。正式运行并发布前,每格显示空状态——不使用演示数字填充。</p>
+<table><thead><tr><th>上下文方式 \ Agent</th><th>baseline-tool-calling</th><th>langgraph-react</th><th>full-system</th></tr></thead>
+<tbody>
+<tr><td>full-session</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
+<tr><td>recent-window</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
+<tr><td>single-summary</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
+<tr><td>budgeted-session</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
+</tbody></table>
+<p class="lab-note">三种 Agent 对同一种上下文读取内容和哈希完全相同的冻结工件,不分别重新摘要或压缩;每格只有一个样本,结果只代表「本次结果」。</p>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/docs/docs.js"></script>
+
+<script>
+(function () {
+  "use strict";
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+  var MODES = ["full-session", "recent-window", "single-summary", "budgeted-session"];
+  var MODE_LABEL = {
+    "full-session": "完整 Session(对照)",
+    "recent-window": "最近窗口(基准)",
+    "single-summary": "一次摘要(基准)",
+    "budgeted-session": "按预算压缩(本项目算法)",
+  };
+  var AGENTS = ["baseline-tool-calling", "langgraph-react", "full-system"];
+  var selected = { session: null, mode: "budgeted-session", agent: "full-system" };
+
+  fetch("/showcase-data/context-library.json", { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (lib) {
+      var list = document.getElementById("sessionList");
+      var entries = (lib && lib.entries) || [];
+      if (!entries.length) {
+        list.innerHTML = '<div class="placeholder-block">尚未维护压缩 Session。</div>';
+        return;
+      }
+      var wanted = new URLSearchParams(location.search).get("session_id");
+      selected.session = entries.some(function (e) { return e.id === wanted; }) ? wanted : entries[0].id;
+
+      function renderList() {
+        list.innerHTML = entries.map(function (s) {
+          var stats = s.stats || {};
+          var picked = s.id === selected.session ? ' <small style="color:#1d4ed8">[当前选中]</small>' : "";
+          return '<details class="side-group"' + (picked ? ' open' : '') + '><summary>' + esc(s.title || s.id) + picked + "</summary>" +
+            '<div class="kv"><span>事件</span><b>' + esc(stats.event_count) + " 个(用户消息 " + esc(stats.user_messages) +
+            " / 工具对 " + esc(stats.tool_pairs) + ")</b></div>" +
+            '<div class="kv"><span>原始规模</span><b>' + (s.original_tokens == null ? "—" : esc(s.original_tokens) + " token") + "</b></div>" +
+            '<div class="kv"><span>当前输入</span><b>' + esc(String(s.current_question || "").slice(0, 100)) + "…</b></div>" +
+            '<p><small><button type="button" data-select-session="' + esc(s.id) + '"' +
+            (picked ? ' disabled' : '') + ">选中该 Session</button>" +
+            (picked ? " 三个操作按钮当前作用于它" : "") +
+            ' · <a href="/context/library">完整压缩前后对照见长上下文库</a></small></p></details>';
+        }).join("");
+        Array.prototype.forEach.call(list.querySelectorAll("[data-select-session]"), function (btn) {
+          btn.addEventListener("click", function () {
+            selected.session = btn.getAttribute("data-select-session");
+            renderList(); // 原地切换选中态,不重新加载页面
+          });
+        });
+        var current = document.getElementById("currentSessionId");
+        if (current) current.textContent = selected.session || "—";
+      }
+
+      renderList();
+    })
+    .catch(function () {
+      document.getElementById("sessionList").innerHTML = '<div class="placeholder-block">长上下文库数据不可读。</div>';
+    });
+
+  var modeSel = document.getElementById("modeSelect");
+  var agentSel = document.getElementById("agentSelect");
+  MODES.forEach(function (m) {
+    var o = document.createElement("option");
+    o.value = m; o.textContent = MODE_LABEL[m];
+    modeSel.appendChild(o);
+  });
+  AGENTS.forEach(function (a) { agentSel.appendChild(new Option(a, a)); });
+  modeSel.addEventListener("change", function () { selected.mode = modeSel.value; });
+  agentSel.addEventListener("change", function () { selected.agent = agentSel.value; });
+
+  function postJob(body) {
+    return fetch("/api/v1/public/test-jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    });
+  }
+  function note(msg, isError) { noteHtml(esc(msg), isError); }
+  function noteHtml(html, isError) {
+    var box = document.getElementById("compressStatus");
+    box.innerHTML = html;
+    box.className = isError ? "lab-note lab-note-error" : "lab-note";
+  }
+  function requireSession() {
+    if (!selected.session) { note("没有可用的压缩 Session。", true); return null; }
+    return selected.session;
+  }
+  document.getElementById("btnGenerate").addEventListener("click", function () {
+    var sid = requireSession(); if (!sid) return;
+    note("正在提交「生成四份上下文」任务…");
+    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "context-only" })
+      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(0 个 Agent 运行)。到 <a href="/test/">我的测试</a> 查看四份工件。"); })
+      .catch(function (e) { note("提交失败:" + e.message + "(公开运行服务未部署或不可达;本站静态部署不提供运行入口)", true); });
+  });
+  document.getElementById("btnRunCombo").addEventListener("click", function () {
+    var sid = requireSession(); if (!sid) return;
+    note("正在提交「运行当前组合」任务(1 个运行)…");
+    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "current-combo", context_variant: selected.mode, agent_mode_id: selected.agent })
+      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(1 个 Agent 运行)。到 <a href="/test/">我的测试</a> 查看进度与结果。"); })
+      .catch(function (e) { note("提交失败:" + e.message, true); });
+  });
+  document.getElementById("btnRunMatrix").addEventListener("click", function () {
+    var sid = requireSession(); if (!sid) return;
+    if (!window.confirm("运行完整 4×3 将创建 12 个 Agent 运行(复用已冻结的四份上下文工件,不重新压缩)。确认继续?")) return;
+    note("正在提交「运行完整 4×3」任务(12 个运行)…");
+    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "full-matrix" })
+      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(12 个运行,每格 1 次)。到 <a href="/test/">我的测试</a> 查看矩阵结果。"); })
+      .catch(function (e) { note("提交失败:" + e.message, true); });
+  });
+})();
+</script>
+</body>
+</html>
