@@ -39,7 +39,7 @@ class ScriptedCognitive:
 def _application() -> Any:
     return build_isolated_application(
         settings=Settings(auth_required=False),
-        cognitive_application=ScriptedCognitive(),
+        engine_runtime=ScriptedCognitive(),
     )
 
 

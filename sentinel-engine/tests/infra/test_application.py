@@ -74,21 +74,18 @@ def test_development_requires_java_data_plane() -> None:
 def test_isolated_helper_assembles_without_create_application_gates():
     """隔离 helper 可装配完整引擎；产品 create_application 不再接受 test 捷径。"""
     app = build_isolated_application()
-    assert app.cognitive_application is not None
+    assert app.engine_runtime is not None
     assert not hasattr(app, "graph")
     assert app.llm is None
-    assert app.direct_response_model is not None
     assert app.gateway_adapter is not None
-    assert app.domain_registry is None
-    assert app.finance_runtime is None
     assert app.analysis_capability is not None
-    assert app.cognitive_application.catalog is not None
-    assert "market.get_realtime_quote" in {card.name for card in app.cognitive_application.catalog.list()}
+    assert app.engine_runtime.catalog is not None
+    assert "market.get_realtime_quote" in {card.name for card in app.engine_runtime.catalog.list()}
 
 
 def test_isolated_catalog_follows_registry_snapshot():
     app = build_isolated_application()
-    names = {card.name for card in app.cognitive_application.catalog.list()}
+    names = {card.name for card in app.engine_runtime.catalog.list()}
     assert "market.get_realtime_quote" in names
     assert "portfolio.get_current_positions" in names
     assert "research.deep_search" not in names

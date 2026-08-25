@@ -53,7 +53,7 @@ def build_isolated_application(
     *,
     settings: Settings | None = None,
     registry_snapshot: Any | None = None,
-    cognitive_application: Any | None = None,
+    engine_runtime: Any | None = None,
     chat_model: Any | None = None,
 ) -> AgentRuntimeApplication:
     """Assemble ``AgentRuntimeApplication`` with in-memory stores and offline engine.
@@ -62,7 +62,7 @@ def build_isolated_application(
     - seeded Registry snapshot (or caller-provided)
     - ``StubMemoryStore`` (not product remote memory)
     - LexicalEncoder fastpath + IsolatedChatModel（产品路径仍 fail-closed）
-    - Caller may replace ``cognitive_application`` after return (common in API tests)
+    - Caller may replace ``engine_runtime`` after return (common in API tests)
     """
     settings = settings or Settings(
         environment="production",
@@ -123,8 +123,8 @@ def build_isolated_application(
         encoder=LexicalEncoder(),
         pause_check=run_control.is_pause_requested,
     )
-    if cognitive_application is not None:
-        wired_cognitive = cognitive_application
+    if engine_runtime is not None:
+        wired_cognitive = engine_runtime
 
     task_wakeup_handler = FinancialTaskWakeupHandler(
         task_store=task_store,
@@ -142,7 +142,6 @@ def build_isolated_application(
         llm=None,
         memory_store=StubMemoryStore(),
         gateway_adapter=gateway_adapter,
-        direct_response_model=direct_response_model,
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         deep_research_executor=deep_research_executor,
@@ -151,9 +150,7 @@ def build_isolated_application(
         chat_session_store=chat_session_store,
         run_state_reader=run_state_reader,
         capability_registry=capability_registry,
-        domain_registry=None,
-        finance_runtime=None,
-        cognitive_application=wired_cognitive,
+        engine_runtime=wired_cognitive,
         task_store=task_store,
         notification_outbox=notification_outbox,
         task_scheduler=task_scheduler,

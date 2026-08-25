@@ -435,7 +435,7 @@ def _parse_instrument(raw: str) -> dict[str, Any]:
 
     cn-financial search_stock 返回 [{"code": "600519", "name": "贵州茅台"}]（常无
     exchange）。必须保留全部候选供 Resolver 判定 AMBIGUOUS，并为 A 股代码推断
-    SSE/SZSE；同时保留顶层 symbol/name 供 assemble_analysis_input 使用。
+    SSE/SZSE；同时保留顶层 symbol/name 供上游 AnalysisInput 装配使用。
     """
     parsed = _JSON_LOADER(raw)
     items: list[Any]

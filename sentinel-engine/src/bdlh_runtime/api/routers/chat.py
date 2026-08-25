@@ -247,7 +247,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
 
             async def _produce() -> None:
                 try:
-                    execution = await application.cognitive_application.run(
+                    execution = await application.engine_runtime.run(
                         InputEvent(
                             event_id=f"chat:{run_id}",
                             run_id=run_id,

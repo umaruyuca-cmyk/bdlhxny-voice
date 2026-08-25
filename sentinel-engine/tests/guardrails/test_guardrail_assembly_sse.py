@@ -84,7 +84,7 @@ def test_application_wires_non_empty_capability_whitelist() -> None:
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
     )
-    names = {card.name for card in application.cognitive_application.catalog.list()}
+    names = {card.name for card in application.engine_runtime.catalog.list()}
     assert names
     assert DEEP_SEARCH_CAPABILITY not in names
 
@@ -126,7 +126,7 @@ def test_chat_emits_guardrail_blocked_for_unauthorized_deep_research() -> None:
     )
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
-        cognitive_application=runtime,
+        engine_runtime=runtime,
     )
     client = TestClient(create_api_app(application))
     response = client.post(

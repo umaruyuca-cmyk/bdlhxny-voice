@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from bdlh_runtime.config import Settings
-from bdlh_runtime.runtimes.langgraph.agents.direct_response_model import create_direct_response_model
 
 from .errors import ConfigurationError
 from .llm import create_llm
@@ -22,14 +21,13 @@ from .run_state import InMemoryRunStateReader
 
 @dataclass
 class AgentRuntimeApplication:
-    """已装配的应用实例，持有 Cognitive 编排器与支撑组件。"""
+    """已装配的应用实例，持有 engine/（EngineRuntime）与支撑组件。"""
 
     settings: Settings
     # 持有组件引用供调试和可观测性使用
     llm: Any | None = None
     memory_store: Any | None = None
     gateway_adapter: Any | None = None
-    direct_response_model: Any | None = None
     analysis_capability: Any | None = None
     web_search_adapter: Any | None = None
     deep_research_executor: Any | None = None
@@ -39,9 +37,7 @@ class AgentRuntimeApplication:
     # 运行状态读写端口；内存实现仅用于显式测试构造。
     run_state_reader: Any = field(default_factory=InMemoryRunStateReader)
     capability_registry: Any | None = None
-    domain_registry: Any | None = None
-    finance_runtime: Any | None = None
-    cognitive_application: Any | None = None
+    engine_runtime: Any | None = None
     task_store: Any | None = None
     notification_outbox: Any | None = None
     task_scheduler: Any | None = None
@@ -102,9 +98,6 @@ def create_application(
     # ── 3. MCP Gateway（创建 client，云端不在线时调用会失败但启动不阻断）──
     gateway_adapter = _create_gateway(settings)
 
-    # ── 4. Direct response（兼容字段；快路径直答走 AgentLoop LLM）──
-    direct_response_model = create_direct_response_model(llm)
-
     # ── 4.5 Java 数据适配器（持仓/账户/风控画像）──
     java_adapter = _create_java_adapter(
         settings.java_api_base_url,
@@ -136,7 +129,7 @@ def create_application(
 
     run_control = RunControlPlane()
     encoder = _fastpath_encoder(settings)
-    cognitive_application = build_engine_runtime(
+    engine_runtime = build_engine_runtime(
         llm=llm,
         settings=settings,
         registry_snapshot=registry_snapshot,
@@ -179,7 +172,7 @@ def create_application(
     task_wakeup_handler = FinancialTaskWakeupHandler(
         task_store=task_store,
         outbox=notification_outbox,
-        cognitive=cognitive_application,
+        cognitive=engine_runtime,
     )
     task_scheduler = FinancialTaskScheduler(
         task_store=task_store,
@@ -194,7 +187,6 @@ def create_application(
         llm=llm,
         memory_store=memory_store,
         gateway_adapter=gateway_adapter,
-        direct_response_model=direct_response_model,
         analysis_capability=analysis_capability,
         web_search_adapter=web_search_adapter,
         deep_research_executor=deep_research_executor,
@@ -203,9 +195,7 @@ def create_application(
         chat_session_store=chat_session_store,
         run_state_reader=run_state_reader,
         capability_registry=capability_registry,
-        domain_registry=None,
-        finance_runtime=None,
-        cognitive_application=cognitive_application,
+        engine_runtime=engine_runtime,
         task_store=task_store,
         notification_outbox=notification_outbox,
         task_scheduler=task_scheduler,

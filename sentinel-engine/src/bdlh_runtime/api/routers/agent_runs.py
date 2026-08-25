@@ -58,7 +58,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 )
             )
         try:
-            execution = await application.cognitive_application.run(
+            execution = await application.engine_runtime.run(
                 InputEvent(
                     event_id=f"run:{run_id}",
                     run_id=run_id,
@@ -304,7 +304,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
         )
         progress = CognitiveExecutionProgress()
         try:
-            execution = await application.cognitive_application.run(
+            execution = await application.engine_runtime.run(
                 InputEvent(
                     event_id=f"resume:{run_id}:{uuid4()}",
                     run_id=run_id,

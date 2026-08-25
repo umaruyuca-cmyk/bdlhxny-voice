@@ -209,7 +209,7 @@ def test_ready_503_when_development_missing_internal_token(monkeypatch):
         SimpleNamespace(
             settings=settings,
             capability_registry=app.capability_registry,
-            cognitive_application=app.cognitive_application,
+            engine_runtime=app.engine_runtime,
         )
     )
     assert report.ready is False

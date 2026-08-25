@@ -69,14 +69,14 @@ def evaluate_readiness(application: Any) -> ReadinessReport:
             )
         )
 
-    if application.capability_registry is not None and application.cognitive_application is not None:
-        checks.append(ReadinessCheck("registry.loaded", True, "capability_registry 与 cognitive 已装配"))
+    if application.capability_registry is not None and application.engine_runtime is not None:
+        checks.append(ReadinessCheck("registry.loaded", True, "capability_registry 与 engine_runtime 已装配"))
     else:
         checks.append(
             ReadinessCheck(
                 "registry.loaded",
                 False,
-                "capability_registry 或 cognitive_application 未装配",
+                "capability_registry 或 engine_runtime 未装配",
             )
         )
 

@@ -54,7 +54,7 @@ class ClarifyingCognitive:
 def _client(*, cognitive: Any | None = None) -> tuple[TestClient, Any]:
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
-        cognitive_application=cognitive,
+        engine_runtime=cognitive,
     )
     return TestClient(create_api_app(application)), application
 
@@ -99,14 +99,14 @@ def test_chat_clarification_resumes_same_run_for_symbol_answer():
 def test_chat_pending_ambiguous_message_asks_which_without_main_graph():
     client, application = _client(cognitive=ClarifyingCognitive())
     calls = {"n": 0}
-    original = application.cognitive_application
+    original = application.engine_runtime
 
     class Counting:
         async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
             calls["n"] += 1
             return await original.run(event, observer=observer, checkpoint=checkpoint)
 
-    application.cognitive_application = Counting()
+    application.engine_runtime = Counting()
     first = client.post(
         "/api/v1/chat/stream",
         headers=_headers(7),

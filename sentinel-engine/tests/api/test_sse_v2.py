@@ -111,7 +111,7 @@ async def _echo(name: str, arguments: dict) -> dict:
 def _client(*, cognitive: Any | None = None, chat_model: Any | None = None) -> TestClient:
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
-        cognitive_application=cognitive,
+        engine_runtime=cognitive,
         chat_model=chat_model,
     )
     return TestClient(create_api_app(application))

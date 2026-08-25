@@ -63,7 +63,7 @@ def test_agent_runs_allow_guest_but_reject_invalid_jwt():
 def test_chat_stream_allows_guest_without_login():
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
-        cognitive_application=_GuestCognitive(),
+        engine_runtime=_GuestCognitive(),
     )
     client = TestClient(create_api_app(application))
     response = client.post(

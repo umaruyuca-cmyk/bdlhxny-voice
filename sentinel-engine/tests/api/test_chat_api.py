@@ -91,7 +91,7 @@ class BlockedCognitive:
 def _client(*, cognitive: Any | None = None) -> TestClient:
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
-        cognitive_application=cognitive,
+        engine_runtime=cognitive,
     )
     return TestClient(create_api_app(application))
 

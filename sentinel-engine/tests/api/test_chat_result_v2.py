@@ -189,7 +189,7 @@ class _TypedCognitive:
 def test_sse_response_final_carries_blocks() -> None:
     application = build_isolated_application(
         settings=Settings(auth_required=True, jwt_secret=SECRET),
-        cognitive_application=_TypedCognitive(),
+        engine_runtime=_TypedCognitive(),
     )
     client = TestClient(create_api_app(application))
     events = _events(
