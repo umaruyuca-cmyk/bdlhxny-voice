@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>看护首页 · Sentinel</title>
+  <link rel="stylesheet" href="assets/dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body class="demo-mode">
+  <div class="demo-banner" id="demoBanner">演示数据</div>
+  <header class="header">
+    <a class="brand" href="/dashboard">Sentinel <span>看护首页</span></a>
+    <div class="header-actions">
+      <a class="user-chip" href="/" title="返回品牌首页">首页</a>
+      <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="true">提示音开</button>
+      <button class="bell" id="bell" type="button" aria-label="通知">
+        🔔
+        <span class="unread" id="unreadCount" hidden>0</span>
+      </button>
+      <a class="user-chip" id="userChip" href="/agent">登录</a>
+    </div>
+  </header>
+  <div class="degrade-bar" id="degradeBar" hidden></div>
+  <div class="sse-bar region-error" id="sseBar" hidden></div>
+
+  <main class="layout">
+    <aside>
+      <section class="panel" id="overviewPanel" aria-label="持仓概览">
+        <h2>持仓概览</h2>
+        <div id="overviewError" class="region-error" hidden></div>
+        <div id="overviewSkeleton" class="skeleton" aria-hidden="true"></div>
+        <div class="metrics" id="overviewMetrics" hidden>
+          <div class="metric"><span>持仓成本合计</span><b id="metricCost">—</b></div>
+          <div class="metric"><span>今日</span><b id="metricToday">—</b></div>
+          <div class="metric"><span>浮盈</span><b id="metricPnl">—</b></div>
+        </div>
+        <h2>持仓列表</h2>
+        <ul class="holdings" id="holdingsList"></ul>
+        <div id="holdingsChart" class="chart" role="img" aria-label="持仓目标权重"></div>
+      </section>
+    </aside>
+    <section class="panel timeline" id="timelinePanel" aria-label="事件时间线">
+      <h2>事件 / 通知时间线</h2>
+      <div id="timelineError" class="region-error" hidden></div>
+      <div id="timelineSkeleton">
+        <div class="skeleton"></div>
+        <div class="skeleton" style="margin-top:8px"></div>
+      </div>
+      <div id="timelineEmpty" class="empty-state" hidden>
+        时间线还是空的。监视规则触发后，事件会按倒序出现在这里。
+        <a href="#watchBar">去创建第一条监视规则</a>
+      </div>
+      <div id="timelineList"></div>
+    </section>
+  </main>
+
+  <footer class="watch-bar" id="watchBar">
+    <span>活跃监视</span>
+    <div id="watchChips"></div>
+    <div id="watchEmpty" class="empty-state" hidden>
+      还没有监视规则。创建第一条后，价格穿越与定时事件会出现在时间线。
+    </div>
+    <a class="watch-new" href="/watch-rules">+ 新建规则</a>
+  </footer>
+
+  <aside class="drawer" id="followupDrawer" aria-label="追问抽屉">
+    <header class="drawer-head">
+      <h2>追问</h2>
+      <button type="button" id="drawerClose">关闭</button>
+    </header>
+    <div class="chip" id="eventChip"></div>
+    <iframe id="drawerFrame" title="追问会话" hidden></iframe>
+    <a class="followup-open" id="drawerOpenChat" href="/agent">在新页打开会话 →</a>
+  </aside>
+
+  <script src="assets/badges.js"></script>
+  <script src="assets/dashboard.js"></script>
+</body>
+</html>

@@ -7,19 +7,13 @@ import pytest
 from pydantic import ValidationError
 
 from bdlh_runtime.cognitive.contracts import (
+    CognitiveExecution,
     CognitiveState,
     InputEvent,
     InputEventType,
     PublicResponse,
 )
-from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
-from bdlh_runtime.domains.contracts import ConfidenceAssessment
-from bdlh_runtime.domains.finance.contracts import (
-    FinancialDomainOutcome,
-    FinancialInstrument,
-    MarketSnapshot,
-    StockResearchResult,
-)
+from bdlh_runtime.contracts.observation import Observation
 from bdlh_runtime.infra.scheduler import (
     FinancialTaskScheduler,
     FinancialTaskWakeupHandler,
@@ -74,31 +68,27 @@ class FinanceWakeup:
     async def run(self, event: InputEvent, *, observer: Any = None, checkpoint: Any = None) -> CognitiveExecution:
         del checkpoint
         self.events.append(event)
-        research = StockResearchResult(
-            instrument=FinancialInstrument(symbol="600519"),
-            market_snapshot=MarketSnapshot(
-                symbol="600519",
-                price=self.price,
-                currency="CNY",
-                source_time=NOW,
-                quality="HIGH" if self.price else "LOW",
+        if self.price:
+            observer.on_tool_observation(
+                "market.get_realtime_quote",
+                Observation(
+                    observation_id=f"{event.event_id}:quote",
+                    capability="market.get_realtime_quote",
+                    status="SUCCESS",
+                    data={"price": self.price, "currency": "CNY", "source_time": NOW},
+                ),
             )
-            if self.price
-            else None,
-            coverage="COMPLETE" if self.price else "LIMITED",
-            confidence=ConfidenceAssessment(
-                level="HIGH" if self.price else "LOW",
-                coverage_status="COMPLETE" if self.price else "LIMITED",
-            ),
-        )
-        outcome = FinancialDomainOutcome(
-            request_id=f"{event.event_id}:research",
-            status=self.status,  # type: ignore[arg-type]
-            stock_research_result=research,
-            confidence=research.confidence,
-            limitations=[] if self.price else ["price unavailable"],
-        )
-        observer.on_domain_outcome(outcome)
+        else:
+            observer.on_tool_observation(
+                "market.get_realtime_quote",
+                Observation(
+                    observation_id=f"{event.event_id}:quote",
+                    capability="market.get_realtime_quote",
+                    status="FAILED" if self.status != "SUCCESS" else "UNAVAILABLE",
+                    data=None,
+                    error_code="QUOTE_MISSING",
+                ),
+            )
         return CognitiveExecution(
             state=CognitiveState(event=event),
             response=PublicResponse(
@@ -183,7 +173,7 @@ async def test_limited_data_never_triggers_notification() -> None:
     assert result.waiting == 1
     assert persisted is not None
     assert persisted.status == FinancialTaskStatus.WAITING
-    assert persisted.last_limitation == "WAKEUP_FINANCE_DATA_LIMITED"
+    assert persisted.last_limitation == "WAKEUP_QUOTE_LIMITED"
     assert outbox.claim_pending(limit=10) == []
 
 

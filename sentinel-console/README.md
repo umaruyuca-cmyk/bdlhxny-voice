@@ -3,8 +3,8 @@
 独立 Nginx 静态前端，无构建工具链（原生 HTML/CSS/JS + ECharts CDN）。浏览器只访问同源 `/api/`；代理层按领域分发到 Java 数据面与 Python Agent 引擎。
 
 > 产品形态以 [`docs/architecture/00-Sentinel产品设计与架构.md`](../docs/architecture/00-Sentinel产品设计与架构.md) §7 为准：
-> **目标首页为看护 dashboard**（持仓概览 / 事件时间线 / 活跃监视 / 追问抽屉，T3 实施）；
-> 现行入口 `/agent`（chat.html）在 T3 收敛为追问抽屉与会话视图组件。
+> 品牌落地为 `/`；看护首页（P1）为 `/dashboard`；会话入口为实现路径 `/agent`（追问抽屉 iframe 装入同一页）。
+> `/skills/` 为开发遗留试用页，不在产品导航中。与设计稿的偏差见设计文档脚注。
 
 ## 本地前后端联调
 
@@ -26,8 +26,8 @@ npm run dev
 
 ## 对接文档
 
-- [`CHAT_INTEGRATION.md`](CHAT_INTEGRATION.md) — 对话页与后端对接（描述现行实现；T3 契约切换后按设计文档 §6.2 / §7 重写）
-- [`API_INTEGRATION.md`](API_INTEGRATION.md) — 页面路由与 API 契约（同上）
+- [`CHAT_INTEGRATION.md`](CHAT_INTEGRATION.md) — 会话页 SSE 契约 v2（`tool.step` / `token` / `response.final`）与 ResultBlock
+- [`API_INTEGRATION.md`](API_INTEGRATION.md) — 页面路由、HTTP API 与看护通道
 
 ## 测试
 

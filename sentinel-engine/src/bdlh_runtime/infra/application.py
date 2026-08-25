@@ -1,10 +1,9 @@
 """应用装配入口。
 
-负责把 LLM、Memory、Gateway、Finance Runtime 与 Cognitive Orchestrator 按配置
+负责把 LLM、Memory、Gateway 与 ``engine/``（AgentLoop + EngineRuntime）按配置
 装配为唯一产品执行路径。装配原则：生产标准 fail-closed——缺 Java / LLM /
 Qwen 向量 / Remote Memory 等必需凭证则拒绝启动，不提供 mock/noop/词法逃生门。
 
-Cognitive + Finance 是默认且唯一的编排入口；不再装配 Root Graph 产品路径。
 隔离单测请用 ``tests/helpers_application.build_isolated_application``。
 """
 
@@ -48,6 +47,10 @@ class AgentRuntimeApplication:
     task_scheduler: Any | None = None
     notification_outbox_worker: Any | None = None
     run_control: Any | None = None
+    # 看护环（T1）：事件流水与通知持久化端口，由装配注入；缺省 None 时
+    # 演示注入端点与 followup 走回退路径或 503。
+    watch_event_store: Any | None = None
+    watch_notification_store: Any | None = None
 
 
 def create_application(
@@ -57,7 +60,7 @@ def create_application(
 ) -> AgentRuntimeApplication:
     """从 Settings 装配完整应用（生产标准 fail-closed）。
 
-    装配顺序：LLM → Memory → Gateway → Agents → Finance → Cognitive。
+    装配顺序：LLM → Memory → Gateway → ToolCatalog → AgentLoop。
     缺 Java/LLM/Qwen/Memory 凭证一律 ConfigurationError，不因「任意环境」放行。
     """
     settings = settings or Settings.from_environment()
@@ -99,10 +102,10 @@ def create_application(
     # ── 3. MCP Gateway（创建 client，云端不在线时调用会失败但启动不阻断）──
     gateway_adapter = _create_gateway(settings)
 
-    # ── 4. Direct response（Cognitive knowledge_responder）──
+    # ── 4. Direct response（兼容字段；快路径直答走 AgentLoop LLM）──
     direct_response_model = create_direct_response_model(llm)
 
-    # ── 4.5 Java 数据适配器（Phase 4：持仓/账户/风控画像）──
+    # ── 4.5 Java 数据适配器（持仓/账户/风控画像）──
     java_adapter = _create_java_adapter(
         settings.java_api_base_url,
         token=settings.java_data_internal_token,
@@ -129,93 +132,23 @@ def create_application(
 
     analysis_capability = create_analysis_capability()
 
-    # ── 4.6b Domain 插件装配（handlers / enabled_domains 由 Registry 域集合驱动）──
-    from bdlh_runtime.cognitive.goal_action_selector import GoalActionSelector
-    from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
-    from bdlh_runtime.cognitive.plugin_gates import catalog_from_records
-    from bdlh_runtime.cognitive.semantic_router import (
-        SemanticRouteSelector,
-        build_kernel_router,
-    )
-    from bdlh_runtime.cognitive.understand import create_understand_model
-    from bdlh_runtime.domains.assembly import AssemblyContext, assemble_domains
-    from bdlh_runtime.domains.dispatcher import DomainDispatcher
-    from bdlh_runtime.registry.menu import (
-        allowed_capabilities,
-        apply_feature_gates,
-        effective_operations,
-        eligible_capabilities,
-    )
-    from bdlh_runtime.registry.models import VALID_TOPICS
-
     from .run_control import RunControlPlane
 
-    menu_ops = effective_operations(
-        registry_snapshot,
-        runtime_allowed=settings.runtime_allowed_operations,
-        entitlement=settings.default_entitlement_operations,
-    )
-    menu_eligible = eligible_capabilities(registry_snapshot, menu_ops)
-    # 装配期白名单取登录态上限；未登录能力仍靠 requires_authenticated_user 与 Gateway 拦截
-    menu_allowed = apply_feature_gates(
-        allowed_capabilities(menu_eligible, authenticated=True),
-        deep_research_enabled=settings.deep_research_enabled,
-        deep_research_infra_ready=deep_infra_ready,
-    )
-
     run_control = RunControlPlane()
-    skill_catalog = catalog_from_records(
-        {"skill_id": skill.skill_id, "domain": skill.domain, "hint": skill.skill_id}
-        for skill in registry_snapshot.skills
-        if skill.enabled
-    )
-    understand_model = create_understand_model(
-        llm,
-        catalog=skill_catalog,
-        capability_names=tuple(cap.name for cap in registry_snapshot.capabilities),
-        allowed_topics=VALID_TOPICS,
-    )
-    domain_assembly = assemble_domains(
-        AssemblyContext(
-            snapshot=registry_snapshot,
-            capability_registry=capability_registry,
-            gateway_adapter=gateway_adapter,
-            web_search_adapter=web_search_adapter,
-            analysis_capability=analysis_capability,
-            java_adapter=java_adapter,
-            deep_research_executor=deep_research_executor,
-            deep_research_enabled=settings.deep_research_enabled and deep_infra_ready,
-            execution_environment=(
-                settings.environment if settings.environment in {"production", "development"} else "production"
-            ),
-            knowledge_responder=direct_response_model,
-        )
-    )
-    domain_registry = domain_assembly.registry
-    verified_entities = domain_assembly.entity_store
-    finance_runtime = domain_assembly.plugins["finance"].runtime if "finance" in domain_assembly.plugins else None
-    cognitive_fastpath = SemanticRouteSelector(
-        build_kernel_router(
-            encoder=_fastpath_encoder(settings),
-            score_thresholds=_fastpath_thresholds(settings),
-        ),
-        knowledge_responder=direct_response_model,
-    )
-    cognitive_application = CognitiveOrchestrator(
-        selector=GoalActionSelector(
-            handlers=domain_assembly.handlers,
-            catalog=skill_catalog,
-            respond=direct_response_model,
-        ),
-        fastpath=cognitive_fastpath,
-        dispatcher=DomainDispatcher(domain_registry),
-        continuation=domain_assembly.continuation,
-        plan_guardrail=domain_assembly.plan_guardrail,
-        enabled_domains=domain_assembly.enabled_domains,
-        authorized_operations=frozenset(menu_ops),
-        authorized_capabilities=frozenset(cap.name for cap in menu_allowed),
+    encoder = _fastpath_encoder(settings)
+    cognitive_application = build_engine_runtime(
+        llm=llm,
+        settings=settings,
+        registry_snapshot=registry_snapshot,
+        gateway_adapter=gateway_adapter,
+        java_adapter=java_adapter,
+        web_search_adapter=web_search_adapter,
+        analysis_capability=analysis_capability,
+        deep_research_executor=deep_research_executor,
+        deep_research_infra_ready=deep_infra_ready,
+        memory_store=memory_store,
+        encoder=encoder,
         pause_check=run_control.is_pause_requested,
-        understand=understand_model,
     )
 
     # ── 4.6e 运行持久化：Java Data Plane 是唯一运行时写源 ──
@@ -231,10 +164,6 @@ def create_application(
         internal_token=settings.java_data_internal_token,
     )
 
-    from .chat_sessions import ChatSessionVerifiedEntityPersistence
-
-    if verified_entities is not None:
-        verified_entities.attach_persistence(ChatSessionVerifiedEntityPersistence(chat_session_store))
     # ── 4.6g M6 最小持续任务（价格条件观察）──
     from .remote_tasks import create_remote_task_stores
     from .scheduler import (
@@ -274,14 +203,85 @@ def create_application(
         chat_session_store=chat_session_store,
         run_state_reader=run_state_reader,
         capability_registry=capability_registry,
-        domain_registry=domain_registry,
-        finance_runtime=finance_runtime,
+        domain_registry=None,
+        finance_runtime=None,
         cognitive_application=cognitive_application,
         task_store=task_store,
         notification_outbox=notification_outbox,
         task_scheduler=task_scheduler,
         notification_outbox_worker=notification_outbox_worker,
         run_control=run_control,
+    )
+
+
+def build_engine_runtime(
+    *,
+    llm: Any,
+    settings: Settings,
+    registry_snapshot: Any,
+    gateway_adapter: Any,
+    java_adapter: Any,
+    web_search_adapter: Any,
+    analysis_capability: Any,
+    deep_research_executor: Any,
+    deep_research_infra_ready: bool,
+    memory_store: Any,
+    encoder: Any,
+    pause_check: Any,
+) -> Any:
+    """装配 ToolCatalog + AgentLoop + EngineRuntime（生产与隔离测试共用）。"""
+    from bdlh_runtime.cognitive.semantic_router import build_kernel_router
+    from bdlh_runtime.engine.executor import CatalogToolExecutor
+    from bdlh_runtime.engine.loader import ToolLoader
+    from bdlh_runtime.engine.loop import AgentLoop
+    from bdlh_runtime.engine.runtime import EngineRuntime
+    from bdlh_runtime.registry.menu import (
+        allowed_capabilities,
+        apply_feature_gates,
+        effective_operations,
+        eligible_capabilities,
+    )
+    from bdlh_runtime.tools.catalog import ToolCatalog, catalog_from_snapshot
+
+    menu_ops = effective_operations(
+        registry_snapshot,
+        runtime_allowed=settings.runtime_allowed_operations,
+        entitlement=settings.default_entitlement_operations,
+    )
+    menu_eligible = eligible_capabilities(registry_snapshot, menu_ops)
+    menu_allowed = apply_feature_gates(
+        allowed_capabilities(menu_eligible, authenticated=True),
+        deep_research_enabled=settings.deep_research_enabled,
+        deep_research_infra_ready=deep_research_infra_ready,
+    )
+    allowed_names = {cap.name for cap in menu_allowed}
+    source = catalog_from_snapshot(registry_snapshot)
+    catalog = ToolCatalog()
+    for card in source.list():
+        if card.name in {"memory.recall", "search_tools"} or card.name in allowed_names:
+            catalog.register(card)
+    loader = ToolLoader(catalog, tool_loading=settings.tool_loading, encoder=encoder)
+    executor = CatalogToolExecutor(
+        catalog,
+        gateway_adapter=gateway_adapter,
+        java_adapter=java_adapter,
+        web_search_adapter=web_search_adapter,
+        analysis_capability=analysis_capability,
+        deep_research_executor=deep_research_executor,
+        memory_store=memory_store,
+    )
+    loop = AgentLoop(
+        llm=llm,
+        catalog=catalog,
+        executor=executor,
+        loader=loader,
+        router=build_kernel_router(encoder=encoder, score_thresholds=_fastpath_thresholds(settings)),
+    )
+    return EngineRuntime(
+        loop,
+        pause_check=pause_check,
+        executor=executor,
+        catalog=catalog,
     )
 
 

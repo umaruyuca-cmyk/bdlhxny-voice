@@ -30,9 +30,12 @@ var STOCK_SKILL="finance.stock-research";
 var NATIVE_FETCH=window.fetch.bind(window);
 var AUTH={ready:MOCK,user:MOCK?{userId:"mock",username:"演示模式"}:null};
 var AUTH_MODE="login";
-/** 首页跳转带入：?q=问题&name=stock|general */
+/** 首页跳转带入：?q=问题&name=stock|general；看护追问：?sessionId=&followup=&embed=1 */
 var ENTRY_Q="";
 var ENTRY_STOCK=false;
+var ENTRY_FOLLOWUP="";
+var ENTRY_SESSION="";
+var ENTRY_EMBED=false;
 
 var ST={
   sessions:[],
@@ -47,7 +50,8 @@ var ST={
   pendingPrompt:"",
   abortReason:null,
   activeAgentRow:null,
-  regenerating:false
+  regenerating:false,
+  lastFinal:null
 };
 
 var SEND_ICON='<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
@@ -63,7 +67,9 @@ var STEP_LABEL={
   skill_executing:"执行深度分析",
   route_executing:"执行深度分析",
   searching_vector:"检索知识库",
-  retrieval_result:"整理检索结果"
+  retrieval_result:"整理检索结果",
+  degraded:"依赖降级",
+  memory_degraded:"记忆召回降级"
 };
 
 /* ---------- 工具 ---------- */
@@ -99,6 +105,7 @@ function setSendingUi(on){
     sendBtn.innerHTML=SEND_ICON;
     sendBtn.disabled=false;
   }
+  syncRunControls();
 }
 
 /** 中断后把原问题回填到输入框。 */
@@ -189,8 +196,8 @@ function activeSession(){
   for(var i=0;i<ST.sessions.length;i++)if(ST.sessions[i].id===ST.activeId)return ST.sessions[i];
   return null;
 }
-function makeSession(){
-  return {id:uid(),title:"新的对话",messages:[],updatedAt:now(),remote:false,enabledSkills:[]};
+function makeSession(id){
+  return {id:id||uid(),title:"新的对话",messages:[],updatedAt:now(),remote:false,enabledSkills:[]};
 }
 function ensureSessionSkills(s){
   if(!s)return;
@@ -220,39 +227,13 @@ function setSkillEnabled(id,on,note){
   if(note==="off")toast("已关闭股票分析");
 }
 function syncPluginUi(){
-  var on=skillEnabled(STOCK_SKILL);
-  var toggle=document.getElementById("pluginToggle");
-  var tray=document.getElementById("pluginTray");
-  var chip=document.getElementById("chipEnabled");
-  var ro=document.getElementById("roTag");
-  var statusTag=document.getElementById("statusTag");
-  var navPlugins=document.getElementById("navPlugins");
-  if(toggle){
-    toggle.classList.toggle("on",on);
-    toggle.setAttribute("aria-checked",on?"true":"false");
-  }
-  if(tray)tray.hidden=!on;
-  if(chip)chip.hidden=!on;
-  if(ro)ro.hidden=!on;
-  if(statusTag){
-    statusTag.textContent=on?"本对话已启用":"未启用";
-    statusTag.className="tag "+(on?"ok":"off");
-  }
-  if(navPlugins)navPlugins.classList.toggle("on",ST.page==="plugins");
+  /* 插件页已退役；保留空实现以免旧调用点报错。工具装载由引擎治理，不再前端启停 Skill。 */
 }
 function showPage(name){
-  ST.page=name==="plugins"?"plugins":"chat";
+  ST.page="chat";
   var viewChat=document.getElementById("viewChat");
-  var viewPlugins=document.getElementById("viewPlugins");
-  if(viewChat)viewChat.classList.toggle("on",ST.page==="chat");
-  if(viewPlugins)viewPlugins.classList.toggle("on",ST.page==="plugins");
-  syncPluginUi();
-  if(ST.page==="plugins"){
-    if(qnav)qnav.style.display="none";
-    if(qpanel)qpanel.classList.remove("open");
-  }else{
-    rebuildQnav();
-  }
+  if(viewChat)viewChat.classList.add("on");
+  rebuildQnav();
 }
 function adoptServerSessionId(serverId){
   var s=activeSession();
@@ -399,7 +380,10 @@ function appendMessage(role,content,animate){
   }else{
     row.innerHTML='<div class="avatar">G</div><div class="body">'+
       '<div class="msg-status"><i></i><span></span></div>'+
+      '<div class="tool-trace" hidden><div class="tool-trace-title">工具轨迹</div><ol class="tool-trace-list"></ol></div>'+
       '<div class="text">'+esc(content)+'</div>'+
+      '<div class="result-blocks-host"></div>'+
+      '<div class="evidence-card" hidden></div>'+
       '<div class="msg-actions">'+
         '<button class="act-btn act-copy" type="button" title="复制回答">'+
           '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>'+
@@ -480,6 +464,165 @@ function setStatus(row,step,skill){
 function clearStatus(row){
   var bar=$(".msg-status",row);
   if(bar)bar.classList.remove("show");
+}
+
+function syncRunControls(){
+  var wrap=document.getElementById("runControls");
+  var pauseBtn=document.getElementById("pauseBtn");
+  var resumeBtn=document.getElementById("resumeBtn");
+  if(!wrap||!pauseBtn||!resumeBtn)return;
+  if(ST.sending&&ST.activeRunId&&!ST.pauseAcked){
+    wrap.hidden=false;
+    pauseBtn.hidden=false;
+    resumeBtn.hidden=true;
+  }else if(ST.pauseAcked){
+    wrap.hidden=false;
+    pauseBtn.hidden=true;
+    resumeBtn.hidden=false;
+  }else{
+    wrap.hidden=true;
+    pauseBtn.hidden=false;
+    resumeBtn.hidden=true;
+  }
+}
+
+function showDegrade(message){
+  var bar=document.getElementById("degradeBar");
+  if(!bar)return;
+  var text=String(message||"").trim();
+  if(!text){bar.hidden=true;bar.textContent="";return;}
+  bar.hidden=false;
+  bar.textContent=text;
+}
+
+function argSummary(args){
+  if(!args||typeof args!=="object")return "";
+  return Object.keys(args).slice(0,3).map(function(key){
+    var value=args[key];
+    if(value&&typeof value==="object")value=JSON.stringify(value);
+    var text=String(value==null?"":value);
+    if(text.length>24)text=text.slice(0,24)+"…";
+    return key+"="+text;
+  }).join(" ");
+}
+
+function applyToolStep(row,data){
+  if(!row||!data)return;
+  var trace=$(".tool-trace",row);
+  var list=trace&&$(".tool-trace-list",trace);
+  if(!trace||!list)return;
+  trace.hidden=false;
+  if(!row._toolNodes)row._toolNodes={};
+  var key=(data.tool||"tool")+":"+(data.callId||data.tool||"anon");
+  var node=row._toolNodes[key];
+  if(!node&&!data.callId){
+    var pendingKey=(data.tool||"tool")+":"+(data.tool||"anon");
+    var pending=row._toolNodes[pendingKey];
+    if(pending&&pending.dataset.status==="pending")node=pending;
+  }
+  if(!node){
+    node=document.createElement("li");
+    node.className="tool-node";
+    list.appendChild(node);
+    row._toolNodes[key]=node;
+  }
+  var status=String(data.status||"pending").toLowerCase();
+  node.dataset.status=status;
+  var ok=status==="success"||status==="ok"||status==="completed";
+  var bad=status==="rejected"||status==="failed"||status==="blocked"||status==="error";
+  var mark=ok?"✓":(bad?"✕":"●");
+  var elapsed=data.elapsedMs!=null?String(data.elapsedMs)+"ms":"";
+  var name=data.tool||"";
+  var html;
+  if(name==="search_tools"){
+    var query=data.query||(data.arguments&&(data.arguments.query||data.arguments.q))||"";
+    var hits=data.hitCount!=null?data.hitCount:(data.arguments&&data.arguments.hitCount);
+    html='<div class="tool-head">◈ search_tools "'+esc(query)+'"</div>';
+    if(status!=="pending"){
+      html+='<div class="tool-sub">→ 命中 '+(hits==null?"—":hits)+' 个工具'+(elapsed?"（"+elapsed+"）":"")+'</div>';
+    }
+  }else{
+    html='<div class="tool-head">'+mark+" "+esc(name)+' <span class="tool-args">'+esc(argSummary(data.arguments))+"</span></div>";
+    html+='<div class="tool-sub">'+esc(status)+(elapsed?" · "+elapsed:"")+(data.auditCode?" · "+esc(data.auditCode):"")+"</div>";
+  }
+  var obs=data.observation||data.summary||data.arguments||{};
+  html+='<details class="tool-obs"><summary>Observation</summary><pre>'+esc(typeof obs==="string"?obs:JSON.stringify(obs,null,2))+"</pre></details>";
+  node.innerHTML=html;
+  scrollBottom();
+}
+
+function renderEvidenceCard(card,data){
+  if(!card)return;
+  var refs=data.evidence_refs||[];
+  var codes=data.audit_codes||[];
+  var disclosures=data.disclosures||[];
+  if(!refs.length&&!codes.length&&!disclosures.length){card.hidden=true;card.innerHTML="";return;}
+  var Badges=window.SentinelBadges||{};
+  var evidenceHtml=typeof Badges.evidence==="function"?Badges.evidence(refs):refs.map(function(ref,i){return "["+(i+1)+"] "+esc(ref);}).join(" ");
+  var auditHtml=codes.map(function(code){
+    return typeof Badges.audit==="function"?Badges.audit(code):esc(code);
+  }).join(" ");
+  card.hidden=false;
+  card.innerHTML='<div class="ev-title">证据链</div><div class="ev-refs">'+evidenceHtml+"</div>"+
+    (auditHtml?'<div class="ev-audit">审计码 '+auditHtml+"</div>":"")+
+    (disclosures.length?'<div class="ev-disc">'+disclosures.map(function(item){return esc(item);}).join("<br>")+"</div>":"");
+}
+
+function applyFinal(row,data){
+  if(!row||!data)return;
+  ST.lastFinal=data;
+  var text=$(".text",row);
+  if(text&&!ST.streamText&&data.answer){
+    if($(".typing",text))text.textContent="";
+    text.textContent=data.answer;
+    ST.streamText=data.answer;
+  }
+  var host=$(".result-blocks-host",row);
+  if(host){
+    var Blocks=window.SentinelBlocks;
+    if(Blocks&&typeof Blocks.mount==="function")Blocks.mount(host,data.blocks||[]);
+    else host.innerHTML="";
+  }
+  renderEvidenceCard($(".evidence-card",row),data);
+  var trace=$(".tool-trace",row);
+  if(trace)trace.classList.add("frozen");
+}
+
+function setClarifyTray(promptText,options){
+  var tray=document.getElementById("clarifyTray");
+  if(!tray)return;
+  tray.innerHTML="";
+  var list=options||[];
+  if(!list.length){tray.hidden=true;return;}
+  tray.hidden=false;
+  list.forEach(function(opt,i){
+    var btn=document.createElement("button");
+    btn.type="button";
+    btn.className="ask-btn"+(i===0?" primary":"");
+    btn.textContent=opt.label;
+    btn.addEventListener("click",function(){
+      tray.hidden=true;
+      tray.innerHTML="";
+      send(opt.message);
+    });
+    tray.appendChild(btn);
+  });
+}
+
+async function checkReady(){
+  if(MOCK)return;
+  try{
+    var response=await apiFetch("/api/v1/ready");
+    var data=await response.json().catch(function(){return {};});
+    var bad=(data.checks||[]).filter(function(item){return item&&item.ok===false;});
+    var parts=[];
+    if(bad.some(function(item){return /llm|registry|cognitive/i.test(item.name||"");}))parts.push("语言模型不可用");
+    if(bad.some(function(item){return /memory/i.test(item.name||"");}))parts.push("记忆服务降级");
+    if(!parts.length&&data.status&&data.status!=="READY")parts.push("依赖未就绪");
+    if(parts.length)showDegrade(parts.join(" · "));
+  }catch(err){
+    showDegrade("无法探测运行时就绪状态");
+  }
 }
 
 /* ---------- 上滑加载更早消息（骨架条 + 滚动位置保持） ---------- */
@@ -674,15 +817,25 @@ function handleEvent(data,row){
   var type=data.type;
   if(type==="status"){
     setStatus(row,data.step,data.skill);
+    if(data.step==="degraded"||data.step==="memory_degraded"){
+      showDegrade(data.limitation||STEP_LABEL[data.step]||"依赖降级");
+    }
   }else if(type==="agent_run"){
     if(data.sessionId)adoptServerSessionId(data.sessionId);
     if(data.runId)ST.activeRunId=data.runId;
     ST.pauseAcked=false;
+    if(data.degraded)showDegrade(typeof data.degraded==="string"?data.degraded:"运行依赖已降级");
+    syncRunControls();
+  }else if(type==="tool.step"){
+    applyToolStep(row,data);
+  }else if(type==="response.final"){
+    applyFinal(row,data);
   }else if(type==="run.paused"){
     ST.pauseAcked=!!data.resumable;
     if($(".typing",text))text.textContent="";
     clearStatus(row);
     text.textContent=text.textContent||"已暂停，可回复「继续」恢复。";
+    syncRunControls();
   }else if(type==="guardrail.blocked"){
     if($(".typing",text))text.textContent="";
     clearStatus(row);
@@ -712,6 +865,7 @@ function handleEvent(data,row){
     addAskCard(row,data.prompt||"请补充完成分析所需的信息。",options.map(function(o,i){
       return {label:o.label,primary:i===0,message:o.message};
     }),data.responseStructure||"");
+    setClarifyTray(data.prompt,options);
     scrollBottom();
     input.focus();
     // clarification 已由 Graph interrupt 持久化；立即结束本次读取，解除发送锁，
@@ -724,6 +878,14 @@ function handleEvent(data,row){
     }
     clearStatus(row);
     text.classList.remove("streaming");
+    if(data.status==="FAILED"){
+      text.classList.add("error");
+      var codes=(ST.lastFinal&&ST.lastFinal.audit_codes)||data.audit_codes||[];
+      showDegrade("运行失败"+(codes.length?" · "+codes.join(" "):""));
+    }
+    ST.pauseAcked=false;
+    ST.activeRunId=null;
+    syncRunControls();
     var s=activeSession();
     if(s&&ST.streamText){
       s.messages.push({role:"assistant",content:ST.streamText});
@@ -922,6 +1084,9 @@ async function send(preset,regenerateExisting){
   ST.pendingPrompt=value;
   ST.abortReason=null;
   ST.regenerating=!!regenerateExisting;
+  ST.pauseAcked=false;
+  var clarifyTray=document.getElementById("clarifyTray");
+  if(clarifyTray){clarifyTray.hidden=true;clarifyTray.innerHTML="";}
   setSendingUi(true);
   input.value="";
   autoGrow();
@@ -989,7 +1154,7 @@ async function send(preset,regenerateExisting){
         sessionId:s.id,
         message:value,
         regenerate:!!regenerateExisting,
-        enabledSkillIds:s.enabledSkills.slice()
+        enabledSkillIds:[]
       }),
       signal:controller.signal
     });
@@ -1068,6 +1233,8 @@ async function mockFlow(value,row){
   if(isStock){
     handleEvent({type:"status",step:"stock_validating"},row);
     await delay(750);
+    handleEvent({type:"tool.step",tool:"search_tools",query:"持仓 分析",hitCount:3,status:"success",elapsedMs:120,arguments:{query:"持仓 分析"}},row);
+    handleEvent({type:"tool.step",tool:"market.get_quote",status:"success",elapsedMs:40,arguments:{symbol:"300750"}},row);
     handleEvent({type:"status",step:"skill_executing",skill:"stock-analysis"},row);
     await delay(1000);
   }else{
@@ -1082,6 +1249,26 @@ async function mockFlow(value,row){
     await delay(18);
   }
   await delay(200);
+  if(isStock){
+    handleEvent({
+      type:"response.final",
+      answer:reply,
+      blocks:[{
+        type:"ScoreCard",
+        payload:{
+          symbol:"300750",name:"宁德时代",overall:72,scale:100,rating:"中性偏强",
+          dimensions:[
+            {name:"技术面",score:78,trend:"up"},
+            {name:"基本面",score:74,trend:"flat"},
+            {name:"估值",score:52,trend:"down"}
+          ]
+        }
+      }],
+      evidence_refs:["行情快照 14:32"],
+      audit_codes:["RO-OK","DQ-OK"],
+      disclosures:["以上仅供研究参考，不构成投资建议。"]
+    },row);
+  }
   handleEvent({type:"done",status:"COMPLETED",sessionId:null},row);
 }
 
@@ -1255,10 +1442,8 @@ function completeAuth(data){
   // 首页带入的问题：登录完成后自动发送
   if(ENTRY_Q){
     var q=ENTRY_Q;
-    var stock=ENTRY_STOCK;
     ENTRY_Q="";
     ENTRY_STOCK=false;
-    if(stock)setSkillEnabled(STOCK_SKILL,true);
     setTimeout(function(){void send(q);},40);
   }
 }
@@ -1418,53 +1603,29 @@ sendBtn.addEventListener("click",function(e){
   e.preventDefault();
   interruptGeneration();
 });
-/* ---------- 建议卡片 / Skill chips ---------- */
+var pauseBtn=document.getElementById("pauseBtn");
+if(pauseBtn){
+  pauseBtn.addEventListener("click",function(){
+    void requestPauseAndAbort();
+  });
+}
+var resumeBtn=document.getElementById("resumeBtn");
+if(resumeBtn){
+  resumeBtn.addEventListener("click",function(){
+    ST.pauseAcked=false;
+    syncRunControls();
+    send("继续");
+  });
+}
+/* ---------- 建议卡片 ---------- */
 document.querySelectorAll(".suggest").forEach(function(btn){
   btn.addEventListener("click",function(){
     send(btn.dataset.q||"");
   });
 });
 
-var skillGotoPlugins=document.getElementById("skillGotoPlugins");
-if(skillGotoPlugins){
-  skillGotoPlugins.addEventListener("click",function(){showPage("plugins");});
-}
-var navPlugins=document.getElementById("navPlugins");
-if(navPlugins){
-  navPlugins.addEventListener("click",function(){showPage("plugins");});
-}
-var chipEnabled=document.getElementById("chipEnabled");
-if(chipEnabled){
-  chipEnabled.addEventListener("click",function(e){
-    if(e.target.closest("#chipClose")){
-      setSkillEnabled(STOCK_SKILL,false,"off");
-      return;
-    }
-    showPage("plugins");
-  });
-}
 var navProfile=document.getElementById("navProfile");
 if(navProfile)navProfile.addEventListener("click",function(){void openProfileModal({resumeAfter:false});});
-var btnBackChat=document.getElementById("btnBackChat");
-if(btnBackChat)btnBackChat.addEventListener("click",function(){showPage("chat");});
-var btnBackChat2=document.getElementById("btnBackChat2");
-if(btnBackChat2)btnBackChat2.addEventListener("click",function(){showPage("chat");});
-var pluginToggle=document.getElementById("pluginToggle");
-if(pluginToggle){
-  pluginToggle.addEventListener("click",function(){
-    var next=!skillEnabled(STOCK_SKILL);
-    setSkillEnabled(STOCK_SKILL,next,next?"on":"off");
-  });
-}
-var btnEnableAndChat=document.getElementById("btnEnableAndChat");
-if(btnEnableAndChat){
-  btnEnableAndChat.addEventListener("click",function(){
-    setSkillEnabled(STOCK_SKILL,true,"on");
-    showPage("chat");
-    input.placeholder="股票分析已启用，直接提问即可";
-    input.focus();
-  });
-}
 
 /* ---------- 侧边栏 ---------- */
 newChatBtn.addEventListener("click",newChat);
@@ -1511,8 +1672,14 @@ function readEntryParams(){
   ENTRY_Q=(params.get("q")||"").trim();
   var name=(params.get("name")||"").trim().toLowerCase();
   ENTRY_STOCK=name==="stock"||name==="finance"||/\d{6}/.test(ENTRY_Q);
+  ENTRY_FOLLOWUP=(params.get("followup")||"").trim();
+  ENTRY_SESSION=(params.get("sessionId")||"").trim();
+  ENTRY_EMBED=params.get("embed")==="1";
   var keep=new URLSearchParams();
   if(params.has("mock"))keep.set("mock",params.get("mock")||"1");
+  if(ENTRY_FOLLOWUP)keep.set("followup",ENTRY_FOLLOWUP);
+  if(ENTRY_SESSION)keep.set("sessionId",ENTRY_SESSION);
+  if(ENTRY_EMBED)keep.set("embed","1");
   var next=keep.toString();
   var clean=location.pathname+(next?"?"+next:"")+location.hash;
   if(location.search.slice(1)!==next){
@@ -1520,7 +1687,28 @@ function readEntryParams(){
   }
 }
 async function applyEntryParams(){
-  if(ENTRY_STOCK)setSkillEnabled(STOCK_SKILL,true);
+  if(ENTRY_EMBED)document.body.classList.add("is-embed");
+  if(ENTRY_FOLLOWUP){
+    var chip=document.getElementById("followupChip");
+    if(chip){
+      chip.hidden=false;
+      chip.textContent=ENTRY_FOLLOWUP;
+    }
+    if(chatTitle&&!ENTRY_Q)chatTitle.textContent="追问";
+  }
+  if(ENTRY_SESSION){
+    var existing=null;
+    for(var i=0;i<ST.sessions.length;i++)if(ST.sessions[i].id===ENTRY_SESSION){existing=ST.sessions[i];break;}
+    if(!existing){
+      existing=makeSession(ENTRY_SESSION);
+      existing.remote=true;
+      existing.title=ENTRY_FOLLOWUP?("追问 · "+ENTRY_FOLLOWUP.slice(0,18)):existing.title;
+      ST.sessions.push(existing);
+    }
+    ST.activeId=existing.id;
+    persist();
+    renderSessionList();
+  }
   if(!ENTRY_Q)return;
   // 游客也可直接发（后端归一为 user_id=0）；登录仅绑定账号侧能力。
   var q=ENTRY_Q;
@@ -1531,6 +1719,7 @@ async function applyEntryParams(){
 
 readEntryParams();
 void initializeAuth().then(function(){return applyEntryParams();});
+void checkReady();
 autoGrow();
 syncPluginUi();
 

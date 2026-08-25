@@ -5,18 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from tests.cognitive.test_checkpoint_resume import (
-    _CompleteDispatcher,
-    _domain_orchestrator,
-    _InvokeSelector,
-    _OncePause,
-)
+from langchain_core.messages import AIMessage
+from tests.engine.test_loop import FakeChatModel
+from tests.helpers_registry import seeded_snapshot
 
 from bdlh_runtime.api.checkpoint_persistence import extract_checkpoint
-from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveActionType, InputEvent
-from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainRequest
+from bdlh_runtime.cognitive.contracts import InputEvent
+from bdlh_runtime.engine.loop import AgentLoop
+from bdlh_runtime.engine.runtime import EngineRuntime
 from bdlh_runtime.infra.remote_run_state import JavaDataPlaneRunStateStore
 from bdlh_runtime.infra.remote_runtime_data import RuntimeDataClient
+from bdlh_runtime.tools.catalog import catalog_from_snapshot
 
 
 @dataclass
@@ -76,20 +75,14 @@ def _store() -> JavaDataPlaneRunStateStore:
     )
 
 
-def _invoke_action_for(user_id: str) -> CognitiveAction:
-    return CognitiveAction(
-        action_type=CognitiveActionType.INVOKE_DOMAIN,
-        reason_code="DOMAIN_READ",
-        reason="Read the requested result",
-        domain_request=DomainRequest(
-            request_id="request-1",
-            domain="example",
-            authenticated_user_id=user_id,
-            objective="Read a validated result",
-            authorized_operations={DomainOperation.READ_PUBLIC_RESEARCH},
-            budget=DomainBudget(tool_call_limit=1, runtime_seconds=5),
-        ),
-    )
+class _OncePause:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, run_id: str) -> bool:
+        del run_id
+        self.calls += 1
+        return self.calls == 1
 
 
 def _paused_state(execution, *, session_id: str) -> dict[str, Any]:
@@ -105,20 +98,25 @@ def _paused_state(execution, *, session_id: str) -> dict[str, Any]:
     }
 
 
-async def test_java_store_roundtrip_resume_from_dispatch_does_not_reselect() -> None:
-    selector = _InvokeSelector(_invoke_action_for("7"))
-    dispatcher = _CompleteDispatcher()
-    orchestrator = _domain_orchestrator(selector, dispatcher, _OncePause(after_calls=2))
+async def test_java_store_roundtrip_resume_keeps_original_message() -> None:
+    pause = _OncePause()
+    runtime = EngineRuntime(
+        AgentLoop(
+            llm=FakeChatModel([AIMessage(content="已从书签继续")]),
+            catalog=catalog_from_snapshot(seeded_snapshot()),
+            executor=lambda name, arguments: {"tool": name, "args": arguments},
+        ),
+        pause_check=pause,
+    )
     event = InputEvent(
         event_id="e1",
         run_id="r-dispatch-store",
         user_id="7",
         session_id="s1",
-        message="hello",
+        message="hello analysis please continue later",
     )
-    paused = await orchestrator.run(event)
+    paused = await runtime.run(event)
     assert paused.checkpoint is not None
-    assert paused.checkpoint.resume_cursor == "dispatch"
 
     store = _store()
     store.save(event.run_id, event.user_id, _paused_state(paused, session_id=event.session_id))
@@ -128,42 +126,11 @@ async def test_java_store_roundtrip_resume_from_dispatch_does_not_reselect() -> 
     assert loaded is not None
     assert loaded["checkpoint_id"] == paused.checkpoint.checkpoint_id
     assert checkpoint is not None
-    assert checkpoint.resume_cursor == "dispatch"
-    assert checkpoint.pending_action is not None
+    assert checkpoint.original_message == event.message
 
-    resumed = await orchestrator.run(event, checkpoint=checkpoint)
-    assert selector.calls == 1
-    assert dispatcher.calls == 1
-    assert resumed.state.domain_calls_used == 1
-    assert resumed.response.response_kind == "DOMAIN_RESULT"
-
-
-async def test_java_store_roundtrip_resume_from_after_domain_does_not_redispatch() -> None:
-    selector = _InvokeSelector(_invoke_action_for("7"))
-    dispatcher = _CompleteDispatcher()
-    orchestrator = _domain_orchestrator(selector, dispatcher, _OncePause(after_calls=3))
-    event = InputEvent(
-        event_id="e1",
-        run_id="r-after-store",
-        user_id="7",
-        session_id="s1",
-        message="hello",
+    resumed = await runtime.run(
+        event.model_copy(update={"message": "继续"}),
+        checkpoint=checkpoint,
     )
-    paused = await orchestrator.run(event)
-    assert paused.checkpoint is not None
-    assert paused.checkpoint.resume_cursor == "after_domain"
-
-    store = _store()
-    store.save(event.run_id, event.user_id, _paused_state(paused, session_id=event.session_id))
-    loaded = store.load(event.run_id, event.user_id)
-    checkpoint = extract_checkpoint(loaded)
-
-    assert checkpoint is not None
-    assert checkpoint.resume_cursor == "after_domain"
-    assert checkpoint.last_outcome is not None
-
-    resumed = await orchestrator.run(event, checkpoint=checkpoint)
-    assert selector.calls == 1
-    assert dispatcher.calls == 1
-    assert resumed.state.domain_calls_used == 1
-    assert resumed.response.response_kind == "DOMAIN_RESULT"
+    assert resumed.response.response_kind == "ANSWER"
+    assert "继续" in resumed.response.message

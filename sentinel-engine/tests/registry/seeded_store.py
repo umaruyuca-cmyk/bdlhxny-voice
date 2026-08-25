@@ -92,6 +92,21 @@ CAPABILITIES = [
     ("user.get_risk_profile", "java", True, frozenset(), {"READ_PROFILE"}, {"financial_profile_read"}),
 ]
 
+# 必填参数（与 db/postgresql/seed/registry.sql 的 required_arguments 对齐；WO-T2-1 目录迁移依赖）
+REQUIRED_ARGUMENTS = {
+    "market.resolve_instrument": {"symbol"},
+    "market.get_realtime_quote": {"symbol"},
+    "market.get_historical_prices": {"symbol", "lookback_days"},
+    "market.get_financial_statements": {"symbol"},
+    "market.get_valuation": {"symbol"},
+    "market.get_industry_context": {"symbol"},
+    "market.get_money_flow": {"symbol"},
+    "market.get_news": {"symbol"},
+    "research.web_search": {"query"},
+    "research.deep_search": {"question", "objective"},
+    "portfolio.build_current_valuation": {"positions_observation", "account_observation", "quote_observations"},
+}
+
 DEFAULT_RUNTIME_ALLOWLIST = set(DEFAULT_RUNTIME_ALLOWED_OPERATIONS)
 DEFAULT_ENTITLEMENTS = set(DEFAULT_ENTITLEMENT_OPERATIONS)
 
@@ -138,7 +153,7 @@ def build_seeded_store() -> InMemoryRegistryStore:
             adapter=adapter,
             read_only=True,
             requires_authenticated_user=needs_auth,
-            required_arguments=frozenset(),
+            required_arguments=frozenset(REQUIRED_ARGUMENTS.get(name, ())),
             depends_on=frozenset(depends),
             timeout_seconds=20,
             enabled=True,

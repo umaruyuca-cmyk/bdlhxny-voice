@@ -1,7 +1,7 @@
 """Tests-only application assembly — **not** the product path.
 
 Use ``build_isolated_application`` for unit/API tests that must exercise HTTP
-routes or Cognitive wiring **without** ``create_application`` production
+routes or engine wiring **without** ``create_application`` production
 fail-closed gates (Java / LLM / Qwen / Remote Memory).
 
 Product startup remains ``bdlh_runtime.infra.application.create_application``.
@@ -11,8 +11,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.messages import AIMessage, HumanMessage
+
 from bdlh_runtime.config import Settings
-from bdlh_runtime.infra.application import AgentRuntimeApplication
+from bdlh_runtime.infra.application import AgentRuntimeApplication, build_engine_runtime
 from bdlh_runtime.infra.chat_sessions import InMemoryChatSessionStore
 from bdlh_runtime.infra.history import InMemoryAnalysisHistoryStore
 from bdlh_runtime.infra.run_control import RunControlPlane
@@ -23,7 +25,28 @@ from tests.helpers_direct_response import DeterministicDirectResponseModel
 from tests.helpers_encoder import LexicalEncoder
 from tests.helpers_memory import StubMemoryStore
 from tests.helpers_registry import seeded_snapshot
-from tests.helpers_understand import RuleBasedUnderstandModel
+
+
+class IsolatedChatModel:
+    """隔离测试用：无真实 LLM，按确定性替身直答，不发起 tool_calls。"""
+
+    def __init__(self, responder: Any) -> None:
+        self._responder = responder
+
+    def bind_tools(self, tools, **_kwargs):
+        del tools
+        return self
+
+    async def ainvoke(self, messages, **_kwargs):
+        text = ""
+        for item in reversed(list(messages)):
+            if isinstance(item, HumanMessage) or getattr(item, "type", "") == "human":
+                text = str(getattr(item, "content", "") or "")
+                break
+        return AIMessage(content=self._responder.answer(text or "你好"))
+
+    async def astream(self, messages, **kwargs):
+        yield await self.ainvoke(messages, **kwargs)
 
 
 def build_isolated_application(
@@ -31,14 +54,14 @@ def build_isolated_application(
     settings: Settings | None = None,
     registry_snapshot: Any | None = None,
     cognitive_application: Any | None = None,
+    chat_model: Any | None = None,
 ) -> AgentRuntimeApplication:
-    """Assemble ``AgentRuntimeApplication`` with in-memory stores and offline cognitive.
+    """Assemble ``AgentRuntimeApplication`` with in-memory stores and offline engine.
 
     - InMemory history / run_registry / chat_sessions / tasks / outbox / run_state
     - seeded Registry snapshot (or caller-provided)
     - ``StubMemoryStore`` (not product remote memory)
-    - LexicalEncoder fastpath + DeterministicDirectResponse + RuleBasedUnderstand
-    - ``execution_environment="production"`` only
+    - LexicalEncoder fastpath + IsolatedChatModel（产品路径仍 fail-closed）
     - Caller may replace ``cognitive_application`` after return (common in API tests)
     """
     settings = settings or Settings(
@@ -48,28 +71,12 @@ def build_isolated_application(
     )
     snapshot = registry_snapshot if registry_snapshot is not None else seeded_snapshot()
 
-    from bdlh_runtime.cognitive.goal_action_selector import GoalActionSelector
-    from bdlh_runtime.cognitive.orchestrator import CognitiveOrchestrator
-    from bdlh_runtime.cognitive.plugin_gates import catalog_from_records
-    from bdlh_runtime.cognitive.semantic_router import (
-        SemanticRouteSelector,
-        build_kernel_router,
-    )
-    from bdlh_runtime.domains.assembly import AssemblyContext, assemble_domains
-    from bdlh_runtime.domains.dispatcher import DomainDispatcher
-    from bdlh_runtime.infra.chat_sessions import ChatSessionVerifiedEntityPersistence
     from bdlh_runtime.infra.scheduler import (
         FinancialTaskScheduler,
         FinancialTaskWakeupHandler,
         NotificationOutboxWorker,
     )
     from bdlh_runtime.integrations.mcp.adapter import create_adapter_from_settings
-    from bdlh_runtime.registry.menu import (
-        allowed_capabilities,
-        apply_feature_gates,
-        effective_operations,
-        eligible_capabilities,
-    )
     from bdlh_runtime.tools.analysis_capability import create_analysis_capability
     from bdlh_runtime.tools.capabilities import load_capability_registry
     from bdlh_runtime.tools.deep_research.factory import (
@@ -92,36 +99,7 @@ def build_isolated_application(
     deep_infra_ready = deep_research_infra_ready(settings)
     deep_research_executor = create_deep_research_executor(settings, llm=None)
     direct_response_model = DeterministicDirectResponseModel()
-
-    domain_assembly = assemble_domains(
-        AssemblyContext(
-            snapshot=snapshot,
-            capability_registry=capability_registry,
-            gateway_adapter=gateway_adapter,
-            web_search_adapter=web_search_adapter,
-            analysis_capability=analysis_capability,
-            java_adapter=java_adapter,
-            deep_research_executor=deep_research_executor,
-            deep_research_enabled=settings.deep_research_enabled and deep_infra_ready,
-            execution_environment="production",
-            knowledge_responder=direct_response_model,
-        )
-    )
-    domain_registry = domain_assembly.registry
-    finance_runtime = domain_assembly.plugins["finance"].runtime if "finance" in domain_assembly.plugins else None
-    verified_entities = domain_assembly.entity_store
-
-    menu_ops = effective_operations(
-        snapshot,
-        runtime_allowed=settings.runtime_allowed_operations,
-        entitlement=settings.default_entitlement_operations,
-    )
-    menu_eligible = eligible_capabilities(snapshot, menu_ops)
-    menu_allowed = apply_feature_gates(
-        allowed_capabilities(menu_eligible, authenticated=True),
-        deep_research_enabled=settings.deep_research_enabled,
-        deep_research_infra_ready=deep_infra_ready,
-    )
+    isolated_llm = chat_model if chat_model is not None else IsolatedChatModel(direct_response_model)
 
     run_control = RunControlPlane()
     history_store = InMemoryAnalysisHistoryStore()
@@ -130,33 +108,20 @@ def build_isolated_application(
     run_state_reader = InMemoryRunStateReader()
     task_store = InMemoryTaskStore()
     notification_outbox = InMemoryNotificationOutbox()
-    if verified_entities is not None:
-        verified_entities.attach_persistence(ChatSessionVerifiedEntityPersistence(chat_session_store))
 
-    skill_catalog = catalog_from_records(
-        {"skill_id": skill.skill_id, "domain": skill.domain, "hint": skill.skill_id}
-        for skill in snapshot.skills
-        if skill.enabled
-    )
-    cognitive_fastpath = SemanticRouteSelector(
-        build_kernel_router(encoder=LexicalEncoder()),
-        knowledge_responder=direct_response_model,
-    )
-    wired_cognitive = CognitiveOrchestrator(
-        selector=GoalActionSelector(
-            handlers=domain_assembly.handlers,
-            catalog=skill_catalog,
-            respond=direct_response_model,
-        ),
-        fastpath=cognitive_fastpath,
-        dispatcher=DomainDispatcher(domain_registry),
-        continuation=domain_assembly.continuation,
-        plan_guardrail=domain_assembly.plan_guardrail,
-        enabled_domains=domain_assembly.enabled_domains,
-        authorized_operations=frozenset(menu_ops),
-        authorized_capabilities=frozenset(cap.name for cap in menu_allowed),
+    wired_cognitive = build_engine_runtime(
+        llm=isolated_llm,
+        settings=settings,
+        registry_snapshot=snapshot,
+        gateway_adapter=gateway_adapter,
+        java_adapter=java_adapter,
+        web_search_adapter=web_search_adapter,
+        analysis_capability=analysis_capability,
+        deep_research_executor=deep_research_executor,
+        deep_research_infra_ready=deep_infra_ready,
+        memory_store=StubMemoryStore(),
+        encoder=LexicalEncoder(),
         pause_check=run_control.is_pause_requested,
-        understand=RuleBasedUnderstandModel(),
     )
     if cognitive_application is not None:
         wired_cognitive = cognitive_application
@@ -186,8 +151,8 @@ def build_isolated_application(
         chat_session_store=chat_session_store,
         run_state_reader=run_state_reader,
         capability_registry=capability_registry,
-        domain_registry=domain_registry,
-        finance_runtime=finance_runtime,
+        domain_registry=None,
+        finance_runtime=None,
         cognitive_application=wired_cognitive,
         task_store=task_store,
         notification_outbox=notification_outbox,

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Header, HTTPException
@@ -33,9 +34,28 @@ from ..projections import (
     cognitive_state,
 )
 from ..schemas import ChatRequest
-from ..sse import encode_event
+from ..sse import encode_event, encode_token, encode_tool_step
 
 logger = logging.getLogger("bdlh_runtime.api.routers.chat")
+
+
+class _ChatStreamObserver(CognitiveExecutionObserverAdapter):
+    """把循环内 token / tool.step 推入 SSE 队列。"""
+
+    def __init__(self, progress: CognitiveExecutionProgress, queue: asyncio.Queue[tuple[str, Any]]) -> None:
+        super().__init__(progress)
+        self._queue = queue
+        self.token_count = 0
+
+    def on_token(self, content: str) -> None:
+        text = str(content or "")
+        if not text:
+            return
+        self.token_count += 1
+        self._queue.put_nowait(("token", text))
+
+    def on_tool_step(self, payload: dict[str, Any]) -> None:
+        self._queue.put_nowait(("tool.step", dict(payload)))
 
 
 def register(router: APIRouter, ctx: ApiContext) -> None:
@@ -222,32 +242,59 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 query=cognitive_message,
                 limit=5,
             )
-            try:
-                execution = await application.cognitive_application.run(
-                    InputEvent(
-                        event_id=f"chat:{run_id}",
-                        run_id=run_id,
-                        user_id=str(user_id),
-                        session_id=session.session_id,
-                        message=cognitive_message,
-                        enabled_skills=(
-                            frozenset(payload.enabled_skill_ids) if payload.enabled_skill_ids is not None else None
+            queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+            observer = _ChatStreamObserver(progress, queue)
+
+            async def _produce() -> None:
+                try:
+                    execution = await application.cognitive_application.run(
+                        InputEvent(
+                            event_id=f"chat:{run_id}",
+                            run_id=run_id,
+                            user_id=str(user_id),
+                            session_id=session.session_id,
+                            message=cognitive_message,
+                            enabled_skills=(
+                                frozenset(payload.enabled_skill_ids)
+                                if payload.enabled_skill_ids is not None
+                                else None
+                            ),
                         ),
-                    ),
-                    observer=CognitiveExecutionObserverAdapter(progress),
-                    checkpoint=resume_checkpoint,
-                )
-            except Exception:
-                logger.exception("Cognitive 聊天执行失败 run_id=%s", run_id)
-                yield encode_event(
-                    "message",
-                    {
-                        "schema_version": "1.0",
-                        "type": "error",
-                        "code": "COGNITIVE_EXECUTION_FAILED",
-                        "message": "分析流程执行失败，请稍后重试。",
-                    },
-                )
+                        observer=observer,
+                        checkpoint=resume_checkpoint,
+                    )
+                    await queue.put(("complete", execution))
+                except Exception as exc:
+                    logger.exception("Cognitive 聊天执行失败 run_id=%s", run_id)
+                    await queue.put(("error", exc))
+
+            producer = asyncio.create_task(_produce())
+            execution = None
+            try:
+                while True:
+                    kind, item = await queue.get()
+                    if kind == "token":
+                        yield encode_token(str(item))
+                    elif kind == "tool.step":
+                        yield encode_tool_step(**item)
+                    elif kind == "error":
+                        yield encode_event(
+                            "message",
+                            {
+                                "schema_version": "1.0",
+                                "type": "error",
+                                "code": "COGNITIVE_EXECUTION_FAILED",
+                                "message": "分析流程执行失败，请稍后重试。",
+                            },
+                        )
+                        return
+                    else:
+                        execution = item
+                        break
+            finally:
+                await producer
+
+            if execution is None:
                 return
 
             if memory_recall.degraded:
@@ -309,7 +356,14 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         "options": _clarification_options(response.next_steps),
                     },
                 )
-                yield encode_event("message", chat_final_payload(response))
+                yield encode_event(
+                    "message",
+                    chat_final_payload(
+                        response,
+                        observations=getattr(execution, "observations", None),
+                        tool_trace=getattr(execution, "tool_trace", None),
+                    ),
+                )
                 yield encode_event(
                     "message",
                     {
@@ -343,16 +397,18 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         "responseKind": response.response_kind,
                     },
                 )
-            for start in range(0, len(answer), 24):
+            if response.response_kind == "LIMITED":
                 yield encode_event(
                     "message",
                     {
                         "schema_version": "1.0",
-                        "type": "token",
-                        "content": answer[start : start + 24],
+                        "type": "status",
+                        "step": "degraded",
+                        "limitation": (response.audit_codes[0] if response.audit_codes else "LLM_UNAVAILABLE"),
                     },
                 )
-                await asyncio.sleep(0)
+            if observer.token_count == 0 and not blocked:
+                yield encode_token(answer)
             chat_sessions.add_message(session.session_id, user_id, "assistant", answer)
             await _maybe_persist_confirmed_memory(
                 application.memory_store,
@@ -369,8 +425,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
             pause_requested = application.run_control is not None and application.run_control.is_pause_requested(run_id)
             if pause_requested:
                 from bdlh_runtime.cognitive.checkpoint import build_checkpoint
-                from bdlh_runtime.cognitive.contracts import PublicResponse
-                from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
+                from bdlh_runtime.cognitive.contracts import CognitiveExecution, PublicResponse
 
                 paused_response = PublicResponse(
                     response_kind="ASK_USER",
@@ -410,7 +465,14 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                 )
             if application.run_control is not None:
                 application.run_control.clear(run_id)
-            yield encode_event("message", chat_final_payload(response))
+            yield encode_event(
+                "message",
+                chat_final_payload(
+                    response,
+                    observations=getattr(execution, "observations", None),
+                    tool_trace=getattr(execution, "tool_trace", None),
+                ),
+            )
             yield encode_event(
                 "message",
                 {
@@ -461,14 +523,7 @@ async def _ask_which_stream(
             "turnDecision": TurnDecision.ASK_WHICH.value,
         },
     )
-    yield encode_event(
-        "message",
-        {
-            "schema_version": "1.0",
-            "type": "token",
-            "content": ASK_WHICH_PROMPT,
-        },
-    )
+    yield encode_token(ASK_WHICH_PROMPT)
     yield encode_event(
         "message",
         {

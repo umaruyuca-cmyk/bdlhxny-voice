@@ -72,24 +72,26 @@ def test_development_requires_java_data_plane() -> None:
 
 
 def test_isolated_helper_assembles_without_create_application_gates():
-    """隔离 helper 可装配完整 Cognitive；产品 create_application 不再接受 test 捷径。"""
+    """隔离 helper 可装配完整引擎；产品 create_application 不再接受 test 捷径。"""
     app = build_isolated_application()
     assert app.cognitive_application is not None
     assert not hasattr(app, "graph")
     assert app.llm is None
     assert app.direct_response_model is not None
     assert app.gateway_adapter is not None
-    assert app.domain_registry.get("finance") is app.finance_runtime
-    assert app.finance_runtime is not None
+    assert app.domain_registry is None
+    assert app.finance_runtime is None
     assert app.analysis_capability is not None
+    assert app.cognitive_application.catalog is not None
+    assert "market.get_realtime_quote" in {card.name for card in app.cognitive_application.catalog.list()}
 
 
-def test_product_domains_follow_registry_snapshot():
+def test_isolated_catalog_follows_registry_snapshot():
     app = build_isolated_application()
-    assert app.domain_registry.list_domains() == ["finance", "weather"]
-    assert app.domain_registry.descriptor("finance") is not None
-    assert app.domain_registry.descriptor("weather") is not None
-    assert app.cognitive_application._enabled_domains == frozenset({"finance", "weather"})
+    names = {card.name for card in app.cognitive_application.catalog.list()}
+    assert "market.get_realtime_quote" in names
+    assert "portfolio.get_current_positions" in names
+    assert "research.deep_search" not in names
 
 
 def test_isolated_helper_keeps_in_memory_stores():

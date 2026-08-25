@@ -1,7 +1,6 @@
 """把语义路由命中映射为 CognitiveAction；未命中返回 None。
 
-高置信闲聊/知识/禁止可在内核结束。本轮有可用工具时，知识题交给
-Understand，由 LLM 选择 tools，快路径不代替工具调用。
+高置信闲聊/知识/禁止可在内核结束。本轮有可用工具时，知识题不走快路径。
 """
 
 from __future__ import annotations
@@ -14,7 +13,6 @@ from bdlh_runtime.cognitive.contracts import (
     CognitiveActionType,
     InputEvent,
 )
-from bdlh_runtime.cognitive.plugin_gates import enabled_skill_ids
 
 from .contracts import RouteChoice, RouteDisposition
 from .router import SemanticRouter
@@ -25,7 +23,7 @@ class KnowledgeResponder(Protocol):
 
 
 class SemanticRouteSelector:
-    """内核快路径：闲聊 / 知识 / 禁止。未命中返回 None，由 GoalActionSelector 接管。"""
+    """内核快路径：闲聊 / 知识 / 禁止。未命中返回 None。"""
 
     def __init__(
         self,
@@ -49,7 +47,7 @@ class SemanticRouteSelector:
             )
         if choice.name == "knowledge":
             # 本轮有工具：交给 LLM 选择；没有工具：内核直接答
-            if enabled_skill_ids(event.enabled_skills):
+            if event.enabled_skills:
                 return None
             if self._knowledge_responder is None:
                 return None

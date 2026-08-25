@@ -67,6 +67,28 @@ class ChatSessionStore(Protocol):
     def delete(self, session_id: str, user_id: str | None) -> bool: ...
 
 
+def create_followup_session(
+    store: ChatSessionStore,
+    *,
+    user_id: str | None,
+    event_summary: str,
+) -> ChatSession:
+    """创建携带事件上下文的追问会话（设计文档 §4.8 追问闭环、WO-T1-6）。
+
+    - 新建会话（不复用既有 session_id，保证追问上下文隔离）；
+    - 事件摘要作为 ``system`` 消息注入首轮上下文，供 Agent 进入追问时感知事件；
+    - 会话标题在用户首条消息到达时由 ``add_message`` 自动取首条文本（既有逻辑）。
+
+    本函数只做会话创建与上下文注入；后续对话走标准会话通道（§3.2 双通道共用引擎）。
+    """
+    session = store.ensure(None, user_id)
+    normalized = str(event_summary or "").strip()
+    if normalized:
+        # 事件摘要作为 system 上下文注入（不作为 user 消息，避免误触发用户意图）
+        store.add_message(session.session_id, user_id, "system", f"事件上下文：{normalized}")
+    return session
+
+
 class InMemoryChatSessionStore:
     """测试专用实现；所有键都包含可信 user_id。"""
 

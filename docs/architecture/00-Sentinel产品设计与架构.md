@@ -281,7 +281,7 @@ WatchEvent { id, rule_id, type, source, payload, dedupe_key, occurred_at }
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/v1/chat/stream` | 会话通道 SSE 入口 |
-| GET / POST / PATCH / DELETE | `/api/v1/watch-rules[/{id}]` | 监视规则管理 |
+| GET / POST / PATCH / DELETE | `/api/v1/watch-rules[/{id}]` | 监视规则管理[^impl-watch-api] |
 | GET | `/api/v1/notifications` | 通知中心（分页、未读计数） |
 | POST | `/api/v1/notifications/{id}/followup` | 追问入口：创建携带事件上下文的会话 |
 | GET | `/api/v1/agent-runs/{id}` | 运行回放（工具调用、Observation、审计记录） |
@@ -307,16 +307,16 @@ WatchEvent { id, rule_id, type, source, payload, dedupe_key, occurred_at }
 
 | # | 页面 / 视图 | 路由 | 职责 | 默认入口 |
 |---|---|---|---|---|
-| P1 | 看护首页（Dashboard） | `/dashboard` | 持仓概览、监视状态、事件时间线、通知触达 | demo 档默认首页 |
-| P2 | 追问抽屉 / 会话视图 | 抽屉（P1 右滑出）/ `/chat` | 全部对话交互；追问时携带事件上下文 | — |
-| P3 | 通知中心 | `/notifications` | 通知列表、已读管理、按严重度过滤 | Header 铃铛 |
-| P4 | 监视规则管理 | `/watch-rules` | 规则 CRUD、启停、最近触发记录 | P1 监视区 |
-| P5 | 记忆管理 | `/memory` | L3 记忆查看、确认、删除 | 设置入口 |
-| P6 | 运行回放 | `/runs/{id}` | 单次运行的工具轨迹、Observation、审计记录 | 通知 / 会话内链接 |
+| P1 | 看护首页（Dashboard） | `/dashboard`[^impl-home] | 持仓概览、监视状态、事件时间线、通知触达 | 演示主入口（自品牌页进入） |
+| P2 | 追问抽屉 / 会话视图 | 抽屉（P1 右滑出）/ `/chat`[^impl-p2] | 全部对话交互；追问时携带事件上下文 | — |
+| P3 | 通知中心 | `/notifications`[^impl-p3p6] | 通知列表、已读管理、按严重度过滤 | Header 铃铛 |
+| P4 | 监视规则管理 | `/watch-rules`[^impl-p3p6] | 规则 CRUD、启停、最近触发记录 | P1 监视区 |
+| P5 | 记忆管理 | `/memory`[^impl-p3p6] | L3 记忆查看、确认、删除 | 设置入口 |
+| P6 | 运行回放 | `/runs/{id}`[^impl-p3p6] | 单次运行的工具轨迹、Observation、审计记录 | 通知 / 会话内链接 |
 
 ### 7.2 视觉语言
 
-- **基调**：深色金融终端风格（低亮度背景 + 高对比数据色），桌面优先；移动端为只读降级，不作为 v1 目标；
+- **基调**：深色金融终端风格（低亮度背景 + 高对比数据色），桌面优先；移动端为只读降级，不作为 v1 目标；[^impl-theme]
 - **色彩语义**：上涨 / 下跌遵循市场惯例红涨绿跌（可配置）；信息层级色：`<info>` 蓝、`<warning>` 琥珀、`<critical>` 红；
 - **徽标体系**（全局统一组件）：
   - 审计码徽标：中性灰绿底，等宽字体（如 `RO-OK`、`DQ-STALE`），hover 显示释义；
@@ -349,12 +349,12 @@ WatchEvent { id, rule_id, type, source, payload, dedupe_key, occurred_at }
 
 | 区域 | 数据来源 | 刷新 |
 |---|---|---|
-| 持仓概览 / 持仓列表 | 数据面持仓 API | 进入时加载；事件触发后局部刷新 |
+| 持仓概览 / 持仓列表 | 数据面持仓 API[^impl-quotes] | 进入时加载；事件触发后局部刷新 |
 | 事件时间线 | `GET /notifications` + SSE `notification` 实时 prepend | SSE 优先，掉线回退 30s 轮询 |
-| 活跃监视条 | `GET /watch-rules` | 操作后刷新 |
+| 活跃监视条 | `GET /watch-rules`[^impl-watch-api] | 操作后刷新 |
 | Header 未读数 | `GET /notifications?unread=count` | SSE 驱动 |
 
-关键交互：点击事件卡「追问」→ 调 `POST /notifications/{id}/followup` → 右滑出 P2 抽屉且顶部带事件上下文 chip；点击证据编号 → 展开来源浮层；严重度为 critical 的事件到达时伴随铃铛红点与声音（可关）。
+关键交互：点击事件卡「追问」→ 调 `POST /notifications/{id}/followup` → 右滑出 P2 抽屉且顶部带事件上下文 chip[^impl-drawer]；点击证据编号 → 展开来源浮层；严重度为 critical 的事件到达时伴随铃铛红点与声音（可关）。
 
 ### 7.4 P2 追问抽屉 / 会话视图
 
@@ -390,7 +390,7 @@ WatchEvent { id, rule_id, type, source, payload, dedupe_key, occurred_at }
 - **工具轨迹时间线**：每个 `tool.step` 一个节点，含工具名、参数摘要、耗时、结果状态（成功 ✓ / 被拒 ✕ 含审计码）；`search_tools` 节点特殊渲染（检索词 + 命中数），这是 tool search 模式的可视化展示点；节点默认折叠、点击展开 Observation 摘要；
 - **流式正文**：`token` 事件增量渲染（打字机效果来自真实流，非前端模拟）；Markdown 子集渲染（段落 / 列表 / 表格）；
 - **证据链卡**：`response.final` v2 到达后渲染 `evidence_refs` / `audit_codes` / `disclosures`；这是治理叙事的上屏点；
-- **运行控制**：运行中显示暂停；暂停后显示恢复；`NEED_CLARIFICATION` 时输入框上方渲染澄清选项卡；
+- **运行控制**：运行中显示暂停；暂停后显示恢复[^impl-resume]；`NEED_CLARIFICATION` 时输入框上方渲染澄清选项卡；
 - **状态条**：LLM / 记忆 degraded 时输入框上方常驻提示条（数据源：`/ready` + `agent_run` 帧内 degraded 字段）。
 
 ### 7.5 P3–P6 次要视图
@@ -525,7 +525,7 @@ ChatResult v2 {
 | 数据面 | Java 17 / Spring Boot；PostgreSQL（业务、运行时、目录）+ MySQL（身份权限） |
 | 异步 | Transactional Outbox + 消费者幂等；RocketMQ 可选 |
 | 前端 | Nginx 静态站 + 前端契约测试 |
-| 部署 | Docker Compose 单实例全栈 |
+| 部署 | Docker Compose 单实例全栈[^impl-compose] |
 | 交易日历 | exchange-calendars |
 
 ---
@@ -538,7 +538,7 @@ ChatResult v2 {
 | **T1 看护环**（约 4–6 天） | `watch_rule` / `watch_event` 建表；价格轮询器与晨报定时器；边沿触发与幂等；唤醒组装器；通知落库与追问闭环；演示注入端点 | 验收场景 #2、#3 通过（允许暂在既有问答引擎上运行） |
 | **T2 工具层**（约 5–8 天） | 工具目录统一（本地 + MCP）；tool-calling 循环替换旧路由；治理中间件落地；`scoped` 装载；`search` 模式与 eval 对照 | 对照报告产出；旧正则分派与伪 function calling 物理删除 |
 | **T3 前端与流式**（约 4–6 天） | SSE 契约 v2（真实流式 / `tool.step` / final v2）；dashboard 四区；证据链与徽标上屏 | 验收场景 #1–#5 通过 |
-| **T4 收口**（约 1–2 天） | 一键演示 compose；README 定稿；剧本彩排 ≥3 遍并录屏 | 验收场景 #1–#7 全部通过 |
+| **T4 收口**（约 1–2 天） | 一键演示 compose；README 定稿；剧本彩排 ≥3 遍并录屏 | 验收场景 #1–#7 全部通过[^impl-t4] |
 
 依赖关系：T1 与 T2 顺序可交换（看护环先在既有引擎上贯通，工具层落地后引擎无缝替换）；T3 依赖 T2 的 SSE 契约；T4 最后执行。
 
@@ -564,7 +564,7 @@ ChatResult v2 {
 
 ### 11.3 工程纪律
 
-- 门禁：`uv run pytest -q` + `ruff check`；Java `mvn -B -ntp test`；两套 compose `config -q`；
+- 门禁：`uv run pytest -q` + `ruff check`；Java `mvn -B -ntp test`；两套 compose `config -q`；[^impl-pytest]
 - 被替换路径（正则分派、伪 function calling、伪流式、域插件框架）物理删除，不留兼容层；
 - 文档与代码同步：本文件为目标形态真源，实施偏差以工单收敛。
 
@@ -600,3 +600,16 @@ ChatResult v2 {
 |---|---|
 | 2026-08-18 | 初版：全新设计定稿；旧设计文档整体清除（Git 追溯） |
 | 2026-08-18 | 专业化改写：补充契约定义、触发与失败语义、接口规格、设计权衡记录 |
+| 2026-08-19 | T0–T4 实施收口：看护环 / 工具目录 / SSE v2 / 看护首页与追问抽屉 / 演示 compose / 彩排脚本已落地；品牌落地 `/` 与 `/docs` 对齐 Sentinel；实现偏差以本章节脚注标注 |
+
+[^impl-home]: 实施（2026-08-19）：品牌落地页为 `/`（`index.html`）；看护首页（P1）仅 `/dashboard`。演示从品牌页 CTA「进入看护」进入 P1，不再把 `/` 直接绑 dashboard。
+[^impl-p2]: 实施（2026-08-19）：产品会话入口为 `/agent`（`chat.html`），不是 `/chat`。联调见 `sentinel-console/CHAT_INTEGRATION.md`。
+[^impl-p3p6]: 实施（2026-08-19）：P3 能力落在 P1 Header 铃铛与时间线，无独立 `/notifications` 页；P4–P6 独立页未交付（P1 监视条对 `GET /watch-rules` 404 按空态；运行回放仅有 `GET /api/v1/agent-runs/{id}`）。
+[^impl-theme]: 实施（2026-08-19）：看护首页为深色终端；会话页保持浅色对话风格，未把 chat.html 改成深色金融终端。会话页已去掉「插件启停」UI；`/skills/` 为开发遗留非产品入口。
+[^impl-quotes]: 实施（2026-08-19）：持仓 API 无实时行情时，今日涨跌与浮盈显示「—」，不编造市值。
+[^impl-watch-api]: 实施（2026-08-19）：`/api/v1/watch-rules` 为设计目标路径；当前引擎未实现时前端按空态 + 区域重试，不假装已有规则。
+[^impl-drawer]: 实施（2026-08-19）：P1 追问抽屉以 iframe 装入 `/agent?sessionId=&followup=&embed=1`，事件摘要来自 `followup` 的 `event_summary`。
+[^impl-resume]: 实施（2026-08-19）：暂停后点「恢复」发送「继续」，由 Turn Router 在同一会话恢复 checkpoint，不另开 resume SSE。
+[^impl-compose]: 实施（2026-08-19）：本地 `deploy/docker-compose.yml` 含 `bdlh-runtime-console` 与 `bdlh-demo-seed`；不含 PostgreSQL 服务（seed 对已按 `db/execution/` 建表的库执行）。云端前端仍为 host 网络独立 compose。
+[^impl-t4]: 实施（2026-08-19）：T4 收口；现场浏览器七步与录屏成片由操作者补档（见实施 Prompt WO-T4-3）。
+[^impl-pytest]: 实施（2026-08-19）：部分 Windows 环境 `uv run pytest` 无输出，门禁改用 `uv run python -m pytest -q`。Java 测试在该环境用完整 Maven 路径。本地 compose `config -q` 需 Docker CLI。

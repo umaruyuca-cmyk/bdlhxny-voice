@@ -99,6 +99,9 @@ function apiTarget(pathname) {
     pathname.startsWith("/api/v1/chat/")
     || pathname.startsWith("/api/v1/conversations")
     || pathname.startsWith("/api/v1/agent-runs")
+    || pathname.startsWith("/api/v1/notifications")
+    || pathname.startsWith("/api/v1/watch-rules")
+    || pathname === "/api/v1/ready"
   ) {
     return analysisUrl;
   }
@@ -127,6 +130,7 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
   }
   let target = requestPath;
   if (requestPath === "/") target = "/index.html";
+  else if (requestPath === "/dashboard" || requestPath === "/dashboard/") target = "/dashboard.html";
   else if (requestPath === "/agent" || requestPath === "/agent/") target = "/chat.html";
   else if (requestPath.startsWith("/agent/")) target = "/chat.html";
   else if (requestPath === "/docs" || requestPath === "/docs/") target = "/docs/index.html";

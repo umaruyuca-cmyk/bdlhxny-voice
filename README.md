@@ -72,3 +72,14 @@ mvn spring-boot:run
 ## 分支管理
 
 单人开发 `main` + `dev` 两分支：日常直接在 `main` 提交；`dev` 仅在需要隔离验证时使用。
+
+## 实施状态（2026-08-19）
+
+T0–T4 已按 [实施 Prompt](docs/prompts/00-Sentinel实施Prompt.md) 全部收口：看护环、统一工具目录与治理中间件、SSE 契约 v2、看护首页与追问抽屉、演示 compose（console + `demo_sentinel.sql`）、演示注入与自动化彩排均已落地。
+
+- 演示入口：品牌落地 `http://127.0.0.1:8082/`；看护首页（P1）`/dashboard`；会话入口 `/agent`
+- 对接文档：[sentinel-console/CHAT_INTEGRATION.md](sentinel-console/CHAT_INTEGRATION.md)、[API_INTEGRATION.md](sentinel-console/API_INTEGRATION.md)
+- 演示注入：`.\scripts\demo-inject.ps1`；自动化七步彩排：`.\scripts\demo-rehearse.ps1`（现场浏览器走查与 `recordings/` 成片由操作者补档，不入库）
+- 与设计文档的实现偏差见设计文档对应章节脚注（不以本 README 另开决策）
+
+Python 测试在部分 Windows 环境请用 `uv run python -m pytest -q`（见实施 Prompt WO-T0-1）。

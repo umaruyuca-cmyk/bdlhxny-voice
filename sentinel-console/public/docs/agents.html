@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Agent 与路由 · グリッドユニバース研究所</title>
+<title>Agent 与双通道 · Sentinel</title>
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <div class="docs-top">
-  <a class="brand" href="/"><em>グリッドユニバース研究所</em> 文档中心</a>
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
   <div class="docs-top-links">
-    <a href="/skills/">Skills 试用</a>
-    <a href="/agent">工作站</a>
+    <a href="/dashboard">看护首页</a>
+    <a href="/agent">会话</a>
   </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
@@ -25,98 +25,81 @@
         <ul class="nav-sub">
           <li><a href="/docs/#modules">业务模块</a></li>
           <li><a href="/docs/#architecture">整体架构</a></li>
-          <li><a href="/docs/#flow">请求链路</a></li>
+          <li><a href="/docs/#flow">双通道链路</a></li>
         </ul>
       </li>
       <li>
-        <a href="/docs/agents" class="active">Agent 与路由</a>
+        <a href="/docs/agents" class="active">Agent 与双通道</a>
         <ul class="nav-sub">
-          <li><a href="#roles">角色分工</a></li>
-          <li><a href="#domain">领域分析</a></li>
-          <li><a href="#route">路由判断</a></li>
-          <li><a href="#sse">对话输出</a></li>
+          <li><a href="#channels">双通道</a></li>
+          <li><a href="#loop">Agent 循环</a></li>
+          <li><a href="#loading">scoped / search</a></li>
+          <li><a href="#sse">SSE 输出</a></li>
         </ul>
       </li>
       <li>
-        <a href="/docs/skill">Skill 接入规范</a>
+        <a href="/docs/skill">工具目录与治理</a>
         <ul class="nav-sub">
-          <li><a href="/docs/skill#stock-skill">Stock Skill</a></li>
-          <li><a href="/docs/skill#web-search-skill">DeepSearch</a></li>
-          <li><a href="/docs/skill#errors">错误与重试</a></li>
-          <li><a href="/docs/skill#checklist">接入清单</a></li>
+          <li><a href="/docs/skill#toolcard">ToolCard</a></li>
+          <li><a href="/docs/skill#governance">G1–G7</a></li>
+          <li><a href="/docs/skill#constraints">C-1 / C-2</a></li>
+          <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
         </ul>
       </li>
     </ul>
   </nav>
   <main class="docs-main">
     <a class="back-link" href="/docs/">← 文档中心</a>
-    <h1>Agent 与路由</h1>
-    <p class="lead">理解 Agent、Skill、模型各自的职责，以及"领域分析"在什么情况下被触发。</p>
+    <h1>Agent 循环与双通道</h1>
+    <p class="lead">看护环与会话环共用同一 Agent 循环；差异在输入、上下文组装与输出形态。模型提议，代码裁决。</p>
 
-    <h2 id="roles">角色分工</h2>
+    <h2 id="channels">双通道</h2>
     <table>
-      <tr><th>名称</th><th>作用</th></tr>
-      <tr><td>通用 Agent</td><td>处理普通问答、资料整理、解释和不需要付费分析的请求。</td></tr>
-      <tr><td>Finance Domain Runtime</td><td>在通用 Runtime 中承载金融领域的 Skill、数据需求和确定性结果组装。</td></tr>
-      <tr><td>Finance Analysis Skill</td><td>执行确定性指标、风险、组合和适配性分析，不负责自然语言闲聊。</td></tr>
-      <tr><td>Web Search Skill</td><td>通过 Web Search Adapter 按固定查询结构获取外部新闻、舆情和讨论度证据。</td></tr>
-      <tr><td>本地模型</td><td>处理普通问答、路由辅助、数据解释和低成本推理。</td></tr>
-      <tr><td>付费分析模型</td><td>仅在满足正式分析条件且 Skill 数据完整时调用。</td></tr>
+      <tr><th>通道</th><th>输入</th><th>上下文</th><th>输出</th></tr>
+      <tr><td>看护环</td><td>WatchEvent</td><td>唤醒包 + scene_wakeup</td><td>结构化通知（证据 / 审计码 / 严重度）</td></tr>
+      <tr><td>会话环</td><td>用户消息 / followup</td><td>会话 N 轮 + L3 记忆</td><td>SSE 流式 + ResultBlock</td></tr>
     </table>
+    <div class="note"><strong>产品叙事：</strong>watch-first, chat-second。对话能力架构上通用，产品聚焦金融看护追问。</div>
 
-    <h2 id="domain">什么是"领域分析"</h2>
-    <p>领域分析不是另一个无法解释的 Agent 名称，也不是普通聊天的换皮。它表示：</p>
-    <blockquote class="note"><strong>针对某一类研究对象和专业问题，使用固定的路由、数据源、Skill、校验规则和输出模板，形成可重复的研究流程。</strong></blockquote>
-    <p>当前领域分析对象包括：</p>
-    <ul>
-      <li>单只股票、ETF、基金等标的；</li>
-      <li>组合或持仓；</li>
-      <li>板块及行业热度；</li>
-      <li>量化指标、动量、波动率和历史回测；</li>
-      <li>新闻、舆情、讨论度和外部热度。</li>
-    </ul>
+    <h2 id="loop">Agent 循环</h2>
+    <ol>
+      <li>语义快路径：闲聊 / 明显知识类可直接应答，不进工具循环。</li>
+      <li>否则 <code>bind_tools</code> 原生 tool calling：模型输出 <code>tool_calls</code> → 治理中间件 → Observation 回填 → 直至最终回答或预算耗尽。</li>
+      <li>无 LLM 时服务不启动；依赖缺失经 <code>/ready</code> 显性 degraded。</li>
+    </ol>
+    <div class="flow">消息 / 唤醒包
+  → 快路径？ → 直接应答
+  → AgentLoop + ToolCard
+  → G1–G7 裁决
+  → Observation
+  → 最终文本 + blocks</div>
 
-    <h2>基本链路</h2>
-    <div class="flow">用户问题
-  → 识别研究对象和意图
-  → 选择 Agent 路由
-  → 判断是否需要外部搜索
-  → 调用对应 Skill 获取结构化数据
-  → 校验数据完整性、时间和来源
-  → 由本地模型或付费分析模型进行解释
-  → 输出结论、依据、风险和数据时间</div>
+    <h2 id="loading">工具装载：scoped | search</h2>
+    <table>
+      <tr><th>模式</th><th>行为</th></tr>
+      <tr><td>scoped</td><td>按场景装入固定工具子集（默认推荐）</td></tr>
+      <tr><td>search</td><td>元工具 <code>search_tools</code> 检索后装载；权限先于检索；未命中可回退 scoped</td></tr>
+    </table>
+    <p>search 模式下 UI 对 <code>search_tools</code> 节点特殊渲染（检索词 + 命中数）。</p>
 
-    <h2>什么情况下进入领域分析</h2>
-    <ul>
-      <li>用户明确要求分析、研判、比较、回测、仓位建议、板块热度或持仓风险；</li>
-      <li>用户提供了标的、组合、板块或明确研究对象；</li>
-      <li>问题需要实时行情、历史序列、指标或外部证据。</li>
-    </ul>
+    <h2 id="sse">SSE 输出（契约 v2）</h2>
+    <table>
+      <tr><th>事件</th><th>UI 行为</th></tr>
+      <tr><td><code>agent_run</code></td><td>进入运行态；记录 runId；呈现 degraded</td></tr>
+      <tr><td><code>tool.step</code></td><td>工具轨迹节点（含 search_tools）</td></tr>
+      <tr><td><code>token</code></td><td>正文真流式增量</td></tr>
+      <tr><td><code>response.final</code></td><td>answer / blocks / tool_trace / 证据与披露</td></tr>
+      <tr><td><code>done</code></td><td>收尾；澄清 / 失败态</td></tr>
+      <tr><td><code>notification</code></td><td>P1 时间线 prepend + 未读</td></tr>
+    </table>
+    <p>暂停后恢复：沿用 Turn Router 发送「继续」，避免重复输出。会话入口为实现路径 <code>/agent</code>（设计稿曾写 <code>/chat</code>）。</p>
 
-    <h2>什么情况下不进入付费分析</h2>
-    <ul>
-      <li>询问当前价格、单个字段、简单定义、普通知识；</li>
-      <li>只需要一次搜索结果或新闻摘要；</li>
-      <li>Skill 数据不完整、过期或校验失败；</li>
-      <li>用户没有要求正式分析，且问题可以由本地模型直接回答。</li>
-    </ul>
-
-    <h2 id="route">路由判断原则</h2>
-    <div class="flow">普通问答       → 通用 Agent + 本地模型
-单值/行情查询  → Stock Agent 轻量数据查询，不自动进入付费分析
-实时 K 线      → Stock Agent + 对应行情数据接口
-正式标的分析   → Stock Agent → stock Skill → 数据校验 → 付费分析模型
-板块热度       → Stock Agent → sector Skill + Web Search → 热度证据汇总
-新闻/舆情      → Web Search Wrapper → 本地模型整理</div>
-    <div class="note"><strong>关键：</strong>调用 Skill 本身不等于调用付费大模型。Skill 是确定性的数据和计算层；只有在需要将结构化结果转成正式研判结论时，才根据 Route/Gate 结果调用付费模型。</div>
-
-    <h2 id="sse">对话输出（SSE）</h2>
-    <p>工作站通过 <code>POST /api/v1/chat/stream</code> 接收统一 SSE 事件：<code>status</code>、<code>agent_run</code>、<code>token</code>、<code>ask</code>、<code>clarification</code>、<code>done</code>、<code>error</code> 等。Agent 负责思考编排，Skill 负责执行专业计算，模型负责解释结果；三者不是三个重复的聊天机器人。</p>
-    <div class="note"><strong>开发提示：</strong>API 联调台属于内部开发工具，不在公共导航中展示。需要调试 SSE 时直接访问部署环境的 <code>/api-console.html</code>。</div>
+    <h3>ResultBlock</h3>
+    <p>五类 Block（ScoreCard / AnalysisReport / SuitabilityDraft / PortfolioHealth / QuoteTable）由 Observation 直接投影，不经 LLM 改写数字。SuitabilityDraft 固定披露，禁止「适合买入」话术。</p>
   </main>
 </div>
 <script>
-  document.getElementById("menuBtn").addEventListener("click",()=>{
+  document.getElementById("menuBtn").addEventListener("click", () => {
     document.getElementById("docsNav").classList.toggle("open");
   });
 </script>

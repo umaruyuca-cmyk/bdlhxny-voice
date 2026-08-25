@@ -1,31 +1,85 @@
 """认知行动契约（31 号统一开发实施 Prompt §7.2、§11.5）。
 
-实施标记：``SW31-M4-COGNITIVE-ACTION``。本模块定义 M4 认知行动、状态与
-公开表达边界；运行时 Action Policy 与独立编排由同包实现。
-
-``CognitiveAction`` 是认知层唯一行动模型（架构概念 ``NextAction`` 不创建
-第二个同义模型）；旧 ReAct 层的 ``AgentAction`` 是数据获取层的工具动作
-模型，两者分属不同层，本模块不删除、不改名旧模型。
-
-第一阶段 Action Policy 只允许 ``RESPOND / ASK_USER / INVOKE_DOMAIN``；
-其余枚举值必须返回稳定审计码 ``ACTION_NOT_ENABLED``，不能静默降级为
-``RESPOND``。
+``CognitiveAction`` 是认知层唯一行动模型。WO-T2-6 起编排走 ``engine/``，
+本模块保留 SSE / checkpoint 所需的公开契约；通用领域请求边界也落在此处
+（域插件包已删除，不再从 ``domains.contracts`` 引用）。
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from bdlh_runtime.domains.contracts import DomainRequest
-
-from .goal_schema import GoalSpec
 
 #: 未启用行动的稳定审计码（§7.2）：不能静默降级为 RESPOND。
 ACTION_NOT_ENABLED = "ACTION_NOT_ENABLED"
 RESPOND_UNAVAILABLE_REASON = "当前对话能力暂不可用，请稍后重试。"
+
+
+class DomainOperation(StrEnum):
+    """领域授权操作集合；代表「允许读取/分析什么」，不是认知层行动。"""
+
+    READ_MARKET_DATA = "READ_MARKET_DATA"
+    READ_PUBLIC_RESEARCH = "READ_PUBLIC_RESEARCH"
+    READ_PORTFOLIO = "READ_PORTFOLIO"
+    READ_PROFILE = "READ_PROFILE"
+    READ_FINANCIAL_GOALS = "READ_FINANCIAL_GOALS"
+    RUN_ANALYSIS = "RUN_ANALYSIS"
+    PROPOSE_TASK = "PROPOSE_TASK"
+
+
+class DomainBudget(BaseModel):
+    """一次外部调用的执行预算。"""
+
+    model_config = ConfigDict(extra="forbid")
+    tool_call_limit: int = Field(ge=0)
+    runtime_seconds: int = Field(ge=1)
+    model_call_limit: int = Field(default=0, ge=0)
+
+
+class DomainRequest(BaseModel):
+    """INVOKE_DOMAIN 载荷（四时点 Guardrail 仍读取这些字段）。"""
+
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1)
+    domain: str = Field(min_length=1)
+    authenticated_user_id: str = Field(min_length=1)
+    objective: str = Field(min_length=1)
+    success_criteria: list[str] = Field(default_factory=list)
+    authorized_operations: set[DomainOperation] = Field(min_length=1)
+    budget: DomainBudget
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> DomainRequest:
+        if not self.authenticated_user_id.strip():
+            raise ValueError("authenticated_user_id must come from the server auth context")
+        return self
+
+
+class SuccessCriterion(BaseModel):
+    """一条可判定的成功标准（checkpoint 状态内嵌）。"""
+
+    model_config = ConfigDict(extra="forbid")
+    criterion_id: str = Field(min_length=1)
+    topic: str | None = None
+    description: str = Field(min_length=1)
+    candidate_capabilities: list[str] = Field(default_factory=list)
+    observation_refs: list[str] = Field(default_factory=list)
+
+
+class GoalSpec(BaseModel):
+    """checkpoint 中的最小可验证任务单元。"""
+
+    model_config = ConfigDict(extra="forbid")
+    goal_id: str = Field(min_length=1)
+    objective: str = Field(min_length=1)
+    requested_topics: list[str] = Field(default_factory=list)
+    needs_account: bool = False
+    needs_profile: bool = False
+    success_criteria: list[SuccessCriterion] = Field(min_length=1)
+    status: Literal["PENDING", "COVERED", "BLOCKED"] = "PENDING"
+    observation_refs: list[str] = Field(default_factory=list)
 
 
 class CognitiveActionType(StrEnum):
@@ -231,6 +285,18 @@ class CommunicationSection(BaseModel):
     section_type: Literal["SUMMARY", "FACTS", "FINDINGS", "RISKS", "LIMITATIONS", "NEXT_STEPS"]
     title: str = Field(min_length=1)
     items: list[str] = Field(min_length=1)
+
+
+class CognitiveExecution(BaseModel):
+    """一次引擎运行的对外结果（SSE / checkpoint / 唤醒共用）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: CognitiveState
+    response: PublicResponse
+    checkpoint: Any = None
+    observations: list[dict[str, Any]] = Field(default_factory=list)
+    tool_trace: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def is_action_enabled(action_type: CognitiveActionType) -> bool:

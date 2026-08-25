@@ -1,8 +1,13 @@
 """M4 四时点 Guardrail 最低策略回归。"""
 
-from bdlh_runtime.cognitive import CognitiveAction, CognitiveActionType, PublicResponse
-from bdlh_runtime.domains.contracts import DomainBudget, DomainOperation, DomainRequest
-from bdlh_runtime.domains.finance.plan_guardrail import FinanceReadOnlyPlanGuardrail
+from bdlh_runtime.cognitive import (
+    CognitiveAction,
+    CognitiveActionType,
+    DomainBudget,
+    DomainOperation,
+    DomainRequest,
+    PublicResponse,
+)
 from bdlh_runtime.guardrails import (
     DefaultActionGuardrail,
     DefaultDataQualityGuardrail,
@@ -11,7 +16,6 @@ from bdlh_runtime.guardrails import (
     GuardrailContext,
     GuardrailDecision,
 )
-from bdlh_runtime.guardrails.policies import CompositePlanGuardrail
 
 
 def _context(*actions: str) -> GuardrailContext:
@@ -100,16 +104,6 @@ def test_plan_rejects_excessive_budget_and_non_read_only_objective() -> None:
     action = action.model_copy(update={"domain_request": trading})
     kernel_plan = DefaultPlanGuardrail().evaluate_plan(action, context=_context("INVOKE_DOMAIN"))
     assert kernel_plan.decision == GuardrailDecision.ALLOW
-    assert (
-        FinanceReadOnlyPlanGuardrail().evaluate_plan(action, context=_context("INVOKE_DOMAIN")).audit_code
-        == "PLAN_OUT_OF_READ_ONLY_SCOPE"
-    )
-    assert (
-        CompositePlanGuardrail(DefaultPlanGuardrail(), FinanceReadOnlyPlanGuardrail())
-        .evaluate_plan(action, context=_context("INVOKE_DOMAIN"))
-        .audit_code
-        == "PLAN_OUT_OF_READ_ONLY_SCOPE"
-    )
 
 
 def test_action_rejects_cross_user_domain_request() -> None:

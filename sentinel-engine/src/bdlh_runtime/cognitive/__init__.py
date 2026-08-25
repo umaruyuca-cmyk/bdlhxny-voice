@@ -1,4 +1,4 @@
-"""认知内核：契约与受控编排（产品唯一主路径）。"""
+"""认知内核：快路径、checkpoint 契约与公开回复。"""
 
 from .contracts import (
     ACTION_NOT_ENABLED,
@@ -6,16 +6,19 @@ from .contracts import (
     CognitiveAction,
     CognitiveActionSummary,
     CognitiveActionType,
+    CognitiveExecution,
     CognitiveState,
     CommunicationPlan,
     CommunicationSection,
+    DomainBudget,
+    DomainOperation,
+    DomainRequest,
+    GoalSpec,
     InputEvent,
     InputEventType,
     PublicResponse,
+    SuccessCriterion,
 )
-from .goal_action_selector import GoalActionSelector
-from .plugin_gates import SkillCatalog, SkillToolSpec
-from .policy import ActionPolicyResult, DefaultActionPolicy
 from .semantic_router import (
     Route,
     RouteChoice,
@@ -26,15 +29,17 @@ from .semantic_router import (
 
 __all__ = [
     "ACTION_NOT_ENABLED",
-    "ActionPolicyResult",
     "CognitiveAction",
     "CognitiveActionSummary",
     "CognitiveActionType",
+    "CognitiveExecution",
     "CognitiveState",
-    "CommunicationSection",
-    "DefaultActionPolicy",
     "CommunicationPlan",
-    "GoalActionSelector",
+    "CommunicationSection",
+    "DomainBudget",
+    "DomainOperation",
+    "DomainRequest",
+    "GoalSpec",
     "InputEvent",
     "InputEventType",
     "PublicResponse",
@@ -43,7 +48,6 @@ __all__ = [
     "RouteChoice",
     "SemanticRouteSelector",
     "SemanticRouter",
-    "SkillCatalog",
-    "SkillToolSpec",
+    "SuccessCriterion",
     "build_kernel_router",
 ]

@@ -54,3 +54,5 @@ class Observation(BaseModel):
     provenance: list[ProvenanceRecord] = Field(default_factory=list)
     error_code: str | None = None
     error_message: str | None = None
+    result_type: str | None = None
+    payload: dict[str, Any] | None = None

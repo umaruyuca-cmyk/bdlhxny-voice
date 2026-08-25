@@ -70,6 +70,13 @@ class Settings:
     max_event_wait_seconds: float = 30.0
     auth_required: bool = True
     jwt_secret: str | None = None
+    # 演示部署档（设计文档 §4.8、C-4）：开启后注册演示注入端点
+    # POST /internal/demo/events 并在前端显示演示标识。生产档保持 false。
+    demo_mode: bool = False
+    # 会话上下文：最近 N 轮消息（一轮 = user+assistant，默认 10）
+    session_history_turns: int = 10
+    # 工具装载策略（设计文档 §4.2）：scoped | search，默认 scoped
+    tool_loading: str = "scoped"
     # ── M6 持续任务 Worker ──
     financial_task_worker_enabled: bool = False
     financial_task_poll_seconds: float = 10.0
@@ -163,12 +170,18 @@ class Settings:
         memory_mode = os.getenv("BDLH_MEMORY_MODE", "remote").strip().lower()
         if memory_mode != "remote":
             raise ValueError("BDLH_MEMORY_MODE 仅支持 remote；noop/embedded-test 已从产品配置移除")
+        tool_loading = os.getenv("BDLH_TOOL_LOADING", "scoped").strip().lower()
+        if tool_loading not in {"scoped", "search"}:
+            raise ValueError("BDLH_TOOL_LOADING 仅支持 scoped|search")
         return cls(
             environment=environment,
             api_prefix=os.getenv("BDLH_RUNTIME_API_PREFIX", "/api/v1"),
             max_event_wait_seconds=float(os.getenv("BDLH_RUNTIME_MAX_EVENT_WAIT_SECONDS", "30")),
             auth_required=os.getenv("BDLH_RUNTIME_AUTH_REQUIRED", "true").lower() in {"1", "true", "yes", "on"},
             jwt_secret=jwt_secret,
+            demo_mode=os.getenv("BDLH_DEMO_MODE", "false").lower() in {"1", "true", "yes", "on"},
+            session_history_turns=max(1, int(os.getenv("BDLH_SESSION_HISTORY_TURNS", "10"))),
+            tool_loading=tool_loading,
             financial_task_worker_enabled=os.getenv("BDLH_FINANCIAL_TASK_WORKER_ENABLED", "false").lower()
             in {"1", "true", "yes", "on"},
             financial_task_poll_seconds=float(os.getenv("BDLH_FINANCIAL_TASK_POLL_SECONDS", "10")),

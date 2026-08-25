@@ -4,21 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Skills 试用 · グリッドユニバース研究所</title>
+<title>开发遗留 · Skills 试用</title>
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <div class="docs-top">
-  <a class="brand" href="/"><em>グリッドユニバース研究所</em> Skills 试用</a>
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> · 开发遗留</a>
   <div class="docs-top-links">
     <a href="/docs/">文档中心</a>
-    <a href="/agent">工作站</a>
+    <a href="/dashboard">看护首页</a>
+    <a href="/agent">会话</a>
   </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
 <div class="docs-layout">
   <nav class="docs-nav" id="docsNav">
-    <h4>Skills 试用</h4>
+    <h4>开发遗留</h4>
     <ul>
       <li><a href="#stock" class="active" data-skill-tab="stock">Stock Skill</a></li>
       <li><a href="#deepsearch" data-skill-tab="deepsearch">DeepSearch</a></li>
@@ -26,6 +27,10 @@
   </nav>
   <main class="docs-main">
     <a class="back-link" href="/">← 返回首页</a>
+    <div class="note" style="margin:12px 0 24px">
+      <strong>产品入口已收口：</strong>Sentinel 对外路径为品牌首页 → 看护 <code>/dashboard</code> → 会话 <code>/agent</code>。
+      本页保留为开发调试遗留，不再出现在产品导航。工具与治理见 <a href="/docs/skill">ToolCard 文档</a>。
+    </div>
     <div id="trialAuthBanner" class="trial-auth" hidden>
       <span>当前为访客试用。登录后可同步会话与金融资料；也可继续匿名调用。</span>
       <a class="btn ghost" href="/agent">前往登录</a>
@@ -63,8 +68,8 @@
       </div>
 
       <div class="lite-actions">
-        <a class="btn ghost" href="/docs/skill#stock-skill">阅读 Stock Skill 规范</a>
-        <a class="btn ghost" href="/agent?name=stock">打开完整工作站</a>
+        <a class="btn ghost" href="/docs/skill">阅读工具目录与治理</a>
+        <a class="btn ghost" href="/agent">打开会话</a>
       </div>
     </section>
 
@@ -103,7 +108,7 @@
 
       <div class="lite-actions">
         <a class="btn ghost" href="/docs/skill#web-search-skill">阅读 DeepSearch 规范</a>
-        <a class="btn ghost" href="/agent?name=general">打开完整工作站</a>
+        <a class="btn ghost" href="/agent">打开会话</a>
       </div>
     </section>
   </main>

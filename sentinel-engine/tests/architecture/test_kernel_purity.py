@@ -18,8 +18,6 @@ SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "bdlh_runtime"
 # 1. 受管内核模块：ADR-009 §3.3 列出的清单，目录项递归展开
 KERNEL_TARGETS: tuple[str, ...] = (
     "cognitive",
-    "domains/contracts.py",
-    "domains/registry.py",
     "guardrails",
     "observations",
 )
@@ -93,7 +91,7 @@ def test_kernel_module_does_not_import_domain(kernel_file: Path):
 
 
 def test_cognitive_only_depends_on_generic_domain_contracts():
-    """认知层与领域的唯一接触面必须是通用 domains.contracts。"""
+    """认知层不得 import 已删除的 domains 包。"""
     cognitive_files = sorted((SRC_ROOT / "cognitive").rglob("*.py"))
     assert cognitive_files, "cognitive 包为空，目录结构已变化"
 
@@ -103,9 +101,7 @@ def test_cognitive_only_depends_on_generic_domain_contracts():
         imported = _imported_modules(tree) | _relative_import_targets(tree, file_path)
         domain_imports |= {module for module in imported if module.startswith("bdlh_runtime.domains")}
 
-    assert domain_imports == {"bdlh_runtime.domains.contracts"}, (
-        f"认知层只允许依赖 bdlh_runtime.domains.contracts，实际为 {sorted(domain_imports)}"
-    )
+    assert not domain_imports, f"认知层不得依赖 domains，实际为 {sorted(domain_imports)}"
 
 
 def test_cognitive_and_guardrails_have_no_domain_literal():

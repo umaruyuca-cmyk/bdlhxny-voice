@@ -1,7 +1,7 @@
 """M6 最小 Scheduler 与 Notification Outbox Worker。
 
 Scheduler 只领取到期任务并投递 ``SCHEDULED_WAKEUP``；价格判断发生在唤醒
-处理器中，最新数据只从本轮 Cognitive + Finance 执行结果读取。
+处理器中，最新数据只从本轮 ``market.get_realtime_quote`` Observation 读取。
 """
 
 from __future__ import annotations
@@ -9,13 +9,9 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Protocol
+from typing import Any, Protocol
 
-from bdlh_runtime.cognitive.contracts import InputEvent, InputEventType
-from bdlh_runtime.domains.contracts import DomainOutcome, DomainRequest
-
-if TYPE_CHECKING:
-    from bdlh_runtime.cognitive.orchestrator import CognitiveExecution
+from bdlh_runtime.cognitive.contracts import CognitiveExecution, InputEvent, InputEventType
 
 from .tasks import (
     FinancialTask,
@@ -103,7 +99,7 @@ class FinancialTaskWakeupHandler:
             task.next_wakeup_at = timestamp + timedelta(seconds=task.cadence_seconds)
             return self._tasks.update(task, expected_version=expected_version)
 
-        price, currency, observation_time, limitation = _fresh_price(observer.outcome)
+        price, currency, observation_time, limitation = _fresh_price(observer.quote)
         if limitation is not None:
             task.last_limitation = limitation
             task.transition(
@@ -278,39 +274,67 @@ def _condition_met(task: FinancialTask, price: float) -> bool:
 
 @dataclass
 class _WakeupOutcomeObserver:
-    outcome: DomainOutcome | None = None
+    quote: Any = None
 
-    def on_domain_request(self, request: DomainRequest) -> None:
-        del request
-
-    def on_domain_outcome(self, outcome: DomainOutcome) -> None:
-        self.outcome = outcome
+    def on_tool_observation(self, name: str, payload: Any) -> None:
+        if name == "market.get_realtime_quote":
+            self.quote = payload
 
 
-def _fresh_price(
-    outcome: DomainOutcome | None,
-) -> tuple[float | None, str | None, datetime | None, str | None]:
-    """只接受本次唤醒留下的直接 Finance 结构化结果，不解析聊天文案。"""
+def _as_mapping(payload: Any) -> dict[str, Any] | None:
+    if payload is None:
+        return None
+    if hasattr(payload, "model_dump"):
+        dumped = payload.model_dump(mode="python")
+        return dumped if isinstance(dumped, dict) else None
+    if isinstance(payload, dict):
+        return payload
+    return None
 
-    if outcome is None:
-        return None, None, None, "WAKEUP_FINANCE_OUTCOME_MISSING"
-    dumped = outcome.model_dump(mode="python")
-    if dumped.get("status") in {"LIMITED", "PARTIAL", "FAILED"}:
-        return None, None, None, "WAKEUP_FINANCE_DATA_LIMITED"
-    research = dumped.get("stock_research_result")
-    snapshot = research.get("market_snapshot") if isinstance(research, dict) else None
-    if not isinstance(snapshot, dict):
-        return None, None, None, "WAKEUP_MARKET_SNAPSHOT_MISSING"
-    price = snapshot.get("price")
-    source_time = snapshot.get("source_time") or snapshot.get("trade_date")
-    quality = snapshot.get("quality")
+
+def _parse_time(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _fresh_price(payload: Any) -> tuple[float | None, str | None, datetime | None, str | None]:
+    """只接受本次唤醒留下的实时行情 Observation，不解析聊天文案。"""
+
+    dumped = _as_mapping(payload)
+    if dumped is None:
+        return None, None, None, "WAKEUP_QUOTE_MISSING"
+    status = dumped.get("status")
+    if status in {"FAILED", "UNAVAILABLE", "PARTIAL", "LIMITED"}:
+        return None, None, None, "WAKEUP_QUOTE_LIMITED"
+    quality = dumped.get("data_quality")
+    if isinstance(quality, dict) and quality.get("quality_status") in {"LOW", "INVALID", "STALE"}:
+        return None, None, None, "WAKEUP_PRICE_QUALITY_LIMITED"
+    data = dumped.get("data")
+    if not isinstance(data, dict):
+        data = dumped
+    price = data.get("price") or data.get("last_price") or data.get("current_price")
     if not isinstance(price, (int, float)) or price <= 0:
         return None, None, None, "WAKEUP_PRICE_MISSING"
-    if quality in {"LOW", "INVALID"}:
-        return None, None, None, "WAKEUP_PRICE_QUALITY_LIMITED"
-    if not isinstance(source_time, datetime):
+    source_time = (
+        _parse_time(data.get("source_time"))
+        or _parse_time(data.get("trade_date"))
+        or _parse_time(data.get("retrieved_at"))
+    )
+    provenance = dumped.get("provenance")
+    if source_time is None and isinstance(provenance, list) and provenance:
+        first = provenance[0] if isinstance(provenance[0], dict) else _as_mapping(provenance[0])
+        if isinstance(first, dict):
+            source_time = _parse_time(first.get("retrieved_at") or first.get("as_of"))
+    if source_time is None:
         return None, None, None, "WAKEUP_PRICE_TIME_MISSING"
-    return float(price), str(snapshot.get("currency") or "CNY"), source_time, None
+    currency = str(data.get("currency") or dumped.get("currency") or "CNY")
+    return float(price), currency, source_time, None
 
 
 def _notification_body(task: FinancialTask, price: float, currency: str) -> str:

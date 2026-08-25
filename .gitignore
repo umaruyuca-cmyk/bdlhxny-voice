@@ -40,6 +40,12 @@ skills/**/portfolio.json
 # 日志
 *.log
 
+# 演示彩排录屏（WO-T4-3：归档不入库）
+/recordings/
+*.mp4
+*.webm
+*.mkv
+
 # Agent 工具本地状态（不提交）
 .workbuddy-ai/
 .workbuddy/

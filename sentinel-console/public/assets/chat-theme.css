@@ -88,6 +88,7 @@ textarea:focus,input:focus{outline:none}
 .nav-item{
   display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;
   border-radius:9px;color:var(--ink-2);font-size:13.5px;text-align:left;margin:0;
+  text-decoration:none;box-sizing:border-box;border:0;background:transparent;cursor:pointer;
 }
 .nav-item+.nav-item{margin-top:2px}
 .nav-item:hover{background:var(--hover);color:var(--ink)}
@@ -751,4 +752,71 @@ textarea:focus,input:focus{outline:none}
   .qpanel{display:none!important}
   .plugins-layout{grid-template-columns:1fr}
   .plugins-page{padding:20px 16px 40px}
+}
+
+/* ===== T3-4：追问 chip / 工具轨迹 / Block / 运行控制 ===== */
+body.is-embed .sidebar{display:none}
+body.is-embed .mobile-menu{display:none}
+.followup-chip{
+  max-width:min(42vw,320px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  margin-left:8px;padding:3px 10px;border-radius:999px;
+  background:#eef4ff;color:#2b5cad;font-size:12px;font-weight:500;
+}
+.degrade-bar{
+  margin:0 0 8px;padding:8px 12px;border-radius:10px;
+  background:#fff6e5;border:1px solid #f0d9a8;color:#8a5a12;font-size:12.5px;
+}
+.run-controls{display:flex;gap:8px;margin-bottom:8px}
+.run-btn{
+  height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line-strong);
+  background:#fff;font-size:12.5px;font-weight:550;
+}
+.run-btn:hover{background:var(--hover)}
+.clarify-tray{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.tool-trace{
+  margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fafafa;
+  font-size:12.5px;color:var(--ink-2);
+}
+.tool-trace-title{font-size:12px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.tool-trace-list{margin:0;padding-left:18px}
+.tool-node{margin:4px 0;line-height:1.55}
+.tool-node .tool-args{color:var(--ink-3);margin-left:4px}
+.tool-obs{margin-top:2px}
+.tool-obs pre{white-space:pre-wrap;font-size:11px;background:#fff;padding:8px;border-radius:8px;border:1px solid var(--line)}
+.evidence-card{
+  margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;
+}
+.evidence-card .ev-title{font-size:12px;font-weight:600;margin-bottom:6px}
+.result-blocks{display:grid;gap:12px;margin-top:12px}
+.result-block{
+  padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:var(--shadow-1);
+}
+.block-head{font-size:13.5px;font-weight:600;margin-bottom:10px}
+.block-foot{margin-top:10px;font-size:11.5px;color:var(--ink-3)}
+.score-layout{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.score-chart{width:180px;height:160px}
+.score-summary strong{display:block;font-size:22px}
+.score-dims{margin-top:10px}
+.score-dim{display:grid;grid-template-columns:72px 1fr auto auto;gap:8px;align-items:center;margin:6px 0;font-size:12.5px}
+.score-dim i{display:block;height:6px;border-radius:99px;background:#0d0d0d}
+.suit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.suit-grid h4{font-size:12px;margin-bottom:6px}
+.suit-disclosure{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink-2)}
+.port-metrics{display:flex;gap:16px;margin-bottom:8px;font-size:13px}
+.port-metrics i{display:inline-block;height:6px;width:64px;border-radius:99px;background:#0d0d0d;vertical-align:middle;margin:0 6px}
+.quote-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.quote-table th,.quote-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+.quote-table th{cursor:pointer}
+.num-up{color:var(--ok)}
+.num-down{color:var(--danger)}
+.badge-audit{
+  display:inline-block;margin-right:4px;padding:1px 6px;border-radius:4px;
+  background:#eaf6ef;color:#0f7b4a;font-size:11px;
+}
+.badge-evidence{
+  display:inline-block;margin-right:4px;color:#2b5cad;background:none;border:0;padding:0;cursor:pointer;font-size:12px;
+}
+.block-unknown pre{white-space:pre-wrap;font-size:11.5px}
+@media(max-width:860px){
+  .suit-grid{grid-template-columns:1fr}
 }

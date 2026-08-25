@@ -101,3 +101,31 @@ class CreateFinancialTaskRequest(BaseModel):
     first_wakeup_at: datetime | None = None
     expires_at: datetime
     confirmed: Literal[True]
+
+
+#: 设计文档 §7.8.1 结果块类型；未知类型由前端降级，投影层只发出本枚举。
+ResultBlockType = Literal["ScoreCard", "AnalysisReport", "SuitabilityDraft", "PortfolioHealth", "QuoteTable"]
+
+#: C-2 固定披露（设计文档 §7.8.4）；投影层写入，不接受模型改写。
+SUITABILITY_DISCLOSURE = "本结果仅为风险匹配筛查草稿，不构成投资建议。"
+
+
+class ResultBlock(BaseModel):
+    """工具 Observation 直接投影的结果块；payload 数字不得经 LLM 转述。"""
+
+    type: ResultBlockType
+    payload: dict[str, Any]
+    observation_id: str | None = None
+    source: str | None = None
+    data_time: str | None = None
+
+
+class ChatResultV2(BaseModel):
+    """SSE ``response.final`` 载荷（设计文档 §6.2 / §7.8.1）。"""
+
+    answer: str = ""
+    blocks: list[ResultBlock] = Field(default_factory=list)
+    tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    audit_codes: list[str] = Field(default_factory=list)
+    disclosures: list[str] = Field(default_factory=list)

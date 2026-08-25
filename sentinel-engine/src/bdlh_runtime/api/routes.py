@@ -17,7 +17,7 @@ from bdlh_runtime.infra.readiness import evaluate_readiness
 
 from .auth import JwtAuthenticator
 from .context import ApiContext
-from .routers import agent_runs, chat, conversations, financial_tasks, notifications
+from .routers import agent_runs, chat, conversations, demo_events, financial_tasks, notifications
 
 
 def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api/v1") -> FastAPI:
@@ -96,6 +96,11 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
     agent_runs.register(router, ctx)
     financial_tasks.register(router, ctx)
     notifications.register(router, ctx)
+
+    # 演示注入端点：仅演示部署档注册（BDLH_DEMO_MODE=true，设计文档 §4.8、C-4、WO-T1-7）。
+    # 非 demo 档路由不注册（404），不依赖「隐藏」。
+    if application.settings.demo_mode:
+        demo_events.register(router, ctx)
 
     app.include_router(router)
     return app

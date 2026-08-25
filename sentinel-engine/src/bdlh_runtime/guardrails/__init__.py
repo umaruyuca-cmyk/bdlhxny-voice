@@ -14,6 +14,7 @@ from .interfaces import (
     PlanGuardrail,
     ResponseGuardrail,
 )
+from .middleware import AuditRecord, GovernanceMiddleware, MiddlewareResult
 from .policies import (
     CompositePlanGuardrail,
     DefaultActionGuardrail,
@@ -29,16 +30,19 @@ from .research_rules import (
 
 __all__ = [
     "ActionGuardrail",
+    "AuditRecord",
     "DataQualityGuardrail",
     "DefaultActionGuardrail",
     "DefaultDataQualityGuardrail",
     "DefaultPlanGuardrail",
     "DefaultResponseGuardrail",
     "CompositePlanGuardrail",
+    "GovernanceMiddleware",
     "GuardrailContext",
     "GuardrailDecision",
     "GuardrailResult",
     "GuardrailStage",
+    "MiddlewareResult",
     "PlanGuardrail",
     "ResponseGuardrail",
     "authorized_capabilities_from_registry",

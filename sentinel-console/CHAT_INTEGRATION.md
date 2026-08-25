@@ -1,13 +1,10 @@
-# 对话页（chat.html）· 后端对接文档
+# 对话页（chat.html）· 后端对接
 
-> **状态说明（2026-08-18）**：本文档描述**现行实现**的对接方式，供联调参考。产品已按
-> [`docs/architecture/00-Sentinel产品设计与架构.md`](../docs/architecture/00-Sentinel产品设计与架构.md) 重新设计，
-> SSE 契约（`tool.step` / 真实流式 / `response.final` v2）与页面形态（追问抽屉）将在 T3
-> 阶段切换，届时本文档按设计文档 §6.2 / §7 重写。设计层面的权威描述以设计文档为准。
->
-> 适用页面：`public/chat.html` + `public/assets/chat-theme.css` + `public/assets/chat.js`（单助手对话页）。
-> 正式入口为 `/agent`；旧 `/workspace` 永久重定向到 `/agent`，双 Agent 工作站页面已删除。
-> 后端编排唯一路径为 Python Cognitive Orchestrator（`cognitive_finance`）→ Domain Dispatcher → Finance Runtime。前端行为以 `chat.js` 实际代码为准。
+适用页面：`public/chat.html` + `public/assets/chat-theme.css` + `public/assets/chat.js`，以及 Block 渲染器 `public/assets/blocks.js`、徽标 `public/assets/badges.js`。
+
+产品权威描述见 [`docs/architecture/00-Sentinel产品设计与架构.md`](../docs/architecture/00-Sentinel产品设计与架构.md) §6.2 / §7.4 / §7.6 / §7.8。本文档对齐**当前实现**，供联调使用。
+
+正式入口为 `/agent`（设计文档 §7.1 写作 `/chat`）。看护首页追问抽屉以 iframe 装入同一页面（`?sessionId=&followup=&embed=1`）。旧 `/workspace` 永久重定向到 `/agent`。
 
 ---
 
@@ -15,13 +12,14 @@
 
 | 项 | 值 |
 | --- | --- |
-| 页面地址（联调） | `http://127.0.0.1:8082/chat.html` 或 `/agent` |
-| 演示模式 | `http://127.0.0.1:8082/chat.html?mock=1`（不依赖后端，内置模拟事件流与演示数据） |
+| 页面地址（联调） | `http://127.0.0.1:8082/agent` |
+| 追问入口 | `/agent?sessionId={id}&followup={事件摘要}`；抽屉内加 `embed=1` |
+| 演示模式 | `http://127.0.0.1:8082/agent?mock=1`（不依赖后端，内置模拟 `tool.step` / `response.final`） |
 | 静态服务 | `node dev-server.js`，默认端口 `8082`（`PORT` 可覆盖） |
-| API 代理 | 认证/用户 API → Java `127.0.0.1:8081`（`BDLH_RUNTIME_BACKEND_URL`）；聊天/会话 → Python `127.0.0.1:8090`（`BDLH_RUNTIME_ANALYSIS_URL`） |
-| 前端构建 | 无构建，原生 HTML/CSS/JS，直接静态部署 |
+| API 代理 | 认证 / 持仓 → Java `127.0.0.1:8081`（`BDLH_RUNTIME_BACKEND_URL`）；聊天 / 会话 / 通知 / 运行控制 / ready → Python `127.0.0.1:8090`（`BDLH_RUNTIME_ANALYSIS_URL`） |
+| 前端构建 | 无构建；ECharts CDN **单** script |
 
-前端只请求**同源相对路径** `/api/v1/*`，不感知后端真实地址。
+前端只请求同源相对路径 `/api/v1/*`，不感知后端真实地址。身份只走 `Authorization: Bearer {JWT}`，不把 `userId` 放进 URL。
 
 ---
 
@@ -29,30 +27,71 @@
 
 | # | 方法 | 路径 | 用途 | 必需性 |
 | --- | --- | --- | --- | --- |
-| 1 | POST | `/api/v1/chat/stream` | 流式问答（SSE） | **必需** |
-| 2 | GET | `/api/v1/conversations?mode=general&limit=30` | 会话目录（侧边栏列表） | 可选（失败静默降级为纯本地列表） |
-| 3 | GET | `/api/v1/conversations/{sessionId}` | 会话消息快照（切换/刷新恢复） | 可选（同上） |
-| 4 | DELETE | `/api/v1/conversations/{sessionId}` | 删除当前用户的服务端会话 | 已实现 |
+| 1 | POST | `/api/v1/chat/stream` | 会话通道 SSE | **必需** |
+| 2 | GET | `/api/v1/conversations?limit=30` | 会话目录 | 可选（失败静默降级为本地列表） |
+| 3 | GET | `/api/v1/conversations/{sessionId}` | 会话消息快照 | 可选 |
+| 4 | DELETE | `/api/v1/conversations/{sessionId}` | 删除服务端会话 | 已实现 |
+| 5 | POST | `/api/v1/agent-runs/{runId}/pause` | 运行中暂停 | 运行控制 |
+| 6 | POST | `/api/v1/agent-runs/{runId}/cancel` | 放弃当前 run | Esc 中断 |
+| 7 | GET | `/api/v1/ready` | 依赖降级提示条 | 可选 |
 
-真实模式下，上述接口均携带 Java 登录接口签发的 `Authorization: Bearer {JWT}`。Python 只信任 JWT 的 `sub` 作为 `user_id`，请求体不允许自行声明其他用户身份。
+Python 只信任 JWT 的 `sub` 作为 `user_id`。请求体不得自行声明其他用户身份。
 
-> mode 字段当前固定为 `general`（前端兼容字段，不分流编排路径）。
+`POST /api/v1/chat/stream` 请求体：
+
+```json
+{
+  "sessionId": "...",
+  "message": "...",
+  "regenerate": false,
+  "enabledSkillIds": []
+}
+```
+
+`enabledSkillIds` 为兼容字段：产品会话页固定传空数组。工具装载由引擎 scoped|search + 治理中间件决定，前端不再提供「插件启停」UI。
+
+暂停后恢复**不**另开一条 resume SSE：前端发送「继续」，由 Turn Router 在同一 `sessionId` 上恢复 checkpoint。
 
 ---
 
-## 3. 流式问答接口（必需）
+## 3. SSE 事件契约（§6.2 / §7.6）
 
-`POST /api/v1/chat/stream` 返回 SSE。关键事件类型包括：
+`POST /api/v1/chat/stream` 以 `text/event-stream` 返回。前端用 `response.body.getReader()` 解析 `data:` 行，**不**使用 `EventSource`。
 
-| `type` | 含义 |
-| --- | --- |
-| `agent_run` | 本轮 `runId` / `sessionId` / `runtimePath`（固定 `cognitive_finance`） |
-| `status` | 阶段提示（如 classifying） |
-| `token` | 增量回答文本 |
-| `clarification` | Cognitive `ASK_USER`，需用户补充 |
-| `done` | 本轮结束 |
-| `error` | 失败；不会自动切到第二套编排路径 |
+| `type` | 载荷 | UI |
+| --- | --- | --- |
+| `agent_run` | `runId` / `sessionId` / `runtimePath` | 进入运行态，显示暂停按钮；如有 `degraded` 则提示 |
+| `tool.step` | `tool` / `arguments` / `status`；可选 `elapsedMs` / `auditCode` / `query` / `hitCount` | 工具轨迹追加或更新节点（pending → ✓ / ✕）。`search_tools` 特殊渲染：检索词 + 命中数 |
+| `token` | `content` 文本分片 | 正文增量渲染（真实 LLM `astream`，禁止前端定长切片） |
+| `response.final` | ChatResult v2 | 定格工具轨迹；渲染 `blocks[]`、证据链、审计码、披露 |
+| `done` | `status`：`COMPLETED` / `NEED_CLARIFICATION` / `FAILED` | 收尾；澄清选项卡或错误条 |
+| `clarification` | `prompt` / `options` | 输入框上方与消息内澄清选项卡（对应 `NEED_CLARIFICATION`） |
+| `guardrail.blocked` | `message` / `auditCode` | 护栏拦截文案 |
+| `run.paused` | `resumable` | 显示恢复按钮 |
+| `status` | `step` | 阶段提示；`degraded` / `memory_degraded` 映射降级条 |
+| `error` | `message` | 错误文案 |
 
-前端只展示阶段与文本，不决定 Cognitive / Domain 内部路由，也不能绕过 Capability 白名单直接调用任意 MCP tool。
+`notification` 事件属于看护通道，见 `API_INTEGRATION.md`，不在本页消费。
 
-更完整的字段与恢复语义以当前 `chat.js` 与 orchestrator `api/routes.py` 为准。
+---
+
+## 4. ChatResult v2 与 ResultBlock（§7.8）
+
+`response.final`：
+
+```text
+{
+  answer,                 // LLM 解读文本（叙事层；通常已由 token 流过）
+  blocks[],               // 工具 Observation 直接投影（事实层，前端不重算数字）
+  tool_trace,
+  evidence_refs,
+  audit_codes,
+  disclosures
+}
+```
+
+`blocks[].type` ∈ `ScoreCard` | `AnalysisReport` | `SuitabilityDraft` | `PortfolioHealth` | `QuoteTable`。未知类型由 `blocks.js` 降级为折叠 JSON，不报错、不丢弃。
+
+展示顺序：流式 `answer` → Block 卡片 → 证据链卡（`evidence_refs` / `audit_codes` / `disclosures`）。
+
+SuitabilityDraft 守 C-2：标题为风险匹配筛查（DRAFT）；匹配项与风险项成组；披露固定为「本结果仅为风险匹配筛查草稿，不构成投资建议。」；界面不出现「适合 / 推荐买入」。

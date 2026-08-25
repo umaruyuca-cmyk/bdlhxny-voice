@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>グリッドユニバース研究所 · 個人研究拠点</title>
+    <title>グリッドユニバース研究所</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -933,9 +933,22 @@
         animation: visor-scan 4s linear infinite;
       }
 
-      /* ============ 能力展示 ============ */
+      /* ============ 入口 ============ */
       section.capabilities {
-        padding: 96px 0;
+        padding: 8px 0 64px;
+      }
+      .quiet-links {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        font-size: 15px;
+        letter-spacing: 0.28em;
+      }
+      .quiet-links a {
+        color: var(--text-dim);
+      }
+      .quiet-links a:hover {
+        color: var(--text);
       }
       .section-head {
         text-align: center;
@@ -1854,16 +1867,17 @@
           </span>
           <span class="logo-title">
             <span class="jp">グリッドユニバース研究所</span>
-            <span class="en">Grid Universe Research Base</span>
+            <span class="en">GRID UNIVERSE</span>
           </span>
         </a>
         <ul class="nav-links" id="navLinks">
-          <li><a href="/agent">工作站</a></li>
-          <li><a href="/skills/">Skills</a></li>
-          <li><a href="/docs/">文档</a></li>
-          <li><a href="#gallery">收藏</a></li>
+          <li><a href="/dashboard">台</a></li>
+          <li><a href="/agent">聊</a></li>
+          <li><a href="/docs/">记</a></li>
+          <li><a href="#gallery">藏</a></li>
         </ul>
         <div class="nav-actions">
+          <a class="icon-btn" href="/dashboard" aria-label="进入" title="进入" style="width:auto;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;gap:6px;display:inline-flex;align-items:center;text-decoration:none;color:var(--text);border:1px solid var(--card-border);background:var(--card)">进入</a>
           <a class="icon-btn" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.17c-3.2.7-3.87-1.38-3.87-1.38-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.34.96.1-.75.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.97 10.97 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.66.41.36.77 1.05.77 2.12v3.15c0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/>
@@ -1885,12 +1899,11 @@
         <div class="hero-copy reveal">
           <span class="badge">
             <span class="dot"></span>
-            GRIDMAN UNIVERSE · ACCESS CODE 承認済み
+            ONLINE
           </span>
           <h1>
             <span class="eva-en holo" id="accessTyping"></span><span class="holo cursor" id="accessCursor"></span>
-            <span class="eva-jp"> 発動——</span><br />
-            <span class="eva-jp">思考は、研究結論へ昇華する</span>
+            <span class="eva-jp"> ただいま。</span>
           </h1>
           <div class="hero-core" aria-hidden="true">
             <span class="dock-ring"></span>
@@ -1983,112 +1996,22 @@
             <span class="orbit o2"><i></i></span>
           </div>
           <form class="hero-search" id="heroSearch">
-            <input id="heroInput" type="text" autocomplete="off" placeholder="输入你想研究的问题…" />
-            <button type="submit">开始研究</button>
+            <input id="heroInput" type="text" autocomplete="off" placeholder="…" />
+            <button type="submit">去</button>
           </form>
-          <div class="hero-suggest">
-            <button type="button" data-q="帮我解释一个复杂概念">解释一个概念</button>
-            <button type="button" data-q="帮我整理这份资料的核心观点">整理研究资料</button>
-            <button type="button" data-q="帮我搜索并核验近期的重要变化">搜索核验信息</button>
-          </div>
-          <div class="hero-points">
-            <span><i>1</i> 研究型 Agent 工作站，不只是聊天窗口</span>
-            <span><i>2</i> 可直接提问，也可选标的做结构化分析</span>
-            <span><i>3</i> Skill 负责数据与计算，Agent 负责编排与解释</span>
-          </div>
           <div class="hero-scroll">SCROLL ↓</div>
         </div>
       </div>
     </header>
 
-    <!-- ===== 能力展示 ===== -->
+    <!-- ===== 入口 ===== -->
     <section class="capabilities" id="capabilities">
       <div class="container">
-        <div class="section-head reveal">
-          <div class="kicker">Capabilities</div>
-          <h2>不止对话，还有可扩展的研究能力</h2>
-          <p>一个入口进入所有研究场景。Agent 负责思考，Skill 负责执行，两者都可以持续接入。</p>
-        </div>
-        <div class="cards">
-          <div class="card reveal">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </div>
-            <h3>对话式研究 <span class="chip-tag">通用</span></h3>
-            <p>面向任意主题的研究对话：问答、资料整理、思路梳理与总结。打开即用，无需额外配置。</p>
-            <a class="card-link" href="/agent">开始研究
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-            </a>
-          </div>
-          <div class="card reveal">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4M8 4h8M12 12v4M8 16h8"/><circle cx="12" cy="16" r="6"/><circle cx="12" cy="16" r="2"/></svg>
-            </div>
-            <h3>领域分析 <span class="chip-tag">可扩展</span></h3>
-            <p>针对股票、ETF、基金、组合与板块，使用固定路由、Skill 数据与校验规则，形成可重复的研究流程。行情、指标、回测、板块热度与外部舆情由 Skill 提供，Agent 负责编排与解释。</p>
-            <div style="display:flex;gap:14px;align-items:center;margin-top:18px">
-              <a class="card-link" href="/agent?name=stock">进入标的研究
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </a>
-              <a class="card-link" style="color:var(--text-faint)" href="/docs/agents">了解领域分析
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </a>
-            </div>
-          </div>
-          <div class="card reveal">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            </div>
-            <h3>Skill 试用 <span class="chip-tag">可执行</span></h3>
-            <p>Stock Skill 做确定性金融分析，DeepSearch 做外部证据检索。首页可直接试用，再进入工作站跑完整链路。</p>
-            <a class="card-link" href="/skills/">试用 Skill
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-            </a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== Skills / 文档入口 ===== -->
-    <section class="lite-panel" id="skills">
-      <div class="lite-intro reveal">
-        <div class="kicker">Explore</div>
-        <h2>Skills 试用与文档中心</h2>
-        <p>完整内容已拆成独立白底页面：试用 Stock Skill / DeepSearch，或阅读业务模块与整体架构。</p>
-      </div>
-      <div class="container reveal">
-        <div class="cards" style="margin:0">
-          <div class="card">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-            </div>
-            <h3>Skills 试用</h3>
-            <p>独立白底页体验 Stock Skill 与 DeepSearch。输入问题或点场景 chips，跳转工作站预填试用。</p>
-            <div style="display:flex;gap:14px;align-items:center;margin-top:18px;flex-wrap:wrap">
-              <a class="card-link" href="/skills/#stock">Stock Skill
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </a>
-              <a class="card-link" href="/skills/#deepsearch">DeepSearch
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </a>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            </div>
-            <h3>文档中心</h3>
-            <p>业务模块、整体架构、请求链路，以及 Agent / Skill 规范。风格与独立试用页一致。</p>
-            <div style="display:flex;gap:14px;align-items:center;margin-top:18px;flex-wrap:wrap">
-              <a class="card-link" href="/docs/">打开文档中心
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </a>
-              <a class="card-link" style="color:var(--text-faint)" href="/docs/agents">Agent 与路由
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </a>
-            </div>
-          </div>
-        </div>
+        <nav class="quiet-links reveal" aria-label="入口">
+          <a href="/dashboard">台</a>
+          <a href="/agent">聊</a>
+          <a href="/docs/">记</a>
+        </nav>
       </div>
     </section>
 
@@ -2215,25 +2138,25 @@
               </span>
               <span class="logo-title">
                 <span class="jp">グリッドユニバース研究所</span>
-                <span class="en">Grid Universe Research Base</span>
+                <span class="en">GRID UNIVERSE</span>
               </span>
             </a>
-            <p>把想法变成研究结论——一个属于グリッドユニバース的个人研究据点。God's in his heaven, all's right with the world.</p>
+            <p>God's in his heaven, all's right with the world.</p>
           </div>
           <div class="footer-col">
-            <h4>产品</h4>
+            <h4>入口</h4>
             <ul>
-              <li><a href="/agent">工作站</a></li>
-              <li><a href="/skills/">Skill 试用</a></li>
-              <li><a href="/docs/">业务架构</a></li>
+              <li><a href="/dashboard">台</a></li>
+              <li><a href="/agent">聊</a></li>
+              <li><a href="/docs/">记</a></li>
             </ul>
           </div>
           <div class="footer-col">
-            <h4>文档</h4>
+            <h4>记</h4>
             <ul>
-              <li><a href="/docs">文档中心</a></li>
-              <li><a href="/docs/agents">Agent 工作逻辑</a></li>
-              <li><a href="/docs/skill">Skill 接入规范</a></li>
+              <li><a href="/docs/">概览</a></li>
+              <li><a href="/docs/agents">回路</a></li>
+              <li><a href="/docs/skill">边界</a></li>
             </ul>
           </div>
           <div class="footer-col">
@@ -2444,7 +2367,7 @@
 
       // ===== ACCESS CODE 打字机效果 =====
       (function () {
-        const target = 'ACCESS CODE';
+        const target = 'STANDBY';
         const el = document.getElementById('accessTyping');
         const cursor = document.getElementById('accessCursor');
         let i = 0;
@@ -2466,11 +2389,10 @@
         if (!form) return;
         const go = (q) => {
           const text = (q || input.value || '').trim();
-          const stock = /\d{6}/.test(text);
-          const agent = stock ? 'stock' : 'general';
-          const params = new URLSearchParams({ name: agent });
+          const params = new URLSearchParams();
           if (text) params.set('q', text);
-          location.href = '/agent?' + params.toString();
+          const qs = params.toString();
+          location.href = '/agent' + (qs ? '?' + qs : '');
         };
         form.addEventListener('submit', (e) => {
           e.preventDefault();
