@@ -894,10 +894,14 @@ def context_build_payload(
     duration_ms: int,
     status: str = "COMPLETE",
     error_code: str | None = None,
+    tokenizer_version: str = CONSERVATIVE_TOKENIZER_VERSION,
+    compression_version: str = COMPRESSION_VERSION,
 ) -> dict[str, Any]:
     """ContextBuildResult → data 服务 ``/runs/{id}/context-builds`` 请求体。
 
     items 必须是本次构建的请求条目(与 report.decisions 一一对应)。
+    tokenizer_version/compression_version 可按批次口径覆盖(session-cross
+    的 tiktoken / multi-factor-v2 批次),默认保守口径 + structured-text-v1。
     """
 
     report = result.report
@@ -949,8 +953,8 @@ def context_build_payload(
     compressed = [decision for decision in report.decisions if decision.action is ContextAction.COMPRESSED]
     return {
         "strategy": report.strategy.value,
-        "tokenizerVersion": CONSERVATIVE_TOKENIZER_VERSION,
-        "compressionVersion": COMPRESSION_VERSION,
+        "tokenizerVersion": tokenizer_version,
+        "compressionVersion": compression_version,
         "tokenBudget": report.token_budget,
         "originalTokens": report.original_tokens,
         "workingTokens": report.working_tokens,

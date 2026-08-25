@@ -131,7 +131,7 @@ ON CONFLICT DO NOTHING;
 
 -- 登记
 INSERT INTO touchstone.database_changes (script_name, description) VALUES
-('20260823-trim-simple-add-complex.sql', '题库重构:精简63道单工具用例+新增8道多工具复杂用例(cxm2-*,6-7工具链),非金融主导')
+('20260823-trim-simple-add-complex.sql', '题库重构:精简64道单工具用例+新增8道多工具复杂用例(cxm2-*,6-7工具链),非金融主导')
 ON CONFLICT DO NOTHING;
 
 COMMIT;

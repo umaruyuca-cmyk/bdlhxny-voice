@@ -1,9 +1,8 @@
-"""模型切换:按账号的 LLM 接入配置(查/存/连通性测试)与批次接线。
+"""LLM 配置口径:env 是唯一真源(无账号级可配置模块)。
 
-安全契约:
-- 对外 API 永不回明文密钥(仅 hasApiKey/keyLast4);
-- 发起批次时读取发起者配置构建客户端,密钥不得进入
-  fixed_conditions / model_config / 运行请求 / 任何工件载荷。
+- GET/PUT /api/v1/llm-config 已删除,返回 404;
+- POST /api/v1/llm-config/test 只读探测服务端 env,不接收配置体;
+- 发起批次不再读取账号配置,密钥只存在于服务端 env。
 """
 
 from __future__ import annotations
@@ -23,15 +22,11 @@ SECRET = "sk-live-abcdef123456"
 
 
 class FakeLlmData:
-    def __init__(self) -> None:
-        self.configs: dict[str, dict[str, Any]] = {}
-        self.batch_fixed_conditions: list[dict[str, Any]] = []
+    """最小 data 面账号配置方法已不存在——若引擎仍调用会 AttributeError,测试即失败。"""
 
-    # -- 登录会话 --
     def verify_session(self, token: str) -> dict[str, Any] | None:
         return {"accountId": "acct-1", "username": "owner"} if token == "t" else None
 
-    # -- 题库与批次(最小面) --
     def list_cases(self) -> list[dict[str, Any]]:
         return [{"id": "research-01", "variants": [{"variantId": "default"}]}]
 
@@ -42,20 +37,10 @@ class FakeLlmData:
         self.batch_fixed_conditions.append(fixed_conditions)
         return "batch-1"
 
+    batch_fixed_conditions: list[dict[str, Any]] = []
+
     def complete_batch(self, batch_id: str, status: str) -> None:
         pass
-
-    # -- LLM 配置 --
-    def get_llm_config(self, account_id: str) -> dict[str, Any] | None:
-        return self.configs.get(account_id)
-
-    def save_llm_config(self, account_id: str, *, base_url: str, model: str, api_key: str | None) -> dict[str, Any]:
-        current = self.configs.get(account_id) or {}
-        merged_key = api_key if api_key is not None else current.get("apiKey")
-        if api_key == "":
-            merged_key = None
-        self.configs[account_id] = {"baseUrl": base_url, "model": model, "apiKey": merged_key}
-        return {"baseUrl": base_url, "model": model}
 
 
 @pytest.fixture()
@@ -74,107 +59,76 @@ def _auth() -> dict[str, str]:
     return {"Authorization": "Bearer t"}
 
 
-def test_get_config_unconfigured(client: TestClient) -> None:
-    resp = client.get("/api/v1/llm-config", headers=_auth())
-    assert resp.status_code == 200
-    assert resp.json()["configured"] is False
+def test_account_config_endpoints_removed(client: TestClient) -> None:
+    """账号级 LLM 配置模块已删除:读写端点不存在。"""
 
-
-def test_save_then_get_returns_sanitized_view(client: TestClient, fake_data: FakeLlmData) -> None:
-    resp = client.put(
-        "/api/v1/llm-config",
-        json={"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "api_key": SECRET},
-        headers=_auth(),
+    assert client.get("/api/v1/llm-config", headers=_auth()).status_code == 404
+    assert (
+        client.put(
+            "/api/v1/llm-config",
+            json={"base_url": "https://api.deepseek.com/v1", "model": "x", "api_key": SECRET},
+            headers=_auth(),
+        ).status_code
+        == 404
     )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["configured"] is True
-    assert body["model"] == "deepseek-chat"
-    assert body["keyLast4"] == SECRET[-4:]
-    assert SECRET not in resp.text, "对外 API 不得回明文密钥"
-
-    view = client.get("/api/v1/llm-config", headers=_auth()).json()
-    assert SECRET not in str(view)
 
 
-def test_probe_endpoint_reports_provider_errors(
-    client: TestClient, fake_data: FakeLlmData, monkeypatch: pytest.MonkeyPatch
+def test_probe_endpoint_uses_env_only(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    client.put(
-        "/api/v1/llm-config",
-        json={"base_url": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4.7-flash", "api_key": SECRET},
-        headers=_auth(),
-    )
-    monkeypatch.setattr(run_api, "_probe_llm", lambda b, m, k: (False, "HTTP 429: 余额不足"))
-    resp = client.post("/api/v1/llm-config/test", headers=_auth())
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is False
-    assert "余额不足" in body["detail"]
-    assert SECRET not in resp.text
+    """连通性测试只读 env:配置体即使传入也不改变探测目标。"""
 
-    monkeypatch.setattr(run_api, "_probe_llm", lambda b, m, k: (True, "连接成功,模型可用"))
-    assert client.post("/api/v1/llm-config/test", headers=_auth()).json()["ok"] is True
-
-
-def test_batch_reads_requester_config_and_keeps_secret_out(
-    client: TestClient, fake_data: FakeLlmData, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
-) -> None:
-    """发起批次读取发起者配置;密钥绝不进入 fixed_conditions。"""
-    client.put(
-        "/api/v1/llm-config",
-        json={"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "api_key": SECRET},
-        headers=_auth(),
-    )
-    monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.internal/v1")
+    monkeypatch.setenv("LLM_MODEL", "env-model")
+    monkeypatch.setenv("LLM_API_KEY", SECRET)
     captured: dict[str, Any] = {}
 
-    def fake_execute(
-        _request: Any, _catalog: Any, job: Any = None, llm_config: Any = None
-    ) -> tuple[dict[str, Any], list[Any]]:
-        captured["llm_config"] = llm_config
-        return {"cases": [], "run_records": []}, []
+    def fake_probe(base_url: str, model: str, api_key: str) -> tuple[bool, str]:
+        captured.update(base_url=base_url, model=model, api_key=api_key)
+        return True, "连接成功,模型可用"
 
-    monkeypatch.setattr(run_api, "_execute_eval", fake_execute)
+    monkeypatch.setattr(run_api, "_probe_llm", fake_probe)
+    body = client.post("/api/v1/llm-config/test", headers=_auth()).json()
+    assert body["ok"] is True
+    assert captured["base_url"] == "https://gateway.example.internal/v1"
+    assert captured["model"] == "env-model"
+    assert captured["api_key"] == SECRET
+    # 携带配置体也不生效:端点无 body 参数,请求体被忽略,仍探测 env
     resp = client.post(
-        "/api/v1/eval-batches",
-        json={"case_ids": ["research-01"], "runs": 1, "include_react": False},
+        "/api/v1/llm-config/test",
+        json={"base_url": "https://other.example/v1", "model": "other", "api_key": "k"},
         headers=_auth(),
     )
     assert resp.status_code == 200
-    job_id = resp.json()["job_id"]
-    for _ in range(50):
-        job = client.get(f"/api/v1/jobs/{job_id}", headers=_auth()).json()
-        if job["status"] != "running":
-            break
-        import time
-
-        time.sleep(0.02)
-    assert job["status"] == "done"
-    assert captured["llm_config"] is not None
-    assert captured["llm_config"]["apiKey"] == SECRET  # 内部构建客户端可用
-    for fixed in fake_data.batch_fixed_conditions:
-        assert SECRET not in str(fixed), "密钥不得进入 fixed_conditions"
+    assert resp.json()["baseUrl"] == "https://gateway.example.internal/v1"
+    assert SECRET not in resp.text
 
 
-def test_account_config_model_overrides_request_default(
+def test_probe_endpoint_reports_missing_env(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    body = client.post("/api/v1/llm-config/test", headers=_auth()).json()
+    assert body["ok"] is False
+    assert "LLM_API_KEY" in body["error"]
+
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    body = client.post("/api/v1/llm-config/test", headers=_auth()).json()
+    assert body["ok"] is False
+    assert "LLM_BASE_URL" in body["error"] and "唯一真源" in body["error"]
+
+
+def test_batch_never_reads_account_config(
     client: TestClient, fake_data: FakeLlmData, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    """账号绑定的模型必须覆盖请求默认(env 缺省),否则会把错误模型名发给另一提供商。
+    """发起批次不触碰账号配置;模型名取请求默认(env 缺省链),密钥不进 fixed_conditions。"""
 
-    回归:配置切到硅基流动后,请求默认仍取服务端 env 的 glm 标签,
-    发给硅基流动必然 400 Model does not exist,整批数据失效。
-    """
-    client.put(
-        "/api/v1/llm-config",
-        json={"base_url": "https://api.siliconflow.cn/v1", "model": "Qwen/Qwen3.6-35B-A3B", "api_key": SECRET},
-        headers=_auth(),
-    )
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
 
-    def fake_execute(
-        _request: Any, _catalog: Any, job: Any = None, llm_config: Any = None
-    ) -> tuple[dict[str, Any], list[Any]]:
+    def fake_execute(_request: Any, _catalog: Any, job: Any = None) -> tuple[dict[str, Any], list[Any]]:
         return {"run_records": []}, []
 
     monkeypatch.setattr(run_api, "_execute_eval", fake_execute)
@@ -193,6 +147,5 @@ def test_account_config_model_overrides_request_default(
 
         time.sleep(0.02)
     assert job["status"] == "done"
-    fixed = fake_data.batch_fixed_conditions[-1]
-    assert fixed["model"] == "Qwen/Qwen3.6-35B-A3B", "批次记录的模型必须与账号配置一致"
-    assert job["request"]["model"] == "Qwen/Qwen3.6-35B-A3B"
+    for fixed in fake_data.batch_fixed_conditions:
+        assert SECRET not in str(fixed), "密钥不得进入 fixed_conditions"

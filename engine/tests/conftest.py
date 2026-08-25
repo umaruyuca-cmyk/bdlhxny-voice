@@ -27,7 +27,11 @@ def registry_snapshot():
     return load_and_validate(build_seeded_store())
 
 
-@pytest.fixture(scope="session")
-def seeded_store():
-    """未校验的内存仓储（需要自定义行时用 copy 修改）。"""
-    return build_seeded_store()
+@pytest.fixture
+def finance_pack():
+    """启用金融场景包;结束后恢复平台默认(无垂直词表/场景)。"""
+    from bdlh_runtime.scenarios import disable_all_scenario_packs, enable_scenario_pack
+
+    enable_scenario_pack("finance")
+    yield
+    disable_all_scenario_packs()

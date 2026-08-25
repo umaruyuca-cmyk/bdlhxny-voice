@@ -53,7 +53,7 @@ def _loop(registry_snapshot, llm: FakeChatModel, *, max_tool_calls: int = 20) ->
 
 class TestSearchHit:
     @pytest.mark.asyncio
-    async def test_hit_loads_quote_into_next_bind(self, registry_snapshot):
+    async def test_hit_loads_quote_into_next_bind(self, registry_snapshot, finance_pack):
         llm = FakeChatModel(
             [
                 _search_call(HIT_QUERY, "s1"),
@@ -75,7 +75,7 @@ class TestSearchHit:
 
 class TestSearchMissFallback:
     @pytest.mark.asyncio
-    async def test_two_consecutive_misses_fall_back_to_scoped_wide_pack(self, registry_snapshot):
+    async def test_two_consecutive_misses_fall_back_to_scoped_wide_pack(self, registry_snapshot, finance_pack):
         llm = FakeChatModel(
             [
                 _search_call(MISS_QUERY, "m1"),
@@ -94,7 +94,7 @@ class TestSearchMissFallback:
         assert "market.get_realtime_quote" in wide
         assert loop._loader.fallback_active is True
 
-    def test_single_miss_does_not_fallback(self, registry_snapshot):
+    def test_single_miss_does_not_fallback(self, registry_snapshot, finance_pack):
         loader = ToolLoader(
             catalog_from_snapshot(registry_snapshot),
             tool_loading="search",
@@ -108,7 +108,7 @@ class TestSearchMissFallback:
 
 
 class TestSearchCache:
-    def test_hits_stay_loaded_across_searches(self, registry_snapshot):
+    def test_hits_stay_loaded_across_searches(self, registry_snapshot, finance_pack):
         loader = ToolLoader(
             catalog_from_snapshot(registry_snapshot),
             tool_loading="search",
@@ -123,7 +123,7 @@ class TestSearchCache:
         assert "market.get_realtime_quote" in loader.cached_names
 
     @pytest.mark.asyncio
-    async def test_session_cache_avoids_dropping_prior_hit(self, registry_snapshot):
+    async def test_session_cache_avoids_dropping_prior_hit(self, registry_snapshot, finance_pack):
         llm = FakeChatModel(
             [
                 _search_call(HIT_QUERY, "c1"),
@@ -142,7 +142,7 @@ class TestSearchCache:
 
 class TestSearchBudget:
     @pytest.mark.asyncio
-    async def test_search_tools_counts_toward_budget(self, registry_snapshot):
+    async def test_search_tools_counts_toward_budget(self, registry_snapshot, finance_pack):
         llm = FakeChatModel(
             [
                 _search_call(HIT_QUERY, "b1"),

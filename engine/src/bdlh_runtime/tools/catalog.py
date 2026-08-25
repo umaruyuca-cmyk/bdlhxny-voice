@@ -4,8 +4,8 @@
 （ToolCatalog）是唯一真源**——装载器（T2-3）、检索索引（T2-4）、治理中间件
 （T2-2）均从目录读取，不维护第二份清单。
 
-C-1 红线物理化：目录 ``register`` 内置交易语义守卫——名字或描述含交易执行
-语义的工具**物理上无法注册**，语义层无须也无法「识别并放行」危险操作。
+危险动作语义物理化：目录 ``register`` 调用危险动作注册表——命中已配置词表的
+工具**物理上无法注册**。默认词表为空；垂直领域词表由可选场景包注入。
 
 数据源迁移（保留引用）：本地与 Java/Web 工具清单自 ``tools/capabilities.py``
 （``CapabilityRegistry``，DB RegistrySnapshot 派生）迁移；MCP 工具经目录代理
@@ -16,7 +16,6 @@ C-1 红线物理化：目录 ``register`` 内置交易语义守卫——名字�
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from enum import StrEnum
 from typing import Any
@@ -24,6 +23,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from bdlh_runtime.registry import RegistrySnapshot
+from bdlh_runtime.scenarios.dangerous_actions import (
+    is_dangerous_action_semantic,
+    is_trading_semantic,  # 兼容旧测试导入路径
+)
 
 from .capabilities import CapabilityRegistry, CapabilitySpec, registry_from_snapshot
 
@@ -46,44 +49,6 @@ class CostHint(StrEnum):
     PREMIUM = "premium"
 
 
-# ── C-1 交易语义红线（物理守卫）──────────────────────────────────────────────
-
-#: 英文交易执行语义：按单词边界匹配（归一化下划线之后）。
-_TRADING_EN_PATTERN = re.compile(
-    r"\b(buy|sell|purchase|trade|trading|order|place_order|execute_order)\b",
-    re.IGNORECASE,
-)
-
-#: 中文交易执行语义：不用 ``\b``（CJK 与 ``\w`` 同属单词字符，边界匹配会漏判）。
-_TRADING_ZH_TERMS = ("买入", "卖出", "下单", "挂单", "撤单", "交易执行", "调仓执行")
-
-#: 显式豁免：名称/描述含"交易/下单"字样但语义为只读查询的工具（白名单优先于模式）。
-_TRADING_EXEMPT_NAMES = frozenset(
-    {
-        # 只读交易历史查询：查询已发生交易，不承载交易执行
-        "portfolio.get_transaction_history",
-        # GT-6 通用目录的只读订单状态查询：名字含 order 但只查询,不下单
-        "order.get_status",
-    }
-)
-
-
-def is_trading_semantic(name: str, description: str) -> bool:
-    """判定工具是否携带交易执行语义（C-1 守卫，供注册与测试使用）。
-
-    名字中的 ``_`` / ``.`` / ``-`` 先归一化为空格再匹配——否则 ``sell_all``
-    这类下划线复合词会因 ``\\b`` 把下划线视为单词字符而漏判。中文术语按子串
-    匹配，避免 CJK 无单词边界而漏判。
-    """
-    if name in _TRADING_EXEMPT_NAMES:
-        return False
-    normalized_name = re.sub(r"[._\-]", " ", name)
-    haystacks = (normalized_name, description)
-    if any(_TRADING_EN_PATTERN.search(text) for text in haystacks):
-        return True
-    return any(term in text for text in haystacks for term in _TRADING_ZH_TERMS)
-
-
 # ── pydantic 参数契约（§4.1：parameters 由契约投影 JSON Schema）──────────────
 
 
@@ -91,14 +56,14 @@ class SymbolArgs(BaseModel):
     """单标的查询。"""
 
     model_config = ConfigDict(extra="forbid")
-    symbol: str = Field(description="证券代码或名称，如 300750")
+    symbol: str = Field(description="标的代码或名称")
 
 
 class HistoricalPricesArgs(BaseModel):
-    """历史行情查询。"""
+    """历史价格序列查询。"""
 
     model_config = ConfigDict(extra="forbid")
-    symbol: str = Field(description="证券代码或名称，如 300750")
+    symbol: str = Field(description="标的代码或名称")
     lookback_days: int = Field(ge=1, le=750, description="回看天数")
 
 
@@ -118,12 +83,12 @@ class DeepSearchArgs(BaseModel):
 
 
 class ValuationInputsArgs(BaseModel):
-    """持仓估值重算输入（上游 Observation 的 JSON 文本）。"""
+    """结构化重算输入（上游 Observation 的 JSON 文本）。"""
 
     model_config = ConfigDict(extra="forbid")
-    positions_observation: str = Field(description="持仓 Observation 的 JSON 文本")
+    positions_observation: str = Field(description="头寸 Observation 的 JSON 文本")
     account_observation: str = Field(description="账户 Observation 的 JSON 文本")
-    quote_observations: str = Field(description="行情 Observation 列表的 JSON 文本")
+    quote_observations: str = Field(description="报价 Observation 列表的 JSON 文本")
 
 
 class EmptyArgs(BaseModel):
@@ -140,25 +105,18 @@ class SearchToolsArgs(BaseModel):
     top_k: int = Field(default=3, ge=1, le=8, description="返回条数上限")
 
 
+#: 核心参数契约。垂直领域工具契约由场景包在启用时并入。
 _PARAM_MODELS: dict[str, type[BaseModel]] = {
-    "market.resolve_instrument": SymbolArgs,
-    "market.get_realtime_quote": SymbolArgs,
-    "market.get_historical_prices": HistoricalPricesArgs,
-    "market.get_financial_statements": SymbolArgs,
-    "market.get_valuation": SymbolArgs,
-    "market.get_industry_context": SymbolArgs,
-    "market.get_money_flow": SymbolArgs,
-    "market.get_news": SymbolArgs,
     "research.web_search": WebSearchArgs,
     "research.deep_search": DeepSearchArgs,
     "analysis.run_analysis": EmptyArgs,
-    "portfolio.get_current_positions": EmptyArgs,
-    "portfolio.get_account_snapshot": EmptyArgs,
-    "portfolio.get_transaction_history": EmptyArgs,
-    "portfolio.build_current_valuation": ValuationInputsArgs,
-    "user.get_risk_profile": EmptyArgs,
     "search_tools": SearchToolsArgs,
 }
+
+
+def register_param_models(models: dict[str, type[BaseModel]]) -> None:
+    """场景包注入额外工具的 pydantic 参数契约。"""
+    _PARAM_MODELS.update(models)
 
 
 def _schema_from_model(model: type[BaseModel]) -> dict[str, Any]:
@@ -173,8 +131,8 @@ def _schema_from_model(model: type[BaseModel]) -> dict[str, Any]:
 
 #: 已知参数名 → JSON Schema 类型片段（无 pydantic 契约时的兜底投影）。
 _ARGUMENT_TYPES: dict[str, dict[str, Any]] = {
-    "symbol": {"type": "string", "description": "证券代码或名称，如 300750"},
-    "symbols": {"type": "array", "items": {"type": "string"}, "description": "证券代码列表"},
+    "symbol": {"type": "string", "description": "标的代码或名称"},
+    "symbols": {"type": "array", "items": {"type": "string"}, "description": "标的代码列表"},
     "lookback_days": {"type": "integer", "minimum": 1, "maximum": 750, "description": "回看天数"},
     "query": {"type": "string", "description": "检索查询词"},
     "question": {"type": "string", "description": "研究问题"},
@@ -204,74 +162,32 @@ def _parameters_for(name: str, required_arguments: Iterable[str]) -> dict[str, A
 
 # ── 双目的 description（模型选择 + embedding 检索）──────────────────────────
 
-#: 目录层撰写；不覆盖 DB 运维文案。每条含「用途」与「检索关键词」。
+#: 核心目录描述。垂直领域工具描述由场景包 overlay 注入。
 _DUAL_PURPOSE_DESCRIPTIONS: dict[str, str] = {
-    "market.resolve_instrument": (
-        "把用户说的股票名、简称或代码解析成标准标的（代码、名称、市场）。"
-        "用于「宁德时代是哪个代码」「300750 是什么」。检索关键词：证券代码、标的解析、股票名称。"
-    ),
-    "market.get_realtime_quote": (
-        "查询一只证券的最新行情（最新价、涨跌幅、成交额）。"
-        "用于「现在什么价」「今天涨了多少」。检索关键词：实时报价、最新价、涨跌、盘口。"
-    ),
-    "market.get_historical_prices": (
-        "查询一只证券的历史 OHLCV 价格序列。"
-        "用于「近一年走势」「上个月收盘价」。检索关键词：历史行情、K线、OHLCV、回看。"
-    ),
-    "market.get_financial_statements": (
-        "查询一只证券的标准化财务报表（利润表、资产负债表、现金流量表）。"
-        "用于「营收多少」「资产负债结构」。检索关键词：财报、三大报表、基本面。"
-    ),
-    "market.get_valuation": (
-        "查询一只证券的估值指标（市盈率、市净率等）。"
-        "用于「估值高不高」「PE 多少」。检索关键词：估值、市盈率、市净率、PE、PB。"
-    ),
-    "market.get_industry_context": (
-        "查询标的所属行业与行业背景。用于「这只股票是哪个行业」「同行对比」。检索关键词：行业、板块、赛道。"
-    ),
-    "market.get_money_flow": (
-        "查询标的资金流向。用于「主力在买还是在卖」「资金净流入」。检索关键词：资金流、主力、净流入。"
-    ),
-    "market.get_news": (
-        "查询与标的相关的结构化新闻。用于「最近有什么消息」「公司公告」。检索关键词：新闻、资讯、公告。"
-    ),
     "research.web_search": (
         "检索最新外部公开资料并带来源返回。"
         "用于「搜一下最新报道」「公开资料里怎么说」。检索关键词：网页检索、公开资料、来源。"
     ),
     "research.deep_search": (
         "对研究任务做多轮拆题、检索、压缩，返回结构化研究包（premium，预算加权）。"
-        "用于「深入调研这只股票」「给一份研究报告」。检索关键词：深度研究、调研、ResearchBundle。"
+        "用于「深入调研某个主题」「给一份研究报告」。检索关键词：深度研究、调研、ResearchBundle。"
     ),
     "analysis.run_analysis": (
-        "对已标准化的行情、持仓或画像数据执行确定性金融分析，返回类型化结果。"
-        "用于「帮我算一下」「组合诊断」「适合度筛查」。检索关键词：分析引擎、诊断、评分、筛查。"
-    ),
-    "portfolio.get_current_positions": (
-        "读取当前登录用户的持仓列表（需登录）。"
-        "用于「我现在持有什么」「仓位怎么分布」。检索关键词：持仓、仓位、股票组合。"
-    ),
-    "portfolio.get_account_snapshot": (
-        "读取当前登录用户的账户快照（需登录）。"
-        "用于「账户里还有多少现金」「总资产多少」。检索关键词：账户、现金、总资产。"
-    ),
-    "portfolio.get_transaction_history": (
-        "读取当前登录用户已发生的成交流水（只读查询，不下达任何指令）。"
-        "用于「我上次什么时候买的」「历史成交」。检索关键词：成交流水、历史记录、已发生。"
-    ),
-    "portfolio.build_current_valuation": (
-        "基于最新行情对当前持仓做确定性估值重算（需登录）。"
-        "用于「按现价我的组合值多少」「浮盈浮亏」。检索关键词：估值重算、市值、浮盈。"
-    ),
-    "user.get_risk_profile": (
-        "读取当前登录用户的风险画像与金融档案（需登录）。"
-        "用于「我的风险承受能力」「画像是稳健还是进取」。检索关键词：风险画像、风险偏好、档案。"
+        "对已标准化的结构化数据执行确定性分析，返回类型化结果。"
+        "用于「帮我算一下」「做一次诊断」。检索关键词：分析引擎、诊断、评分。"
     ),
     "search_tools": (
         "按自然语言描述从当前场景与身份可见的工具目录中检索可用工具，命中后装载进后续上下文。"
-        "用于「找一个查最新价的工具」「有没有持仓查询」。检索关键词：工具检索、search_tools、装载。"
+        "用于「找一个能查数据的工具」。检索关键词：工具检索、search_tools、装载。"
     ),
 }
+
+
+def _description_for(name: str, fallback: str) -> str:
+    from bdlh_runtime.scenarios import apply_description_overlays
+
+    base = _DUAL_PURPOSE_DESCRIPTIONS.get(name, fallback)
+    return apply_description_overlays(name, base)
 
 
 # ── ToolCard 契约（§4.1 字段严格对齐）────────────────────────────────────────
@@ -280,7 +196,7 @@ _DUAL_PURPOSE_DESCRIPTIONS: dict[str, str] = {
 class ToolCard(BaseModel):
     """统一工具登记卡。
 
-    - ``name``：全局唯一，点分命名空间（如 ``market.get_quote``）；
+    - ``name``：全局唯一，点分命名空间（如 ``web.search``）；
     - ``description``：面向「模型选择 + embedding 检索」双目的撰写；
     - ``parameters``：JSON Schema（由参数契约投影）；
     - ``origin``：``local`` | ``mcp``；
@@ -326,13 +242,13 @@ class ToolCatalog:
         """登记工具卡。
 
         - 重名拒绝（全局唯一）；
-        - C-1 守卫：交易执行语义的名字 / 描述物理拒绝注册；
+        - 危险动作语义守卫：命中已注册词表的名字 / 描述物理拒绝注册；
         - 只读红线：``read_only=False`` 的工具默认拒绝（红线物理化，§4.4）。
         """
         if card.name in self._cards:
             raise ValueError(f"ToolCard already registered: {card.name}")
-        if is_trading_semantic(card.name, card.description):
-            raise ValueError(f"C-1 红线：交易执行语义的工具不得注册：{card.name}")
+        if is_dangerous_action_semantic(card.name, card.description):
+            raise ValueError(f"危险动作红线：工具不得注册：{card.name}")
         if not card.read_only:
             raise ValueError(f"只读红线：目录仅登记只读工具（read_only=False 被拒）：{card.name}")
         self._cards[card.name] = card
@@ -348,7 +264,8 @@ class ToolCatalog:
         return name in self._cards
 
     def list(self) -> list[ToolCard]:
-        return [self._cards[name] for name in sorted(self._cards)]
+        """按登记顺序返回(对比用例依赖可见工具顺序稳定)。"""
+        return list(self._cards.values())
 
     def list_visible(self, scopes: Iterable[str]) -> list[ToolCard]:
         """按场景 / 身份标签过滤可见工具（scoped 装载与检索权限过滤共用）。
@@ -375,10 +292,6 @@ def _cost_hint_for(name: str) -> CostHint:
     if name == "research.deep_search":
         return CostHint.PREMIUM
     return CostHint.NORMAL
-
-
-def _description_for(name: str, fallback: str) -> str:
-    return _DUAL_PURPOSE_DESCRIPTIONS.get(name, fallback)
 
 
 def _card_from_spec(spec: CapabilitySpec) -> ToolCard:
@@ -444,7 +357,7 @@ def register_mcp_tool(
 ) -> ToolCard:
     """把动态发现的 MCP 工具以代理形态登记进目录。
 
-    治理规则对本地与 MCP 工具一致生效（§4.4）：C-1 守卫与只读红线同样约束
+    治理规则对本地与 MCP 工具一致生效（§4.4）：危险动作守卫与只读红线同样约束
     MCP 工具；新增 MCP server 自动进入拦截链，无需治理侧适配。
     """
     card = ToolCard(

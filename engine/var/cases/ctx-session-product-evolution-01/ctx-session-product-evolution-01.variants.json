@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.0",
+  "case_id": "ctx-session-product-evolution-01",
+  "case_version": 1,
+  "source_session": "ctx-session-product-evolution-01.session.json",
+  "gold_file": "gold/ctx-session-product-evolution-01.gold.json",
+  "common_conditions": {
+    "current_question_source": "session.runtime_case.current_question",
+    "model": "configured-model",
+    "temperature": 0.1,
+    "tool_catalog_version": "generic-mock-tools-v1",
+    "fixture_set_id": "ctx-session-product-evolution-01-tools-v1",
+    "same_visible_tools": true,
+    "same_repeats": true,
+    "compile_once_per_strategy_and_freeze": true,
+    "gold_visible_to_compiler": false,
+    "gold_visible_to_agent": false
+  },
+  "agent_modes": [
+    "baseline-tool-calling",
+    "langgraph-react",
+    "full-system"
+  ],
+  "context_variants": [
+    {
+      "variant_id": "full-session",
+      "title": "完整 Session",
+      "strategy": "full",
+      "strategy_version": "full-session-v1",
+      "token_budget": 65536,
+      "source_events": "all",
+      "preserve_event_order": true,
+      "preserve_tool_call_result_pairs": true,
+      "uses_custom_budgeted_algorithm": false,
+      "uses_summary_model": false,
+      "overflow_behavior": "invalid_context_too_large",
+      "notes": "完整保留全部 Session 事件，仅做统一序列化、安全隔离、Token 计数和记录。"
+    },
+    {
+      "variant_id": "recent-window",
+      "title": "最近窗口",
+      "strategy": "recent-window",
+      "strategy_version": "recent-window-v1",
+      "token_budget": 8192,
+      "reserved_tokens": {
+        "common_system_rules_and_current_question": 768,
+        "recent_session_events_max": 7424
+      },
+      "selection": "从 Session 结尾向前选择完整事件，达到预算后停止",
+      "preserve_event_order": true,
+      "preserve_tool_call_result_pairs": true,
+      "always_keep_common_system_rules": true,
+      "always_keep_current_question": true,
+      "uses_custom_budgeted_algorithm": false,
+      "uses_summary_model": false,
+      "notes": "简单窗口基准，不使用项目的按预算选择算法。"
+    },
+    {
+      "variant_id": "single-summary",
+      "title": "一次性摘要",
+      "strategy": "single-summary",
+      "strategy_version": "single-summary-v1",
+      "token_budget": 8192,
+      "reserved_tokens": {
+        "common_system_rules_and_current_question": 768,
+        "recent_session_events": 2048,
+        "history_summary_max": 5376
+      },
+      "summary_input": "recent_session_events 之前的全部允许事件",
+      "summary_method": "独立摘要基准，不读取 gold，不调用 budgeted-session 的选择结果",
+      "summary_temperature": 0,
+      "summary_generate_once_and_freeze": true,
+      "preserve_recent_tool_call_result_pairs": true,
+      "uses_custom_budgeted_algorithm": false,
+      "uses_summary_model": true,
+      "notes": "摘要成本单独记录，三个 Agent 使用同一份冻结摘要。"
+    },
+    {
+      "variant_id": "budgeted-session",
+      "title": "按预算选择和压缩",
+      "strategy": "budgeted-session",
+      "strategy_version": "budgeted-session-v1",
+      "token_budget": 8192,
+      "reserved_tokens": {
+        "common_system_rules_and_current_question": 768,
+        "selected_session_context_max": 7424
+      },
+      "source_events": "all",
+      "representations": [
+        "full",
+        "structured_summary",
+        "text_summary",
+        "reference",
+        "omit"
+      ],
+      "required_behavior": "公共规则、当前问题、仍有效硬约束和当前执行状态不得因普通评分删除；强制内容超预算时构建失败",
+      "selection": "不读取 gold；按来源、时间、当前任务相关性、决定有效性、工具结果新旧、依赖和 Token 占用选择表示",
+      "preserve_event_order": true,
+      "preserve_tool_call_result_pairs": true,
+      "uses_custom_budgeted_algorithm": true,
+      "uses_summary_model": "only_when_text_summary_representation_is_enabled",
+      "notes": "项目待验证策略，必须和三个独立基准分开统计。"
+    }
+  ],
+  "compiled_context_artifact_required_fields": [
+    "case_id",
+    "case_version",
+    "source_session_hash",
+    "variant_id",
+    "strategy_version",
+    "token_budget",
+    "compiled_messages",
+    "compiled_context_hash",
+    "input_event_ids",
+    "kept_event_ids",
+    "compressed_event_ids",
+    "referenced_event_ids",
+    "omitted_event_ids",
+    "original_tokens",
+    "working_tokens",
+    "build_duration_ms",
+    "build_model_calls",
+    "build_input_tokens",
+    "build_output_tokens",
+    "build_cost",
+    "warnings"
+  ],
+  "matrix": [
+    {
+      "context_variant": "full-session",
+      "agent_mode": "baseline-tool-calling"
+    },
+    {
+      "context_variant": "full-session",
+      "agent_mode": "langgraph-react"
+    },
+    {
+      "context_variant": "full-session",
+      "agent_mode": "full-system"
+    },
+    {
+      "context_variant": "recent-window",
+      "agent_mode": "baseline-tool-calling"
+    },
+    {
+      "context_variant": "recent-window",
+      "agent_mode": "langgraph-react"
+    },
+    {
+      "context_variant": "recent-window",
+      "agent_mode": "full-system"
+    },
+    {
+      "context_variant": "single-summary",
+      "agent_mode": "baseline-tool-calling"
+    },
+    {
+      "context_variant": "single-summary",
+      "agent_mode": "langgraph-react"
+    },
+    {
+      "context_variant": "single-summary",
+      "agent_mode": "full-system"
+    },
+    {
+      "context_variant": "budgeted-session",
+      "agent_mode": "baseline-tool-calling"
+    },
+    {
+      "context_variant": "budgeted-session",
+      "agent_mode": "langgraph-react"
+    },
+    {
+      "context_variant": "budgeted-session",
+      "agent_mode": "full-system"
+    }
+  ]
+}

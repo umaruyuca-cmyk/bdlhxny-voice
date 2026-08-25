@@ -2,9 +2,12 @@
 
 ``scoped``：运行启动时按「场景标签 → 工具包」装载固定子集。
 ``search``：初始仅装载元工具 ``search_tools``；命中 ToolCard 会话缓存后
-进入后续 ``bind_tools``；连续未命中回退 research 宽包。
+进入后续 ``bind_tools``；连续未命中回退宽包。
 身份标签（``authenticated``）由调用方授予。装载结果交给循环 ``bind_tools``
 与治理中间件 G1。
+
+默认场景为 ``general``（领域中立通用工具组）。垂直领域场景映射由可选
+场景包注入，核心代码不硬编码垂直场景名。
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from bdlh_runtime.tools.search import (
     ToolSearchIndex,
 )
 
-#: 通用工具组(全部 96 个通用工具的功能组;复杂多工具用例依赖)
+#: 通用工具组(全部通用工具的功能组;复杂多工具用例依赖)
 _GENERIC_TOOLSETS = frozenset(
     {
         "web_read",
@@ -40,23 +43,48 @@ _GENERIC_TOOLSETS = frozenset(
         "education",
         "health_fitness",
         "image_design",
+        # 领域中立的检索/分析能力(垂直领域 toolset 仍由场景包注入)
+        "news_read",
+        "planning_compute",
     }
 )
 
-#: 场景标签 → 功能 toolset。
-#: "general" 含全部工具组(复杂多工具用例的默认场景);
-#: 金融场景保持原有定向装载;未识别场景回落 research。
-SCENE_TOOLSETS: dict[str, frozenset[str]] = {
-    "market": frozenset({"market_read", "fundamental_read", "news_read"}),
-    "portfolio": frozenset({"portfolio_read", "financial_profile_read", "planning_compute"}),
-    "research": frozenset({"market_read", "fundamental_read", "news_read", "planning_compute"}),
-    "watch": frozenset({"market_read", "portfolio_read", "financial_profile_read"}),
-    "general": _GENERIC_TOOLSETS | frozenset({"market_read", "fundamental_read", "news_read", "planning_compute"}),
+#: 平台核心场景映射(领域中立)。垂直场景由场景包 ``register_scene_toolsets`` 注入。
+_CORE_SCENE_TOOLSETS: dict[str, frozenset[str]] = {
+    "general": _GENERIC_TOOLSETS,
 }
 
-_DEFAULT_SCENE = "research"
-_WIDE_PACK_SCENE = "research"
+SCENE_TOOLSETS: dict[str, frozenset[str]] = dict(_CORE_SCENE_TOOLSETS)
+
+_DEFAULT_SCENE = "general"
+_WIDE_PACK_SCENE = "general"
 _ALLOWED_LOADING = frozenset({"scoped", "search"})
+
+
+def reset_scene_toolsets_to_core() -> None:
+    """测试/禁用场景包时恢复核心映射。"""
+    global _WIDE_PACK_SCENE
+    SCENE_TOOLSETS.clear()
+    SCENE_TOOLSETS.update(_CORE_SCENE_TOOLSETS)
+    _WIDE_PACK_SCENE = _DEFAULT_SCENE
+
+
+def register_scene_toolsets(mapping: dict[str, frozenset[str]]) -> None:
+    """场景包注入额外场景标签 → toolset。"""
+    for key, value in mapping.items():
+        SCENE_TOOLSETS[key] = frozenset(value)
+
+
+def extend_core_scene(scene: str, extra: frozenset[str]) -> None:
+    """在已有场景(通常 general)上并入额外 toolset。"""
+    base = SCENE_TOOLSETS.get(scene, frozenset())
+    SCENE_TOOLSETS[scene] = frozenset(base | extra)
+
+
+def set_wide_pack_scene(scene: str) -> None:
+    """search 连续未命中时的回退场景(场景包可改为垂直宽包)。"""
+    global _WIDE_PACK_SCENE
+    _WIDE_PACK_SCENE = scene
 
 
 class ToolLoader:
@@ -111,7 +139,7 @@ class ToolLoader:
         return loaded
 
     def load_for_turn(self, scene_tag: str, *, authenticated: bool = False) -> list[ToolCard]:
-        """当轮 ``bind_tools`` 集合：search 为元工具 + 缓存；回退后为 research 宽包。"""
+        """当轮 ``bind_tools`` 集合：search 为元工具 + 缓存；回退后为宽包。"""
         if self._tool_loading == "search" and not self._fallback:
             return self._search_pack()
         if self._fallback:

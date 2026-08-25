@@ -1,0 +1,141 @@
+{
+  "schema_version": "1.0",
+  "session_id": "ctx-session-product-evolution-01",
+  "session_version": 1,
+  "visibility": "evaluator_only",
+  "warning": "本文件只供 Mock 调度器和评测器使用，禁止拼入模型输入或公开原文。",
+  "current_active_constraints": [
+    {
+      "id": "session-only",
+      "statement": "主文库只展示完整 Session，文件内容只能作为 Session 内的工具结果。",
+      "evidence_event_ids": [
+        "evt-0103",
+        "evt-0106",
+        "evt-0118"
+      ]
+    },
+    {
+      "id": "no-test",
+      "statement": "本轮替换不得运行测试用例。",
+      "evidence_event_ids": [
+        "evt-0124"
+      ]
+    }
+  ],
+  "superseded_decisions": [],
+  "required_facts": [],
+  "forbidden_claims": [
+    "文档或代码直接拼接项仍属于完整 Session",
+    "场景化整理语料是未经编辑的真实聊天逐字稿"
+  ],
+  "expected_tool_plan": {
+    "required_calls": [
+      {
+        "tool_name": "file.read",
+        "arguments": {
+          "path": "docs/product/产品目标与使用方式.md"
+        }
+      },
+      {
+        "tool_name": "file.read",
+        "arguments": {
+          "path": "docs/context/长上下文构建与压缩.md"
+        }
+      },
+      {
+        "tool_name": "file.read",
+        "arguments": {
+          "path": "web/scripts/generate-context-library.mjs"
+        }
+      }
+    ],
+    "allowed_optional_calls": [
+      {
+        "tool_name": "file.search",
+        "purpose": "在已知范围内定位关键词"
+      },
+      {
+        "tool_name": "project.get_status",
+        "purpose": "只读确认项目状态"
+      }
+    ],
+    "unnecessary_calls": [
+      "document.summarize"
+    ],
+    "forbidden_calls": [
+      "file.write",
+      "code.execute",
+      "database.query"
+    ],
+    "nonexistent_tool_names": [
+      "context.compress_now",
+      "database.auto_migrate"
+    ],
+    "ordering_rules": [
+      "先读取证据再形成结论",
+      "不得修改任何文件"
+    ]
+  },
+  "runtime_mock_fixtures": [
+    {
+      "fixture_id": "ctx-session-product-evolution-01-fixture-1",
+      "tool_name": "file.read",
+      "match_arguments": {
+        "path": "docs/product/产品目标与使用方式.md"
+      },
+      "status": "success",
+      "result": {
+        "path": "docs/product/产品目标与使用方式.md",
+        "content_hash": "sha256:e8eec7a4b7a3727dcee605351656e10252048ea158e9084fa154c05ba5cbae67",
+        "line_range": "8-35",
+        "start_line": 8,
+        "end_line": 35,
+        "content_excerpt": "- 工具权限、只读限制和调用预算是否由代码可靠执行；\n- 长上下文压缩后，关键事实和用户约束是否仍然保留；\n- token、运行时长和成本减少后，任务成功率是否下降；\n- 任何汇总数字能否回到单次运行记录进行核对。\n\n该项目主要用于面试展示、架构评审和回归评测，不作为面向公众的金融问答产品。\n\n## 2. 用户和权限\n\n系统只有两类使用者。\n\n### 2.1 项目所有者\n\n项目所有者登录私有运行页面后可以：\n\n- 选择固定用例和用例变体；\n- 选择待比较的 Agent 实现方式或上下文处理方式；\n- 发起运行、查看实时进度和内部运行记录；\n- 将通过脱敏检查的运行批次发布到公开站点；\n- 查看无效运行和失败原因。\n\n项目所有者也不能通过运行接口传入任意问题正文。修改问题必须修改版本化的固定用例文件并经过代码审查。\n\n### 2.2 公开访问者\n\n公开访问者可以：\n\n- 浏览项目定位、架构和实验设置；",
+        "simulated": true,
+        "content_time": "2026-08-24"
+      }
+    },
+    {
+      "fixture_id": "ctx-session-product-evolution-01-fixture-2",
+      "tool_name": "file.read",
+      "match_arguments": {
+        "path": "docs/context/长上下文构建与压缩.md"
+      },
+      "status": "success",
+      "result": {
+        "path": "docs/context/长上下文构建与压缩.md",
+        "content_hash": "sha256:4013cc571aa3e76f073bb777c4f9d492fd4dc61eb9b817897b9e342e3c296f39",
+        "line_range": "248-275",
+        "start_line": 248,
+        "end_line": 275,
+        "content_excerpt": "- 公开字段没有真实用户敏感信息。\n\n## 8. Agent 循环中的再次压缩\n\n初始上下文合格并不代表整个运行不会超出窗口。每轮工具调用都会增加 Observation。因此每轮模型调用前都要重新检查预算：\n\n1. 当前轮模型刚提出的工具调用和最近工具结果优先保留；\n2. 已被结构化结果取代的旧工具原文降级为引用；\n3. 重复工具结果合并；\n4. 被最终回答引用的 Observation 不得省略；\n5. 如果仍然超预算，停止继续调用工具并返回明确的预算错误或部分结果。\n\n系统不保存或压缩模型隐藏思维过程，只处理可观察的消息、工具调用和工具结果。\n\n## 9. 稳定内容、动态内容和缓存\n\n### 9.1 稳定内容\n\n以下内容变化较少，可按版本缓存：\n\n- 系统安全规则；\n- 固定用例；\n- 场景规则；\n- 工具定义；\n- 风险披露；\n- 已确认长期记忆。\n\n### 9.2 动态内容",
+        "simulated": true,
+        "content_time": "2026-08-24"
+      }
+    },
+    {
+      "fixture_id": "ctx-session-product-evolution-01-fixture-3",
+      "tool_name": "file.read",
+      "match_arguments": {
+        "path": "web/scripts/generate-context-library.mjs"
+      },
+      "status": "success",
+      "result": {
+        "path": "web/scripts/generate-context-library.mjs",
+        "content_hash": "sha256:7fb07b767a7034c98069f84202c2f359ef11e889de719daec0a3024ea38fc7c8",
+        "line_range": "1-28",
+        "start_line": 1,
+        "end_line": 28,
+        "content_excerpt": "#!/usr/bin/env node\n/**\n * 长上下文文库静态导出器。\n *\n * 主文库只展示完整、连续的场景化冻结 Session。仓库文档、源码、SQL 和配置\n * 只能作为 Session 内的冻结工具结果出现，不再直接拼成顶层长上下文条目。\n * 每套 Session 都从同一份原文读取四种编译工件，便于做受控交叉实验。\n */\n\nimport { mkdir, readdir, readFile, rm, writeFile } from \"node:fs/promises\";\nimport { createHash } from \"node:crypto\";\nimport { execSync } from \"node:child_process\";\nimport path from \"node:path\";\nimport { fileURLToPath } from \"node:url\";\n\nconst WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), \"..\");\nconst REPO_ROOT = path.resolve(WEB_ROOT, \"..\");\nconst OUT_DIR = path.join(WEB_ROOT, \"public\", \"showcase-data\");\nconst TXT_DIR = path.join(OUT_DIR, \"context-library\");\nconst CASES_ROOT = path.join(REPO_ROOT, \"engine\", \"var\", \"cases\");\nconst SESSION_CASE_IDS = [\n  \"ctx-session-product-evolution-01\",\n  \"ctx-session-context-engine-debug-01\",\n  \"ctx-session-database-deploy-01\",\n];\n\nconst sha256 = (text) => `sha256:${createHash(\"sha256\").update(text, \"utf8\").digest(\"hex\")}`;\nconst pad = (n, width = 4) => String(n).padStart(width, \"0\");",
+        "simulated": true,
+        "content_time": "2026-08-20",
+        "note": "脚本注释仍描述早期文库导出思路,需与当前 Session 产品边界对照后使用"
+      }
+    }
+  ],
+  "answer_rubric": {
+    "must_use_evidence": true,
+    "must_respect_current_constraints": true,
+    "must_not_modify_files": true
+  }
+}

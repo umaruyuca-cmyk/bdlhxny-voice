@@ -1,5 +1,5 @@
 from .builder import ContextBuilder
-from .compression import StructuredTextCompressor
+from .compression import ContextCompressor, StructuredTextCompressor
 from .models import (
     ContextAction,
     ContextBudgetError,
@@ -13,18 +13,41 @@ from .models import (
     ContextRole,
     ContextStrategy,
     ContextWindowError,
+    ItemScore,
 )
-from .token_count import CONSERVATIVE_TOKENIZER_VERSION, ConservativeTokenCounter, TokenCounter
+from .scoring import (
+    SCORING_VERSION,
+    DEFAULT_WEIGHTS,
+    SCENE_WEIGHTS,
+    MultiFactorScorer,
+    ScoringContext,
+    ScoringWeights,
+    scorer_from_env,
+)
+from .summary import EXTRACTIVE_SUMMARIZER_VERSION, ExtractiveSummarizer, HistorySummarizer
+from .token_count import (
+    CONSERVATIVE_TOKENIZER_VERSION,
+    QWEN_TIKTOKEN_VERSION,
+    TIKTOKEN_TOKENIZER_VERSION,
+    ConservativeTokenCounter,
+    QwenTiktokenCounter,
+    TiktokenCounter,
+    TokenCounter,
+    counter_from_env,
+)
 
 __all__ = [
     "CONSERVATIVE_TOKENIZER_VERSION",
+    "QWEN_TIKTOKEN_VERSION",
+    "TIKTOKEN_TOKENIZER_VERSION",
     "ConservativeTokenCounter",
     "ContextAction",
+    "ContextBudgetError",
     "ContextBuildRequest",
     "ContextBuildResult",
-    "ContextBudgetError",
     "ContextBuilder",
     "ContextClassification",
+    "ContextCompressor",
     "ContextDecision",
     "ContextItem",
     "ContextMessage",
@@ -32,6 +55,20 @@ __all__ = [
     "ContextRole",
     "ContextStrategy",
     "ContextWindowError",
+    "DEFAULT_WEIGHTS",
+    "EXTRACTIVE_SUMMARIZER_VERSION",
+    "ExtractiveSummarizer",
+    "HistorySummarizer",
+    "ItemScore",
+    "MultiFactorScorer",
+    "QwenTiktokenCounter",
+    "SCENE_WEIGHTS",
+    "SCORING_VERSION",
+    "ScoringContext",
+    "ScoringWeights",
     "StructuredTextCompressor",
+    "TiktokenCounter",
     "TokenCounter",
+    "counter_from_env",
+    "scorer_from_env",
 ]

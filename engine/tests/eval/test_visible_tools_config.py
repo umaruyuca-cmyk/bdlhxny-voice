@@ -52,16 +52,22 @@ def _case() -> ABCase:
 
 
 async def _run(**kwargs: Any):
-    return await run_ab_eval(
-        llm=ScriptedToolModel(),  # 恒调 market.get_realtime_quote(金标)
-        model="glm-4.7-flash",
-        cases=[_case()],
-        catalog=catalog_from_snapshot(seeded_snapshot()),
-        frozen=FrozenObservations(frozen_payload()),
-        retry_delay_s=0,
-        inter_run_delay_s=0,
-        **kwargs,
-    )
+    from bdlh_runtime.scenarios import disable_all_scenario_packs, enable_scenario_pack
+
+    enable_scenario_pack("finance")
+    try:
+        return await run_ab_eval(
+            llm=ScriptedToolModel(),  # 恒调 market.get_realtime_quote(金标)
+            model="glm-4.7-flash",
+            cases=[_case()],
+            catalog=catalog_from_snapshot(seeded_snapshot()),
+            frozen=FrozenObservations(frozen_payload()),
+            retry_delay_s=0,
+            inter_run_delay_s=0,
+            **kwargs,
+        )
+    finally:
+        disable_all_scenario_packs()
 
 
 @pytest.mark.asyncio
@@ -145,14 +151,33 @@ def test_unknown_tool_name_is_rejected(client: TestClient) -> None:
     assert "nope.tool" in response.json()["detail"]
 
 
-def test_known_tool_name_and_search_tools_accepted(client: TestClient) -> None:
+def test_known_tool_name_and_search_tools_accepted(
+    client: TestClient,
+    fake_data: FakeDataClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
     """目录内名 + search_tools(引擎侧伴侣元工具)均通过校验。"""
+    monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
+
+    def fake_execute(
+        _request: Any, _catalog: Any, job: Any = None, llm_config=None
+    ) -> tuple[dict[str, Any], list[Any]]:
+        return {"run_records": []}, []
+
+    # 替换执行器并等待任务完成:不留下仍在持有批次槽位的后台线程
+    # (否则紧随其后的批次测试会因 MAX_CONCURRENT_BATCHES=1 撞 429)
+    monkeypatch.setattr(run_api, "_execute_eval", fake_execute)
     response = client.post(
         "/api/v1/eval-batches",
         json={"case_ids": ["research-01"], "runs": 1, "visible_tools": ["market.get_valuation", "search_tools"]},
         headers=_auth(),
     )
     assert response.status_code == 200
+    from tests.eval.test_run_api import _poll
+
+    job = _poll(client, response.json()["job_id"])
+    assert job["status"] == "done", job.get("error")
 
 
 def _capture_conditions(

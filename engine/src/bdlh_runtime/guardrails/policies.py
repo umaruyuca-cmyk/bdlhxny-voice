@@ -191,16 +191,20 @@ class DefaultDataQualityGuardrail:
 
 
 class DefaultResponseGuardrail:
-    _TRADING_TERMS = (
-        "立即买入",
-        "立即卖出",
-        "下单",
-        "调仓",
-        "保证收益",
-        "稳赚",
-        "guaranteed return",
-    )
-    _ACCOUNT_LEAK_TERMS = ("完整账户明细", "其他用户持仓", "其他用户账户")
+    """出口响应护栏。危险词表默认为空;垂直档案可通过构造参数注入。"""
+
+    def __init__(
+        self,
+        *,
+        blocked_terms: tuple[str, ...] | None = None,
+        account_leak_terms: tuple[str, ...] | None = None,
+    ) -> None:
+        self._blocked_terms = tuple(blocked_terms or ())
+        self._account_leak_terms = tuple(
+            account_leak_terms
+            if account_leak_terms is not None
+            else ("完整账户明细", "其他用户私有数据", "其他用户账户")
+        )
 
     def evaluate_response(
         self, response: PublicResponse, *, context: GuardrailContext
@@ -216,14 +220,14 @@ class DefaultResponseGuardrail:
                 *response.limitations,
             ]
         )
-        if any(term in scanned_text for term in self._TRADING_TERMS):
+        if any(term in scanned_text for term in self._blocked_terms):
             return _block(
                 GuardrailStage.RESPONSE,
-                "TRADING_SEMANTICS_BLOCKED",
+                "DANGEROUS_SEMANTICS_BLOCKED",
                 "RESPONSE-READ-ONLY-001",
-                "回复包含被禁止的交易或收益承诺语义",
+                "回复包含被策略禁止的危险动作或不当承诺语义",
             )
-        if any(term in scanned_text for term in self._ACCOUNT_LEAK_TERMS):
+        if any(term in scanned_text for term in self._account_leak_terms):
             return _block(
                 GuardrailStage.RESPONSE,
                 "ACCOUNT_DISCLOSURE_BLOCKED",

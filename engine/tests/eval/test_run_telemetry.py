@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from bdlh_runtime.engine.output_guardrail import OutputGuardrail
+from bdlh_runtime.engine.output_guardrail import C1ComplianceCheck, OutputGuardrail
 from bdlh_runtime.evaluation.ab_eval import ABCase, run_ab_eval
 from bdlh_runtime.evaluation.baseline_agent import BASELINE_SYSTEM
 from bdlh_runtime.evaluation.frozen_observations import FrozenObservations
@@ -245,8 +245,10 @@ def test_treatment_audits_block_and_output_guardrail_rows() -> None:
     assert check.stage == "action"
     assert check.decision == "block"
 
-    report = OutputGuardrail().check("建议买入宁德时代", [])
-    assert report.violations  # C1 命中
+    report = OutputGuardrail(checks=[C1ComplianceCheck(("买入", "卖出", "建议买入"))]).check(
+        "建议买入宁德时代", []
+    )
+    assert report.violations  # 危险执行语义命中
     record_output_guardrail(recorder, report)
     response_checks = [row for row in recorder.record.guardrail_checks if row.stage == "response"]
     assert response_checks
@@ -271,7 +273,7 @@ def _case() -> ABCase:
 
 
 @pytest.mark.asyncio
-async def test_run_ab_eval_records_three_modes_valid_run() -> None:
+async def test_run_ab_eval_records_three_modes_valid_run(finance_pack) -> None:
     report = await run_ab_eval(
         runs_per_case=1,
         llm=ScriptedToolModel(),

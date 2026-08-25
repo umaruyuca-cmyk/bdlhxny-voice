@@ -243,7 +243,7 @@ def _fake_data() -> FakeVariantData:
     )
 
 
-def test_load_context_variant_cases_builds_case_variant_pairs():
+def test_load_context_variant_cases_builds_case_variant_pairs(finance_pack):
     cases = load_context_variant_cases(_views(), _fake_data())
     assert [(case.case_id, case.variant_id) for case in cases] == [
         ("ctx-mini-port", "full-raw"),
@@ -259,7 +259,7 @@ def test_load_context_variant_cases_builds_case_variant_pairs():
     assert budgeted.expectations["required_facts"]["portfolio_total"] == 1000000
 
 
-def test_fixture_items_map_to_builder_items():
+def test_fixture_items_map_to_builder_items(finance_pack):
     items = fixture_items_to_context_items(
         (
             _item("rule", "规则", "required", priority=100, sequence=0),
@@ -273,7 +273,7 @@ def test_fixture_items_map_to_builder_items():
 
 
 @pytest.mark.asyncio
-async def test_two_variant_comparison_passes_context_assertions():
+async def test_two_variant_comparison_passes_context_assertions(finance_pack):
     cases = load_context_variant_cases(_views(), _fake_data())
     report = await run_context_eval(
         cases=cases,
@@ -336,7 +336,7 @@ async def test_two_variant_comparison_passes_context_assertions():
 
 
 @pytest.mark.asyncio
-async def test_manual_case_covers_beginning_middle_and_end_facts():
+async def test_manual_case_covers_beginning_middle_and_end_facts(finance_pack):
     """验收:关键事实位于开头/中部/末尾均保留(迷你手册:rule 头/led 中/recovery 尾)。"""
     cases = [case for case in load_context_variant_cases(_views(), _fake_data()) if case.case_id == "ctx-mini-manual"]
     report = await run_context_eval(
@@ -356,7 +356,7 @@ async def test_manual_case_covers_beginning_middle_and_end_facts():
 
 
 @pytest.mark.asyncio
-async def test_required_overflow_marks_run_invalid():
+async def test_required_overflow_marks_run_invalid(finance_pack):
     """强制项超预算:不静默降级,运行判 INVALID/CONTEXT_BUILD_FAILED。"""
     cases = load_context_variant_cases(_views(), _fake_data())
     tight = [
@@ -383,7 +383,7 @@ async def test_required_overflow_marks_run_invalid():
     assert all(r.judgment.validity == "VALID" for r in report.variant_runs if r is not overflow[0])
 
 @pytest.mark.asyncio
-async def test_linkage_modes_project_variant_by_mode_groups():
+async def test_linkage_modes_project_variant_by_mode_groups(finance_pack):
     """联动对照:原始/压缩内容分别过裸调用与完整模式,组键=变体:实现方式。"""
     from bdlh_runtime.evaluation.context_eval import (  # noqa: PLC0415
         MODE_BASELINE,

@@ -61,7 +61,7 @@ def _tool_call_msg() -> AIMessage:
 
 
 @pytest.mark.asyncio
-async def test_card_to_tool_executes_via_shared_executor():
+async def test_card_to_tool_executes_via_shared_executor(finance_pack):
     executor = _executor()
     tool = card_to_tool(_quote_card(), executor)
 
@@ -74,7 +74,7 @@ async def test_card_to_tool_executes_via_shared_executor():
 
 
 @pytest.mark.asyncio
-async def test_react_run_full_cycle():
+async def test_react_run_full_cycle(finance_pack):
     model = ScriptedModel()
     model._queue = [_tool_call_msg(), AIMessage(content="现价 185.50")]
     executor = _executor()
@@ -85,7 +85,7 @@ async def test_react_run_full_cycle():
         all_cards=[_quote_card()],
         llm=model,
         executor=executor,
-        system_prompt="你是金融分析助手",
+        system_prompt="你是工具型助手",
     )
 
     assert result.error is None
@@ -96,7 +96,7 @@ async def test_react_run_full_cycle():
 
 
 @pytest.mark.asyncio
-async def test_react_run_recursion_exhaustion():
+async def test_react_run_recursion_exhaustion(finance_pack):
     model = ScriptedModel()
     model._queue = [_tool_call_msg() for _ in range(50)]
     executor = _executor()
@@ -107,7 +107,7 @@ async def test_react_run_recursion_exhaustion():
         all_cards=[_quote_card()],
         llm=model,
         executor=executor,
-        system_prompt="你是金融分析助手",
+        system_prompt="你是工具型助手",
         recursion_limit=6,
     )
 
@@ -117,7 +117,7 @@ async def test_react_run_recursion_exhaustion():
 
 
 @pytest.mark.asyncio
-async def test_react_run_rounds_exclude_history():
+async def test_react_run_rounds_exclude_history(finance_pack):
     model = ScriptedModel()
     model._queue = [AIMessage(content="直接回答")]
     executor = _executor()
@@ -131,7 +131,7 @@ async def test_react_run_rounds_exclude_history():
         all_cards=[_quote_card()],
         llm=model,
         executor=executor,
-        system_prompt="你是金融分析助手",
+        system_prompt="你是工具型助手",
     )
 
     assert result.error is None

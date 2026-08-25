@@ -18,7 +18,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 engine/artifacts/
-engine/var/
+# var 下运行产物忽略,但冻结 Session 用例数据(fixed cases)入库
+engine/var/*
+!engine/var/cases/
 
 # Skill本地依赖、IDE文件和历史分析记录
 skills/**/node_modules/
@@ -48,3 +50,6 @@ skills/**/portfolio.json
 
 # Python 打包产物
 *.egg-info/
+
+# 实验任务持久化目录(运行时产物)
+engine/var/jobs/

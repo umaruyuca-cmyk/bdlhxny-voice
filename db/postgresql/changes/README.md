@@ -38,5 +38,9 @@ VALUES ('20260821-add-run-cancel-reason.sql', '为运行记录增加取消原因
   行存在（用例金标引用工具名）。
 - `20260821-long-context-cases.sql`、`20260822-fixture-negative.sql`、
   `20260822-fixture-deep-search.sql`：相互独立，任意时间执行；均已幂等可重跑。
+- `20260825-two-track-experiments.sql`：写入压缩/对比双轨实验结构与 20 条 cmp-* 用例。
+- `20260826-fix-comparison-mock-and-deps.sql`：依赖上一脚本已写入 cmp-*；校正 Mock
+  匹配参数、四字段依赖结构、登记 `cmp-fixtures-v2` 与内容哈希。可由
+  `python -m` / `engine/scripts/generate_cmp_fix_sql.py` 从过渡层数据重新生成。
 
 新库完整初始化顺序见 `../setup/README.md` 的《新库需要的后续变更脚本》。

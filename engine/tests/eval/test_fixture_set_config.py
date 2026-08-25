@@ -91,18 +91,24 @@ def _case() -> ABCase:
 
 
 async def _run(monkeypatch: pytest.MonkeyPatch, **kwargs: Any):
-    data = CapturingDataClient()
-    monkeypatch.setattr(ab_eval_module, "DataClient", lambda: data)
-    report = await run_ab_eval(
-        llm=ScriptedToolModel(),
-        model="glm-4.7-flash",
-        cases=[_case()],
-        with_react=False,
-        retry_delay_s=0,
-        inter_run_delay_s=0,
-        **kwargs,
-    )
-    return data, report
+    from bdlh_runtime.scenarios import disable_all_scenario_packs, enable_scenario_pack
+
+    enable_scenario_pack("finance")
+    try:
+        data = CapturingDataClient()
+        monkeypatch.setattr(ab_eval_module, "DataClient", lambda: data)
+        report = await run_ab_eval(
+            llm=ScriptedToolModel(),
+            model="glm-4.7-flash",
+            cases=[_case()],
+            with_react=False,
+            retry_delay_s=0,
+            inter_run_delay_s=0,
+            **kwargs,
+        )
+        return data, report
+    finally:
+        disable_all_scenario_packs()
 
 
 @pytest.mark.asyncio

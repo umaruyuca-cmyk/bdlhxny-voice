@@ -2,11 +2,9 @@
 
 在 AgentLoop 产出 answer 后、返回调用方前执行：
 1. NumberGroundingCheck — answer 中的非平凡数字必须来自某条 Observation
-2. C1ComplianceCheck — answer 不得含交易执行语义（C-1）
-3. C2ComplianceCheck — answer 不得含适当性结论（C-2）
+2. 可选的关键词拦截检查 — 由场景包注册(如危险动作 / 不当结论词表)
 
-检测到违规时标记并修正（替换幻觉数字、替换交易建议、追加风险披露）。
-修正后的 answer 作为 Treatment 组最终输出。
+默认只启用数字溯源;垂直领域词表不进入平台默认路径。
 """
 
 from __future__ import annotations
@@ -28,6 +26,7 @@ class GuardViolation:
     detail: str
     original_fragment: str
     fixed_fragment: str | None = None
+    footer: str | None = None
 
 
 @dataclass
@@ -52,6 +51,23 @@ class GuardReport:
 _NUMBER_RE = re.compile(r"\d+\.?\d*")
 _TRIVIAL_NUMBERS = frozenset({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100, 1000})
 _YEAR_RE = re.compile(r"19\d{2}|20\d{2}")
+
+_default_extra_checks: list[OutputCheck] = []
+
+
+def reset_default_output_checks() -> None:
+    """禁用场景包后清空额外出口检查。"""
+    _default_extra_checks.clear()
+    clear_live_compliance_keywords()
+
+
+def append_default_output_check(check: OutputCheck) -> None:
+    """场景包向默认出口闸门追加检查(按 check_name 去重)。"""
+    name = getattr(check, "check_name", None) or type(check).__name__
+    _default_extra_checks[:] = [
+        c for c in _default_extra_checks if (getattr(c, "check_name", None) or type(c).__name__) != name
+    ]
+    _default_extra_checks.append(check)
 
 
 def _extract_numbers(text: str) -> set[str]:
@@ -99,78 +115,120 @@ class NumberGroundingCheck:
         ]
 
 
-class C1ComplianceCheck:
-    """answer 不得含交易执行语义（C-1）。"""
+class KeywordBlockCheck:
+    """可配置关键词拦截(场景包注入危险动作 / 不当结论等策略)。"""
 
-    _KEYWORDS = (
-        "买入",
-        "卖出",
-        "下单",
-        "转账",
-        "建议购买",
-        "立刻买入",
-        "清仓",
-        "建仓",
-        "加仓",
-        "减仓",
-        "委托买入",
-        "委托卖出",
-        "帮我买",
-        "帮我卖",
-    )
-
-    def check(self, answer: str, observations: list[Any]) -> list[GuardViolation]:
-        return [
-            GuardViolation(
-                check_name="C1_VIOLATION",
-                severity="critical",
-                detail=f"含交易语义：{kw}",
-                original_fragment=kw,
-                fixed_fragment="（该操作不被允许）",
-            )
-            for kw in self._KEYWORDS
-            if kw in answer
-        ]
-
-
-class C2ComplianceCheck:
-    """answer 不得含适当性结论（C-2）。"""
-
-    _KEYWORDS = (
-        "适合您",
-        "推荐持有",
-        "建议配置",
-        "该标的适合",
-        "适合投资",
-        "推荐买入",
-        "建议买入",
-        "符合您的风险",
-        "适合你的风险",
-    )
+    def __init__(
+        self,
+        *,
+        check_name: str,
+        keywords: tuple[str, ...] | list[str],
+        fixed_fragment: str,
+        detail_prefix: str = "命中策略词",
+        severity: str = "critical",
+        footer: str | None = None,
+    ) -> None:
+        self.check_name = check_name
+        self._keywords = tuple(keywords)
+        self._fixed_fragment = fixed_fragment
+        self._detail_prefix = detail_prefix
+        self._severity = severity
+        self._footer = footer
 
     def check(self, answer: str, observations: list[Any]) -> list[GuardViolation]:
         return [
             GuardViolation(
-                check_name="C2_VIOLATION",
-                severity="critical",
-                detail=f"含适当性结论：{kw}",
+                check_name=self.check_name,
+                severity=self._severity,
+                detail=f"{self._detail_prefix}：{kw}",
                 original_fragment=kw,
-                fixed_fragment="（不构成适当性结论）",
+                fixed_fragment=self._fixed_fragment,
+                footer=self._footer,
             )
-            for kw in self._KEYWORDS
+            for kw in self._keywords
             if kw in answer
         ]
+
+
+# 兼容旧测试符号:空词表壳;未显式传 keywords 时读取场景包注入的实时词表
+_LIVE_C1_KEYWORDS: tuple[str, ...] = ()
+_LIVE_C2_KEYWORDS: tuple[str, ...] = ()
+_LIVE_C2_FOOTER: str | None = "\n\n本结果仅为筛查草稿，不构成代替用户决策的建议。"
+
+
+def set_live_compliance_keywords(
+    *,
+    c1: tuple[str, ...] | list[str] | None = None,
+    c2: tuple[str, ...] | list[str] | None = None,
+    c2_footer: str | None = None,
+) -> None:
+    """场景包启用/禁用时更新评测侧 C1/C2 实时词表。"""
+    global _LIVE_C1_KEYWORDS, _LIVE_C2_KEYWORDS, _LIVE_C2_FOOTER
+    if c1 is not None:
+        _LIVE_C1_KEYWORDS = tuple(c1)
+    if c2 is not None:
+        _LIVE_C2_KEYWORDS = tuple(c2)
+    if c2_footer is not None:
+        _LIVE_C2_FOOTER = c2_footer
+
+
+def clear_live_compliance_keywords() -> None:
+    global _LIVE_C1_KEYWORDS, _LIVE_C2_KEYWORDS, _LIVE_C2_FOOTER
+    _LIVE_C1_KEYWORDS = ()
+    _LIVE_C2_KEYWORDS = ()
+    _LIVE_C2_FOOTER = "\n\n本结果仅为筛查草稿，不构成代替用户决策的建议。"
+
+
+class C1ComplianceCheck(KeywordBlockCheck):
+    def __init__(self, keywords: tuple[str, ...] | list[str] | None = None) -> None:
+        self._explicit_keywords = None if keywords is None else tuple(keywords)
+        super().__init__(
+            check_name="C1_VIOLATION",
+            keywords=tuple(keywords or ()),
+            fixed_fragment="（该操作不被允许）",
+            detail_prefix="含危险执行语义",
+        )
+
+    def check(self, answer: str, observations: list[Any]) -> list[GuardViolation]:
+        keywords = self._explicit_keywords if self._explicit_keywords is not None else _LIVE_C1_KEYWORDS
+        return KeywordBlockCheck(
+            check_name=self.check_name,
+            keywords=keywords,
+            fixed_fragment="（该操作不被允许）",
+            detail_prefix="含危险执行语义",
+        ).check(answer, observations)
+
+
+class C2ComplianceCheck(KeywordBlockCheck):
+    def __init__(self, keywords: tuple[str, ...] | list[str] | None = None) -> None:
+        self._explicit_keywords = None if keywords is None else tuple(keywords)
+        super().__init__(
+            check_name="C2_VIOLATION",
+            keywords=tuple(keywords or ()),
+            fixed_fragment="（不构成代替用户决策的结论）",
+            detail_prefix="含不当确定性结论",
+            footer=_LIVE_C2_FOOTER,
+        )
+
+    def check(self, answer: str, observations: list[Any]) -> list[GuardViolation]:
+        keywords = self._explicit_keywords if self._explicit_keywords is not None else _LIVE_C2_KEYWORDS
+        return KeywordBlockCheck(
+            check_name=self.check_name,
+            keywords=keywords,
+            fixed_fragment="（不构成代替用户决策的结论）",
+            detail_prefix="含不当确定性结论",
+            footer=_LIVE_C2_FOOTER,
+        ).check(answer, observations)
 
 
 class OutputGuardrail:
     """出口闸门：answer 产出后执行所有注册的 check。"""
 
     def __init__(self, checks: list[OutputCheck] | None = None) -> None:
-        self._checks = checks or [
-            NumberGroundingCheck(),
-            C1ComplianceCheck(),
-            C2ComplianceCheck(),
-        ]
+        if checks is not None:
+            self._checks = list(checks)
+        else:
+            self._checks = [NumberGroundingCheck(), *_default_extra_checks]
 
     def check(self, answer: str, observations: list[Any]) -> GuardReport:
         all_violations: list[GuardViolation] = []
@@ -186,12 +244,12 @@ class OutputGuardrail:
     @staticmethod
     def _fix(answer: str, violations: list[GuardViolation]) -> str:
         fixed = answer
-        has_compliance = False
+        footers: list[str] = []
         for v in violations:
             if v.fixed_fragment and v.original_fragment:
                 fixed = fixed.replace(v.original_fragment, v.fixed_fragment)
-            if v.check_name in ("C1_VIOLATION", "C2_VIOLATION"):
-                has_compliance = True
-        if has_compliance:
-            fixed += "\n\n本结果仅为风险匹配筛查草稿，不构成投资建议。"
+            if v.footer and v.footer not in footers:
+                footers.append(v.footer)
+        for footer in footers:
+            fixed += footer
         return fixed

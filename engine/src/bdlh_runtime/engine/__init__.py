@@ -2,7 +2,7 @@
 
 本包是引擎内核的唯一归属：通用运行时契约（contracts）、可恢复 checkpoint、
 语义快路径（semantic_router）、Agent 循环（loop）、工具装载（loader）、
-工具执行器（executor）与运行时外壳（runtime）。引擎对金融确定性计算
+工具执行器（executor）与运行时外壳（runtime）。引擎对确定性计算
 （compute/）与供应商适配（integrations/）零依赖，领域语义经通用契约传递。
 """
 

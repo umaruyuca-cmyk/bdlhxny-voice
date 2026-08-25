@@ -26,12 +26,12 @@ from bdlh_runtime.registry.defaults import (  # noqa: E402
 )
 
 OPERATIONS = [
-    ("READ_MARKET_DATA", "读取公开市场数据"),
+    ("READ_MARKET_DATA", "读取公开行情类数据"),
     ("READ_PUBLIC_RESEARCH", "读取外部公开研究资料"),
-    ("READ_PORTFOLIO", "读取用户持仓与账户"),
+    ("READ_PORTFOLIO", "读取用户账户与持仓类数据"),
     ("READ_PROFILE", "读取用户风险画像"),
     ("READ_FINANCIAL_GOALS", "读取用户财务目标"),
-    ("RUN_ANALYSIS", "执行确定性金融分析"),
+    ("RUN_ANALYSIS", "执行确定性分析"),
     ("PROPOSE_TASK", "提议持续观察任务"),
 ]
 
@@ -40,8 +40,8 @@ TOOLSETS = [
     ("fundamental_read", "读取财务报表、估值和行业背景数据"),
     ("news_read", "读取结构化新闻和外部公开资料"),
     ("portfolio_read", "只读访问当前用户持仓、账户和交易历史"),
-    ("financial_profile_read", "只读访问当前用户风险画像和金融档案"),
-    ("planning_compute", "对标准化数据执行确定性金融计算"),
+    ("financial_profile_read", "只读访问当前用户风险画像和档案"),
+    ("planning_compute", "对标准化数据执行确定性计算"),
 ]
 
 # 能力名, 适配器, 是否需登录用户, depends_on, 操作证, toolsets

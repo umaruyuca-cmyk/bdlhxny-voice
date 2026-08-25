@@ -1,4 +1,4 @@
-"""只读拦截：目录拒绝交易工具；循环内幻觉交易名被治理中间件挡住。"""
+"""只读拦截：目录拒绝危险动作工具；循环内幻觉危险名被治理中间件挡住。"""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog, ToolOrigin, is_tra
 from tests.engine.test_loop import FakeChatModel
 
 
-def test_catalog_rejects_trading_and_non_readonly() -> None:
+def test_catalog_rejects_trading_and_non_readonly(finance_pack) -> None:
     catalog = ToolCatalog()
     assert is_trading_semantic("order.place_order", "place a buy order")
-    with pytest.raises(ValueError, match="C-1"):
+    with pytest.raises(ValueError, match="危险动作"):
         catalog.register(
             ToolCard(
                 name="order.place_order",
@@ -37,17 +37,36 @@ def test_catalog_rejects_trading_and_non_readonly() -> None:
         )
 
 
+def test_catalog_allows_trading_wording_when_profile_empty() -> None:
+    from bdlh_runtime.scenarios import disable_all_scenario_packs
+    from bdlh_runtime.scenarios.dangerous_actions import clear_profiles
+
+    disable_all_scenario_packs()
+    clear_profiles()
+    catalog = ToolCatalog()
+    catalog.register(
+        ToolCard(
+            name="order.place_order",
+            description="place a buy order",
+            parameters={"type": "object", "properties": {}},
+            origin=ToolOrigin.LOCAL,
+            read_only=True,
+        )
+    )
+    assert catalog.contains("order.place_order")
+
+
 @pytest.mark.asyncio
 async def test_hallucinated_trading_tool_is_blocked() -> None:
     catalog = ToolCatalog()
     catalog.register(
         ToolCard(
-            name="market.get_realtime_quote",
-            description="查询实时行情",
-            parameters={"type": "object", "properties": {"symbol": {"type": "string"}}},
-            origin=ToolOrigin.MCP,
+            name="weather.get_forecast",
+            description="查询天气预报",
+            parameters={"type": "object", "properties": {"city": {"type": "string"}}},
+            origin=ToolOrigin.LOCAL,
             read_only=True,
-            required_scope=["market_read"],
+            required_scope=["general_read"],
         )
     )
     llm = FakeChatModel(
@@ -63,7 +82,7 @@ async def test_hallucinated_trading_tool_is_blocked() -> None:
                     }
                 ],
             ),
-            AIMessage(content="不该执行交易"),
+            AIMessage(content="不该执行未装载工具"),
         ]
     )
     runtime = EngineRuntime(
@@ -79,7 +98,7 @@ async def test_hallucinated_trading_tool_is_blocked() -> None:
             user_id="user-1",
             session_id="s1",
             run_id="r-readonly",
-            message="找出最近一个月半导体板块涨幅最高的五家",
+            message="帮我执行一个未装载的写操作",
         )
     )
     assert execution.response.response_kind == "BLOCKED"

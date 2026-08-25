@@ -1,0 +1,113 @@
+{
+  "case_id": "ctx-session-context-engine-debug-01",
+  "case_version": 1,
+  "source_session_hash": "sha256:411105407f68f76c1b8fe59cd2881c83e7a537a4ad93d6594e11b18fb8e32cb9",
+  "variant_id": "recent-window",
+  "strategy": "recent-n",
+  "strategy_version": "recent-window-v1",
+  "token_budget": 8192,
+  "compiled_messages": [
+    {
+      "role": "system",
+      "content": "# 场景系统提示：所有通道共享底座（system_base）\n\n> 适用：问答循环、快路径直答、以及与其它场景提示拼接时的最前段。\n> 由 ``engine/loop.py`` 加载，禁止在代码内内联。修订须过 eval 门禁。\n\n---\n\n## 你的角色\n\n你是 Sentinel，主动式持仓看护 Agent。监视优先、对话次之：你帮助用户理解持仓、\n行情与风险，但不代替用户做交易决策。\n\n## 红线（不可违反）\n\n- **C-1 不交易**：系统不具备任何交易执行能力。禁止建议买入 / 卖出 / 调仓到具体\n  仓位，禁止「应该加仓 / 减仓 / 止损」等指令性表述。交易决策权永远在用户。\n- **C-2 不出具适当性结论**：不输出「该标的适合 / 不适合你」「你可以买」。涉及\n  风险匹配时，只做风险匹配筛查（DRAFT），并附披露：「本结果仅为风险匹配筛查草稿，\n  不构成投资建议」。\n\n## 事实纪律\n\n- 数字、行情、持仓与评分以工具 Observation 为唯一真源，不得编造未提供的数据。\n- 引用事实时带上来源与数据时间（Observation 中的 source / data_time）。\n- 记忆缺失或标注 degraded 时，如实说明，不得编造用户目标或偏好。\n\n# 场景系统提示：问答循环（scene_chat）\n\n> 适用通道：会话通道进入 Agent 循环之后（设计文档 §4.3）。\n> 与 ``system_base.md`` 拼接使用。由 ``engine/loop.py`` 加载，禁止内联。\n\n---\n\n## 工具使用（G-β）\n\n工具装载只表示「可用」，不表示「必须用」。\n\n- 闲聊、通识、上下文已能回答的问题：直接输出文本，**零工具调用**。\n- 仅当回答依赖系统外事实（实时行情、用户持仓、最新资讯、长期记忆检索）时，\n  才发起工具调用。\n- 只调用当前已装载的工具；不要编造工具名。\n- 工具返回 Observation 后，用其 data / source / data_time / quality_flags 作答；\n  质量标记为失败或拒绝时，向用户说明限制，不要编造替代数字。\n\n## 终止\n\n当你已能给出对用户有用的回答，或工具结果已足够支撑解读时，停止调用工具，\n输出最终自然语言回答。不要为了「再确认一次」重复同一调用。"
+    },
+    {
+      "role": "user",
+      "content": "<untrusted-data>\n[context item=evt-0024 type=compressible source=evt-0024]\ntool_call file.read({\"path\": \"docs/context/长上下文构建与压缩.md\"})\ntool_result(success):\n读取路径: docs/context/长上下文构建与压缩.md\n冻结范围: 第 1-401 行，共 401 行\n----- 文件内容开始 -----\n# 长上下文构建与压缩\n\n## 1. 目标和边界\n\n固定用例的问题正文通常很短，真正消耗 token 的是问题附带的系统约束、工具定义、用户数据、记忆、行情、新闻和多轮工具结果。因此本设计不压缩固定问题本身，而是压缩一次运行可使用的候选上下文。\n\n目标是：\n\n- 在给定 token 上限内生成模型实际需要的上下文；\n- 用户约束、权限、关键数字、数据时间和证据引用不能因压缩丢失；\n- 被省略的信息仍可通过内部引用追溯；\n- 压缩过程可解释、可测试、可替换；\n- 压缩带来的 token 节省必须大于压缩自身的模型成本；\n- 压缩失败不能绕过安全约束。\n\n本项目不实现跨 Codex、Cursor、OpenCode 的 Session 交接，也不保存通用聊天历史。ContextHub 文档中的可用部分被简化为：上下文条目、按预算选择、多种表示方式、来源追溯和评测对照。\n\n## 2. 输入和输出\n\n### 2.1 输入\n\n上下文构建器接收：\n\n```json\n{\n  \"case_id\": \"portfolio-value-001\",\n  \"case_version\": 3,\n  \"scene\": \"portfolio\",\n  \"message\": \"我的持仓现在值多少钱\",\n  \"snapshot_id\": \"snap-001\",\n  \"token_budget\": 16000,\n  \"allowed_tools\": [\n    \"portfolio.get_current_positions\",\n    \"market.get_realtime_quote\",\n    \"portfolio.build_current_valuation\"\n  ],\n  \"context_strategy\": \"budgeted\"\n}\n```\n\n### 2.2 输出\n\n上下文构建器输出：\n\n1. `messages`：发送给模型的消息；\n2. `context_report`：说明上下文如何被处理；\n3. `cache_key`：用于复用相同构建结果；\n4. `validation`：关键约束、引用和预算检查结果。\n\n上下文构建结果必须是结构化对象。各模型适配器可以把它渲染为具体消息格式，但不能重新选择或删除内容。\n\n## 3. 上下文条目\n\n候选上下文先被拆成独立条目。每个条目至少包含：\n\n```json\n{\n  \"id\": \"holding-300750\",\n  \"type\": \"portfolio_fact\",\n  \"content\": {\n    \"symbol\": \"300750\",\n    \"weight\": 0.18,\n    \"quantity\": 200\n  },\n  \"source_ref\": \"snapshot://snap-001/positions/300750\",\n  \"source_time\": \"2026-08-20T14:32:00+08:00\",\n  \"authority\": \"data-service\",\n  \"trust\": \"verified\",\n  \"required\": true,\n  \"relevance\": 0.95,\n  \"raw_tokens\": 82,\n  \"status\": \"active\"\n}\n```\n\n建议类型：\n\n| 类型 | 示例 | 默认处理 |\n|---|---|---|\n| `system_constraint` | 不允许交易、适合度口径 | 强制保留 |\n| `case_input` | 固定问题、场景、权限 | 强制保留 |\n| `watch_event` | 演示注入的价格事件 | 事件用例强制保留 |\n| `user_profile` | 风险承受能力、投资期限 | 结构化保留 |\n| `portfolio_fact` | 持仓、现金、权重 | 结构化保留 |\n| `memory_fact` | 与当前用例相关的已确认事实 | 检索后选择 |\n| `market_observation` | 行情、历史价格 | 保留数字、来源和时间 |\n| `fundamental_observation` | 财务指标和估值输入 | 保留计算依赖项 |\n| `news_evidence` | 新闻标题、摘要、来源 | 去重、检索、必要时摘要 |\n| `tool_failure` | 工具超时、参数错误 | 保留错误签名和状态 |\n| `data_quality` | 过期、缺失、冲突 | 被引用数据必须保留 |\n| `previous_result` | 预设多步用例的上一步结果 | 只保留结构化状态和引用 |\n| `raw_reference` | 长日志、原文、完整响应的位置 | 只在内部保存引用 |\n\n## 4. 来源和指令隔离\n\n上下文中的文字不具有相同权力。系统必须区分“指令”和“数据”。\n\n### 4.1 来源优先级\n\n发生冲突时，按以下顺序处理：\n\n1. 当前系统安全规则；\n2. 当前固定用例和登录身份；\n3. 用户明确确认的约束；\n4. 数据快照和工具返回的结构化事实；\n5. 已确认记忆；\n6. 模型从文本中提取的结论；\n7. 新闻、网页、日志和其他外部文本。\n\n新内容不会自动覆盖高优先级旧内容。替换或撤销约束必须生成明确的新版本，并记录被替换条目。\n\n### 4.2 防止间接提示注入\n\n- 新闻、网页、日志、工具返回和历史模型输出一律放入“数据”区域；\n- 数据中的“忽略之前要求”“调用某工具”等文字不能提升为系统指令；\n- 模型提取的约束或事实必须携带原始来源；\n- 没有来源或与数据快照冲突的提取结果不能进入强制保留集合；\n- 公开工件只展示处理结果和安全摘要，不展示可能包含敏感指令的完整原文。\n\n## 5. 按场景选择上下文\n\n每个场景配置一份普通规则文件，说明哪些内容强制保留、优先保留和通常省略。\n\n| 场景 | 强制保留 | 优先保留 | 通常省略 |\n|---|---|---|---|\n| 行情 | 问题、标的、最新行情、来源、时间 | 相关短期历史 | 无关记忆、长新闻 |\n| 研究 | 问题、C-1/C-2、核心财务指标 | 同行数据、相关新闻、历史估值 | 无关持仓和日志 |\n| 组合 | 问题、身份、全部持仓摘要、风险画像 | 主要标的行情、集中度 | 新闻全文、无关知识 |\n| 适合度 | 问题、身份、风险画像、C-2、披露 | 产品风险、用户期限 | 无关实时行情 |\n| 看护 | 事件、持仓影响、风险画像、来源 | 相关记忆和新闻 | 其他标的信息 |\n| 拦截 | 原始请求、身份、禁止规则 | 拒绝原因 | 行情、持仓和工具数据 |\n| 知识 | 问题、基础系统规则 | 相关知识片段 | 用户持仓和私有记忆 |\n\n规则文件只决定候选范围和硬限制，不能写入预期答案。\n\n## 6. Token 预算\n\n模型窗口不能全部分配给候选上下文。预算至少分成：\n\n```text\n模型最大窗口\n├─ 系统规则\n├─ 固定问题\n├─ 工具定义\n├─ 工作上下文\n├─ Agent 多轮新增工具结果\n├─ 最终输出预留\n└─ 安全余量\n```\n\n示例：模型窗口为 32K 时，可以从以下初始配置开始，再用真实评测调整：\n\n| 部分 | 示例预算 |\n|---|---:|\n| 系统规则和固定问题 | 2K |\n| 工具定义 | 3K |\n| 初始工作上下文 | 15K |\n| 后续工具结果 | 6K |\n| 最终输出 | 4K |\n| 安全余量 | 2K |\n\n预算配置必须按模型 tokenizer 计算。估算 tokenizer 只能作为降级方案，并预留更大的安全余量。\n\n## 7. 压缩步骤\n\n### 7.1 第一步：收集和标准化\n\n从固定用例、数据快照、用户画像、持仓、记忆和工具数据中收集候选条目。统一数字类型、时间格式、来源引用和状态，去除完全重复的条目。\n\n### 7.2 第二步：确定强制保留项\n\n以下内容不参与普通打分淘汰：\n\n- 系统安全规则；\n- 当前固定问题；\n- 当前身份和权限；\n- 用户明确约束；\n- 当前事件；\n- 当前用例的验收条件；\n- 未解决的高风险数据问题；\n- 最终计算依赖的数字、时间和来源。\n\n如果强制保留项本身已经超过预算，本次运行标记为上下文构建失败。系统不能通过删除安全规则继续运行。\n\n### 7.3 第三步：为条目准备不同长度的表示\n\n一个条目可以有以下表示方式：\n\n| 表示方式 | 内容 | 适用情况 |\n|---|---|---|\n| 完整内容 | 原始文本或完整结构 | 很短且关键 |\n| 结构化摘要 | 保留字段、数字、状态、错误签名 | 持仓、行情、日志、工具结果 |\n| 文本摘要 | 对较长自然语言生成短摘要 | 新闻和历史讨论 |\n| 引用 | 只提供类型、hash 和内部位置 | 源文件、完整日志、长原文 |\n| 省略 | 不进入工作上下文 | 低相关且可恢复内容 |\n\n数字、日期、权限和系统规则不能只保留自由文本摘要。\n\n### 7.4 第四步：计算优先级\n\n第一版使用可解释的规则，不训练新模型：\n\n```text\npriority =\n  relevance * wr\n  + authority * wa\n  + freshness * wf\n  + source_quality * wq\n  + task_impact * wi\n  + citation_dependency * wc\n  + failure_risk * we\n  - staleness * ws\n```\n\n权重按场景配置。为了避免长条目占用全部预算，实际选择时使用：\n\n```text\nselection_value = priority / representation_tokens\n```\n\n### 7.5 第五步：在预算内选择\n\n第一版算法按以下顺序执行：\n\n```text\n1. 放入全部强制保留项\n2. 为剩余条目生成可用的不同长度表示\n3. 按 selection_value 从高到低选择\n4. 某条目放不下时，尝试更短表示\n5. 保留被选条目的依赖项和来源引用\n6. 达到预算后停止\n7. 运行完整性检查\n```\n\n后续可以替换为更精确的预算求解方式，但对外行为和报告字段保持不变。\n\n### 7.6 第六步：完整性检查\n\n至少检查：\n\n- 所有强制项仍在；\n- token 总数不超过预算；\n- 每个事实性数字都有来源；\n- 每个引用指向数据快照或内部原始记录；\n- 被选条目的依赖项没有缺失；\n- 过期数据带有明确质量标记；\n- 外部文本没有进入系统指令区域；\n- 公开字段没有真实用户敏感信息。\n\n## 8. Agent 循环中的再次压缩\n\n初始上下文合格并不代表整个运行不会超出窗口。每轮工具调用都会增加 Observation。因此每轮模型调用前都要重新检查预算：\n\n1. 当前轮模型刚提出的工具调用和最近工具结果优先保留；\n2. 已被结构化结果取代的旧工具原文降级为引用；\n3. 重复工具结果合并；\n4. 被最终回答引用的 Observation 不得省略；\n5. 如果仍然超预算，停止继续调用工具并返回明确的预算错误或部分结果。\n\n系统不保存或压缩模型隐藏思维过程，只处理可观察的消息、工具调用和工具结果。\n\n## 9. 稳定内容、动态内容和缓存\n\n### 9.1 稳定内容\n\n以下内容变化较少，可按版本缓存：\n\n- 系统安全规则；\n- 固定用例；\n- 场景规则；\n- 工具定义；\n- 风险披露；\n- 已确认长期记忆。\n\n### 9.2 动态内容\n\n以下内容必须按运行或有效期更新：\n\n- 当前行情；\n- 当前运行选择的数据快照；\n- 当前持仓和现金；\n- 工具执行结果；\n- 数据质量状态。\n\n### 9.3 缓存键\n\n```text\ncase_version\n+ context_profile_version\n+ snapshot_hash\n+ compiler_version\n+ tokenizer_id\n+ tool_catalog_version\n```\n\n命中缓存只节省上下文收集和压缩成本，不允许复用旧的动态工具结果。缓存命中、失效原因和节省时长都进入运行记录。\n\n## 10. 预设多步用例\n\n多步用例每一步完成后只产生结构化状态：\n\n```json\n{\n  \"step\": 1,\n  \"resolved_entities\": [\"300750\"],\n  \"selected_facts\": [\"holding-300750\", \"risk-profile-01\"],\n  \"result_refs\": [\"observation://run-001/2\"],\n  \"active_constraints\": [\"C-1\", \"C-2\"]\n}\n```\n\n下一步上下文由固定问题、结构化状态和仍有效的证据重新构建，不直接附加上一步全部自然语言。这样可以评测指代和连续性，同时避免通用会话历史膨胀。\n\n## 11. 上下文处理报告\n\n每次运行保存：\n\n```json\n{\n  \"strategy\": \"budgeted\",\n  \"compiler_version\": \"1.0.0\",\n  \"profile\": \"portfolio-v1\",\n  \"token_budget\": 16000,\n  \"raw_tokens\": 42800,\n  \"working_tokens\": 12150,\n  \"compression_ratio\": 0.716,\n  \"collect_ms\": 46,\n  \"compress_ms\": 138,\n  \"cache_hit\": false,\n  \"required_items\": [\"system-c1\", \"case-input\", \"profile-01\"],\n  \"selected_items\": [\"holding-300750\", \"holding-600519\"],\n  \"summarized_items\": [\"news-group-03\"],\n  \"referenced_items\": [\"raw-news-22\"],\n  \"omitted_items\": [\"memory-irrelevant-08\"],\n  \"checks\": {\n    \"required_retained\": true,\n    \"budget_fit\": true,\n    \"references_valid\": true,\n    \"instruction_isolated\": true\n  }\n}\n```\n\n公开页面只展示条目类型、数量、选择原因和安全摘要，不展示内部原始内容。\n\n## 12. 失败和降级\n\n| 问题 | 处理 |\n|---|---|\n| tokenizer 不可用 | 使用保守估算并增加安全余量，记录降级 |\n| LLM 摘要失败 | 回退到结构化摘要或引用，不使用空白摘要 |\n| 强制项超过预算 | 运行失败，不删除安全项 |\n| 引用失效 | 运行无效，不能发布 |\n| 来源冲突 | 同时保留冲突值、来源和时间，交给代码规则判断 |\n| 缓存版本不一致 | 缓存失效并重新构建 |\n| 上下文构建超时 | 按用例配置使用最小安全上下文或标记无效 |\n\n## 13. 对照方式\n\n上下文压缩单独比较以下策略，Agent 实现方式、模型、温度、工具数据和数据快照保持不变。四种策略相互独立：只有 `budgeted` 使用项目自研算法，其余三种是行业常见基准；四种方式可以共用安全隔离与记录入口，但**不得**都经过自研压缩，否则实验无法证明自研算法优于基准。\n\n| 策略 | 说明 | 当前实现 |\n|---|---|---|\n| `full` | 在窗口允许时发送全部候选上下文，作为质量与成本上限 | 已实现；超预算直接失败，不静默截断 |\n| `recent-n` | 简单截断基线：公共系统规则等 required 始终保留，从最后一个事件向前选完整条目，达到预算即停 | 已实现（修复：required 不再被窗口截掉） |\n| `single-summary` | 一次性摘要基准：required + 最近事件原文 + 更早事件一次性摘要 | 已实现；摘要器（`summary.py`）与自研规则压缩器分离，默认确定性抽取式，可注入 LLM 摘要 |\n| `budgeted` | 自研：强制保留、结构化压缩、按优先级和公平份额选择 | 已实现（structured-text-v1 早期版本；多因子重要度与 selection_value 仍是设计稿） |\n\n完整自然 Session 的交叉验证（4 策略 × 3 Agent 模式 = 12 组矩阵）、派生工件冻结与 gold 评测见 [Session交叉验证设计.md](Session交叉验证设计.md)。评测指标和有效性规则见 [Agent 对照评测与证据展示.md](../evaluation/Agent对照评测与证据展示.md)。具体的长上下文组成、正反例和网页测试用例见 [固定用例与网页展示.md](../showcase/固定用例与网页展示.md)。\n\n## 14. 当前代码对应关系\n\n基础实现位于 `engine/src/bdlh_runtime/context/`，Session 交叉验证位于 `engine/src/bdlh_runtime/session/`：\n\n| 设计内容 | 当前代码 |\n|---|---|\n| 上下文条目、分类、角色（含 assistant 对话形态）和处理报告 | `context/models.py` |\n| 无模型 tokenizer 时的保守估算 | `context/token_count.py` |\n| 精确计数口径开关：环境变量 `LLM_TOKENIZER=tiktoken` 启用 `TiktokenCounter`（cl100k_base 词表），版本号 `tiktoken-cl100k-base-v1` 写入派生工件 `tokenizer_version` 字段；默认仍为保守口径 `conservative-cjk1-latin4-v1`，`ConservativeTokenCounter` 行为不变。注意：cl100k_base 为 OpenAI 词表近似口径（中文一般每字 0.6~1 token，通常低于保守口径）。另支持 `LLM_TOKENIZER=qwen`：Qwen 官方词表精确口径（`tiktoken-qwen-v1`，151,643 词元，与模型实际切分高度一致；词表需先 `python -m bdlh_runtime.context.token_count --init-qwen` 下载到 `engine/var/cache/`，缺失即报错不静默换口径）。跨口径数据不可直接比较；同批次内禁止混用口径，切换口径必须生成新的 strategy_version 批次 | `context/token_count.py`（`counter_from_env`），接线于 `session/compiler.py` |\n| 去重、JSON 紧凑化、显式省略和来源标记（budgeted 专用） | `context/compression.py` |\n| single-summary 的独立摘要基准（抽取式默认 + 可注入 LLM） | `context/summary.py` |\n| full、recent-window、single-summary、budgeted 四种独立策略 | `context/builder.py` |\n| Session 加载校验、事件序列化（工具对合并）、四派生输入编译与 hash 工件 | `session/loader.py` / `session/serializer.py` / `session/compiler.py` |\n| 冻结 Mock 调度器与 gold 机械评测 | `session/mock_dispatcher.py` / `session/gold_eval.py` |\n| 强制项、预算、跨用户、注入、对照策略与 Session 管线测试 | `tests/context/` / `tests/session/` |\n\n预算口径（已修复并接入 AgentLoop，`engine/loop.py`）：\n\n- 系统提示、结构化条目、对话历史、当前问题全部作为条目进入\n  `ContextBuilder.build()`，共用同一 Token 预算；\n- 可见工具 Schema 通过保守估算从预算预留（`_tool_schema_tokens`），\n  不再游离于预算之外；\n- 每轮模型调用前重新检查工作消息总量：超预算时把更早工具轮折叠为\n  不可信数据条目重建压缩，最近轮保留原文（tool_call/结果配对不拆）；\n  无退让空间则诚实失败（`ContextBudgetError`/`ContextWindowError`）。\n\n当前版本不调用外部 LLM（摘要基准为确定性抽取式；LLM 摘要接口已预留）。\nbudgeted 的多因子重要度与 `selection_value` 仍属设计稿\n（[重要度评分与性价比选择公式设计.md](重要度评分与性价比选择公式设计.md)），\n不得在对外描述中当成已实现功能。\n\n----- 文件内容结束 -----\n</untrusted-data>"
+    },
+    {
+      "role": "user",
+      "content": "请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。"
+    },
+    {
+      "role": "user",
+      "content": "这里最关键。我们不能只限制历史条目，然后又把 schema、当前消息和后续 ToolMessage 无限制加回去。"
+    },
+    {
+      "role": "assistant",
+      "content": "对。应以最终发送给模型的请求为预算边界，至少记录系统提示、可见工具 schema、编译后的 Session、当前问题、循环中新消息和输出预留。若 refit 只处理部分条目，页面上的 working_tokens 不能冒充最终请求 token。"
+    },
+    {
+      "role": "user",
+      "content": "最后的问题不要让 Agent 改代码，要让它在长历史里找出仍有效的约束、已经修正的说法和真实实现差距。"
+    }
+  ],
+  "compiled_context_hash": "sha256:77c4d73033333dedfb991b21406f2f73bbbd2f1af22ae3893e85e2ced1d453bb",
+  "input_event_ids": [
+    "evt-0001",
+    "evt-0002",
+    "evt-0003",
+    "evt-0004",
+    "evt-0005",
+    "evt-0006",
+    "evt-0007",
+    "evt-0008",
+    "evt-0009",
+    "evt-0010",
+    "evt-0011",
+    "evt-0012",
+    "evt-0013",
+    "evt-0014",
+    "evt-0015",
+    "evt-0016",
+    "evt-0017",
+    "evt-0018",
+    "evt-0019",
+    "evt-0020",
+    "evt-0021",
+    "evt-0022",
+    "evt-0023",
+    "evt-0024",
+    "evt-0025",
+    "evt-0026"
+  ],
+  "kept_event_ids": [
+    "evt-0022",
+    "evt-0023",
+    "evt-0024",
+    "evt-0025",
+    "evt-0026"
+  ],
+  "compressed_event_ids": [],
+  "referenced_event_ids": [],
+  "omitted_event_ids": [
+    "evt-0001",
+    "evt-0002",
+    "evt-0003",
+    "evt-0004",
+    "evt-0005",
+    "evt-0006",
+    "evt-0007",
+    "evt-0008",
+    "evt-0009",
+    "evt-0010",
+    "evt-0011",
+    "evt-0012",
+    "evt-0013",
+    "evt-0014",
+    "evt-0015",
+    "evt-0016",
+    "evt-0017",
+    "evt-0018",
+    "evt-0019",
+    "evt-0020",
+    "evt-0021"
+  ],
+  "original_tokens": 29192,
+  "working_tokens": 6632,
+  "build_duration_ms": 71,
+  "build_model_calls": 0,
+  "build_input_tokens": 0,
+  "build_output_tokens": 0,
+  "build_cost": 0.0,
+  "warnings": [
+    "algo_version=structured-text-v1"
+  ],
+  "required_retained": true,
+  "budget_fit": true,
+  "tokenizer_version": "conservative-cjk1-latin4-v1",
+  "scores": [],
+  "scoring_version": "",
+  "status": "COMPLETE",
+  "compile_wall_ms": 72
+}

@@ -1,6 +1,8 @@
-"""仅供项目所有者使用的固定用例运行 API。
+"""项目所有者运行 API + 匿名受限测试接口。
 
-接口不接受问题正文、系统提示词或工具列表。公开展示部署不包含此服务。
+维护者接口不接受问题正文、系统提示词或工具列表;公开展示部署不包含此服务。
+匿名接口(/api/v1/public/*)只接受固定编号与允许的配置字段,
+不接受任意问题、系统提示、工具定义、Mock 返回、模型地址或密钥。
 """
 
 from __future__ import annotations
@@ -9,13 +11,14 @@ import asyncio
 import contextlib
 import json
 import os
+import secrets
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,9 +33,20 @@ from bdlh_runtime.evaluation.run_telemetry import (
     validity_of,
     verify_artifact_hash,
 )
-from bdlh_runtime.infra.llm import DEFAULT_LLM_BASE_URL, create_llm
+from bdlh_runtime.experiments import AGENT_MODE_IDS as _AGENT_MODE_IDS
+from bdlh_runtime.experiments.compression import public_session_overview
+from bdlh_runtime.experiments.job_store import JobStore, sha256_hex
+from bdlh_runtime.experiments.public_service import AnonymousJobService, PublicTestError
+from bdlh_runtime.infra.env import load_deploy_env
 
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "/app/artifacts"))
+
+#: 匿名身份 Cookie:不可预测随机值、HttpOnly(JS 不可读)、SameSite=Lax;
+#: 数据库/任务只保存其 sha256 哈希。Secure 由部署层 HTTPS 保证(本地 http 不加)。
+ANON_COOKIE_NAME = "ts_anon"
+ANON_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+
+_job_store = JobStore()
 
 app = FastAPI(
     title="Private Run API",
@@ -42,6 +56,26 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+@app.on_event("startup")
+def recover_jobs_on_startup() -> None:
+    """服务启动:注入 deploy/.env 并恢复未完成任务。
+
+    env 装载放在 startup(而非 import):测试用 TestClient 不触发 startup,
+    避免把真实 LLM_API_KEY 等注入测试进程;已存在环境变量优先,
+    容器部署由 compose environment 覆盖。
+    """
+    load_deploy_env()
+    interrupted = _job_store.recover_interrupted()
+    if interrupted:
+        print(f"[run_api] 服务重启:{len(interrupted)} 个未完成任务已标记为 INTERRUPTED,不自动重跑")
+
+
+from bdlh_runtime.experiments.public_case_repository import get_case_repository
+
+# 生产用例仓库:data 服务映射(对比用例任务创建时读取;测试注入替身时整体替换本服务)
+_public_service = AnonymousJobService(_job_store, case_repository=get_case_repository())
 
 # 私有 CORS：仅 /lab 页面跨端口调用需要。RUN_API_ALLOWED_ORIGINS 为空（默认）时
 # 不挂中间件、不带任何 CORS 头（fail-closed）；公开部署永不配置该变量。
@@ -216,70 +250,19 @@ def list_tools(account: Annotated[dict[str, Any], Depends(require_login)]) -> li
     return tools
 
 
-class LlmConfigUpdate(BaseModel):
-    """模型切换:按账号保存 LLM 接入配置。apiKey 选填——None=保留旧值,空串=清除。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    base_url: str = Field(min_length=1, max_length=300)
-    model: str = Field(min_length=1, max_length=100)
-    api_key: str | None = Field(default=None, max_length=300)
-
-
-@app.get("/api/v1/llm-config")
-def get_llm_config(account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
-    """当前账号的 LLM 接入配置(脱敏:仅密钥尾 4 位,永不回明文)。"""
-    try:
-        cfg = _data().get_llm_config(str(account["accountId"]))
-    except DataServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if cfg is None:
-        return {"configured": False, "model": os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")}
-    api_key = cfg.get("apiKey")
-    return {
-        "configured": True,
-        "baseUrl": cfg.get("baseUrl"),
-        "model": cfg.get("model"),
-        "hasApiKey": bool(api_key),
-        "keyLast4": api_key[-4:] if api_key and len(api_key) >= 4 else None,
-    }
-
-
-@app.put("/api/v1/llm-config")
-def save_llm_config(
-    request: LlmConfigUpdate, account: Annotated[dict[str, Any], Depends(require_login)]
-) -> dict[str, Any]:
-    try:
-        _data().save_llm_config(
-            str(account["accountId"]), base_url=request.base_url, model=request.model, api_key=request.api_key
-        )
-    except DataServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return get_llm_config(account)
-
-
 @app.post("/api/v1/llm-config/test")
-def test_llm_config(
-    account: Annotated[dict[str, Any], Depends(require_login)],
-    request: LlmConfigUpdate | None = None,
-) -> dict[str, Any]:
-    """连通性验证:用已存配置(或请求体临时配置)发起一次最小补全调用。
+def test_llm_config(account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
+    """连通性验证:按服务端 env(deploy/.env / compose / 云 secret)发起一次最小补全。
 
-    请求体可省——省略时测试已存配置;密钥解析顺序:请求体 → 已存 → 服务端环境。
+    LLM 配置不再按账号存储(env 是唯一真源);此端点只做只读探测,不接收配置体。
     """
-    cfg: dict[str, Any] = {}
-    if request is not None:
-        cfg = {"baseUrl": request.base_url, "model": request.model, "apiKey": request.api_key}
-    else:
-        try:
-            cfg = _data().get_llm_config(str(account["accountId"])) or {}
-        except DataServiceError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-    base_url = (cfg.get("baseUrl") or os.getenv("LLM_BASE_URL") or DEFAULT_LLM_BASE_URL).rstrip("/")
-    model = cfg.get("model") or os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
-    api_key = cfg.get("apiKey") or os.getenv("LLM_API_KEY") or ""
+    base_url = (os.getenv("LLM_BASE_URL") or "").rstrip("/")
+    model = os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+    api_key = os.getenv("LLM_API_KEY") or ""
     if not api_key:
-        return {"ok": False, "error": "未配置 API Key(保存时填写,或服务端环境变量 LLM_API_KEY)"}
+        return {"ok": False, "error": "未配置 API Key(服务端环境变量 LLM_API_KEY)"}
+    if not base_url:
+        return {"ok": False, "error": "未配置 baseUrl(服务端环境变量 LLM_BASE_URL;env 是唯一真源,无内置默认端点)"}
     ok, detail = _probe_llm(base_url, model, api_key)
     return {"ok": ok, "model": model, "baseUrl": base_url, "detail": detail}
 
@@ -343,16 +326,7 @@ def start_eval_batch(
             _BATCH_SLOTS.release()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    # 模型切换:读取发起者的 LLM 接入配置(未配置/读取失败→None,执行时回落 env)
-    try:
-        llm_config = data.get_llm_config(str(account["accountId"]))
-    except DataServiceError:
-        llm_config = None
-    if llm_config and llm_config.get("model"):
-        # 配置存在时以账号绑定的模型为准——请求默认值来自服务端 env,
-        # 与账号配置(可能另一提供商)不一致会把错误模型名发给对方端点
-        request = request.model_copy(update={"model": str(llm_config["model"])})
-
+    # LLM 配置唯一真源是服务端 env;模型客户端由 runner 内部 build_llm_from_env 构建
     job_id = uuid4().hex[:12]
     job: dict[str, Any] = {
         "job_id": job_id,
@@ -368,7 +342,7 @@ def start_eval_batch(
 
     def task() -> None:
         try:
-            payload, run_records = _execute_eval(request, catalog, job=job, llm_config=llm_config)
+            payload, run_records = _execute_eval(request, catalog, job=job)
             _persist_runs(data, batch_id, request, payload, run_records)
             _persist_artifact(batch_id, payload)
             batch_status = "CANCELLED" if payload.get("stop_reason") == "CANCELLED" else "COMPLETE"
@@ -431,13 +405,6 @@ def start_context_batch(
         if not _BATCH_SLOTS.acquire(blocking=False):
             raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
         selected = request.case_ids or sorted(known)
-        # 模型切换:压缩对照同样按发起者账号配置(模型归一+客户端构建)
-        try:
-            llm_config = data.get_llm_config(str(account["accountId"]))
-        except DataServiceError:
-            llm_config = None
-        if llm_config and llm_config.get("model"):
-            request = request.model_copy(update={"model": str(llm_config["model"])})
         batch_id = data.create_batch(
             name=f"上下文压缩对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
             fixed_conditions={
@@ -471,7 +438,7 @@ def start_context_batch(
 
     def task() -> None:
         try:
-            payload, run_records = _execute_context_eval(request, views, selected, llm_config=llm_config)
+            payload, run_records = _execute_context_eval(request, views, selected)
             _persist_runs(data, batch_id, request, payload, run_records)
             _persist_artifact(batch_id, payload)
             data.complete_batch(batch_id, "COMPLETE")
@@ -676,13 +643,6 @@ def start_context_link_batch(
         if not _BATCH_SLOTS.acquire(blocking=False):
             raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
         selected = request.case_ids or sorted(known)
-        # 模型切换:联动对照同样按发起者账号配置(模型归一+客户端构建)
-        try:
-            llm_config = data.get_llm_config(str(account["accountId"]))
-        except DataServiceError:
-            llm_config = None
-        if llm_config and llm_config.get("model"):
-            request = request.model_copy(update={"model": str(llm_config["model"])})
         batch_id = data.create_batch(
             name=f"上下文联动对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
             fixed_conditions={
@@ -715,7 +675,7 @@ def start_context_link_batch(
 
     def task() -> None:
         try:
-            payload, run_records = _execute_context_link_eval(request, views, selected, llm_config=llm_config)
+            payload, run_records = _execute_context_link_eval(request, views, selected)
             _persist_runs(data, batch_id, request, payload, run_records)
             _persist_artifact(batch_id, payload)
             data.complete_batch(batch_id, "COMPLETE")
@@ -737,7 +697,6 @@ def _execute_context_link_eval(
     request: ContextLinkBatchRequest,
     views: list[dict[str, Any]],
     selected: list[str],
-    llm_config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[RunRecord]]:
     from bdlh_runtime.evaluation.context_eval import (
         LINKAGE_MODES,
@@ -749,20 +708,11 @@ def _execute_context_link_eval(
     )
 
     data = _data()
-    llm = None
-    if llm_config:
-        api_key = llm_config.get("apiKey") or os.getenv("LLM_API_KEY")
-        if api_key:
-            llm = create_llm(
-                api_key=api_key,
-                model=str(llm_config.get("model") or request.model),
-                base_url=str(llm_config.get("baseUrl") or DEFAULT_LLM_BASE_URL),
-            )
     cases = [case for case in load_context_variant_cases(views, data) if case.case_id in set(selected)]
     report = asyncio.run(
         run_context_eval(
             cases=cases,
-            llm=llm,
+            llm=None,  # runner 内部回落 build_llm_from_env(env 是唯一配置真源)
             model=request.model,
             runs_per_variant=request.runs,
             data=data,
@@ -790,32 +740,156 @@ def get_run_detail(run_id: str, account: Annotated[dict[str, Any], Depends(requi
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+# ---------------------------------------------------------------------
+# 匿名受限测试接口:只接受固定编号与允许的配置字段;匿名结果不可发布
+# ---------------------------------------------------------------------
+
+
+def _anon_token(request: Request, response: Response | None = None) -> str:
+    """读取或签发匿名身份 Cookie(原始值只留在浏览器,任务只保存哈希)。"""
+    token = request.cookies.get(ANON_COOKIE_NAME) or ""
+    if len(token) < 20:
+        token = secrets.token_urlsafe(32)
+        if response is not None:
+            response.set_cookie(
+                ANON_COOKIE_NAME,
+                token,
+                max_age=ANON_COOKIE_MAX_AGE,
+                httponly=True,
+                samesite="lax",
+            )
+    return token
+
+
+@app.get("/api/v1/public/test-options")
+def public_test_options(request: Request, response: Response) -> dict[str, Any]:
+    """公开测试选项:固定用例/Session 清单 + 服务端固定条件(只读,不创建任务)。"""
+    _anon_token(request, response)
+    quota = _public_service.quota
+    try:
+        sessions = public_session_overview()
+    except Exception:  # noqa: BLE001 —— Session 数据缺失时保持空列表,不阻塞选项
+        sessions = []
+    from bdlh_runtime.experiments.public_case_repository import get_case_repository
+
+    try:
+        cases = get_case_repository().public_projection()  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        cases = []
+    return {
+        "sessions": sessions,
+        "comparison_cases": cases,
+        "fixed_conditions": {
+            "test_types": ["COMPRESSION_CASE", "COMPARISON_CASE"],
+            "agent_mode_ids": list(_AGENT_MODE_IDS),
+            "repeat_options": list(quota.repeat_options),
+            "compression_repeat_count": 1,
+            "max_agent_steps": quota.max_agent_steps,
+            "run_counts": {
+                "comparison_repeat_3": 9,
+                "comparison_repeat_5": 15,
+                "compression_session_matrix": 12,
+                "compression_all_sessions_theoretical": 36,
+            },
+        },
+        "quota": quota.as_dict(),
+    }
+
+
+@app.post("/api/v1/public/test-jobs")
+def create_public_test_job(payload: dict[str, Any], request: Request, response: Response) -> dict[str, Any]:
+    """创建匿名测试任务:校验配置并立即返回 job_id;执行在后台进行。
+
+    请求只允许固定编号与配置字段;message/prompt/system_prompt/tool_schema/
+    mock_result/model_base_url/api_key 等字段一律拒绝。
+    """
+    token = _anon_token(request, response)
+    try:
+        job = _public_service.create_job(payload, anonymous_id_hash=sha256_hex(token))
+    except PublicTestError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "unit_count": len(job.units),
+        "publishable": job.publishable,
+        "custom_conditions": job.custom_conditions,
+    }
+
+
+@app.get("/api/v1/public/test-jobs")
+def list_public_test_jobs(request: Request, response: Response) -> list[dict[str, Any]]:
+    """我的测试:当前匿名身份的近期任务(进度、已完成单元数、总单元数)。"""
+    token = _anon_token(request, response)
+    jobs = _job_store.list_for_anonymous(sha256_hex(token), limit=20)
+    return [
+        {
+            "job_id": job.job_id,
+            "test_type": job.test_type,
+            "execution_scope": job.execution_scope,
+            "case_id": job.case_id,
+            "session_id": job.session_id,
+            "status": job.status,
+            "created_at": job.created_at,
+            "completed_units": job.completed_unit_count(),
+            "total_units": len(job.units),
+            "custom_conditions": job.custom_conditions,
+        }
+        for job in jobs
+    ]
+
+
+@app.get("/api/v1/public/test-jobs/{job_id}")
+def get_public_test_job(job_id: str, request: Request, response: Response) -> dict[str, Any]:
+    """查看自己任务的状态与摘要(校验匿名身份;他人任务按不存在处理)。"""
+    token = _anon_token(request, response)
+    try:
+        job = _public_service.get_job_for(job_id, sha256_hex(token))
+    except PublicTestError:
+        raise HTTPException(status_code=404, detail="任务不存在") from None
+    return job.public_view()
+
+
+@app.get("/api/v1/public/test-jobs/{job_id}/results")
+def get_public_test_results(job_id: str, request: Request, response: Response) -> dict[str, Any]:
+    """查看自己任务的公开字段结果(不含内部提示、gold 与未脱敏工具返回)。"""
+    token = _anon_token(request, response)
+    try:
+        job = _public_service.get_job_for(job_id, sha256_hex(token))
+    except PublicTestError:
+        raise HTTPException(status_code=404, detail="任务不存在") from None
+    return {"job_id": job.job_id, "status": job.status, "result": job.result, "units": [u.__dict__ for u in job.units]}
+
+
+@app.post("/api/v1/public/test-jobs/{job_id}/cancel")
+def cancel_public_test_job(job_id: str, request: Request, response: Response) -> dict[str, Any]:
+    """取消自己的任务:只阻止尚未开始的单元,已产生的运行与费用保留。"""
+    token = _anon_token(request, response)
+    try:
+        job = _public_service.cancel_job(job_id, sha256_hex(token))
+    except PublicTestError:
+        raise HTTPException(status_code=404, detail="任务不存在") from None
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "cancel_requested": job.cancel_requested,
+        "cancelled_units": sum(1 for unit in job.units if unit.status == "CANCELLED"),
+    }
+
+
 def _execute_eval(
     request: EvalBatchRequest,
     catalog: list[dict[str, Any]],
     job: dict[str, Any] | None = None,
-    llm_config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[RunRecord]]:
-    # 模型切换:按发起者配置构建客户端(密钥只在此处使用,不进任何记录);
-    # 未配置/缺密钥 → llm=None → run_ab_eval 回落服务端环境变量
-    llm = None
-    if llm_config:
-        api_key = llm_config.get("apiKey") or os.getenv("LLM_API_KEY")
-        if api_key:
-            llm = create_llm(
-                api_key=api_key,
-                # 客户端模型以账号配置为准(与 start_eval_batch 的归一保持同源)
-                model=str(llm_config.get("model") or request.model),
-                base_url=str(llm_config.get("baseUrl") or DEFAULT_LLM_BASE_URL),
-            )
-
+    # LLM 配置唯一真源是服务端 env;llm=None → run_ab_eval 内部 build_llm_from_env
     async def run() -> Any:
         return await run_ab_eval(
             runs_per_case=request.runs,
             model=request.model,
             with_react=request.include_react,
             cases=load_cases(_select_case_views(catalog, request.case_ids)),
-            llm=llm,
+            llm=None,
             should_stop=(lambda: bool(job.get("cancel_requested"))) if job is not None else None,
             max_total_tokens=_max_total_tokens(request),
             fixture_set_id=request.fixture_set_id or "ab-eval",
@@ -876,7 +950,6 @@ def _execute_context_eval(
     request: ContextBatchRequest,
     views: list[dict[str, Any]],
     selected: list[str],
-    llm_config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[RunRecord]]:
     from bdlh_runtime.evaluation.context_eval import (
         _report_payload as context_report_payload,
@@ -887,20 +960,11 @@ def _execute_context_eval(
     )
 
     data = _data()
-    llm = None
-    if llm_config:
-        api_key = llm_config.get("apiKey") or os.getenv("LLM_API_KEY")
-        if api_key:
-            llm = create_llm(
-                api_key=api_key,
-                model=str(llm_config.get("model") or request.model),
-                base_url=str(llm_config.get("baseUrl") or DEFAULT_LLM_BASE_URL),
-            )
     cases = [case for case in load_context_variant_cases(views, data) if case.case_id in set(selected)]
     report = asyncio.run(
         run_context_eval(
             cases=cases,
-            llm=llm,
+            llm=None,  # runner 内部回落 build_llm_from_env(env 是唯一配置真源)
             model=request.model,
             runs_per_variant=request.runs,
             data=data,

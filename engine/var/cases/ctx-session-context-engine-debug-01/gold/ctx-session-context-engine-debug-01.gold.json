@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "session_id": "ctx-session-context-engine-debug-01",
+  "session_version": 1,
+  "visibility": "evaluator_only",
+  "warning": "本文件只供 Mock 调度器和评测器使用，禁止拼入模型输入或公开原文。",
+  "current_active_constraints": [
+    {
+      "id": "read-only-review",
+      "statement": "只审查，不修改代码。",
+      "evidence_event_ids": [
+        "evt-0001",
+        "evt-0026"
+      ]
+    },
+    {
+      "id": "independent-baselines",
+      "statement": "四种策略独立，只有 budgeted-session 属于项目自研按预算策略。",
+      "evidence_event_ids": [
+        "evt-0004"
+      ]
+    }
+  ],
+  "superseded_decisions": [],
+  "required_facts": [],
+  "forbidden_claims": [
+    "四种策略都使用自研压缩算法",
+    "存在 scoring.py 就代表所有运行都启用多因子评分"
+  ],
+  "expected_tool_plan": {
+    "required_calls": [
+      {
+        "tool_name": "code.read",
+        "arguments": {
+          "path": "engine/src/bdlh_runtime/session/compiler.py"
+        }
+      },
+      {
+        "tool_name": "code.read",
+        "arguments": {
+          "path": "engine/src/bdlh_runtime/context/builder.py"
+        }
+      },
+      {
+        "tool_name": "code.read",
+        "arguments": {
+          "path": "engine/src/bdlh_runtime/engine/loop.py"
+        }
+      }
+    ],
+    "allowed_optional_calls": [
+      {
+        "tool_name": "file.search",
+        "purpose": "在已知范围内定位关键词"
+      },
+      {
+        "tool_name": "project.get_status",
+        "purpose": "只读确认项目状态"
+      }
+    ],
+    "unnecessary_calls": [
+      "document.summarize"
+    ],
+    "forbidden_calls": [
+      "file.write",
+      "code.execute",
+      "database.query"
+    ],
+    "nonexistent_tool_names": [
+      "context.compress_now",
+      "database.auto_migrate"
+    ],
+    "ordering_rules": [
+      "先读取证据再形成结论",
+      "不得修改任何文件"
+    ]
+  },
+  "runtime_mock_fixtures": [
+    {
+      "fixture_id": "ctx-session-context-engine-debug-01-fixture-1",
+      "tool_name": "code.read",
+      "match_arguments": {
+        "path": "engine/src/bdlh_runtime/session/compiler.py"
+      },
+      "status": "success",
+      "result": {
+        "path": "engine/src/bdlh_runtime/session/compiler.py",
+        "content_hash": "sha256:b1109b6953366418728da2fe7f826585533e802934c8ce58d1eccced774b8ed8",
+        "line_range": "1-30",
+        "start_line": 1,
+        "end_line": 30,
+        "content_excerpt": "\"\"\"四种上下文策略的 Session 派生输入编译器。\n\n一份冻结 Session → 四份派生输入(full-session / recent-window /\nsingle-summary / budgeted-session),每份生成后计算 hash 并冻结成工件;\n三个 Agent 模式必须读取同一份工件,不得各自重新生成。\n\n编译器输入只有 session + variant 配置 + 公共系统规则——结构上无法读取\ngold,答案泄漏在接口层面被阻断。\n\"\"\"\n\nfrom __future__ import annotations\n\nimport time\nfrom dataclasses import dataclass, field\nfrom pathlib import Path\nfrom typing import Any\n\nfrom bdlh_runtime.context import (\n    ContextBuildRequest,\n    ContextBuildResult,\n    ContextBuilder,\n    ContextClassification,\n    ContextItem,\n    ContextMessage,\n    ContextRole,\n    ContextStrategy,\n    ItemScore,\n    MultiFactorScorer,\n    HistorySummarizer,\n    QWEN_TIKTOKEN_VERSION,",
+        "simulated": true,
+        "content_time": "2026-08-24"
+      }
+    },
+    {
+      "fixture_id": "ctx-session-context-engine-debug-01-fixture-2",
+      "tool_name": "code.read",
+      "match_arguments": {
+        "path": "engine/src/bdlh_runtime/context/builder.py"
+      },
+      "status": "success",
+      "result": {
+        "path": "engine/src/bdlh_runtime/context/builder.py",
+        "content_hash": "sha256:71422bf834ded35704c9deda6b140d97f128f9d46c108340ac7c45bb608c2d03",
+        "line_range": "1-45",
+        "start_line": 1,
+        "end_line": 45,
+        "content_excerpt": "from __future__ import annotations\n\nfrom collections.abc import Iterable\n\nfrom .compression import ContextCompressor, StructuredTextCompressor\nfrom .models import (\n    ContextAction,\n    ContextBudgetError,\n    ContextBuildRequest,\n    ContextBuildResult,\n    ContextClassification,\n    ContextDecision,\n    ContextItem,\n    ContextMessage,\n    ContextReport,\n    ContextRole,\n    ContextStrategy,\n    ContextWindowError,\n    ItemScore,\n)\nfrom .scoring import MultiFactorScorer\nfrom .summary import ExtractiveSummarizer, HistorySummarizer\nfrom .token_count import ConservativeTokenCounter, TokenCounter\n\n\nclass ContextBuilder:\n    def __init__(\n        self,\n        counter: TokenCounter | None = None,\n        compressor: ContextCompressor | None = None,\n        summarizer: HistorySummarizer | None = None,\n        scorer: MultiFactorScorer | None = None,\n    ) -> None:\n        self._counter = counter or ConservativeTokenCounter()\n        self._compressor = compressor or StructuredTextCompressor()\n        # single-summary 基准的独立摘要器:与 budgeted 使用的 StructuredTextCompressor 分离\n        self._summarizer = summarizer or ExtractiveSummarizer()\n        # budgeted v2 多因子评分器(公式五/六);None=保持 v1 直接 priority 排序\n        self._scorer = scorer\n\n    @property\n    def summarizer(self) -> HistorySummarizer:\n        \"\"\"当前注入的摘要器(LLM 摘要器在此暴露用量,供编译器取回)。\"\"\"\n\n        return self._summarizer",
+        "simulated": true,
+        "content_time": "2026-08-24"
+      }
+    },
+    {
+      "fixture_id": "ctx-session-context-engine-debug-01-fixture-3",
+      "tool_name": "code.read",
+      "match_arguments": {
+        "path": "engine/src/bdlh_runtime/engine/loop.py"
+      },
+      "status": "success",
+      "result": {
+        "path": "engine/src/bdlh_runtime/engine/loop.py",
+        "content_hash": "sha256:4863d8a2649e9f036e05d060dccad0b6db63087b0376721992e814705ee93f01",
+        "line_range": "1-35",
+        "start_line": 1,
+        "end_line": 35,
+        "content_excerpt": "\"\"\"Agent 循环（设计文档 §4.3）：bind_tools → 治理中间件 → Observation 回填。\n\n三层闸门：\n- G-α：语义快路径命中闲聊 / 知识 / 禁止则不进入循环、不装载工具；\n- G-β：进入循环后由模型决定是否调用工具（无 tool_calls 即直答）；\n- G-γ：治理中间件预算为上限。\n\n模型输入的上下文拼装统一经 ``ContextBuilder.build()``（长上下文设计 §4）：\n固定上下文条目、不可信数据包裹、跨用户隔离与预算控制都由构建器裁决,\n循环内不允许旁路拼装。系统提示作为 bare 指令条目过构建器(逐字不变)。\n强制项超预算抛 ``ContextBudgetError``/``ContextWindowError``,不静默降级。\n\n系统提示从 ``prompts/`` 文件加载，禁止内联长字符串。\n无 LLM（``create_llm`` 返回 None）时循环不启动，返回 degraded。\n\"\"\"\n\nfrom __future__ import annotations\n\nimport json\nimport logging\nimport time\nfrom collections.abc import Sequence\nfrom dataclasses import dataclass, field\nfrom pathlib import Path\nfrom typing import Any, Protocol, runtime_checkable\n\nfrom langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage\n\nfrom bdlh_runtime.context import (\n    ConservativeTokenCounter,\n    ContextBuilder,\n    ContextBuildRequest,\n    ContextBuildResult,\n    ContextClassification,\n    ContextItem,",
+        "simulated": true,
+        "content_time": "2026-08-22",
+        "note": "模块头注释描述早期装配口径,需与当前循环内预算重建实现对照"
+      }
+    }
+  ],
+  "answer_rubric": {
+    "must_use_evidence": true,
+    "must_respect_current_constraints": true,
+    "must_not_modify_files": true
+  }
+}

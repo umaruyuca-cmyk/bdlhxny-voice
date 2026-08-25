@@ -50,12 +50,14 @@ def test_data_quality_rejects_fixture_and_unavailable_data() -> None:
 
 
 def test_response_blocks_trading_semantics_and_requires_evidence() -> None:
-    guardrail = DefaultResponseGuardrail()
+    guardrail = DefaultResponseGuardrail(
+        blocked_terms=("立即买入", "立即卖出", "下单", "保证收益", "稳赚", "guaranteed return"),
+    )
     assert (
         guardrail.evaluate_response(
             PublicResponse(response_kind="ANSWER", message="建议立即买入"), context=_context()
         ).audit_code
-        == "TRADING_SEMANTICS_BLOCKED"
+        == "DANGEROUS_SEMANTICS_BLOCKED"
     )
     assert (
         guardrail.evaluate_response(
@@ -67,7 +69,7 @@ def test_response_blocks_trading_semantics_and_requires_evidence() -> None:
             ),
             context=_context(),
         ).audit_code
-        == "TRADING_SEMANTICS_BLOCKED"
+        == "DANGEROUS_SEMANTICS_BLOCKED"
     )
     assert (
         guardrail.evaluate_response(

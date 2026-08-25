@@ -45,16 +45,22 @@ def _case(case_id: str = "research-01") -> ABCase:
 
 
 async def _run(**kwargs: Any):
-    return await run_ab_eval(
-        llm=ScriptedToolModel(),
-        model="glm-4.7-flash",
-        cases=[_case()],
-        catalog=catalog_from_snapshot(seeded_snapshot()),
-        frozen=FrozenObservations(frozen_payload()),
-        retry_delay_s=0,
-        inter_run_delay_s=0,
-        **kwargs,
-    )
+    from bdlh_runtime.scenarios import disable_all_scenario_packs, enable_scenario_pack
+
+    enable_scenario_pack("finance")
+    try:
+        return await run_ab_eval(
+            llm=ScriptedToolModel(),
+            model="glm-4.7-flash",
+            cases=[_case()],
+            catalog=catalog_from_snapshot(seeded_snapshot()),
+            frozen=FrozenObservations(frozen_payload()),
+            retry_delay_s=0,
+            inter_run_delay_s=0,
+            **kwargs,
+        )
+    finally:
+        disable_all_scenario_packs()
 
 
 @pytest.mark.asyncio
@@ -151,11 +157,11 @@ def test_cancel_endpoint_cooperative_and_idempotent(
     assert fake_data.completed
 
 
-def test_cancel_unknown_job_is_404(client):  # noqa: ANN001
+def test_cancel_unknown_job_is_404(client, finance_pack):  # noqa: ANN001
     assert client.post("/api/v1/jobs/missing/cancel", headers=_auth()).status_code == 404
 
 
-def test_max_total_tokens_request_validation(client):  # noqa: ANN001
+def test_max_total_tokens_request_validation(client, finance_pack):  # noqa: ANN001
     response = client.post(
         "/api/v1/eval-batches",
         json={"case_ids": ["research-01"], "runs": 1, "max_total_tokens": 0},

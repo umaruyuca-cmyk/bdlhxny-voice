@@ -105,11 +105,11 @@ class CatalogToolExecutor:
             if quantity is None:
                 quantity = position.get("shares")
             if not symbol or not isinstance(quantity, (int, float)):
-                errors.append(f"持仓缺少 symbol/quantity：{symbol or '?'}")
+                errors.append(f"条目缺少 symbol/quantity：{symbol or '?'}")
                 continue
             price = price_by_symbol.get(symbol)
             if price is None:
-                errors.append(f"缺少 {symbol} 的行情价格")
+                errors.append(f"缺少 {symbol} 的价格")
                 continue
             market_value = round(float(quantity) * price, 2)
             rows.append({"symbol": symbol, "quantity": float(quantity), "price": price, "market_value": market_value})
@@ -119,7 +119,7 @@ class CatalogToolExecutor:
             return {
                 "status": "FAILED",
                 "engine": engine_tag,
-                "error": "；".join(errors) or "无有效持仓输入",
+                "error": "；".join(errors) or "无有效输入条目",
             }
         for row in rows:
             row["weight"] = round(row["market_value"] / total, 4)

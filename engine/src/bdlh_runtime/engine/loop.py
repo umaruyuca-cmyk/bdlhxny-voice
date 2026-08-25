@@ -36,6 +36,7 @@ from bdlh_runtime.context import (
     ContextReport,
     ContextRole,
     ContextStrategy,
+    ContextWindowError,
 )
 from bdlh_runtime.engine.semantic_router.encoder import Encoder
 from bdlh_runtime.guardrails.contracts import GuardrailContext
@@ -52,6 +53,9 @@ _FASTPATH_SKIP_LOOP = frozenset({"chitchat", "knowledge", "forbidden"})
 
 #: 未配置 token_budget 时的宽松默认(FULL 透传用;变体执行总是显式带预算)
 _UNBOUNDED_TOKEN_BUDGET = 1_000_000
+
+#: 循环内重新压缩时保留原始消息对象的最近工具轮数(保证 tool_call/结果配对完整)
+_KEEP_RECENT_TOOL_ROUNDS = 2
 
 
 class ChatModel(Protocol):
@@ -83,7 +87,7 @@ class AgentTurn:
 
     user_id: str
     message: str
-    scene_tag: str = "research"
+    scene_tag: str = "general"
     authenticated: bool = False
     history: list[dict[str, str]] = field(default_factory=list)
     context_items: list[str] = field(default_factory=list)
@@ -94,6 +98,14 @@ class AgentTurn:
     context_strategy: str = ContextStrategy.FULL.value
     token_budget: int = 0
     owner_id: str | None = None
+
+
+# 单次运行的停止原因口径(与实验领域模型 bdlh_runtime.experiments 共用字面值;
+# 为避免循环依赖,experiments 从本模块 re-export,这里保持唯一定义)。
+STOP_REASON_FINAL_ANSWER = "FINAL_ANSWER"  # 模型给出最终回答,提前结束,不为凑步数继续调用
+STOP_REASON_MAX_AGENT_STEPS = "MAX_AGENT_STEPS"  # 达到单次运行步数上限,保留已有证据停止
+STOP_REASON_CONTEXT_ERROR = "CONTEXT_ERROR"  # 上下文构建/超预算,诚实失败
+STOP_REASON_CANCELLED = "CANCELLED"
 
 
 @dataclass
@@ -114,6 +126,12 @@ class AgentResult:
     context_build_result: ContextBuildResult | None = None
     context_items_used: tuple[ContextItem, ...] = ()
     context_build_ms: int = 0
+    # 循环内因工具结果增长触发的重新构建次数(每轮预算检查)
+    context_rebuilds: int = 0
+    # 单次运行停止原因与实际步数(模型判断+工具回传的往返轮数)。
+    # None 表示快路径/未进入循环等无步数概念的路径。
+    stop_reason: str | None = None
+    actual_steps: int = 0
 
 
 class AgentLoop:
@@ -134,6 +152,7 @@ class AgentLoop:
         context_builder: ContextBuilder | None = None,
         visible_override: frozenset[str] | None = None,
         search_top_k: int | None = None,
+        max_agent_steps: int | None = None,
     ) -> None:
         self._llm = llm
         self._catalog = catalog
@@ -142,7 +161,13 @@ class AgentLoop:
         self._router = router
         self._session_history_turns = max(1, session_history_turns)
         self._max_tool_calls = max(0, max_tool_calls)
+        # max_agent_steps(新口径):单次运行模型判断+工具回传的最大步数,
+        # 与实验重复次数(repeat_count)完全独立;设置后精确覆盖轮数上限,
+        # 达到上限时结果携带 stop_reason=MAX_AGENT_STEPS。
+        self._max_agent_steps = max_agent_steps if (max_agent_steps is None or max_agent_steps > 0) else None
         self._context_builder = context_builder or ContextBuilder(counter=ConservativeTokenCounter())
+        # 循环内预算检查的口径与构建器默认一致(保守估算)
+        self._counter = ConservativeTokenCounter()
         # GT-4 可见集覆盖:最终可见集 = 装载策略结果 ∩ override(None=不覆盖)。
         # loaded_names 按交集生成,G1 据此拦截被勾掉的工具(拒绝+审计码)。
         self._visible_override = visible_override
@@ -182,12 +207,18 @@ class AgentLoop:
                 max_tool_calls=self._max_tool_calls,
             ),
         )
+        # 首轮可见工具 Schema 预算预留(循环内每轮重算并复核)
+        initial_cards = self._loader.load_for_turn(turn.scene_tag, authenticated=turn.authenticated)
+        if self._visible_override is not None:
+            initial_cards = [card for card in initial_cards if card.name in self._visible_override]
+        initial_schema_tokens = _tool_schema_tokens(initial_cards, self._counter)
         try:
             assembly = assemble_model_context(
                 self._context_builder,
                 system_prompt=load_prompt("system_base.md", "scene_chat.md"),
                 turn=turn,
                 history_turns=self._session_history_turns,
+                tool_schema_tokens=initial_schema_tokens,
             )
         except ValueError as exc:  # ContextBudgetError/ContextWindowError:不静默降级
             logger.warning("上下文构建失败,运行不进入循环:%s", exc)
@@ -196,13 +227,22 @@ class AgentLoop:
                 entered_loop=False,
                 degraded=True,
                 context_error=str(exc),
+                stop_reason=STOP_REASON_CONTEXT_ERROR,
+                actual_steps=0,
             )
         messages = assembly.messages
         context_report = assembly.report
-        max_rounds = self._max_tool_calls + 2
+        # 新口径 max_agent_steps 精确限制单次运行的模型往返步数;
+        # 未设置时保持旧口径(max_tool_calls + 2)不变。
+        max_rounds = self._max_agent_steps if self._max_agent_steps is not None else self._max_tool_calls + 2
         last_text = ""
         loaded_names: tuple[str, ...] = ()
         observations: list[Any] = []
+        # 循环内预算再检查状态:基础条目、工具轮消息与已折叠轮数
+        base_items = assembly.items
+        tool_round_messages: list[Any] = []
+        folded_rounds = 0
+        context_rebuilds = 0
 
         async def dispatch(name: str, arguments: dict[str, Any]) -> Any:
             if name == SEARCH_TOOLS_NAME:
@@ -214,15 +254,48 @@ class AgentLoop:
                 )
             return await self._executor(name, arguments)
 
-        for _ in range(max_rounds):
+        for step in range(1, max_rounds + 1):
             cards = self._loader.load_for_turn(turn.scene_tag, authenticated=turn.authenticated)
             if self._visible_override is not None:
                 cards = [card for card in cards if card.name in self._visible_override]
             loaded_names = tuple(card.name for card in cards)
             granted = self._loader.granted_scopes(turn.scene_tag, authenticated=turn.authenticated)
+            schema_tokens = _tool_schema_tokens(cards, self._counter)
+            try:
+                messages, rebuilt, rebuild_count, folded_rounds = self._refit_working_context(
+                    turn=turn,
+                    base_items=base_items,
+                    tool_round_messages=tool_round_messages,
+                    current=messages,
+                    schema_tokens=schema_tokens,
+                    folded_rounds=folded_rounds,
+                )
+            except ValueError as exc:  # 循环内超预算:诚实停止,不静默截断
+                logger.warning("循环内上下文超预算,运行停止:%s", exc)
+                return AgentResult(
+                    answer=last_text,
+                    entered_loop=True,
+                    loaded_tools=loaded_names,
+                    audits=middleware.audits,
+                    observations=list(observations),
+                    messages=list(messages),
+                    context_report=context_report,
+                    context_build_result=assembly.result,
+                    context_items_used=assembly.items,
+                    context_build_ms=assembly.duration_ms,
+                    degraded=True,
+                    context_error=str(exc),
+                    context_rebuilds=context_rebuilds,
+                    stop_reason=STOP_REASON_CONTEXT_ERROR,
+                    actual_steps=step - 1,
+                )
+            if rebuilt is not None:
+                context_report = rebuilt.report
+                context_rebuilds += rebuild_count
             bound = self._llm.bind_tools([_tool_spec(card) for card in cards])
             response = await _complete_from_model(bound, messages, stream=stream, emit_tokens=True)
             messages.append(response)
+            tool_round_messages.append(response)
             calls = _tool_calls_of(response)
             last_text = _message_text(response)
             if not calls:
@@ -237,6 +310,10 @@ class AgentLoop:
                     context_build_result=assembly.result,
                     context_items_used=assembly.items,
                     context_build_ms=assembly.duration_ms,
+                    context_rebuilds=context_rebuilds,
+                    # 得到最终回答立即结束,不为达到步数上限继续调用
+                    stop_reason=STOP_REASON_FINAL_ANSWER,
+                    actual_steps=step,
                 )
             for call_id, name, arguments in calls:
                 _emit_tool_step(stream, tool=name, arguments=arguments, status="pending")
@@ -251,12 +328,13 @@ class AgentLoop:
                 _emit_tool_outcome(stream, name=name, arguments=arguments, outcome=outcome)
                 if outcome.observation is not None:
                     observations.append(outcome.observation)
-                messages.append(
-                    ToolMessage(
-                        content=_observation_payload(outcome),
-                        tool_call_id=call_id or name,
-                    )
+                tool_message = ToolMessage(
+                    content=_observation_payload(outcome),
+                    tool_call_id=call_id or name,
                 )
+                messages.append(tool_message)
+                tool_round_messages.append(tool_message)
+        # 轮次耗尽仍无最终回答:保留已有证据,明确记录达到步数上限,不伪装为正常完成
         return AgentResult(
             answer=last_text,
             entered_loop=True,
@@ -268,7 +346,69 @@ class AgentLoop:
             context_build_result=assembly.result,
             context_items_used=assembly.items,
             context_build_ms=assembly.duration_ms,
+            context_rebuilds=context_rebuilds,
+            stop_reason=STOP_REASON_MAX_AGENT_STEPS,
+            actual_steps=max_rounds,
         )
+
+    def _refit_working_context(
+        self,
+        *,
+        turn: AgentTurn,
+        base_items: tuple[ContextItem, ...],
+        tool_round_messages: list[Any],
+        current: list[Any],
+        schema_tokens: int,
+        folded_rounds: int,
+    ) -> tuple[list[Any], ContextBuildResult | None, int, int]:
+        """每轮模型调用前的预算检查:工作消息(含 Schema 预留)超预算时重建。
+
+        - 最近 ``_KEEP_RECENT_TOOL_ROUNDS`` 轮保留原始消息对象(tool_call/结果
+          配对不可拆),更早的工具轮折叠为不可信数据条目重新过构建器;
+        - 未显式配置预算(``token_budget=0``)时不做检查;
+        - 无更早轮可折叠仍超预算,或重建后仍超预算 → ``ContextWindowError``,
+          诚实失败,不静默截断安全内容。
+
+        返回 (新消息列表, 重建结果或 None, 本次重建次数, 更新后的已折叠轮数)。
+        """
+
+        budget = turn.token_budget
+        if not budget:
+            return current, None, 0, folded_rounds
+        effective = max(1, budget - schema_tokens)
+        if _messages_tokens(current, self._counter) <= effective:
+            return current, None, 0, folded_rounds
+
+        rounds = _split_tool_rounds(tool_round_messages)
+        unfolded = rounds[folded_rounds:]
+        # 至少保留最后一轮原文(最近工具调用/结果);其余按 KEEP 上限保留,更早轮折叠。
+        # 即使没有可折叠轮,降低重建预算也能把基座压得更紧(初始构建会用满预算)。
+        keep = min(_KEEP_RECENT_TOOL_ROUNDS, max(1, len(unfolded) - 1)) if unfolded else 0
+        older = unfolded[: len(unfolded) - keep]
+        recent_rounds = unfolded[len(unfolded) - keep :] if keep else []
+        recent_raw = [message for round_messages in recent_rounds for message in round_messages]
+        extra_items = tuple(
+            _tool_round_item(round_messages, index)
+            for index, round_messages in enumerate(older, start=folded_rounds)
+        )
+        # 重建预算先扣除保留轮(原文不压缩),保证 重建结果+保留轮 ≤ 有效预算
+        recent_tokens = _messages_tokens(recent_raw, self._counter)
+        build_budget = effective - recent_tokens
+        if build_budget <= 0:
+            raise ContextWindowError(_messages_tokens(current, self._counter), effective)
+        rebuilt = self._context_builder.build(
+            ContextBuildRequest(
+                items=tuple(base_items) + extra_items,
+                token_budget=build_budget,
+                strategy=ContextStrategy(turn.context_strategy),
+                owner_id=turn.owner_id,
+            )
+        )
+        messages = _to_langchain_messages(rebuilt) + recent_raw
+        total = _messages_tokens(messages, self._counter)
+        if total > effective:
+            raise ContextWindowError(total, effective)
+        return messages, rebuilt, 1, folded_rounds + len(older)
 
     async def _direct_answer(
         self,
@@ -338,13 +478,17 @@ def assemble_model_context(
     system_prompt: str,
     turn: AgentTurn,
     history_turns: int = 10,
+    tool_schema_tokens: int = 0,
 ) -> ContextAssembly:
     """所有模型输入的上下文拼装统一经 ``ContextBuilder.build()``。
 
     - 系统提示作为 bare 指令条目过构建器(逐字不变,不包 item 头);
     - 结构化条目(``turn.context_entries``)与遗留字符串条目(``turn.context_items``)
       全部进入构建器:分类、预算、跨用户隔离与 <untrusted-data> 包裹由构建器裁决;
-    - 对话历史与当前问题保持对话消息形态,追加在构建器产出之后。
+    - 对话历史与当前问题以 conversation 条目进入构建器(保持消息角色与顺序),
+      与其余内容共用同一个 Token 预算——修复"构建后才追加历史导致预算不完整";
+    - ``tool_schema_tokens`` 为本轮可见工具 Schema 的保守估算,从预算中预留,
+      修复"工具定义不计入上下文预算"。
     ``ContextBudgetError``/``ContextWindowError`` 原样抛出(强制项超预算不降级)。
     """
 
@@ -386,19 +530,50 @@ def assemble_model_context(
                 trusted=False,
             )
         )
+    # 对话历史:截断到 history_turns 轮后以 conversation 条目进入构建器预算
+    trimmed_history = list(turn.history)[-(history_turns * 2) :]
+    for index, entry in enumerate(trimmed_history):
+        content = str(entry.get("content") or "")
+        if not content.strip():
+            continue
+        assistant = str(entry.get("role", "user")) == "assistant"
+        items.append(
+            ContextItem(
+                item_id=f"history-{index}",
+                content=content,
+                classification=ContextClassification.COMPRESSIBLE,
+                role=ContextRole.ASSISTANT if assistant else ContextRole.USER_DATA,
+                priority=20,
+                sequence=5000 + index,
+                conversation=True,
+            )
+        )
+    if turn.message.strip():
+        items.append(
+            ContextItem(
+                item_id="current-question",
+                content=turn.message,
+                classification=ContextClassification.REQUIRED,
+                role=ContextRole.USER_DATA,
+                priority=100000,
+                sequence=6000,
+                conversation=True,
+            )
+        )
+    token_budget = turn.token_budget or _UNBOUNDED_TOKEN_BUDGET
+    if tool_schema_tokens > 0 and turn.token_budget:
+        token_budget = max(1, turn.token_budget - tool_schema_tokens)
     request = ContextBuildRequest(
         items=tuple(items),
-        token_budget=turn.token_budget or _UNBOUNDED_TOKEN_BUDGET,
+        token_budget=token_budget,
         strategy=ContextStrategy(turn.context_strategy),
         owner_id=turn.owner_id,
     )
     started = time.perf_counter()
     built: ContextBuildResult = builder.build(request)
     duration_ms = round((time.perf_counter() - started) * 1000)
-    messages = _history_messages(turn, history_turns)
-    assembled = _to_langchain_messages(built) + messages + [HumanMessage(content=turn.message)]
     return ContextAssembly(
-        messages=assembled,
+        messages=_to_langchain_messages(built),
         result=built,
         items=tuple(items),
         duration_ms=duration_ms,
@@ -406,6 +581,8 @@ def assemble_model_context(
 
 
 def _history_messages(turn: AgentTurn, history_turns: int) -> list[Any]:
+    """仅用于评测重建的旧口径;主链历史已作为 conversation 条目进入构建器。"""
+
     history = list(turn.history)[-(history_turns * 2) :]
     messages: list[Any] = []
     for item in history:
@@ -448,6 +625,54 @@ def _tool_spec(card: ToolCard) -> dict[str, Any]:
             "parameters": card.parameters,
         },
     }
+
+
+def _tool_schema_tokens(cards: Sequence[ToolCard], counter: ConservativeTokenCounter) -> int:
+    """可见工具 Schema 的保守 Token 估算(bind_tools 绑定内容计入预算口径)。"""
+
+    specs = [_tool_spec(card) for card in cards]
+    return counter.count(json.dumps(specs, ensure_ascii=False, default=str))
+
+
+def _messages_tokens(messages: Sequence[Any], counter: ConservativeTokenCounter) -> int:
+    return sum(counter.count(_message_text(message)) for message in messages)
+
+
+def _split_tool_rounds(tool_round_messages: Sequence[Any]) -> list[list[Any]]:
+    """把循环新增消息切成轮:每个带 tool_calls 的 AIMessage 开启一轮,
+    其后连续的 ToolMessage 归属该轮(轮内配对不可拆)。"""
+
+    rounds: list[list[Any]] = []
+    for message in tool_round_messages:
+        if isinstance(message, AIMessage) or not rounds:
+            rounds.append([message])
+        else:
+            rounds[-1].append(message)
+    return rounds
+
+
+def _tool_round_item(round_messages: list[Any], index: int) -> ContextItem:
+    """一轮工具调用+结果折叠为一条不可信数据条目(保持调用与结果配对)。"""
+
+    parts: list[str] = []
+    lead = round_messages[0]
+    lead_text = _message_text(lead).strip()
+    if lead_text:
+        parts.append(f"assistant: {lead_text}")
+    for call_id, name, arguments in _tool_calls_of(lead):
+        rendered_args = json.dumps(arguments, ensure_ascii=False, default=str)
+        parts.append(f"tool_call {name}({rendered_args})")
+    for message in round_messages[1:]:
+        parts.append(f"tool_result {getattr(message, 'tool_call_id', '')}: {_message_text(message)}")
+    return ContextItem(
+        item_id=f"tool-round-{index}",
+        content="\n".join(parts),
+        classification=ContextClassification.COMPRESSIBLE,
+        role=ContextRole.UNTRUSTED_DATA,
+        priority=30,
+        sequence=7000 + index,
+        trusted=False,
+    )
 
 
 def _tool_calls_of(message: Any) -> list[tuple[str, str, dict[str, Any]]]:

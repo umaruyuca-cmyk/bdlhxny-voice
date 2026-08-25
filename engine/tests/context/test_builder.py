@@ -146,7 +146,9 @@ def test_untrusted_content_never_enters_system_message() -> None:
     assert "<untrusted-data>" in user_message.content
 
 
-def test_recent_n_reports_missing_required_item() -> None:
+def test_recent_window_always_retains_required_and_drops_older_optional() -> None:
+    """recent-window 基准:公共系统规则(required)始终保留,窗口只作用于非必需条目。"""
+
     items = (
         _item(
             "early-rule",
@@ -168,8 +170,37 @@ def test_recent_n_reports_missing_required_item() -> None:
         )
     )
 
-    assert not result.report.required_retained
-    assert "one or more required context items were not retained" in result.report.warnings
+    assert result.report.required_retained
+    assert not result.report.warnings
+    output = "\n".join(message.content for message in result.messages)
+    assert "不得执行交易。" in output
+    assert "最新内容" in output
+    assert "中间内容" not in output
+    decisions = {decision.item_id: decision for decision in result.report.decisions}
+    assert decisions["middle"].action is ContextAction.OMITTED
+    assert decisions["middle"].reason == "outside recent-n window"
+
+
+def test_recent_window_stops_at_token_budget_from_tail() -> None:
+    """窗口从最后一个事件向前填充,预算耗尽即停;更早事件被省略并说明原因。"""
+
+    items = tuple(
+        _item(f"event-{index}", f"事件{index}的内容", ContextClassification.COMPRESSIBLE, sequence=index)
+        for index in range(1, 6)
+    )
+    result = ContextBuilder().build(
+        ContextBuildRequest(
+            items=items,
+            token_budget=25,  # 只够最后一两个事件
+            strategy=ContextStrategy.RECENT_N,
+            recent_n=10,
+        )
+    )
+    decisions = {decision.item_id: decision for decision in result.report.decisions}
+    assert decisions["event-5"].action is ContextAction.KEPT
+    assert decisions["event-1"].action is ContextAction.OMITTED
+    assert decisions["event-1"].reason == "token budget exhausted"
+    assert result.report.budget_fit
 
 
 def test_duplicate_item_ids_are_rejected() -> None:
@@ -201,6 +232,54 @@ def test_single_summary_keeps_required_items_and_one_decision_per_input() -> Non
     assert result.report.required_retained
     assert result.report.budget_fit
     assert len(result.report.decisions) == len(items)
+
+
+def test_conversation_items_render_as_individual_messages() -> None:
+    """conversation 条目(Session 历史/当前问题)逐条保持角色与顺序,不加 item 头。"""
+
+    items = (
+        ContextItem(
+            item_id="sys",
+            content="系统提示。",
+            classification=ContextClassification.REQUIRED,
+            role=ContextRole.SYSTEM,
+            bare=True,
+        ),
+        ContextItem(
+            item_id="evt-1",
+            content="用户提问。",
+            classification=ContextClassification.COMPRESSIBLE,
+            role=ContextRole.USER_DATA,
+            sequence=1,
+            conversation=True,
+        ),
+        ContextItem(
+            item_id="evt-2",
+            content="助手回答。",
+            classification=ContextClassification.COMPRESSIBLE,
+            role=ContextRole.ASSISTANT,
+            sequence=2,
+            conversation=True,
+        ),
+        ContextItem(
+            item_id="evt-3",
+            content="当前问题。",
+            classification=ContextClassification.REQUIRED,
+            role=ContextRole.USER_DATA,
+            sequence=3,
+            conversation=True,
+        ),
+    )
+    result = ContextBuilder().build(
+        ContextBuildRequest(items=items, token_budget=100, strategy=ContextStrategy.FULL)
+    )
+    assert [(m.role, m.content) for m in result.messages] == [
+        ("system", "系统提示。"),
+        ("user", "用户提问。"),
+        ("assistant", "助手回答。"),
+        ("user", "当前问题。"),
+    ]
+    assert "[context item=" not in "\n".join(m.content for m in result.messages)
 
 
 def test_full_strategy_fails_when_the_window_cannot_hold_all_items() -> None:

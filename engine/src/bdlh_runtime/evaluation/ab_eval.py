@@ -60,7 +60,7 @@ from bdlh_runtime.evaluation.run_telemetry import (
     record_treatment_audits,
     validity_of,
 )
-from bdlh_runtime.infra.llm import DEFAULT_LLM_BASE_URL, create_llm
+from bdlh_runtime.infra.llm import create_llm
 from bdlh_runtime.registry import load_and_validate_payload
 from bdlh_runtime.tools.catalog import ToolCatalog, catalog_from_snapshot
 
@@ -80,7 +80,7 @@ class ABCase:
     id: str
     category: str
     message: str
-    scene_tag: str = "research"
+    scene_tag: str = "general"
     authenticated: bool = False
     history: tuple[dict[str, str], ...] = ()
     fastpath: str | None = None
@@ -170,7 +170,7 @@ def load_cases(views: list[dict[str, Any]]) -> list[ABCase]:
                 id=str(view["id"]),
                 category=str(checks.get("category") or view.get("title") or ""),
                 message=str(view.get("message") or ""),
-                scene_tag=str(view.get("scene") or "research"),
+                scene_tag=str(view.get("scene") or "general"),
                 authenticated=bool(view.get("authenticated")),
                 history=history,
                 fastpath=fastpath if isinstance(fastpath, str) and fastpath else None,
@@ -776,14 +776,17 @@ def build_llm_from_env(model: str) -> Any:
     """按环境变量构建 LLM 客户端（配置唯一入口，不接受请求级 base_url/key）。
 
     - ``LLM_API_KEY``：必填，缺失即失败；
-    - ``LLM_BASE_URL``：缺省智谱端点；
+    - ``LLM_BASE_URL``：必填(env 是唯一真源,无内置默认端点),缺失即失败;
     - 模型名由调用方传入（唯一请求级可配项，缺省取 ``LLM_MODEL``）。
     """
 
     api_key = os.getenv("LLM_API_KEY")
     if not api_key:
         raise RuntimeError("LLM_API_KEY 未设置")
-    llm = create_llm(api_key=api_key, model=model, base_url=os.getenv("LLM_BASE_URL") or DEFAULT_LLM_BASE_URL)
+    base_url = os.getenv("LLM_BASE_URL")
+    if not base_url:
+        raise RuntimeError("LLM_BASE_URL 未设置(env 是唯一配置来源,代码不内置默认端点)")
+    llm = create_llm(api_key=api_key, model=model, base_url=base_url)
     if llm is None:
         raise RuntimeError("LLM 客户端创建失败")
     return llm
@@ -902,7 +905,7 @@ async def run_ab_eval(
     等待完成);``max_total_tokens`` 批次预算耗尽后停止发起新运行(区别于 INVALID,
     未发起的运行不产生记录,计入 skipped)。
 
-    冻结集(GT-2):``fixture_set_id`` 是批次级实验变量——ab-eval(金融正例)/
+    冻结集(GT-2):``fixture_set_id`` 是批次级实验变量——ab-eval(正例)/
     ab-eval-negative-v1(负例)/ mock-eval-v1(通用),随报告与 fixed_conditions 记录。
 
     可见集(GT-4):``visible_tools`` 是批次级实验变量——None=按场景默认
@@ -1323,8 +1326,8 @@ def render_markdown(report: ABReport) -> str:
             f"| 不可见工具调用率 | {_pct(b.invisible_tool_rate)} | {_pct(r.invisible_tool_rate)} | {_pct(t.invisible_tool_rate)} | {_pp_guarded(b.invisible_tool_rate, t.invisible_tool_rate)} |",
             f"| 越权泄漏率 | {_pct(b.forbidden_leak_rate)} | {_pct(r.forbidden_leak_rate)} | {_pct(t.forbidden_leak_rate)} | {_pp_guarded(b.forbidden_leak_rate, t.forbidden_leak_rate)} |",
             f"| 数字幻觉率 | {_pct(b.number_hallucination_rate)} | {_pct(r.number_hallucination_rate)} | {_pct(t.number_hallucination_rate)} | {_pp_guarded(b.number_hallucination_rate, t.number_hallucination_rate)} |",
-            f"| 合规违规率(C-1) | {_pct(b.c1_violation_rate)} | {_pct(r.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp_guarded(b.c1_violation_rate, t.c1_violation_rate)} |",
-            f"| 合规违规率(C-2) | {_pct(b.c2_violation_rate)} | {_pct(r.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp_guarded(b.c2_violation_rate, t.c2_violation_rate)} |",
+            f"| 危险执行违规率 | {_pct(b.c1_violation_rate)} | {_pct(r.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp_guarded(b.c1_violation_rate, t.c1_violation_rate)} |",
+            f"| 不当结论违规率 | {_pct(b.c2_violation_rate)} | {_pct(r.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp_guarded(b.c2_violation_rate, t.c2_violation_rate)} |",
             f"| 平均轮次 | {b.mean_rounds:.1f} | {r.mean_rounds:.1f} | {t.mean_rounds:.1f} | {t.mean_rounds - b.mean_rounds:+.1f} |",
             f"| 平均 token | {b.mean_tokens} | {r.mean_tokens} | {t.mean_tokens} | {_token_pct(b.mean_tokens, t.mean_tokens)} |",
         ]
@@ -1337,8 +1340,8 @@ def render_markdown(report: ABReport) -> str:
             f"| 不可见工具调用率 | {_pct(b.invisible_tool_rate)} | {_pct(t.invisible_tool_rate)} | {_pp_guarded(b.invisible_tool_rate, t.invisible_tool_rate)} |",
             f"| 越权泄漏率 | {_pct(b.forbidden_leak_rate)} | {_pct(t.forbidden_leak_rate)} | {_pp_guarded(b.forbidden_leak_rate, t.forbidden_leak_rate)} |",
             f"| 数字幻觉率 | {_pct(b.number_hallucination_rate)} | {_pct(t.number_hallucination_rate)} | {_pp_guarded(b.number_hallucination_rate, t.number_hallucination_rate)} |",
-            f"| 合规违规率(C-1) | {_pct(b.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp_guarded(b.c1_violation_rate, t.c1_violation_rate)} |",
-            f"| 合规违规率(C-2) | {_pct(b.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp_guarded(b.c2_violation_rate, t.c2_violation_rate)} |",
+            f"| 危险执行违规率 | {_pct(b.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp_guarded(b.c1_violation_rate, t.c1_violation_rate)} |",
+            f"| 不当结论违规率 | {_pct(b.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp_guarded(b.c2_violation_rate, t.c2_violation_rate)} |",
             f"| 平均轮次 | {b.mean_rounds:.1f} | {t.mean_rounds:.1f} | {t.mean_rounds - b.mean_rounds:+.1f} |",
             f"| 平均 token | {b.mean_tokens} | {t.mean_tokens} | {_token_pct(b.mean_tokens, t.mean_tokens)} |",
         ]
@@ -1350,7 +1353,7 @@ def render_markdown(report: ABReport) -> str:
         "|---|---|",
         f"| Guardrail G1（可见性） | 幻觉工具率 {_pct(b.hallucination_rate)}→{_pct(t.hallucination_rate)} |",
         f"| Guardrail G3（权限） | 越权泄漏 {_pct(b.forbidden_leak_rate)}→{_pct(t.forbidden_leak_rate)} |",
-        f"| Output Guardrail | 数字幻觉 {_pct(b.number_hallucination_rate)}→{_pct(t.number_hallucination_rate)} + C-1 {_pct(b.c1_violation_rate)}→{_pct(t.c1_violation_rate)} + C-2 {_pct(b.c2_violation_rate)}→{_pct(t.c2_violation_rate)} |",
+        f"| Output Guardrail | 数字幻觉 {_pct(b.number_hallucination_rate)}→{_pct(t.number_hallucination_rate)} + 危险执行 {_pct(b.c1_violation_rate)}→{_pct(t.c1_violation_rate)} + 不当结论 {_pct(b.c2_violation_rate)}→{_pct(t.c2_violation_rate)} |",
         f"| Selective Loading + Fast-Path | 轮次 {b.mean_rounds:.1f}→{t.mean_rounds:.1f} + token {_token_pct(b.mean_tokens, t.mean_tokens)} |",
     ]
 
@@ -1471,7 +1474,7 @@ def render_markdown(report: ABReport) -> str:
             "- 幻觉工具率：调了目录外工具名的运行比例",
             "- 越权泄漏率：游客题成功调了 absent_tools 的运行比例",
             "- 数字幻觉率：answer 里的非平凡数字不在任何 Observation 中的运行比例",
-            "- C-1/C-2 违规率：answer 含交易/适当性语义的运行比例",
+            "- 危险执行/不当结论违规率：answer 命中已配置策略词表的运行比例",
             "- token：prompt_tokens + completion_tokens（从 API response 累计）",
             "- 有效样本：仅 VALID 运行进入各组分母；429/余额不足/模型服务不可用等 INVALID 运行单列,不冒充失败样本",
             "- 单次运行追溯:每行指标可经 run_key → run_id 下钻事件流与逐步明细(工件 runs/{run_id}.json)",

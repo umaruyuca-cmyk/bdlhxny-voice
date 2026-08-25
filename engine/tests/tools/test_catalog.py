@@ -1,6 +1,6 @@
 """统一工具目录单测（WO-T2-1）。
 
-覆盖：ToolCard 字段完整性、C-1 交易语义物理守卫、read_only 红线、
+覆盖：ToolCard 字段完整性、危险动作语义物理守卫、read_only 红线、
 MCP 工具代理登记、scope 可见性过滤、自 CapabilityRegistry 迁移、
 双目的 description、记忆召回伴侣工具、pydantic 参数投影。
 数据源：conftest 的 seeded registry_snapshot（与引擎工具注册表种子语义一致）。
@@ -22,7 +22,7 @@ from bdlh_runtime.tools.catalog import (
     register_mcp_tool,
 )
 
-# ── C-1 交易语义守卫 ─────────────────────────────────────────────────────────
+# ── 危险动作语义守卫(金融档案) ───────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -34,7 +34,7 @@ from bdlh_runtime.tools.catalog import (
         "broker.execute_order",
     ],
 )
-def test_trading_semantic_names_rejected(name: str):
+def test_trading_semantic_names_rejected(name: str, finance_pack):
     assert is_trading_semantic(name, "工具描述"), name
 
 
@@ -47,18 +47,30 @@ def test_trading_semantic_names_rejected(name: str):
         "research.web_search",
     ],
 )
-def test_readonly_names_not_trading_semantic(name: str):
+def test_readonly_names_not_trading_semantic(name: str, finance_pack):
     assert not is_trading_semantic(name, "读取数据"), name
 
 
-def test_trading_semantic_chinese_description_rejected():
-    """CJK 无单词边界：描述中的「买入」必须命中，不能依赖 \\b。"""
+def test_trading_semantic_chinese_description_rejected(finance_pack):
+    """CJK 无单词边界：描述中的危险动作词必须命中，不能依赖 \\b。"""
     assert is_trading_semantic("market.helper", "该工具可以买入股票")
 
 
-def test_catalog_register_rejects_trading_semantic_card():
+def test_empty_dangerous_profile_allows_registration():
+    """默认不加载垂直词表时，含旧交易词的描述也可注册(机制在、词表空)。"""
+    from bdlh_runtime.scenarios import disable_all_scenario_packs
+    from bdlh_runtime.scenarios.dangerous_actions import clear_profiles
+
+    disable_all_scenario_packs()
+    clear_profiles()
     catalog = ToolCatalog()
-    with pytest.raises(ValueError, match="C-1"):
+    catalog.register(ToolCard(name="demo.buy_hint", description="文案提到买入但不算配置拦截"))
+    assert catalog.contains("demo.buy_hint")
+
+
+def test_catalog_register_rejects_trading_semantic_card(finance_pack):
+    catalog = ToolCatalog()
+    with pytest.raises(ValueError, match="危险动作"):
         catalog.register(ToolCard(name="trade.buy", description="买入股票"))
     assert len(catalog) == 0
 
@@ -78,8 +90,8 @@ def test_catalog_register_rejects_duplicate():
         catalog.register(ToolCard(name="market.get_quote", description="行情2"))
 
 
-def test_trading_history_readonly_exempt():
-    """交易历史只读查询在豁免白名单（查询已发生交易，不承载执行）。"""
+def test_trading_history_readonly_exempt(finance_pack):
+    """成交流水只读查询在豁免白名单（查询已发生记录，不承载执行）。"""
     assert not is_trading_semantic("portfolio.get_transaction_history", "读取交易历史")
 
 
@@ -99,7 +111,7 @@ def test_catalog_from_snapshot_covers_seeded_capabilities(registry_snapshot):
         assert "." in card.name or card.name == "search_tools"
 
 
-def test_toolcard_field_completeness(registry_snapshot):
+def test_toolcard_field_completeness(registry_snapshot, finance_pack):
     """§4.1 七字段完整：name/description/parameters/origin/read_only/required_scope/cost_hint。"""
     catalog = catalog_from_snapshot(registry_snapshot)
     quote = catalog.get("market.get_realtime_quote")
@@ -141,8 +153,8 @@ def test_scope_visibility_filter(registry_snapshot):
     assert any(c.name == "portfolio.get_current_positions" for c in with_auth)
 
 
-def test_dual_purpose_descriptions_cover_catalog(registry_snapshot):
-    """每张卡的 description 面向模型选择 + embedding 检索双目的。"""
+def test_dual_purpose_descriptions_cover_catalog(registry_snapshot, finance_pack):
+    """启用场景包后，垂直工具也具备双目的 description；通用工具始终具备。"""
     catalog = catalog_from_snapshot(registry_snapshot)
     for card in catalog.list():
         assert "检索关键词" in card.description, card.name
@@ -150,14 +162,14 @@ def test_dual_purpose_descriptions_cover_catalog(registry_snapshot):
 
 
 def test_tool_categories_present(registry_snapshot):
-    """行情、持仓、画像、分析与搜索工具统一登记。"""
+    """通用分析/检索与垂直能力均登记在目录(垂直场景装载仍依赖场景包)。"""
     catalog = catalog_from_snapshot(registry_snapshot)
     names = {card.name for card in catalog.list()}
-    assert "market.get_realtime_quote" in names  # 行情（MCP）
-    assert "portfolio.get_current_positions" in names  # 持仓
-    assert "user.get_risk_profile" in names  # 画像
-    assert "analysis.run_analysis" in names  # 分析引擎
-    assert "research.web_search" in names  # Web 检索
+    assert "market.get_realtime_quote" in names
+    assert "portfolio.get_current_positions" in names
+    assert "user.get_risk_profile" in names
+    assert "analysis.run_analysis" in names
+    assert "research.web_search" in names
     assert catalog.get("market.get_realtime_quote").origin is ToolOrigin.MCP
     assert catalog.get("research.web_search").origin is ToolOrigin.LOCAL
 
@@ -187,7 +199,7 @@ def test_manifest_omits_governance_fields(registry_snapshot):
     assert "cost_hint" not in manifest
 
 
-def test_snapshot_catalog_has_no_trading_tools(registry_snapshot):
+def test_snapshot_catalog_has_no_trading_tools(registry_snapshot, finance_pack):
     catalog = catalog_from_snapshot(registry_snapshot)
     for card in catalog.list():
         assert card.read_only is True
@@ -203,7 +215,7 @@ def test_register_mcp_tool_proxy(registry_snapshot):
     card = register_mcp_tool(
         catalog,
         name="weather.get_forecast",
-        description="查询城市天气预报（可插拔性实证：非金融域 MCP 工具）",
+        description="查询城市天气预报（可插拔性实证：非垂直域 MCP 工具）",
         parameters={"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
         required_scope=["weather_read"],
     )
@@ -212,18 +224,18 @@ def test_register_mcp_tool_proxy(registry_snapshot):
     assert catalog.contains("weather.get_forecast")
 
 
-def test_mcp_tool_same_governance_as_local(registry_snapshot):
-    """治理对本地与 MCP 工具一致生效：C-1 守卫同样拦截 MCP 登记。
+def test_mcp_tool_same_governance_as_local(registry_snapshot, finance_pack):
+    """治理对本地与 MCP 工具一致生效：危险动作守卫同样拦截 MCP 登记。
 
     注：``register_mcp_tool`` 恒定 ``read_only=True``（MCP 代理登记不允许写语义），
     只读红线的拒绝路径由 ``test_catalog_register_rejects_readwrite_card`` 覆盖。
     """
     catalog = catalog_from_snapshot(registry_snapshot)
-    with pytest.raises(ValueError, match="C-1"):
+    with pytest.raises(ValueError, match="危险动作"):
         register_mcp_tool(catalog, name="broker.mcp_buy", description="经 MCP 买入")
 
 
-def test_generic_order_status_readonly_exempt():
-    """GT-6 通用目录的 order.get_status(只读订单查询)不被 C-1 名字守卫误拦。"""
+def test_generic_order_status_readonly_exempt(finance_pack):
+    """GT-6 通用目录的 order.get_status(只读订单查询)不被名字守卫误拦。"""
     assert not is_trading_semantic("order.get_status", "查询订单状态")
     assert is_trading_semantic("order.place_order", "下单")  # 真执行语义仍拦截

@@ -119,7 +119,7 @@ def test_threshold_three_valid_two_invalid_not_met() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_ab_eval_threshold_on_mixed_validity() -> None:
+async def test_run_ab_eval_threshold_on_mixed_validity(finance_pack) -> None:
     """端到端:基线/ReAct 组全 429、完整模式正常 → 门槛未满足且写入报告。"""
 
     class Baseline429Model:
@@ -133,7 +133,8 @@ async def test_run_ab_eval_threshold_on_mixed_validity() -> None:
 
         async def ainvoke(self, messages: Any, **kwargs: Any) -> AIMessage:
             system = str(getattr(messages[0], "content", ""))
-            if "金融分析助手" in system:
+            # 仅基线/ReAct 短提示会 429;完整模式 system_base 含「红线」等长文案
+            if system.startswith("你是工具型助手。请根据用户问题"):
                 raise RuntimeError("Error code: 429 - rate limit exceeded")
             return await self._inner.ainvoke(messages, **kwargs)
 
@@ -203,7 +204,7 @@ def test_render_no_zero_to_zero_improvement_and_sample_breakdown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_ab_eval_all_invalid_threshold_reported() -> None:
+async def test_run_ab_eval_all_invalid_threshold_reported(finance_pack) -> None:
     report = await run_ab_eval(
         runs_per_case=1,
         llm=RateLimitModel(),

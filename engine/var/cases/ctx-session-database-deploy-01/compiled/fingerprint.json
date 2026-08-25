@@ -1,0 +1,40 @@
+{
+  "fingerprint_version": "compression-fingerprint-v1",
+  "session_id": "ctx-session-database-deploy-01",
+  "session_version": 1,
+  "source_session_hash": "sha256:ddda2fdc34cd98924b574de43605dac0a7a03cda4db0c0705e6be570c30a223a",
+  "current_event_id": "evt-0031",
+  "current_message": "最终让 Agent 只做一致性审计，不能执行 SQL、不能启动数据库、也不要测试连接。",
+  "current_message_hash": "sha256:2c5df8db36973f21ccb5f35c02f967f0a497cf697aedcb74ab59b18775822842",
+  "tool_catalog_version": "generic-mock-tools-v1",
+  "fixture_set_id": "ctx-session-database-deploy-01-tools-v1",
+  "algo_version": "structured-text-v1",
+  "tokenizer_version": "conservative-cjk1-latin4-v1",
+  "llm_summary": false,
+  "variants": [
+    {
+      "variant_id": "budgeted-session",
+      "strategy": "budgeted-session",
+      "strategy_version": "budgeted-session-v1",
+      "token_budget": 8192
+    },
+    {
+      "variant_id": "full-session",
+      "strategy": "full",
+      "strategy_version": "full-session-v1",
+      "token_budget": 65536
+    },
+    {
+      "variant_id": "recent-window",
+      "strategy": "recent-window",
+      "strategy_version": "recent-window-v1",
+      "token_budget": 8192
+    },
+    {
+      "variant_id": "single-summary",
+      "strategy": "single-summary",
+      "strategy_version": "single-summary-v1",
+      "token_budget": 8192
+    }
+  ]
+}

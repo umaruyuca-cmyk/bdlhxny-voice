@@ -16,7 +16,7 @@ class _FailingEncoder:
         raise EncoderUnavailableError("embedder down")
 
 
-def test_search_hits_quote_card(registry_snapshot):
+def test_search_hits_quote_card(registry_snapshot, finance_pack):
     catalog = catalog_from_snapshot(registry_snapshot)
     index = ToolSearchIndex(LexicalEncoder())
     visible = [card for card in catalog.list() if card.name != SEARCH_TOOLS_NAME]
@@ -45,22 +45,28 @@ def test_encoder_unavailable_degrades_to_miss(registry_snapshot):
     assert index.search(HIT_QUERY, catalog.list()) == []
 
 
-def test_permission_filter_before_retrieval(registry_snapshot):
+def test_permission_filter_before_retrieval(registry_snapshot, finance_pack):
     """游客检索「持仓」不得返回需登录工具（权限过滤先于检索）。"""
-    loader = ToolLoader(
-        catalog_from_snapshot(registry_snapshot),
+    catalog = catalog_from_snapshot(registry_snapshot)
+    guest_loader = ToolLoader(
+        catalog,
         tool_loading="search",
         encoder=LexicalEncoder(),
     )
-    result = loader.run_search(
-        "持仓 仓位 股票组合",
+    result = guest_loader.run_search(
+        "持仓",
         top_k=3,
         scene_tag="research",
         authenticated=False,
     )
     assert "portfolio.get_current_positions" not in result["names"]
-    host = loader.run_search(
-        "持仓 仓位 股票组合",
+    host_loader = ToolLoader(
+        catalog,
+        tool_loading="search",
+        encoder=LexicalEncoder(),
+    )
+    host = host_loader.run_search(
+        "持仓",
         top_k=3,
         scene_tag="portfolio",
         authenticated=True,

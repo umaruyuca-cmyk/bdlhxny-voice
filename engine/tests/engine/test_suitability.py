@@ -1,4 +1,4 @@
-"""适合度：分析工具可调用，系统提示含 C-2，回复不得写成适合买入结论。"""
+"""适合度：分析工具可调用；系统提示含不当结论红线；回复不得写成拍板结论。"""
 
 from __future__ import annotations
 
@@ -12,11 +12,10 @@ from bdlh_runtime.tools.catalog import catalog_from_snapshot
 from tests.engine.test_loop import FakeChatModel
 
 
-def test_system_prompt_states_c2_no_suitability_verdict() -> None:
+def test_system_prompt_states_no_suitability_verdict() -> None:
     base = load_prompt("system_base.md")
-    assert "C-2" in base
-    assert "适合 / 不适合你" in base or "不出具适当性结论" in base
-    assert "不构成投资建议" in base
+    assert "不当确定性结论" in base or "红线" in base
+    assert "一定合适" in base or "代替用户" in base
 
 
 @pytest.mark.asyncio
@@ -28,7 +27,7 @@ async def test_analysis_tool_then_draft_disclosure(registry_snapshot) -> None:
         return {
             "status": "SUCCESS",
             "conclusions": [{"text": "风险匹配筛查草稿"}],
-            "limitations": ["本结果仅为风险匹配筛查草稿，不构成投资建议"],
+            "limitations": ["本结果仅为筛查草稿，不构成代替用户决策的建议"],
         }
 
     llm = FakeChatModel(
@@ -44,7 +43,7 @@ async def test_analysis_tool_then_draft_disclosure(registry_snapshot) -> None:
                     }
                 ],
             ),
-            AIMessage(content="本结果仅为风险匹配筛查草稿，不构成投资建议。"),
+            AIMessage(content="本结果仅为筛查草稿，不构成代替用户决策的建议。"),
         ]
     )
     runtime = EngineRuntime(
@@ -60,10 +59,10 @@ async def test_analysis_tool_then_draft_disclosure(registry_snapshot) -> None:
             user_id="user-1",
             session_id="s1",
             run_id="r-suit",
-            message="300750 和我的风险偏好匹配吗",
+            message="这个方案和我的约束条件匹配吗",
         )
     )
     assert seen and seen[0][0] == "analysis.run_analysis"
     assert "适合买入" not in execution.response.message
-    assert "投资建议" in execution.response.message
+    assert "代替用户决策" in execution.response.message
     assert execution.response.response_kind == "ANSWER"

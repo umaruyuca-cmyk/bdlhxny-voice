@@ -62,12 +62,19 @@ def _quote_call() -> AIMessage:
     )
 
 
-def test_scoped_mapping_has_five_scenes():
-    """general 场景含全部工具组(复杂多工具用例);金融四场景保持定向装载。"""
-    assert set(SCENE_TOOLSETS) == {"market", "portfolio", "research", "watch", "general"}
+def test_scoped_mapping_core_is_general_only():
+    """默认仅 general;垂直场景由场景包注入。"""
+    from bdlh_runtime.scenarios import disable_all_scenario_packs
+
+    disable_all_scenario_packs()
+    assert set(SCENE_TOOLSETS) == {"general"}
 
 
-def test_load_scoped_market_excludes_portfolio(registry_snapshot):
+def test_scoped_mapping_finance_pack_adds_vertical_scenes(finance_pack):
+    assert {"market", "portfolio", "research", "watch", "general"} <= set(SCENE_TOOLSETS)
+
+
+def test_load_scoped_market_excludes_portfolio(registry_snapshot, finance_pack):
     loader = ToolLoader(catalog_from_snapshot(registry_snapshot))
     names = {card.name for card in loader.load_scoped("market", authenticated=True)}
     assert "market.get_realtime_quote" in names
@@ -75,7 +82,7 @@ def test_load_scoped_market_excludes_portfolio(registry_snapshot):
     assert "user.get_risk_profile" not in names
 
 
-def test_load_scoped_portfolio_requires_auth(registry_snapshot):
+def test_load_scoped_portfolio_requires_auth(registry_snapshot, finance_pack):
     loader = ToolLoader(catalog_from_snapshot(registry_snapshot))
     guest = {card.name for card in loader.load_scoped("portfolio", authenticated=False)}
     host = {card.name for card in loader.load_scoped("portfolio", authenticated=True)}
@@ -83,19 +90,22 @@ def test_load_scoped_portfolio_requires_auth(registry_snapshot):
     assert "portfolio.get_current_positions" in host
 
 
-def test_unknown_scene_falls_back_to_research(registry_snapshot):
+def test_unknown_scene_falls_back_to_general(registry_snapshot):
+    from bdlh_runtime.scenarios import disable_all_scenario_packs
+
+    disable_all_scenario_packs()
     loader = ToolLoader(catalog_from_snapshot(registry_snapshot))
     fallback = {c.name for c in loader.load_scoped("unknown-scene", authenticated=False)}
-    research = {c.name for c in loader.load_scoped("research", authenticated=False)}
-    assert fallback == research
-    assert "search_tools" not in research
+    general = {c.name for c in loader.load_scoped("general", authenticated=False)}
+    assert fallback == general
+    assert "search_tools" not in general
 
 
 def test_prompts_load_from_files_not_inline():
     base = load_prompt("system_base.md")
     chat = load_prompt("scene_chat.md")
     direct = load_prompt("scene_direct.md")
-    assert "C-1" in base and "C-2" in base
+    assert "危险动作" in base or "红线" in base
     assert "G-β" in chat or "零工具" in chat
     assert "直答" in direct
     with pytest.raises(FileNotFoundError):
@@ -103,7 +113,7 @@ def test_prompts_load_from_files_not_inline():
 
 
 @pytest.mark.asyncio
-async def test_text_only_is_g_beta_zero_tools(registry_snapshot):
+async def test_text_only_is_g_beta_zero_tools(registry_snapshot, finance_pack):
     llm = FakeChatModel([AIMessage(content="市盈率是价格相对盈利的倍数。")])
     loop = AgentLoop(llm=llm, catalog=catalog_from_snapshot(registry_snapshot), executor=_echo)
     result = await loop.run(AgentTurn(user_id="u1", message="什么是市盈率", scene_tag="research"))
@@ -115,7 +125,7 @@ async def test_text_only_is_g_beta_zero_tools(registry_snapshot):
 
 
 @pytest.mark.asyncio
-async def test_tool_calls_go_through_middleware_and_backfill(registry_snapshot):
+async def test_tool_calls_go_through_middleware_and_backfill(registry_snapshot, finance_pack):
     llm = FakeChatModel([_quote_call(), AIMessage(content="宁德时代最新价已从行情工具取得。")])
     loop = AgentLoop(llm=llm, catalog=catalog_from_snapshot(registry_snapshot), executor=_echo)
     result = await loop.run(AgentTurn(user_id="u1", message="宁德时代现在什么价", scene_tag="market", run_id="run-q"))
@@ -144,7 +154,7 @@ async def test_history_trimmed_to_n_turns(registry_snapshot):
         executor=_echo,
         session_history_turns=2,
     )
-    await loop.run(AgentTurn(user_id="u1", message="now", history=history, scene_tag="research"))
+    await loop.run(AgentTurn(user_id="u1", message="now", history=history, scene_tag="general"))
     texts = []
     for msg in llm.seen[0]:
         if isinstance(msg, (HumanMessage, AIMessage)):
@@ -176,7 +186,7 @@ async def test_fixed_context_injected_via_builder(registry_snapshot):
 @pytest.mark.asyncio
 async def test_no_llm_does_not_start_loop(registry_snapshot):
     loop = AgentLoop(llm=None, catalog=catalog_from_snapshot(registry_snapshot), executor=_echo)
-    result = await loop.run(AgentTurn(user_id="u1", message="查一下行情"))
+    result = await loop.run(AgentTurn(user_id="u1", message="查一下天气"))
     assert result.degraded is True
     assert result.entered_loop is False
     assert result.answer == ""

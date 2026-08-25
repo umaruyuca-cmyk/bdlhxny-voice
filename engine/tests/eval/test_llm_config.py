@@ -34,14 +34,14 @@ def test_build_llm_reads_env_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["api_key"] == "test-key"
 
 
-def test_build_llm_falls_back_to_default_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_llm_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """env 是唯一真源:LLM_BASE_URL 缺失必须立即报错,不得回退内置端点。"""
+
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
-    captured = _capture_create_llm(monkeypatch)
 
-    ab_eval.build_llm_from_env("any-model")
-
-    assert captured["base_url"] == ab_eval.DEFAULT_LLM_BASE_URL
+    with pytest.raises(RuntimeError, match="LLM_BASE_URL 未设置"):
+        ab_eval.build_llm_from_env("any-model")
 
 
 def test_build_llm_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:

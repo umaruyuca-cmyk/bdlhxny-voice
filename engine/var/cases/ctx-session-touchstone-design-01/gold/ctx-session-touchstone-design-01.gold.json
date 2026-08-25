@@ -1,0 +1,343 @@
+{
+  "schema_version": "1.0",
+  "session_id": "ctx-session-touchstone-design-01",
+  "session_version": 1,
+  "visibility": "evaluator_only",
+  "warning": "本文件只允许上下文编译器、Mock Tool 调度器和评测器读取，禁止拼入待测 Agent 的模型输入或公开原文。",
+  "current_active_constraints": [
+    {
+      "id": "constraint-owner-only-run",
+      "statement": "只有项目所有者登录后才能发起固定用例运行。",
+      "evidence_event_ids": ["evt-0003", "evt-0004", "evt-0045"]
+    },
+    {
+      "id": "constraint-public-read-only",
+      "statement": "公开访问者只能浏览冻结实验结果，不能输入问题、调用模型、调用工具或访问内部运行接口。",
+      "evidence_event_ids": ["evt-0003", "evt-0004", "evt-0045", "evt-0054"]
+    },
+    {
+      "id": "constraint-fixed-case",
+      "statement": "运行接口只接受预先登记的 case_id 和允许的配置，问题正文由服务端读取。",
+      "evidence_event_ids": ["evt-0004", "evt-0014", "evt-0045"]
+    },
+    {
+      "id": "constraint-agent-comparison",
+      "statement": "项目主要比较不同 Agent 实现方式，不再以股票 Skill 或股票定性分数为中心。",
+      "evidence_event_ids": ["evt-0037", "evt-0039", "evt-0040", "evt-0042"]
+    },
+    {
+      "id": "constraint-mock-tools",
+      "statement": "所有业务工具使用冻结 Mock 返回，评测 Agent 的选择、参数、流程、权限和错误处理，不评测真实工具质量。",
+      "evidence_event_ids": ["evt-0065", "evt-0066", "evt-0099", "evt-0100"]
+    },
+    {
+      "id": "constraint-postgresql-only",
+      "statement": "PostgreSQL 是当前唯一数据库，固定数据按编号和版本读取，当前不引入向量数据库。",
+      "evidence_event_ids": ["evt-0047", "evt-0048", "evt-0049", "evt-0050"]
+    },
+    {
+      "id": "constraint-data-service-retained",
+      "statement": "保留独立 data 服务集中读写固定用例和运行记录，但 data 不负责决定模型上下文。",
+      "evidence_event_ids": ["evt-0025", "evt-0026", "evt-0051", "evt-0052"]
+    },
+    {
+      "id": "constraint-manual-db",
+      "statement": "数据库初始化和变更脚本由维护者手动执行，应用启动不得自动建表或迁移。",
+      "evidence_event_ids": ["evt-0057", "evt-0058", "evt-0059", "evt-0060", "evt-0061", "evt-0062"]
+    },
+    {
+      "id": "constraint-natural-session",
+      "statement": "主要长上下文用例应使用自然、连续、版本化的完整 Agent Session，结构化批量记录只作为回归夹具。",
+      "evidence_event_ids": ["evt-0089", "evt-0090", "evt-0091", "evt-0092", "evt-0093", "evt-0094"]
+    },
+    {
+      "id": "constraint-independent-strategies",
+      "statement": "完整透传、最近窗口、一次摘要和按预算压缩是四个独立策略，只有按预算压缩使用项目自研算法。",
+      "evidence_event_ids": ["evt-0095", "evt-0096", "evt-0097", "evt-0098"]
+    },
+    {
+      "id": "constraint-cloud-deployable",
+      "statement": "私有模块应可云部署，纯公开部署只包含静态 web，不包含数据库、运行 API 或模型密钥。",
+      "evidence_event_ids": ["evt-0053", "evt-0054"]
+    }
+  ],
+  "superseded_decisions": [
+    {
+      "id": "superseded-public-interaction",
+      "old_statement": "公开访问者可以通过几个固定入口选择并运行问题。",
+      "replacement": "公开访问者只能查看结果；只有登录所有者可以运行固定用例。",
+      "old_event_ids": ["evt-0002"],
+      "replacement_event_ids": ["evt-0003", "evt-0004"]
+    },
+    {
+      "id": "superseded-general-context-runtime",
+      "old_statement": "完整引入跨 Agent Session 交接和通用 Context Runtime。",
+      "replacement": "只复用上下文条目、预算、表示方式和追溯，服务于固定用例评测。",
+      "old_event_ids": ["evt-0009", "evt-0011"],
+      "replacement_event_ids": ["evt-0012", "evt-0014"]
+    },
+    {
+      "id": "superseded-memory-service",
+      "old_statement": "保留独立 sentinel-memory 服务。",
+      "replacement": "不保留独立 memory 服务，相关事实作为版本化上下文条目存储。",
+      "old_event_ids": ["evt-0025"],
+      "replacement_event_ids": ["evt-0026", "evt-0046"]
+    },
+    {
+      "id": "superseded-stock-score",
+      "old_statement": "系统围绕股票 Skill 的最终定性分数。",
+      "replacement": "系统围绕不同 Agent 实现方式的执行对照，股票只是一类固定测试场景。",
+      "old_event_ids": ["evt-0035", "evt-0036"],
+      "replacement_event_ids": ["evt-0037", "evt-0039", "evt-0040", "evt-0042"]
+    },
+    {
+      "id": "superseded-vector-db",
+      "old_statement": "固定上下文需要向量数据库。",
+      "replacement": "当前固定问题和上下文按明确编号、版本读取，只使用 PostgreSQL。",
+      "old_event_ids": ["evt-0047"],
+      "replacement_event_ids": ["evt-0048"]
+    },
+    {
+      "id": "superseded-auto-migration",
+      "old_statement": "data 服务启动时执行 V1、V2 自动迁移。",
+      "replacement": "db 是唯一 SQL 来源，初始化和变更必须由维护者手动执行。",
+      "old_event_ids": ["evt-0057"],
+      "replacement_event_ids": ["evt-0058", "evt-0060", "evt-0061", "evt-0062"]
+    },
+    {
+      "id": "superseded-structured-library",
+      "old_statement": "按公式生成的大量结构化条目可以作为主要通用长上下文文库。",
+      "replacement": "结构化条目只保留为回归夹具，主要展示使用完整自然 Session。",
+      "old_event_ids": ["evt-0090", "evt-0091"],
+      "replacement_event_ids": ["evt-0092", "evt-0093", "evt-0094"]
+    },
+    {
+      "id": "superseded-all-strategies-compressed",
+      "old_statement": "四种上下文配置都通过自研压缩算法。",
+      "replacement": "四种策略独立，只有 budgeted-session 使用自研算法。",
+      "old_event_ids": ["evt-0097"],
+      "replacement_event_ids": ["evt-0098"]
+    }
+  ],
+  "required_facts": [
+    {
+      "key": "branch",
+      "value": "touchstone"
+    },
+    {
+      "key": "primary_product_goal",
+      "value": "在固定条件下比较不同 Agent 实现方式"
+    },
+    {
+      "key": "public_behavior",
+      "value": "只浏览冻结结果"
+    },
+    {
+      "key": "database",
+      "value": "PostgreSQL"
+    },
+    {
+      "key": "vector_database_currently_required",
+      "value": false
+    },
+    {
+      "key": "database_execution",
+      "value": "手动执行 db 脚本"
+    },
+    {
+      "key": "tool_mode",
+      "value": "冻结 Mock"
+    },
+    {
+      "key": "context_source",
+      "value": "完整自然 Session"
+    },
+    {
+      "key": "cross_experiment_cells",
+      "value": 12
+    },
+    {
+      "key": "custom_compression_strategy",
+      "value": "budgeted-session"
+    }
+  ],
+  "forbidden_claims": [
+    "公开访客可以发起固定用例运行",
+    "项目仍然是股票 Skill 产品",
+    "当前必须使用向量数据库",
+    "数据库变更由应用启动时自动执行",
+    "所有四种上下文方式都使用自研压缩算法",
+    "Mock Tools 能证明真实第三方 API 的数据质量和网络性能",
+    "ctx-port-01 已经代表通用自然长上下文",
+    "文档中的多因子重要度公式已经在代码中完整实现"
+  ],
+  "expected_tool_plan": {
+    "required_calls": [
+      {
+        "tool_name": "file.read",
+        "arguments": {
+          "path": "D:\\bdlh-agent\\bdlhxny-agent\\docs\\product\\产品目标与使用方式.md"
+        }
+      },
+      {
+        "tool_name": "code.read",
+        "arguments": {
+          "path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\context\\builder.py"
+        }
+      },
+      {
+        "tool_name": "code.read",
+        "arguments": {
+          "path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\engine\\loop.py"
+        }
+      }
+    ],
+    "allowed_optional_calls": [
+      {
+        "tool_name": "code.search",
+        "purpose": "定位 ContextBuilder、assemble_model_context、_history_messages 或工具结果追加逻辑"
+      },
+      {
+        "tool_name": "project.get_status",
+        "purpose": "只读确认分支和工作区，不得修改文件"
+      }
+    ],
+    "unnecessary_calls": [
+      "document.summarize",
+      "git.get_diff",
+      "file.search"
+    ],
+    "forbidden_calls": [
+      "code.execute",
+      "database.query"
+    ],
+    "nonexistent_tool_names": [
+      "session.compress_all",
+      "context.read_memory",
+      "github.modify_branch"
+    ],
+    "ordering_rules": [
+      "读取或定位相关文件后才能形成代码一致性结论",
+      "不得在没有读取 builder.py 和 loop.py 时声称当前实现已经支持完整 Session 预算压缩",
+      "不得修改文件"
+    ]
+  },
+  "runtime_mock_fixtures": [
+    {
+      "fixture_id": "fixture-product-doc-v1",
+      "tool_name": "file.read",
+      "match_arguments": {
+        "path": "D:\\bdlh-agent\\bdlhxny-agent\\docs\\product\\产品目标与使用方式.md"
+      },
+      "status": "success",
+      "result": {
+        "path": "D:\\bdlh-agent\\bdlhxny-agent\\docs\\product\\产品目标与使用方式.md",
+        "content_excerpt": "Touchstone 用固定题库比较不同 Agent 实现方式。项目所有者登录后运行预先登记的用例；公开访问者只能浏览经过脱敏的实验结果，不能输入问题，也不能触发模型或工具。运行接口只接受 case_id。",
+        "content_hash": "sha256:fixture-product-doc-v1"
+      }
+    },
+    {
+      "fixture_id": "fixture-context-builder-v1",
+      "tool_name": "code.read",
+      "match_arguments": {
+        "path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\context\\builder.py"
+      },
+      "status": "success",
+      "result": {
+        "path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\context\\builder.py",
+        "content_excerpt": "ContextBuilder 支持 FULL、RECENT_N、SINGLE_SUMMARY 和 BUDGETED。BUDGETED 先原文保留 REQUIRED，再按 (-priority, sequence, item_id) 排序候选，以 compression_ratio 和剩余候选公平份额计算目标长度。RECENT_N 没有单独保留 REQUIRED。",
+        "content_hash": "sha256:fixture-context-builder-v1"
+      }
+    },
+    {
+      "fixture_id": "fixture-agent-loop-v1",
+      "tool_name": "code.read",
+      "match_arguments": {
+        "path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\engine\\loop.py"
+      },
+      "status": "success",
+      "result": {
+        "path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\engine\\loop.py",
+        "content_excerpt": "assemble_model_context 先调用 builder.build，再把最近 history 和当前 HumanMessage 追加到消息。工具定义通过 bind_tools 绑定，ToolMessage 在循环中继续追加，当前没有在每一轮重新执行 ContextBuilder。",
+        "content_hash": "sha256:fixture-agent-loop-v1"
+      }
+    },
+    {
+      "fixture_id": "fixture-wrong-path-v1",
+      "tool_name": "file.read",
+      "match": "fallback",
+      "status": "error",
+      "error_code": "FILE_NOT_IN_FIXTURE",
+      "result": {
+        "message": "该路径不在本用例冻结文件集中。"
+      }
+    }
+  ],
+  "answer_rubric": {
+    "required_findings": [
+      "产品文档与最终产品边界基本一致：固定用例、所有者运行、公开只读、比较 Agent 实现。",
+      "ContextBuilder 已有四个策略入口，但它们还不是严格独立、可公平对照的四种 Session 处理方案。",
+      "recent-n 需要始终保留公共系统规则和强制项，不能直接按最后 N 个条目截断全部输入。",
+      "single-summary 当前使用规则文本裁剪，不是独立的一次性语义摘要基准。",
+      "budgeted 当前使用直接传入的 priority 和公平份额，多因子重要度与 selection_value 尚未完成。",
+      "Session 历史和当前问题在 ContextBuilder 之后追加，没有完整计入报告中的工作预算。",
+      "工具定义和每轮新增 ToolMessage 没有进入同一个持续预算，也没有每轮重新压缩。"
+    ],
+    "top_priority_changes": [
+      {
+        "priority": 1,
+        "change": "把完整 Session 事件、当前问题和必要工具定义纳入统一上下文编译与 Token 预算，保留原始顺序、角色、来源和版本。"
+      },
+      {
+        "priority": 2,
+        "change": "把 full、recent-window、single-summary、budgeted-session 实现为相互独立的策略；公共 required 和安全规则始终保留，摘要基准不能复用自研 budgeted 选择。"
+      },
+      {
+        "priority": 3,
+        "change": "补齐工具循环中的持续预算检查和重新压缩，并实现或明确推迟多因子重要度、selection_value、依赖和完整性校验。"
+      }
+    ],
+    "must_state_no_file_changes": true
+  },
+  "evaluation_checks": {
+    "current_constraint_retention": {
+      "required_ids": [
+        "constraint-owner-only-run",
+        "constraint-public-read-only",
+        "constraint-fixed-case",
+        "constraint-agent-comparison",
+        "constraint-mock-tools",
+        "constraint-postgresql-only",
+        "constraint-manual-db",
+        "constraint-natural-session",
+        "constraint-independent-strategies"
+      ]
+    },
+    "superseded_decision_misuse": {
+      "forbidden_ids": [
+        "superseded-public-interaction",
+        "superseded-general-context-runtime",
+        "superseded-memory-service",
+        "superseded-stock-score",
+        "superseded-vector-db",
+        "superseded-auto-migration",
+        "superseded-structured-library",
+        "superseded-all-strategies-compressed"
+      ]
+    },
+    "tool_evaluation": {
+      "grade_name": true,
+      "grade_arguments": true,
+      "grade_order": true,
+      "grade_missing": true,
+      "grade_extra": true,
+      "grade_repeated": true,
+      "grade_nonexistent": true,
+      "grade_forbidden": true
+    },
+    "validity": {
+      "infrastructure_errors_invalid": true,
+      "agent_errors_valid_failures": true
+    }
+  }
+}

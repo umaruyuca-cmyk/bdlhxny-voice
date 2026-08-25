@@ -219,7 +219,7 @@ _JSON_LOADER: Callable[[str], Any] = json.loads
 
 
 def _parse_quote(raw: str) -> dict[str, Any]:
-    """解析实时行情 → quote 业务对象。
+    """解析实时报价 → quote 业务对象。
 
     兼容 cn-financial 和 akshare-one 两种响应形态：
     - cn-financial: [{"date":..., "open":..., "close":..., ...}]（K线风格）

@@ -52,7 +52,7 @@ async def test_valuation_fail_closed_without_quote_price():
     )
 
     assert result["status"] == "FAILED"
-    assert "缺少 300750 的行情价格" in result["error"]
+    assert "缺少 300750 的价格" in result["error"]
 
 
 @pytest.mark.asyncio

@@ -42,7 +42,15 @@ from bdlh_runtime.context import (
 )
 from bdlh_runtime.context.token_count import ConservativeTokenCounter
 from bdlh_runtime.data_client import DataClient
-from bdlh_runtime.engine.loop import AgentLoop, AgentResult, AgentTurn, assemble_model_context, load_prompt
+from bdlh_runtime.engine.loader import ToolLoader
+from bdlh_runtime.engine.loop import (
+    AgentLoop,
+    AgentResult,
+    AgentTurn,
+    _tool_schema_tokens,
+    assemble_model_context,
+    load_prompt,
+)
 from bdlh_runtime.engine.output_guardrail import (
     C1ComplianceCheck,
     C2ComplianceCheck,
@@ -150,7 +158,7 @@ def load_context_variant_cases(
                     snapshot_id=str(variant.get("snapshotId") or ""),
                     snapshot_hash=str(variant.get("snapshotHash") or ""),
                     message=str(view.get("message") or ""),
-                    scene_tag=str(view.get("scene") or "research"),
+                    scene_tag=str(view.get("scene") or "general"),
                     authenticated=bool(view.get("authenticated")),
                     category=str(checks.get("category") or view.get("title") or ""),
                     context_strategy=str(context_payload.get("contextStrategy") or "budgeted"),
@@ -557,6 +565,12 @@ async def run_context_eval(
 
                 if mode_key == "treatment":
                     executor = RecordingExecutor(FrozenToolExecutor(frozen), recorder)
+                    # AgentTurn.token_budget 口径含工具 Schema 预留;变体预算为纯工作
+                    # 上下文预算,补偿 Schema(循环内会重新预留并复核)
+                    scoped_cards = ToolLoader(catalog).load_for_turn(
+                        case.scene_tag, authenticated=case.authenticated
+                    )
+                    schema_tokens = _tool_schema_tokens(scoped_cards, counter)
                     turn = AgentTurn(
                         user_id=_OWNER_ID if case.authenticated else "guest",
                         message=case.message,
@@ -566,7 +580,7 @@ async def run_context_eval(
                         run_id=recorder.record.run_key,
                         context_entries=fixture_items_to_context_items(case.fixture_items),
                         context_strategy=case.context_strategy,
-                        token_budget=case.token_budget,
+                        token_budget=case.token_budget + schema_tokens,
                         owner_id=_OWNER_ID,
                     )
                     loop = AgentLoop(

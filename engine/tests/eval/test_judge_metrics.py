@@ -344,16 +344,22 @@ async def test_schema_tokens_scale_with_visible_set() -> None:
     """集成:工具定义 token 随可见集收窄而下降(裸调用组当轮 schema 估算)。"""
 
     async def _run(**kwargs: Any):
-        return await run_ab_eval(
-            llm=ScriptedToolModel(),
-            model="glm-4.7-flash",
-            cases=[_case()],
-            catalog=catalog_from_snapshot(seeded_snapshot()),
-            frozen=FrozenObservations(frozen_payload()),
-            retry_delay_s=0,
-            inter_run_delay_s=0,
-            **kwargs,
-        )
+        from bdlh_runtime.scenarios import disable_all_scenario_packs, enable_scenario_pack
+
+        enable_scenario_pack("finance")
+        try:
+            return await run_ab_eval(
+                llm=ScriptedToolModel(),
+                model="glm-4.7-flash",
+                cases=[_case()],
+                catalog=catalog_from_snapshot(seeded_snapshot()),
+                frozen=FrozenObservations(frozen_payload()),
+                retry_delay_s=0,
+                inter_run_delay_s=0,
+                **kwargs,
+            )
+        finally:
+            disable_all_scenario_packs()
 
     full = await _run(runs_per_case=1, with_react=False)
     narrowed = await _run(runs_per_case=1, with_react=False, visible_tools=["market.get_valuation"])

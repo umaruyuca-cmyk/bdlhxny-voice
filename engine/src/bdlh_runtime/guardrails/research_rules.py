@@ -36,11 +36,8 @@ SECRET_LEAK_TERMS = (
 )
 
 SUITABILITY_MIX_TERMS = (
-    "适合你买入",
-    "适合你持有",
-    "推荐你买入",
-    "该股适合你",
     "guarantee you",
+    "definitely suitable for you",
 )
 
 
