@@ -115,10 +115,19 @@ Sentinel 是面向个人投资者的**主动式持仓看护 Agent**。系统以�
 
 | 组件 | 职责 | 明确不承担 |
 |---|---|---|
-| orchestrator | Agent 循环、工具目录、装载策略、治理中间件、事件源、上下文组装、记忆、SSE、checkpoint | 不承载业务数据真源 |
+| sentinel-engine | Agent 循环（`engine/`）、工具目录、装载策略、治理中间件、事件源、上下文组装、记忆、SSE、checkpoint | 不承载业务数据真源 |
 | runtime-data | 认证、持仓、画像、会话与运行持久化、Outbox | 不承载 LLM 调用与编排逻辑 |
 | console | dashboard、追问抽屉、契约测试 | 无服务端状态 |
 | MCP servers | 行情 / 基本面 / 新闻等外部数据 | 不经业务库 |
+
+**包依赖边界**（`sentinel-engine` 进程内）[^impl-kernel]：
+
+| 包 | 可依赖 | 不得依赖 |
+|---|---|---|
+| `engine/`、`guardrails/`、`observations/`（内核） | `contracts/`、`memory/`、`tools.catalog`、`tools.search` | `compute/`、`integrations/`、具体工具实现（`tools.capabilities` / `tools.java_data_adapter` 等） |
+| `watch/`（看护环） | `engine/contracts`、`memory/recall`、`compute/trading_calendar`、`infra/` 端口 | `guardrails/`、`engine/loop`、`tools/` 具体实现 |
+
+[^impl-kernel]: 实施（2026-08-19）：`tests/architecture/test_kernel_purity.py` 以 AST 静态检查守卫内核边界；`KERNEL_TARGETS = ("engine", "guardrails", "observations")`，`FORBIDDEN_PREFIXES` 精确列出 `compute` / `integrations` / 六个具体工具实现子模块。`watch/` 边界由实施 Prompt WO-T1-2 约束并经 WO-T1-5 偏差记录扩展 `memory/recall`。
 
 ---
 
@@ -268,7 +277,7 @@ WatchEvent { id, rule_id, type, source, payload, dedupe_key, occurred_at }
 | 表 | 关键列 | 说明 |
 |---|---|---|
 | `watch_rule` | id, user_id, type, config(JSONB), status, last_fired_at | 监视规则 |
-| `watch_event` | id, rule_id, type, source, payload(JSONB), dedupe_key(UNIQUE), occurred_at | 事件流水；`dedupe_key` 唯一约束承载幂等 |
+| `watch_event` | id, rule_id, type, source, payload(JSONB), dedupe_key(UNIQUE), occurred_at | 事件流水；`dedupe_key` 唯一约束承载幂等；`rule_id` 对 `source=demo_inject` 事件为 `0`（合成事件，无 FK 指向 `watch_rule`）[^impl-watch-event] |
 
 复用既有表：会话 / 消息、run 与事件投影、持仓、风险画像、通知、记忆相关表。数据库纪律不变：全量脚本 + `db/execution/` 执行说明，应用启动不执行 DDL。
 
@@ -601,6 +610,7 @@ ChatResult v2 {
 | 2026-08-18 | 初版：全新设计定稿；旧设计文档整体清除（Git 追溯） |
 | 2026-08-18 | 专业化改写：补充契约定义、触发与失败语义、接口规格、设计权衡记录 |
 | 2026-08-19 | T0–T4 实施收口：看护环 / 工具目录 / SSE v2 / 看护首页与追问抽屉 / 演示 compose / 彩排脚本已落地；品牌落地 `/` 与 `/docs` 对齐 Sentinel；实现偏差以本章节脚注标注 |
+| 2026-08-19 | P0–P2 架构清理：删除 `runtimes/` 死代码包与死字段；`cognitive_application` → `engine_runtime`；`cognitive/` 整包并入 `engine/`；重写内核纯净度门禁（`KERNEL_TARGETS` 纳入 `engine`，删除 ADR-009 引用与 `domains.finance` 空禁）；§3.3 组件名 `orchestrator` → `sentinel-engine`，新增包依赖边界 |
 
 [^impl-home]: 实施（2026-08-19）：品牌落地页为 `/`（`index.html`）；看护首页（P1）仅 `/dashboard`。演示从品牌页 CTA「进入看护」进入 P1，不再把 `/` 直接绑 dashboard。
 [^impl-p2]: 实施（2026-08-19）：产品会话入口为 `/agent`（`chat.html`），不是 `/chat`。联调见 `sentinel-console/CHAT_INTEGRATION.md`。
@@ -613,3 +623,4 @@ ChatResult v2 {
 [^impl-compose]: 实施（2026-08-19）：本地 `deploy/docker-compose.yml` 含 `bdlh-runtime-console` 与 `bdlh-demo-seed`；不含 PostgreSQL 服务（seed 对已按 `db/execution/` 建表的库执行）。云端前端仍为 host 网络独立 compose。
 [^impl-t4]: 实施（2026-08-19）：T4 收口；现场浏览器七步与录屏成片由操作者补档（见实施 Prompt WO-T4-3）。
 [^impl-pytest]: 实施（2026-08-19）：部分 Windows 环境 `uv run pytest` 无输出，门禁改用 `uv run python -m pytest -q`。Java 测试在该环境用完整 Maven 路径。本地 compose `config -q` 需 Docker CLI。
+[^impl-watch-event]: 实施（2026-08-19）：`source=demo_inject` 的演示事件 `rule_id=0`（合成事件，无 FK 指向 `watch_rule`）；`dedupe_key` 含 uuid 允许演示迭代多次注入。见 WO-T1-7。
