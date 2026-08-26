@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 
-from bdlh_runtime.cognitive.contracts import InputEvent
+from bdlh_runtime.engine.contracts import InputEvent
 from bdlh_runtime.infra.run_registry import RunLocation
 from bdlh_runtime.infra.runtime_path import COGNITIVE_RUNTIME_PATH, CognitiveExecutionProgress
 from bdlh_runtime.infra.turn_router import (
@@ -424,8 +424,8 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
             # Esc pause 可能已写入 pending；完成路径不得盲目清掉可恢复书签。
             pause_requested = application.run_control is not None and application.run_control.is_pause_requested(run_id)
             if pause_requested:
-                from bdlh_runtime.cognitive.checkpoint import build_checkpoint
-                from bdlh_runtime.cognitive.contracts import CognitiveExecution, PublicResponse
+                from bdlh_runtime.engine.checkpoint import build_checkpoint
+                from bdlh_runtime.engine.contracts import CognitiveExecution, PublicResponse
 
                 paused_response = PublicResponse(
                     response_kind="ASK_USER",

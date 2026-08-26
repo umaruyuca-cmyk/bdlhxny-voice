@@ -2,8 +2,8 @@
 
 from tests.helpers_encoder import LexicalEncoder
 
-from bdlh_runtime.cognitive.semantic_router.encoder import EncoderUnavailableError
 from bdlh_runtime.engine.loader import ToolLoader
+from bdlh_runtime.engine.semantic_router.encoder import EncoderUnavailableError
 from bdlh_runtime.tools.catalog import catalog_from_snapshot
 from bdlh_runtime.tools.search import SEARCH_TOOLS_NAME, ToolSearchIndex
 

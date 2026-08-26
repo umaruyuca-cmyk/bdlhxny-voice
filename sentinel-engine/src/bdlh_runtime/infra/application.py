@@ -220,11 +220,11 @@ def build_engine_runtime(
     pause_check: Any,
 ) -> Any:
     """装配 ToolCatalog + AgentLoop + EngineRuntime（生产与隔离测试共用）。"""
-    from bdlh_runtime.cognitive.semantic_router import build_kernel_router
     from bdlh_runtime.engine.executor import CatalogToolExecutor
     from bdlh_runtime.engine.loader import ToolLoader
     from bdlh_runtime.engine.loop import AgentLoop
     from bdlh_runtime.engine.runtime import EngineRuntime
+    from bdlh_runtime.engine.semantic_router import build_kernel_router
     from bdlh_runtime.registry.menu import (
         allowed_capabilities,
         apply_feature_gates,
@@ -334,7 +334,7 @@ def _fastpath_encoder(settings: Settings) -> Any:
     启动即预编码全部样句——Qwen 服务地址配错时装配直接失败（fail-closed）。
     运行期偶发故障由 SemanticRouter 降级未命中。
     """
-    from bdlh_runtime.cognitive.semantic_router.encoder import QwenEmbeddingEncoder
+    from bdlh_runtime.engine.semantic_router.encoder import QwenEmbeddingEncoder
 
     assert settings.fastpath_embedder_base_url is not None  # 上方 create_application 已校验
     return QwenEmbeddingEncoder(
@@ -348,7 +348,7 @@ def _fastpath_encoder(settings: Settings) -> Any:
 def _fastpath_thresholds(settings: Settings) -> Any:
     """模型编码相似度空间阈值（见 fastpath_data 校准注记）。"""
     del settings
-    from bdlh_runtime.cognitive.semantic_router.fastpath_data import MODEL_FASTPATH_THRESHOLDS
+    from bdlh_runtime.engine.semantic_router.fastpath_data import MODEL_FASTPATH_THRESHOLDS
 
     return MODEL_FASTPATH_THRESHOLDS
 

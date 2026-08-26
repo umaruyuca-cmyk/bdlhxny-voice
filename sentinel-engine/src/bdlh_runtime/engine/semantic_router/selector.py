@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 from typing import Protocol
 
-from bdlh_runtime.cognitive.contracts import (
+from bdlh_runtime.engine.contracts import (
     CognitiveAction,
     CognitiveActionType,
     InputEvent,

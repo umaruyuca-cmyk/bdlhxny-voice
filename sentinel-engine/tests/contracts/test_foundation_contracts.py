@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bdlh_runtime.cognitive.contracts import (
+from bdlh_runtime.engine.contracts import (
     ACTION_NOT_ENABLED,
     ENABLED_ACTION_TYPES,
     CognitiveAction,

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from bdlh_runtime.cognitive.contracts import InputEvent
-from bdlh_runtime.cognitive.semantic_router import (
+from bdlh_runtime.engine.contracts import InputEvent
+from bdlh_runtime.engine.semantic_router import (
     MODEL_FASTPATH_THRESHOLDS,
     EncoderUnavailableError,
     QwenEmbeddingEncoder,
@@ -15,7 +15,7 @@ from bdlh_runtime.cognitive.semantic_router import (
     SemanticRouteSelector,
     build_kernel_router,
 )
-from bdlh_runtime.cognitive.semantic_router.catalog import fastpath_routes
+from bdlh_runtime.engine.semantic_router.catalog import fastpath_routes
 from tests.helpers_encoder import LexicalEncoder
 
 

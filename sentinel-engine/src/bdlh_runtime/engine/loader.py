@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from bdlh_runtime.cognitive.semantic_router.encoder import Encoder
+from bdlh_runtime.engine.semantic_router.encoder import Encoder
 from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog
 from bdlh_runtime.tools.search import (
     DEFAULT_SIMILARITY_THRESHOLD,

@@ -1,6 +1,6 @@
 """SemanticRouter：对每条 Route 取示例最大余弦，过阈值才命中。
 
-未过任何阈值时返回 None，这是进入 Understand / Agent Loop 的默认路径。
+未过任何阈值时返回 None，这是进入 Agent Loop 的默认路径。
 向量服务不可用时同样返回 None（降级不阻断主流程），由调用方记录日志。
 """
 
@@ -11,7 +11,7 @@ import logging
 from .contracts import Route, RouteChoice
 from .encoder import Encoder, EncoderUnavailableError
 
-logger = logging.getLogger("bdlh_runtime.cognitive.semantic_router.router")
+logger = logging.getLogger("bdlh_runtime.engine.semantic_router.router")
 
 
 class SemanticRouter:

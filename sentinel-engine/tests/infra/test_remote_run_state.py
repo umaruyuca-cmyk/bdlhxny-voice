@@ -10,7 +10,7 @@ from tests.engine.test_loop import FakeChatModel
 from tests.helpers_registry import seeded_snapshot
 
 from bdlh_runtime.api.checkpoint_persistence import extract_checkpoint
-from bdlh_runtime.cognitive.contracts import InputEvent
+from bdlh_runtime.engine.contracts import InputEvent
 from bdlh_runtime.engine.loop import AgentLoop
 from bdlh_runtime.engine.runtime import EngineRuntime
 from bdlh_runtime.infra.remote_run_state import JavaDataPlaneRunStateStore

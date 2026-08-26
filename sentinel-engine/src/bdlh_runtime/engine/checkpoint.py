@@ -1,4 +1,4 @@
-"""Cognitive L0 Checkpoint（ADR-014 / G1）。
+"""Engine L0 Checkpoint（设计文档 §4.9、ADR-014 / G1）。
 
 Pause / ASK_USER 必须写入非空 ``checkpoint_id``，并把可恢复的 CognitiveState
 嵌入 Run State；Resume 从该快照续跑，禁止仅重放用户 objective。
@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from bdlh_runtime.cognitive.contracts import CognitiveAction, CognitiveState
+from bdlh_runtime.engine.contracts import CognitiveAction, CognitiveState
 
 ResumeCursor = Literal["select", "dispatch", "after_domain"]
 

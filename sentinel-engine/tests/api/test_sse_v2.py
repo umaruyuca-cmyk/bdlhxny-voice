@@ -12,8 +12,8 @@ from langchain_core.messages import AIMessage
 
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.api.sse import encode_token, encode_tool_step
-from bdlh_runtime.cognitive.contracts import CognitiveExecution, CognitiveState, InputEvent, PublicResponse
 from bdlh_runtime.config import Settings
+from bdlh_runtime.engine.contracts import CognitiveExecution, CognitiveState, InputEvent, PublicResponse
 from bdlh_runtime.engine.loader import ToolLoader
 from bdlh_runtime.engine.loop import AgentLoop
 from bdlh_runtime.engine.runtime import EngineRuntime

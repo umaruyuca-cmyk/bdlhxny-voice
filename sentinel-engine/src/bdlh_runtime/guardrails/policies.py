@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from bdlh_runtime.cognitive.contracts import CognitiveAction, PublicResponse
+from bdlh_runtime.engine.contracts import CognitiveAction, PublicResponse
 
 from .contracts import GuardrailContext, GuardrailDecision, GuardrailResult, GuardrailStage
 from .data_quality_rules import evaluate_freshness, evaluate_provenance_depth

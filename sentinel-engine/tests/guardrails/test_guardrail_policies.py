@@ -1,6 +1,6 @@
 """M4 四时点 Guardrail 最低策略回归。"""
 
-from bdlh_runtime.cognitive import (
+from bdlh_runtime.engine import (
     CognitiveAction,
     CognitiveActionType,
     DomainBudget,

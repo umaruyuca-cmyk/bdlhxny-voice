@@ -1,8 +1,9 @@
-"""认知行动契约（31 号统一开发实施 Prompt §7.2、§11.5）。
+"""引擎运行时契约（设计文档 §4.3、§4.5）。
 
-``CognitiveAction`` 是认知层唯一行动模型。WO-T2-6 起编排走 ``engine/``，
-本模块保留 SSE / checkpoint 所需的公开契约；通用领域请求边界也落在此处
-（域插件包已删除，不再从 ``domains.contracts`` 引用）。
+本模块承载 Agent 引擎的通用出入口契约：``InputEvent``（入口）、
+``CognitiveExecution``（运行结果）、``PublicResponse``（对外回复）、
+``CognitiveState``（可审计状态）、``CognitiveAction``（结构化决策）与
+通用 ``DomainRequest`` 边界。SSE / checkpoint / 唤醒均经此契约。
 """
 
 from __future__ import annotations

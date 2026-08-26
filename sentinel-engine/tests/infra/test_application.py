@@ -3,9 +3,9 @@ from tests.helpers_application import build_isolated_application
 from tests.helpers_encoder import LexicalEncoder
 from tests.helpers_registry import seeded_snapshot
 
-from bdlh_runtime.cognitive.semantic_router.encoder import QwenEmbeddingEncoder
-from bdlh_runtime.cognitive.semantic_router.fastpath_data import MODEL_FASTPATH_THRESHOLDS
 from bdlh_runtime.config import Settings
+from bdlh_runtime.engine.semantic_router.encoder import QwenEmbeddingEncoder
+from bdlh_runtime.engine.semantic_router.fastpath_data import MODEL_FASTPATH_THRESHOLDS
 from bdlh_runtime.infra.application import _fastpath_encoder, _fastpath_thresholds, create_application
 from bdlh_runtime.infra.dependency_probes import ProbeResult
 from bdlh_runtime.infra.errors import ConfigurationError

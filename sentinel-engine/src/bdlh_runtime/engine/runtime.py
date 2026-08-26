@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from bdlh_runtime.cognitive.checkpoint import CognitiveCheckpoint, build_checkpoint
-from bdlh_runtime.cognitive.contracts import (
+from bdlh_runtime.engine.checkpoint import CognitiveCheckpoint, build_checkpoint
+from bdlh_runtime.engine.contracts import (
     CognitiveActionSummary,
     CognitiveActionType,
     CognitiveExecution,

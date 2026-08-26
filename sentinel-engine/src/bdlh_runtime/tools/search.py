@@ -2,7 +2,7 @@
 
 ``search_tools(query, top_k)`` 是 search 装载模式的元工具：对**权限过滤后**的
 目录做 embedding 相似度检索（top-k + 阈值），命中 ToolCard 动态装载。
-编码器复用 ``cognitive.semantic_router.encoder.Encoder``（保留引用）。
+编码器复用 ``engine.semantic_router.encoder.Encoder``。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import logging
 import math
 from collections.abc import Sequence
 
-from bdlh_runtime.cognitive.semantic_router.encoder import Encoder, EncoderUnavailableError
+from bdlh_runtime.engine.semantic_router.encoder import Encoder, EncoderUnavailableError
 from bdlh_runtime.tools.catalog import ToolCard
 
 logger = logging.getLogger("bdlh_runtime.tools.search")

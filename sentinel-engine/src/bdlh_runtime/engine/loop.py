@@ -20,7 +20,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from bdlh_runtime.cognitive.semantic_router.encoder import Encoder
+from bdlh_runtime.engine.semantic_router.encoder import Encoder
 from bdlh_runtime.guardrails.contracts import GuardrailContext
 from bdlh_runtime.guardrails.middleware import AuditRecord, GovernanceMiddleware, ToolExecutor
 from bdlh_runtime.memory.base import MemoryRecord

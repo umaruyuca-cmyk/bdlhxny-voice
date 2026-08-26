@@ -14,9 +14,9 @@ from langchain_core.messages import AIMessage
 from bdlh_runtime.api.projections import chat_final_payload, project_blocks
 from bdlh_runtime.api.routes import create_api_app
 from bdlh_runtime.api.schemas import SUITABILITY_DISCLOSURE
-from bdlh_runtime.cognitive.contracts import CognitiveExecution, CognitiveState, InputEvent, PublicResponse
 from bdlh_runtime.config import Settings
 from bdlh_runtime.contracts.observation import Observation, ProvenanceRecord
+from bdlh_runtime.engine.contracts import CognitiveExecution, CognitiveState, InputEvent, PublicResponse
 from bdlh_runtime.engine.loop import AgentLoop
 from bdlh_runtime.engine.runtime import EngineRuntime
 from bdlh_runtime.tools.catalog import catalog_from_snapshot

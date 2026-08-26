@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from bdlh_runtime.cognitive.checkpoint import (
+from bdlh_runtime.engine.checkpoint import (
     CognitiveCheckpoint,
     build_checkpoint,
     embed_checkpoint,
     extract_checkpoint,
     new_checkpoint_id,
 )
-from bdlh_runtime.cognitive.contracts import CognitiveExecution, CognitiveState, InputEvent
+from bdlh_runtime.engine.contracts import CognitiveExecution, CognitiveState, InputEvent
 from bdlh_runtime.infra.run_registry import RunLocation
 from bdlh_runtime.infra.runtime_path import COGNITIVE_RUNTIME_PATH
 

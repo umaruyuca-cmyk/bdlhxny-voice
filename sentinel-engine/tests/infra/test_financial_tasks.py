@@ -6,14 +6,14 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from bdlh_runtime.cognitive.contracts import (
+from bdlh_runtime.contracts.observation import Observation
+from bdlh_runtime.engine.contracts import (
     CognitiveExecution,
     CognitiveState,
     InputEvent,
     InputEventType,
     PublicResponse,
 )
-from bdlh_runtime.contracts.observation import Observation
 from bdlh_runtime.infra.scheduler import (
     FinancialTaskScheduler,
     FinancialTaskWakeupHandler,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bdlh_runtime.cognitive import (
+from bdlh_runtime.engine import (
     CognitiveAction,
     CognitiveActionType,
     DomainBudget,

@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 from langchain_core.messages import AIMessage
 
-from bdlh_runtime.cognitive.contracts import InputEvent
-from bdlh_runtime.cognitive.semantic_router import build_kernel_router
+from bdlh_runtime.engine.contracts import InputEvent
 from bdlh_runtime.engine.loop import AgentLoop
 from bdlh_runtime.engine.runtime import EngineRuntime
+from bdlh_runtime.engine.semantic_router import build_kernel_router
 from bdlh_runtime.tools.catalog import catalog_from_snapshot
 from tests.engine.test_loop import FakeChatModel
 from tests.helpers_encoder import LexicalEncoder

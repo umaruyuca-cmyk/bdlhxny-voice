@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
-from bdlh_runtime.cognitive.contracts import CognitiveExecution, InputEvent, InputEventType
+from bdlh_runtime.engine.contracts import CognitiveExecution, InputEvent, InputEventType
 
 from .tasks import (
     FinancialTask,
