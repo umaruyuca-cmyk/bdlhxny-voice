@@ -1,4 +1,4 @@
-"""Orchestrator readiness 评估（与 liveness 分离）。"""
+"""sentinel-engine readiness 评估（与 liveness 分离）。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class ReadinessReport:
     def as_dict(self) -> dict[str, Any]:
         return {
             "status": "READY" if self.ready else "NOT_READY",
-            "service": "bdlh-runtime-orchestrator",
+            "service": "sentinel-engine",
             "checks": [{"name": item.name, "ok": item.ok, "detail": item.detail} for item in self.checks],
         }
 

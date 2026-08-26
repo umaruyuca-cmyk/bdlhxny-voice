@@ -23,7 +23,7 @@ from .routers import agent_runs, chat, conversations, demo_events, financial_tas
 def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api/v1") -> FastAPI:
     """按配置创建 FastAPI 应用，路由统一挂在 api_prefix 下（审查 §6.3）。"""
 
-    app = FastAPI(title="BDLH Agent Runtime Analysis Workflow", version="0.1.0")
+    app = FastAPI(title="Sentinel Engine", version="0.1.0")
     router = APIRouter(prefix=api_prefix)
     authenticator = JwtAuthenticator(
         secret=application.settings.jwt_secret,
@@ -69,7 +69,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
     @router.get("/health", name="health")
     async def health() -> dict[str, str]:
         """进程存活探针（liveness）；不检查下游依赖。"""
-        return {"status": "UP", "service": "bdlh-runtime-orchestrator"}
+        return {"status": "UP", "service": "sentinel-engine"}
 
     @router.get("/ready", name="ready")
     async def ready(response: Response) -> dict:
@@ -82,7 +82,7 @@ def create_api_app(application: AgentRuntimeApplication, api_prefix: str = "/api
     # Compose / 运维常用无前缀路径；与 api_prefix 下同名探针语义一致。
     @app.get("/health", name="health_root")
     async def health_root() -> dict[str, str]:
-        return {"status": "UP", "service": "bdlh-runtime-orchestrator"}
+        return {"status": "UP", "service": "sentinel-engine"}
 
     @app.get("/ready", name="ready_root")
     async def ready_root(response: Response) -> dict:

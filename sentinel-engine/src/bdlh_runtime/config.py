@@ -49,7 +49,7 @@ class Mem0Config:
 
     内部 LLM 和 Embedding 必须显式指定为本项目使用的模型，不得走 Mem0 默认
     的 OpenAI——否则会引入未声明的外部依赖和成本。产品路径只走 Remote
-    Memory Service；Orchestrator 不再以 NoOp 作为配置级降级。
+    Memory Service；sentinel-engine 不再以 NoOp 作为配置级降级。
     """
 
     llm_model: str = DEFAULT_LLM_MODEL  # Mem0 内部抽取/去重用的 LLM
@@ -62,7 +62,7 @@ class Mem0Config:
 
 @dataclass(frozen=True)
 class Settings:
-    """BDLH Agent Runtime Python 服务的完整运行配置。"""
+    """Sentinel Engine Python 服务的完整运行配置。"""
 
     # ── 基础运行 ──
     environment: str = "production"

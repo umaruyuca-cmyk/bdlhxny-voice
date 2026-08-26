@@ -296,6 +296,11 @@ WatchEvent { id, rule_id, type, source, payload, dedupe_key, occurred_at }
 | GET | `/api/v1/agent-runs/{id}` | 运行回放（工具调用、Observation、审计记录） |
 | POST | `/internal/demo/events` | 演示事件注入（仅 demo 档注册） |
 | GET | `/health` · `/ready` | 存活 / 就绪探针 |
+| GET | `/api/v1/conversations` | 会话目录（分页）[^impl-conversations] |
+| GET / DELETE | `/api/v1/conversations/{session_id}` | 会话详情读取 / 删除 |
+| POST / GET | `/api/v1/financial-tasks` | M6 持续任务创建 / 列表[^impl-m6] |
+| GET | `/api/v1/financial-tasks/{task_id}` | M6 持续任务详情 |
+| POST | `/api/v1/financial-tasks/{task_id}/cancel` | M6 持续任务取消 |
 
 ### 6.2 SSE 事件契约（会话通道）
 
@@ -611,6 +616,7 @@ ChatResult v2 {
 | 2026-08-18 | 专业化改写：补充契约定义、触发与失败语义、接口规格、设计权衡记录 |
 | 2026-08-19 | T0–T4 实施收口：看护环 / 工具目录 / SSE v2 / 看护首页与追问抽屉 / 演示 compose / 彩排脚本已落地；品牌落地 `/` 与 `/docs` 对齐 Sentinel；实现偏差以本章节脚注标注 |
 | 2026-08-19 | P0–P2 架构清理：删除 `runtimes/` 死代码包与死字段；`cognitive_application` → `engine_runtime`；`cognitive/` 整包并入 `engine/`；重写内核纯净度门禁（`KERNEL_TARGETS` 纳入 `engine`，删除 ADR-009 引用与 `domains.finance` 空禁）；§3.3 组件名 `orchestrator` → `sentinel-engine`，新增包依赖边界 |
+| 2026-08-19 | P3 命名对齐与文档补缺：代码层 `orchestrator`/`BDLH Agent Runtime` → `sentinel-engine`/`Sentinel Engine`（`/health`·`/ready` service 字段、FastAPI title、包 docstring）；§6.1 补列 `/conversations` 与 `/financial-tasks` 端点；标注 M6 `FinancialTask` 与 T1 `watch_rule` 并行关系 |
 
 [^impl-home]: 实施（2026-08-19）：品牌落地页为 `/`（`index.html`）；看护首页（P1）仅 `/dashboard`。演示从品牌页 CTA「进入看护」进入 P1，不再把 `/` 直接绑 dashboard。
 [^impl-p2]: 实施（2026-08-19）：产品会话入口为 `/agent`（`chat.html`），不是 `/chat`。联调见 `sentinel-console/CHAT_INTEGRATION.md`。
@@ -624,3 +630,5 @@ ChatResult v2 {
 [^impl-t4]: 实施（2026-08-19）：T4 收口；现场浏览器七步与录屏成片由操作者补档（见实施 Prompt WO-T4-3）。
 [^impl-pytest]: 实施（2026-08-19）：部分 Windows 环境 `uv run pytest` 无输出，门禁改用 `uv run python -m pytest -q`。Java 测试在该环境用完整 Maven 路径。本地 compose `config -q` 需 Docker CLI。
 [^impl-watch-event]: 实施（2026-08-19）：`source=demo_inject` 的演示事件 `rule_id=0`（合成事件，无 FK 指向 `watch_rule`）；`dedupe_key` 含 uuid 允许演示迭代多次注入。见 WO-T1-7。
+[^impl-conversations]: 实施（2026-08-19）：`/conversations` 端点提供会话目录 CRUD，支撑 P2 追问抽屉的会话隔离；设计文档 §6.1 原表漏列，现补登。
+[^impl-m6]: 实施（2026-08-19）：`/financial-tasks` 是 M6 持续任务系统（`FinancialTask`：价格条件观察，有 task_id/cadence/expires_at/version），与 T1 `watch_rule`/`watch_event` 看护环并行存在。设计文档 §4.8 的规则模型为 T1 `watch_rule`；M6 的去留待后续收敛决策。
