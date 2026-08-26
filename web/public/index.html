@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>公告</title>
-<meta name="description" content="系统定位与正式发布批次的公告空框架;未发布前统一显示「尚未发布」。">
+<title>公告 · Touchstone</title>
+<meta name="description" content="正式发布批次的公告页:未发布前统一显示「尚未发布」;全部数字来自发布校验后的公开快照。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body class="dashboard-page">
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -19,132 +19,27 @@
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
     <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
     </div>
-    <button class="side-btn" id="sideBtn" type="button" aria-label="展开导航">导航</button>
   </div>
 </header>
-<div class="docs-layout">
-  <aside class="docs-side" id="docsSide">
-    <nav class="side-tree" aria-label="站点模块导航">
-    <a class="side-item active" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
-        <ul>
-          <li><a href="/about/">系统定位与架构</a></li>
-          <li><a href="/about/banks">题库与数据</a></li>
-          <li><a href="/about/repo">仓库与复现</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
-        <ul>
-          <li><a href="/showcase/">用例详情</a></li>
-          <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
-        <ul>
-          <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
-        </ul>
-      </details>
-    <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
-        <ul>
-          <li><a href="/context/">压缩算法</a></li>
-          <li><a href="/context/library">长上下文库</a></li>
-          <li><a href="/context/design">长短对照设计</a></li>
-          <li><a href="/context/results">用例结果</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
-        <ul>
-          <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">指标定义总表</a></li>
-          <li><a href="/judging/judge">判官说明</a></li>
-          <li><a href="/judging/invalid">无效运行与口径</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
-        <ul>
-          <li><a href="/tools/">全部工具</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
-        <ul>
-          <li><a href="/cases/">全部用例</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
-        <ul>
-          <li><a href="/engine/">Agent 循环</a></li>
-          <li><a href="/engine/loading">工具装载</a></li>
-          <li><a href="/engine/catalog">工具目录</a></li>
-          <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail">输出护栏</a></li>
-          <li><a href="/engine/tools">工具清单</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
-        <ul>
-          <li><a href="/ops/">数据库与冻结数据</a></li>
-          <li><a href="/ops/run-api">私有运行 API</a></li>
-          <li><a href="/ops/artifacts">工件与发布</a></li>
-          <li><a href="/ops/deploy">部署与边界</a></li>
-          <li><a href="/ops/roadmap">路线图</a></li>
-        </ul>
-      </details>
-  </nav>
-    <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
-  </aside>
-  <main class="docs-main">
-<div class="detail-layout detail-layout-full">
-      
-      <div class="detail-body">
-        <h1>公告</h1>
-<h2 id="about">系统定位</h2>
-<style>
-.home-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 4px}
-.fact-card{border:1px solid var(--doc-border);border-radius:10px;background:#fff;padding:12px 14px}
-.fact-card b{display:block;font-size:22px;font-weight:800;letter-spacing:-.01em}
-.fact-card span{font-size:12px;color:var(--doc-faint)}
-.fact-card a{font-size:12.5px;color:#1d4ed8;text-decoration:none;font-weight:650}
-.announce-empty{border:1px dashed var(--doc-border);border-radius:10px;background:#fff;padding:16px 18px;color:var(--doc-faint);margin:10px 0}
-.announce-empty b{color:var(--doc-text,#222)}
-</style>
-<p>本系统用于<strong>Agent 的对照评测</strong>,实验只分两类:<strong>压缩用例</strong>(三个版本化长 Session × 四种上下文方式 × 三种 Agent,每格单次样本)与<strong>对比用例</strong>(固定用例 × 三种 Agent × 重复 3 或 5 次)。全部指标由代码断言产生,未运行的数字显示「未运行」,不以估算冒充实测。</p>
-<div class="home-facts">
-  <div class="fact-card"><b>112</b><span>工具目录 · <a href="/tools/">浏览</a></span></div>
-  <div class="fact-card"><b>20</b><span>对比用例 · <a href="/cases/">用例库</a></span></div>
-  <div class="fact-card"><b>3</b><span>压缩长 Session · <a href="/context/library">长上下文库</a></span></div>
-  <div class="fact-card"><b>2</b><span>实验入口 · <a href="/experiment/compression">压缩 / 对比</a></span></div>
-</div>
-    <h2 id="batches">正式发布批次说明</h2>
-<div id="announcePubState" class="announce-empty"><b>尚未发布。</b>公告展示的是经过维护者审核的正式运行批次,不是用例定义本身。发布链路:用例库提供考题 → 压缩模块提供 Session → 运行系统产生答卷与证据 → 维护者审核并创建公开快照 → 本页只读取公开快照。当前没有任何正式发布批次。</div>
-    <h2 id="agent-summary">Agent 对比汇总</h2>
-<div class="announce-empty"><b>尚未发布。</b>正式批次发布后,这里展示三种 Agent 实现的对照汇总(成功次数、时长分布、Token 与停止原因口径);公告中的对比考题引用用例库的 <code>case_id + case_version</code>。</div>
-    <h2 id="compression">压缩结果</h2>
-<div class="announce-empty"><b>尚未发布。</b>正式批次发布后,这里展示三个压缩 Session 的 4×3 单次样本矩阵与压缩前后对照;公告中的压缩案例引用 <code>session_id + session_version + current_event_id</code>。当前可先查看<a href="/experiment/compression">压缩用例实验入口</a>与<a href="/context/library">长上下文库</a>的冻结工件概览。</div>
-    <h2 id="examples">代表性实例</h2>
-<div class="announce-empty"><b>尚未发布。</b>维护者从正式批次中选择代表性实例并发布后,这里提供入口;本页不维护另一套考题,不展示匿名临时结果,也不手工填写成绩。</div>
-    <h2 id="drilldown">单次运行下钻</h2>
-<div class="announce-empty"><b>尚未发布。</b>每个汇总数字在正式发布后都可下钻到单次运行的工具调用、参数来源、冻结 Mock 返回、Token、耗时与停止原因。</div>
-<div class="note" style="margin-top:16px">
-  <strong>口径说明</strong>:本站为纯静态展示,浏览不产生模型调用与费用;公告数字只来自发布校验后的正式运行批次公开快照;工具调用均来自冻结数据集,不访问真实外部系统;匿名测试结果保存在「我的测试」,不会自动进入本页。
-</div>
-      </div>
-    </div>
-  </main>
-</div>
-<script src="/docs/docs.js"></script>
+<main class="docs-main">
+  <div class="eyebrow">Announcements</div>
+  <h1>公告</h1>
+  <p class="page-sub">本页只展示经过维护者审核并发布的正式运行批次快照;系统与架构说明见「系统概览」,实验入口见「实验」。</p>
 
+  <div class="stat-row">
+    <div class="stat"><b>112</b><span><a href="/tools/">工具目录</a>(冻结 Mock,版本化)</span></div>
+    <div class="stat"><b>20</b><span><a href="/cases/">对比用例</a>(固定题库)</span></div>
+    <div class="stat"><b>3</b><span><a href="/context/library">压缩长 Session</a>(版本化语料)</span></div>
+    <div class="stat"><b>6</b><span><a href="/experiment/">实验模板</a>(唯一自变量)</span></div>
+  </div>
+
+  <div class="panel panel-dashed" id="announcePubState">
+    <b>尚未发布。</b>公告展示的是维护者审核后的正式运行批次公开快照,不是用例定义本身。发布链路:用例库提供考题 → 压缩模块提供 Session → 运行系统产生答卷与证据 → 维护者审核并创建公开快照 → 本页只读取公开快照。正式批次发布后,这里将按实验模板分组展示对照汇总(实验目的、唯一自变量、变体与 config_hash)、压缩上下文实验结果、代表性实例,以及每个汇总数字到单次运行证据的下钻入口;当前没有任何正式发布批次。
+  </div>
+
+  <p class="note">口径说明:本站为纯静态展示,浏览不产生模型调用与费用;公告数字只来自发布校验后的正式运行批次公开快照;工具调用均来自冻结数据集,不访问真实外部系统;匿名测试结果保存在「我的测试」,不会自动进入本页;未运行的数字显示「未运行」,不以估算冒充实测。</p>
+</main>
+<script src="/docs/docs.js"></script>
 <script>
 (function () {
   "use strict";
@@ -161,7 +56,7 @@
         return;
       }
       var latest = pubs[0];
-      el.textContent = "最新正式发布:" + (latest.published_at || "") + "(批次 " + String(latest.batch_id || "").slice(0, 8) + ");Agent 对比汇总、压缩结果与代表性实例以该批次公开快照为准。";
+      el.textContent = "最新正式发布:" + (latest.published_at || "") + "(批次 " + String(latest.batch_id || "").slice(0, 8) + ");对照汇总、压缩结果与代表性实例以该批次公开快照为准。";
     })
     .catch(function () {
       var el = document.getElementById("announcePubState");

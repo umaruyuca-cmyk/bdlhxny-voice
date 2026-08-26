@@ -30,6 +30,7 @@ INSERT INTO touchstone.database_changes (script_name, description)
 VALUES (
     '20260826-scenario-pack-finance-marker.sql',
     '登记 finance 可选场景包元信息(默认关闭)'
-);
+)
+ON CONFLICT (script_name) DO NOTHING;
 
 COMMIT;

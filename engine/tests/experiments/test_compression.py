@@ -1,4 +1,4 @@
-"""压缩用例模块测试:三操作拆分、12 格矩阵、工件冻结复用与当前输入分离。
+"""压缩用例模块测试:三操作拆分、原生 4×1 计划、工件冻结复用与当前输入分离。
 
 全部使用确定性编译(默认保守口径 + 抽取式摘要),不访问外部模型。
 """
@@ -9,7 +9,7 @@ import shutil
 
 import pytest
 
-from bdlh_runtime.experiments import compression, compression_session_run_count
+from bdlh_runtime.experiments import NATIVE_AGENT_MODE_ID, compression, native_context_run_count
 from bdlh_runtime.experiments.compression import (
     CompressionSessionError,
     StaleContextArtifactError,
@@ -91,40 +91,41 @@ def _fake_cell_runner(spy):
 
 
 @pytest.mark.asyncio
-async def test_run_full_matrix_12_cells_each_once(compiled_once):
-    """运行完整 4×3:复用同批四份工件,12 格各运行 1 次。"""
-    from bdlh_runtime.experiments.compression import compile_variants, run_full_matrix
+async def test_run_native_matrix_4_cells_each_once(compiled_once):
+    """运行原生 4×1:复用同批四份工件,4 格各运行 1 次,唯一实现为原生底座。"""
+    from bdlh_runtime.experiments.compression import compile_variants, run_native_context_matrix
 
     session, variants, _ = compression._load_session_bundle(SESSION_ID)
     compiled = compile_variants(session, variants)
     spy: list[tuple] = []
-    report = await run_full_matrix(
+    report = await run_native_context_matrix(
         SESSION_ID, artifacts=compiled, max_agent_steps=5, cell_runner=_fake_cell_runner(spy)
     )
-    assert report["unit_count"] == 12
-    assert len(report["cells"]) == 12
-    assert compression_session_run_count() == 12
+    assert report["unit_count"] == 4
+    assert len(report["cells"]) == 4
+    assert native_context_run_count() == 4
     # 每格 repeat_index=0
     assert all(cell["repeat_index"] == 0 for cell in report["cells"])
-    # 单元覆盖 4 方式 × 3 Agent
-    assert len({(cell["context_variant"], cell["agent_mode_id"]) for cell in report["cells"]}) == 12
+    # 单元覆盖 4 方式 × 1 种统一原生配置
+    assert {cell["agent_mode_id"] for cell in report["cells"]} == {NATIVE_AGENT_MODE_ID}
+    assert len({cell["context_variant"] for cell in report["cells"]}) == 4
 
 
 @pytest.mark.asyncio
-async def test_three_agents_reuse_same_artifact_hash(compiled_once):
-    """三种 Agent 对同一种上下文读取内容和哈希完全相同的冻结工件。"""
-    from bdlh_runtime.experiments.compression import compile_variants, run_full_matrix
+async def test_all_cells_reuse_same_artifact_hash(compiled_once):
+    """全部单元对同一种上下文读取内容和哈希完全相同的冻结工件。"""
+    from bdlh_runtime.experiments.compression import compile_variants, run_native_context_matrix
 
     session, variants, _ = compression._load_session_bundle(SESSION_ID)
     compiled = compile_variants(session, variants)
     spy: list[tuple] = []
-    await run_full_matrix(SESSION_ID, artifacts=compiled, cell_runner=_fake_cell_runner(spy))
+    await run_native_context_matrix(SESSION_ID, artifacts=compiled, cell_runner=_fake_cell_runner(spy))
     by_variant: dict[str, set[str]] = {}
     for run_key, artifact_hash, _steps in spy:
         variant = run_key.split(":")[1]
         by_variant.setdefault(variant, set()).add(artifact_hash)
     for variant, hashes in by_variant.items():
-        assert len(hashes) == 1, f"{variant}: 三种 Agent 读到了不同的工件哈希 {hashes}"
+        assert len(hashes) == 1, f"{variant}: 不同单元读到了不同的工件哈希 {hashes}"
     # 且与生成阶段冻结的哈希一致
     for variant_id, payload in compiled_once.artifacts.items():
         assert by_variant[variant_id] == {payload["compiled_context_hash"]}
@@ -140,14 +141,14 @@ async def test_run_current_combo_single_run(compiled_once):
     cell = await run_current_combo(
         SESSION_ID,
         "budgeted-session",
-        "full-system",
+        NATIVE_AGENT_MODE_ID,
         artifacts=compiled,
         max_agent_steps=5,
         cell_runner=_fake_cell_runner(spy),
     )
     assert len(spy) == 1  # 只运行 1 次
     assert cell.context_variant == "budgeted-session"
-    assert cell.agent_mode_id == "full-system"
+    assert cell.agent_mode_id == NATIVE_AGENT_MODE_ID
     assert cell.context_artifact_hash == compiled["budgeted-session"].compiled_context_hash
 
 

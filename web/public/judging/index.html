@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -137,7 +137,7 @@
   <li><code>forbidden_calls</code> / <code>confirmation_required</code>:禁止调用;写操作在自主运行中调用即视为未经确认执行;</li>
   <li><code>stop_when_facts_available</code>:必须事实须进入最终回答;事实齐备后的多余调用计入记录。</li>
 </ul>
-<p>指标在逐次运行上计算:调用覆盖率、依赖满足、替代路径命中、违规数、事实命中、多余/重复调用、实际步数与停止原因;三种 Agent 的重复分布(成功次数、最小/中位/最大、离散)只在聚合页展示。</p>
+<p>指标在逐次运行上计算:调用覆盖率、依赖满足、替代路径命中、违规数、事实命中、多余/重复调用、实际步数与停止原因;各实现的重复分布(成功次数、最小/中位/最大、离散)只在聚合页展示;结果按模板变量分组,不再默认按旧 agent_mode 分组。</p>
     <h2 id="denominator">分母口径与数字入口</h2>
 <p>所有比例的分母只含 <strong>VALID</strong> 运行;无效运行(见<a href="/judging/invalid">无效运行与口径</a>)单列数量与原因,不冒充失败样本。0%→0% 的变化渲染为占位符而非「改善/回归」。每个汇总数字可回溯到 run_id。</p>
 <p><strong>指标数字的唯一入口是<a href="/#agent-summary">公告页 Agent 对比汇总区</a></strong>:实验结果数据只经维护者审核发布进入公告;本模块只维护指标定义,不再单独维护第二份批次指标总表。</p>

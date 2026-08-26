@@ -41,6 +41,17 @@ class ToolSearchIndex:
         *,
         top_k: int = DEFAULT_TOP_K,
     ) -> list[ToolCard]:
+        """兼容面:返回命中工具卡(按分数降序)。"""
+        return [card for _score, card in self.search_scored(query, visible, top_k=top_k)]
+
+    def search_scored(
+        self,
+        query: str,
+        visible: Sequence[ToolCard],
+        *,
+        top_k: int = DEFAULT_TOP_K,
+    ) -> list[tuple[float, ToolCard]]:
+        """带分数检索:(相似度, 工具卡) 按分数降序;排名与分数供工件归因(C3)。"""
         text = (query or "").strip()
         candidates = [card for card in visible if card.name != SEARCH_TOOLS_NAME]
         if not text or not candidates or top_k <= 0:
@@ -66,7 +77,11 @@ class ToolSearchIndex:
             if score >= self._threshold:
                 scored.append((score, card))
         scored.sort(key=lambda item: item[0], reverse=True)
-        return [card for _, card in scored[:top_k]]
+        return scored[:top_k]
+
+    @property
+    def threshold(self) -> float:
+        return self._threshold
 
 
 def _full_document(card: ToolCard) -> str:

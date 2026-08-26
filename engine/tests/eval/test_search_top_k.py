@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
-from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
-import bdlh_runtime.run_api as run_api
 from bdlh_runtime.engine.loader import ToolLoader
 from bdlh_runtime.engine.loop import AgentLoop, AgentTurn
 from bdlh_runtime.tools.catalog import catalog_from_snapshot
 from bdlh_runtime.tools.search import SEARCH_TOOLS_NAME
 from tests.engine.test_loop import FakeChatModel, _echo
-from tests.eval.test_run_api import FakeDataClient, _auth
-from tests.eval.test_visible_tools_config import _capture_conditions
 from tests.helpers_encoder import LexicalEncoder
 from tests.helpers_registry import seeded_snapshot
 
@@ -25,8 +19,8 @@ HIT_QUERY = "实时报价 最新价"
 class CapturingLoader(ToolLoader):
     """记录 run_search 实际收到的 top_k(其余行为不变)。"""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self.top_k_calls: list[int] = []
 
     def run_search(self, query: str, *, top_k: int, scene_tag: str, authenticated: bool) -> dict[str, object]:
@@ -44,7 +38,7 @@ def _search_call() -> AIMessage:
     )
 
 
-async def _run(loop: AgentLoop) -> Any:
+async def _run(loop: AgentLoop) -> object:
     return await loop.run(AgentTurn(user_id="u1", message="宁德时代现在什么价", scene_tag="market"))
 
 
@@ -73,28 +67,3 @@ async def test_default_keeps_model_reported_top_k() -> None:
     loop = AgentLoop(llm=llm, catalog=catalog_from_snapshot(seeded_snapshot()), executor=_echo, loader=loader)
     await _run(loop)
     assert loader.top_k_calls == [8]
-
-
-def test_search_top_k_persisted_and_validated(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
-    data = FakeDataClient()
-    monkeypatch.setattr(run_api, "_data", lambda: data)
-    monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
-    client = TestClient(run_api.app)
-
-    captured = _capture_conditions(
-        client,
-        data,
-        monkeypatch,
-        tmp_path,
-        {"case_ids": ["research-01"], "runs": 1, "include_react": False, "search_top_k": 3},
-    )
-    assert captured["searchTopK"] == 3
-
-    # 越界值拒绝(1..8 之外)
-    for bad in (0, 9):
-        response = client.post(
-            "/api/v1/eval-batches",
-            json={"case_ids": ["research-01"], "runs": 1, "include_react": False, "search_top_k": bad},
-            headers=_auth(),
-        )
-        assert response.status_code == 422

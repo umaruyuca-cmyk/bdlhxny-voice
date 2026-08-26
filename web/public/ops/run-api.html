@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -118,13 +118,13 @@
 <ul>
   <li><code>POST /api/v1/login</code> / <code>logout</code> — 所有者会话(连续失败锁定);</li>
   <li><code>GET /api/v1/cases</code> — 固定题库(题号/版本/变体);</li>
-  <li><code>GET /api/v1/context-cases</code> — 长上下文库元信息(条目构成与保守 token 估算);</li>
-  <li><code>POST /api/v1/context-compress</code> — 单用例现场压缩测试(只跑构建器,无模型调用);</li>
-  <li><code>POST /api/v1/eval-batches</code> — 发起编排对照批次(题号/次数/ReAct/模型/token 上限);</li>
+  <li><code>GET /api/v1/experiment-templates</code> — 实验模板清单(目的/唯一自变量/变体/冻结条件/权限与上限);</li>
+  <li><code>POST /api/v1/template-batches/plan</code> — 模板批次预估(精确运行数与变体 config_hash,不创建运行);</li>
+  <li><code>POST /api/v1/template-batches</code> — 按模板发起正式批次(固定用例 × 模板变体,统一原生底座);</li>
   <li><code>POST /api/v1/context-batches</code> — 发起上下文压缩对照批次(六套 × 两变体);</li>
-  <li><code>POST /api/v1/context-link-batches</code> — 发起联动对照批次(两变体 × 三组实现);</li>
   <li><code>GET /api/v1/jobs/{id}</code> 与 <code>POST /api/v1/jobs/{id}/cancel</code> — 作业状态与协作取消(幂等);</li>
-  <li><code>GET /api/v1/batches/{id}</code> / <code>GET /api/v1/runs/{id}/detail</code> — 批次运行列表与单次运行逐步明细。</li>
+  <li><code>GET /api/v1/batches/{id}</code> / <code>GET /api/v1/runs/{id}/detail</code> — 批次运行列表与单次运行逐步明细;</li>
+  <li><code>/api/v1/public/*</code> — 匿名受限测试接口(实验页运行入口)。</li>
 </ul>
 <p>接口不接受问题正文、系统提示词或工具列表;交互文档端点关闭;公开部署不包含此服务。</p>
       </div>

@@ -563,7 +563,7 @@
   "omitted_event_ids": [],
   "original_tokens": 9403,
   "working_tokens": 4090,
-  "build_duration_ms": 44,
+  "build_duration_ms": 42,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
@@ -577,5 +577,5 @@
   "scores": [],
   "scoring_version": "",
   "status": "COMPLETE",
-  "compile_wall_ms": 44
+  "compile_wall_ms": 43
 }

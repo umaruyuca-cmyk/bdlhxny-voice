@@ -49,11 +49,11 @@ class DataClient:
             raise DataServiceError("data service returned an invalid variant context")
         return payload
 
-    def create_batch(self, *, name: str, fixed_conditions: dict[str, Any]) -> str:
+    def create_batch(self, *, name: str, experiment_type: str, fixed_conditions: dict[str, Any]) -> str:
         payload = self._request(
             "POST",
             "/batches",
-            json={"name": name, "experimentType": "agent-implementation", "fixedConditions": fixed_conditions},
+            json={"name": name, "experimentType": experiment_type, "fixedConditions": fixed_conditions},
         )
         return str(payload["batchId"])
 
@@ -65,6 +65,16 @@ class DataClient:
         payload = self._request("GET", f"/batches/{batch_id}")
         if not isinstance(payload, dict):
             raise DataServiceError("data service returned an invalid batch")
+        return payload
+
+    def list_batches(self, *, limit: int = 20, cursor: str | None = None) -> dict[str, Any]:
+        """批次列表(所有者视角,新到旧;cursor=上一页最后一条批次 id)。"""
+        path = f"/batches?limit={min(max(int(limit), 1), 100)}"
+        if cursor:
+            path += f"&cursor={cursor}"
+        payload = self._request("GET", path)
+        if not isinstance(payload, dict):
+            raise DataServiceError("data service returned an invalid batch list")
         return payload
 
     def complete_batch(self, batch_id: str, status: str) -> None:

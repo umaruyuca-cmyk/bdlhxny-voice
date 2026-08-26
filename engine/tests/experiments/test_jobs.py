@@ -1,4 +1,8 @@
-"""匿名任务持久化测试:隔离、恢复、取消边界、publishable=false。"""
+"""匿名任务持久化测试:隔离、恢复、取消边界、publishable=false。
+
+对比用例统一经实验模板发起(governance-on-off:2 变体 × repeat);
+执行器注入 Fake 模板执行器,不调用真实 LLM。
+"""
 
 from __future__ import annotations
 
@@ -26,6 +30,9 @@ from bdlh_runtime.experiments.job_store import (
 from bdlh_runtime.experiments.judge import CallRelationSpec
 from bdlh_runtime.experiments.public_service import AnonymousJobService, PublicTestError
 from bdlh_runtime.experiments.quota import PublicQuotaConfig
+
+#: 匿名可用的对比模板:2 个治理变体 × repeat_count → 运行单元
+TEMPLATE_ID = "governance-on-off"
 
 
 class MemoryRepo:
@@ -67,8 +74,8 @@ def _service(tmp_path, **kwargs) -> AnonymousJobService:
     return AnonymousJobService(store, **defaults)
 
 
-def _fake_comparison_executor(job):
-    """伪造执行:3 个单元成功,其余按取消标志跳过。"""
+def _fake_template_executor(job, should_stop=lambda: False):
+    """伪造模板执行:3 个单元成功,其余按取消标志跳过。"""
     runs = []
     for index, unit in enumerate(job.units):
         if job.cancel_requested and index >= 3:
@@ -96,14 +103,14 @@ class TestJobStore:
         job = JobRecord(
             job_id="job-x",
             test_type=TestType.COMPARISON_CASE.value,
-            execution_scope="comparison-full",
+            execution_scope="template-batch",
             anonymous_id_hash=ANON_A,
-            units=[JobUnit(seq=1, unit_id="u1", agent_mode_id="full-system", repeat_index=0)],
+            units=[JobUnit(seq=1, unit_id="u1", agent_mode_id="native-tool-calling", repeat_index=0)],
         )
         store.save(job)
         reloaded = JobStore(tmp_path / "jobs").get("job-x")
         assert reloaded is not None
-        assert reloaded.units[0].agent_mode_id == "full-system"
+        assert reloaded.units[0].agent_mode_id == "native-tool-calling"
         assert reloaded.anonymous_id_hash == ANON_A
 
     def test_anonymous_lists_only_own_jobs(self, tmp_path):
@@ -113,7 +120,7 @@ class TestJobStore:
                 JobRecord(
                     job_id=job_id,
                     test_type=TestType.COMPARISON_CASE.value,
-                    execution_scope="comparison-full",
+                    execution_scope="template-batch",
                     anonymous_id_hash=identity,
                 )
             )
@@ -125,7 +132,7 @@ class TestJobStore:
         running = JobRecord(
             job_id="job-running",
             test_type=TestType.COMPARISON_CASE.value,
-            execution_scope="comparison-full",
+            execution_scope="template-batch",
             status=JOB_STATUS_RUNNING,
             anonymous_id_hash=ANON_A,
             units=[
@@ -137,7 +144,7 @@ class TestJobStore:
         queued = JobRecord(
             job_id="job-queued",
             test_type=TestType.COMPARISON_CASE.value,
-            execution_scope="comparison-full",
+            execution_scope="template-batch",
             status=JOB_STATUS_QUEUED,
             anonymous_id_hash=ANON_A,
             units=[JobUnit(seq=1, unit_id="u1", agent_mode_id="a", repeat_index=0)],
@@ -145,7 +152,7 @@ class TestJobStore:
         done = JobRecord(
             job_id="job-done",
             test_type=TestType.COMPARISON_CASE.value,
-            execution_scope="comparison-full",
+            execution_scope="template-batch",
             status=JOB_STATUS_COMPLETE,
             anonymous_id_hash=ANON_A,
         )
@@ -167,49 +174,60 @@ class TestJobStore:
 
 
 class TestAnonymousService:
-    def test_create_comparison_job_nine_units(self, tmp_path):
-        service = _service(tmp_path, comparison_executor=_fake_comparison_executor)
+    def test_create_template_comparison_job_six_units(self, tmp_path):
+        """governance-on-off × repeat 3 → 2 变体 × 3 次 = 6 个运行单元。"""
+        service = _service(tmp_path, template_executor=_fake_template_executor)
         job = service.create_job(
-            {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+            {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
             anonymous_id_hash=ANON_A,
         )
-        assert len(job.units) == 9
+        assert len(job.units) == 6
         assert job.publishable is False  # 匿名运行固定不可发布
         stored = service.store.get(job.job_id)  # 同步线程工厂:读取落盘后的最终状态
         assert stored is not None
         assert stored.status == JOB_STATUS_COMPLETE
-        assert stored.completed_unit_count() == 9
+        assert stored.completed_unit_count() == 6
+
+    def test_comparison_without_template_rejected(self, tmp_path):
+        """对比任务必须携带 template_id:缺 template_id 一律拒绝。"""
+        service = _service(tmp_path, template_executor=_fake_template_executor)
+        with pytest.raises(PublicTestError, match="模板"):
+            service.create_job(
+                {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+                anonymous_id_hash=ANON_A,
+            )
 
     def test_repeat_count_validated_backend(self, tmp_path):
-        service = _service(tmp_path, comparison_executor=_fake_comparison_executor)
-        with pytest.raises(PublicTestError):
+        service = _service(tmp_path, template_executor=_fake_template_executor)
+        with pytest.raises(PublicTestError, match="repeat_count"):
             service.create_job(
-                {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 4},
+                {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 6},
                 anonymous_id_hash=ANON_A,
             )
 
     def test_forbidden_request_fields_rejected(self, tmp_path):
         """匿名接口不接受任意问题/系统提示/工具定义/Mock/模型地址/密钥。"""
-        service = _service(tmp_path, comparison_executor=_fake_comparison_executor)
+        service = _service(tmp_path, template_executor=_fake_template_executor)
         for field in ("message", "prompt", "system_prompt", "tool_schema", "mock_result", "model_base_url", "api_key"):
             with pytest.raises(PublicTestError):
                 service.create_job(
-                    {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3, field: "x"},
+                    {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x",
+                     "repeat_count": 3, field: "x"},
                     anonymous_id_hash=ANON_A,
                 )
 
     def test_unknown_case_rejected(self, tmp_path):
-        service = _service(tmp_path, comparison_executor=_fake_comparison_executor)
+        service = _service(tmp_path, template_executor=_fake_template_executor)
         with pytest.raises(PublicTestError):
             service.create_job(
-                {"test_type": "COMPARISON_CASE", "case_id": "no-such", "repeat_count": 3},
+                {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "no-such", "repeat_count": 3},
                 anonymous_id_hash=ANON_A,
             )
 
     def test_anonymous_cannot_read_others_jobs(self, tmp_path):
-        service = _service(tmp_path, comparison_executor=_fake_comparison_executor)
+        service = _service(tmp_path, template_executor=_fake_template_executor)
         job = service.create_job(
-            {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+            {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
             anonymous_id_hash=ANON_A,
         )
         assert service.get_job_for(job.job_id, ANON_A).job_id == job.job_id
@@ -219,9 +237,9 @@ class TestAnonymousService:
             service.cancel_job(job.job_id, ANON_B)
 
     def test_cancel_blocks_only_unstarted_units(self, tmp_path):
-        """执行中途取消:已开始的 3 个单元保留,未开始的 6 个不再执行。"""
+        """执行中途取消:已开始的 3 个单元保留,未开始的 3 个不再执行。"""
 
-        def executor(job):
+        def executor(job, should_stop=lambda: False):
             runs = []
             for index, unit in enumerate(job.units):
                 if job.cancel_requested and index >= 3:  # 取消只阻止尚未开始的单元
@@ -242,47 +260,47 @@ class TestAnonymousService:
                     job.cancel_requested = True
             return {"runs": runs, "total_runs": len(job.units), "test_type": job.test_type}
 
-        service = _service(tmp_path, comparison_executor=executor)
+        service = _service(tmp_path, template_executor=executor)
         job = service.create_job(
-            {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+            {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
             anonymous_id_hash=ANON_A,
         )
         stored = service.store.get(job.job_id)
         assert stored.completed_unit_count() == 3  # 已产生的运行与费用保留
         assert stored.status == JOB_STATUS_PARTIAL  # 部分完成,不显示为完整成功
         cancelled_units = [u for u in stored.units if u.status == UNIT_STATUS_CANCELLED]
-        assert len(cancelled_units) == 6  # 未开始单元全部取消,不自动补跑
+        assert len(cancelled_units) == 3  # 未开始单元全部取消,不自动补跑
 
     def test_daily_quota_enforced(self, tmp_path):
         quota = PublicQuotaConfig(comparison_daily_jobs=2, daily_jobs_per_anonymous=10)
-        service = _service(tmp_path, quota=quota, comparison_executor=_fake_comparison_executor)
+        service = _service(tmp_path, quota=quota, template_executor=_fake_template_executor)
         for _ in range(2):
             service.create_job(
-                {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+                {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
                 anonymous_id_hash=ANON_A,
             )
         with pytest.raises(PublicTestError) as exc:
             service.create_job(
-                {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+                {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
                 anonymous_id_hash=ANON_A,
             )
         assert "上限" in str(exc.value)
         # 其他匿名身份不受影响
         service.create_job(
-            {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+            {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
             anonymous_id_hash=ANON_B,
         )
 
     def test_concurrent_jobs_limited_per_anonymous(self, tmp_path):
-        def slow_executor(job):
+        def slow_executor(job, should_stop=lambda: False):
             stored = service.store.get(job.job_id)
             stored.status = JOB_STATUS_RUNNING
             service.store.save(stored)
-            return _fake_comparison_executor(stored)
+            return _fake_template_executor(stored)
 
-        service = _service(tmp_path, comparison_executor=slow_executor)
+        service = _service(tmp_path, template_executor=slow_executor)
         service.create_job(
-            {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+            {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
             anonymous_id_hash=ANON_A,
         )
         # 手动把任务置回 RUNNING 模拟仍在执行
@@ -291,7 +309,7 @@ class TestAnonymousService:
         service.store.save(stored)
         with pytest.raises(PublicTestError):
             service.create_job(
-                {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+                {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
                 anonymous_id_hash=ANON_A,
             )
 
@@ -312,14 +330,14 @@ class TestAnonymousService:
         stored = service.store.get(job.job_id)
         assert stored.result.get("stats", {}).get("variant_count") == 4
 
-    def test_compression_full_matrix_twelve_units(self, tmp_path):
+    def test_compression_native_matrix_four_units(self, tmp_path):
         def compression_executor(job, should_stop=lambda: False):
             return {
                 "cells": [
                     {"unit_id": unit.unit_id, "task_success": True, "validity": "VALID",
                      "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5}
-                    for unit in job.units[:6]
-                ],  # 模拟中途取消:6 个完成,6 个未开始
+                    for unit in job.units[:2]
+                ],  # 模拟中途取消:2 个完成,2 个未开始
                 "unit_count": len(job.units),
             }
 
@@ -328,13 +346,13 @@ class TestAnonymousService:
             {
                 "test_type": "COMPRESSION_CASE",
                 "session_id": "ctx-session-context-engine-debug-01",
-                "execution_scope": "full-matrix",
+                "execution_scope": "native-matrix",
             },
             anonymous_id_hash=ANON_A,
         )
-        assert len(job.units) == 12
+        assert len(job.units) == 4  # 原生 4×1:四种上下文 × 一种统一配置
         stored = service.store.get(job.job_id)
-        assert stored.completed_unit_count() == 6
+        assert stored.completed_unit_count() == 2
         # 取消/中断路径中未开始单元不再显示 QUEUED
         assert all(unit.status != UNIT_STATUS_QUEUED for unit in stored.units)
 
@@ -342,12 +360,14 @@ class TestAnonymousService:
         """排队中的任务被取消:全部单元直接取消,不产生任何模型费用。"""
         service = _service(
             tmp_path,
-            comparison_executor=lambda job: (_ for _ in ()).throw(AssertionError("不应执行")),
+            template_executor=lambda job, should_stop=lambda: False: (_ for _ in ()).throw(
+                AssertionError("不应执行")
+            ),
         )
         # 用异步线程工厂:创建后不立即执行
         service._thread_factory = lambda target: None
         job = service.create_job(
-            {"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+            {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID, "case_id": "cmp-x", "repeat_count": 3},
             anonymous_id_hash=ANON_A,
         )
         cancelled = service.cancel_job(job.job_id, ANON_A)

@@ -1,14 +1,14 @@
-"""压缩用例模块:三个版本化长 Session 的上下文生成与 4×3 运行。
+"""压缩用例模块:三个版本化长 Session 的上下文生成与原生运行。
 
 数据来源只允许上下文压缩模块维护的三个长 Session(引擎 var/cases 下),
-不从普通用例库读取。三个操作互不自动触发:
+不从普通用例库读取。两种操作互不自动触发:
 
 1. ``generate_contexts``:只生成、统计和冻结四份上下文工件——本函数结构上
-   不 import AgentLoop/基线 runner,无法创建 Agent、Tool 或评判运行;
-2. ``run_current_combo``:读取一份冻结工件 + 一种 Agent,运行 1 次;
-3. ``run_full_matrix``:复用同批四份冻结工件,创建 4×3=12 个运行,每格 1 次。
+   不 import AgentLoop,无法创建 Agent、Tool 或评判运行;
+2. ``run_current_combo``:读取一份冻结工件,原生底座运行 1 次;
+   ``run_native_context_matrix``(4×1):四份工件 × 统一原生配置。
 
-冻结纪律:三种 Agent 必须读取内容和哈希完全相同的冻结工件
+冻结纪律:所有运行读取内容和哈希完全相同的冻结工件
 (同进程直接复用编译对象;跨请求按存储工件的 compiled_context_hash
 逐一校验,确定性构建哈希不一致即视为过期,提示重新生成,不静默复用)。
 """
@@ -23,14 +23,30 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bdlh_runtime.context import (
+    ContextBuilder,
+    ContextBuildRequest,
+    ContextBuildResult,
+)
 from bdlh_runtime.experiments import (
-    AGENT_MODE_IDS,
     COMPRESSION_REPEAT_COUNT,
     CONTEXT_MODES,
+    NATIVE_AGENT_MODE_ID,
     RunUnit,
     TestType,
-    plan_compression_matrix,
+    plan_native_context_runs,
     validate_repeat_count,
+)
+from bdlh_runtime.experiments.run_config import (
+    EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+    GOVERNANCE_STANDARD,
+    TOOL_DELIVERY_ALL,
+    ContextParams,
+    LimitsConfig,
+    ModelParams,
+    RunConfig,
+    ToolsConfig,
+    hash_of,
 )
 from bdlh_runtime.session import (
     CompiledContext,
@@ -43,6 +59,7 @@ from bdlh_runtime.session import (
 )
 from bdlh_runtime.session.compiler import STRUCTURED_TEXT_ALGO_VERSION
 from bdlh_runtime.session.loader import SessionCase, SessionEvent
+from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 CASES_ROOT = _REPO_ROOT / "engine" / "var" / "cases"
@@ -55,6 +72,50 @@ COMPRESSION_SESSIONS: tuple[tuple[str, str], ...] = (
 )
 
 FINGERPRINT_VERSION = "compression-fingerprint-v1"
+
+#: 会话用例的通用只读工具目录(required_scope 为空 → 全场景可见)
+_SESSION_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "file.read": "读取指定路径的文件内容。参数 path 为绝对或仓库相对路径。",
+    "file.search": "在文件内容中搜索关键词,返回命中位置。",
+    "document.summarize": "对给定文档文本生成摘要。",
+    "code.read": "读取指定源码文件的完整内容。参数 path 为文件路径。",
+    "code.search": "在代码库中检索符号或关键字,返回命中文件与行号。",
+    "git.get_diff": "查看 Git 工作区或提交差异(只读)。",
+    "project.get_status": "查看项目当前状态:分支、工作区、环境(只读)。",
+}
+
+
+def session_tool_catalog(visible_tools: list[str] | tuple[str, ...]) -> ToolCatalog:
+    catalog = ToolCatalog()
+    for name in sorted(visible_tools):
+        catalog.register(
+            ToolCard(
+                name=name,
+                description=_SESSION_TOOL_DESCRIPTIONS.get(name, f"通用只读工具:{name}"),
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": True,
+                },
+                read_only=True,
+                required_scope=[],
+            )
+        )
+    return catalog
+
+
+class FrozenContextBuilder:
+    """首轮构建命中冻结工件(item id 全等);循环内 refit 条目变化走真实构建器。"""
+
+    def __init__(self, real: ContextBuilder, frozen_ids: tuple[str, ...], frozen: ContextBuildResult) -> None:
+        self._real = real
+        self._frozen_ids = frozen_ids
+        self._frozen = frozen
+
+    def build(self, request: ContextBuildRequest) -> ContextBuildResult:
+        if tuple(item.item_id for item in request.items) == self._frozen_ids:
+            return self._frozen
+        return self._real.build(request)
 
 
 class CompressionSessionError(ValueError):
@@ -284,6 +345,49 @@ class CellRunResult:
     actual_agent_steps: int
     context_artifact_hash: str
     error: str | None = None
+    #: 本格运行的配置快照哈希(配置体见批次 run_configs,按 f"{variant}:{mode}" 索引)
+    config_hash: str = ""
+
+
+def build_compression_run_configs(
+    session: SessionCase,
+    compiled: dict[str, CompiledContext],
+    max_agent_steps: int,
+    *,
+    model_id: str = "configured-model",
+    tokenizer_version: str = "conservative-chars4-v1",
+    agent_mode_ids: tuple[str, ...] = (NATIVE_AGENT_MODE_ID,),
+) -> dict[str, RunConfig]:
+    """为压缩运行的每格构建运行配置快照(阶段 A3)。
+
+    统一原生底座(4×1):同一执行引擎、治理与装载,唯一自变量是
+    ``context_strategy``。
+    """
+    configs: dict[str, RunConfig] = {}
+    for variant_id, artifact in compiled.items():
+        for mode in agent_mode_ids:
+            if mode != NATIVE_AGENT_MODE_ID:
+                raise CompressionSessionError(f"未知 Agent 实现编号:{mode!r}")
+            config = RunConfig(
+                execution_engine=EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+                tool_delivery=TOOL_DELIVERY_ALL,
+                governance_profile=GOVERNANCE_STANDARD,
+                context_strategy=str(artifact.strategy),
+                model=ModelParams(model_id=model_id),
+                limits=LimitsConfig(
+                    max_agent_steps=max_agent_steps,
+                    max_tool_calls=max(0, max_agent_steps + 2),
+                ),
+                tools=ToolsConfig(catalog_version="session-mock-v1"),
+                context=ContextParams(
+                    token_budget=int(artifact.token_budget or 0),
+                    tokenizer_version=tokenizer_version,
+                ),
+                fixture_version=str(session.fixture_set_id or "session-gold-v1"),
+            )
+            config.validate()
+            configs[f"{session.session_id}:{variant_id}:{mode}"] = config
+    return configs
 
 
 #: 单元执行器协议:async (session, artifact, agent_mode_id, run_key, max_agent_steps) -> raw dict
@@ -299,15 +403,12 @@ async def _default_cell_runner(
     *,
     llm: Any,
 ) -> dict[str, Any]:
-    """生产执行器:三种 Agent 实现读同一份冻结工件各运行一次。"""
+    """生产执行器:统一原生 AgentLoop 读冻结工件运行一次。"""
     import asyncio as _asyncio
     import os
 
     from bdlh_runtime.context import ConservativeTokenCounter
     from bdlh_runtime.engine.loop import AgentLoop, AgentTurn, _tool_schema_tokens
-    from bdlh_runtime.evaluation.baseline_agent import naive_run
-    from bdlh_runtime.evaluation.baseline_langgraph import react_official_run
-    from bdlh_runtime.evaluation.session_cross_eval import session_tool_catalog
 
     gold = load_gold(session_case_dir(session.session_id) / "gold" / f"{session.session_id}.gold.json")
     dispatcher = dispatcher_from_gold(gold)
@@ -330,69 +431,39 @@ async def _default_cell_runner(
     stop_reason = ""
     actual_steps = 0
     try:
-        if agent_mode_id == "full-system":
-            serialized = serialize_session(session)
-            turn = AgentTurn(
-                user_id=session.owner_id or "session-owner",
-                message=session.current_question,
-                scene_tag="general",
-                authenticated=True,
-                run_id=run_key,
-                context_entries=tuple(entry.item for entry in serialized),
-                context_strategy=artifact.strategy,
-                token_budget=artifact.token_budget + schema_tokens,
-                owner_id=None,
-            )
-            frozen_ids = (
-                ("system-prompt",)
-                + tuple(item.item_id for item in turn.context_entries)
-                + ("current-question",)
-            )
-            from bdlh_runtime.context import ContextBuilder as _ContextBuilder
-            from bdlh_runtime.evaluation.session_cross_eval import FrozenContextBuilder
-
-            loop = AgentLoop(
-                llm=llm,
-                catalog=catalog,
-                executor=recording_executor,
-                tool_loading="scoped",
-                max_agent_steps=max_agent_steps,
-                context_builder=FrozenContextBuilder(
-                    _ContextBuilder(), frozen_ids, artifact.build_result
-                ),
-            )
-            agent_result = await _asyncio.wait_for(loop.run(turn), timeout=timeout_s)
-            answer = agent_result.answer
-            error = agent_result.context_error if agent_result.degraded else None
-            stop_reason = agent_result.stop_reason or ""
-            actual_steps = agent_result.actual_steps
-        else:
-            system_content = "\n\n".join(
-                m.content for m in artifact.compiled_messages if m.role == "system"
-            ) or "你是软件工程助手,只使用提供的工具,不编造结果。"
-            context_parts = [m.content for m in artifact.compiled_messages if m.role != "system"]
-            fed_message = "\n\n".join(context_parts) or session.current_question
-            common = dict(
-                message=fed_message,
-                history=[],
-                all_cards=cards,
-                llm=llm,
-                executor=recording_executor,
-                system_prompt=system_content,
-            )
-            if agent_mode_id == "baseline-tool-calling":
-                result = await _asyncio.wait_for(naive_run(max_rounds=max_agent_steps, **common), timeout=timeout_s)
-            elif agent_mode_id == "langgraph-react":
-                result = await _asyncio.wait_for(react_official_run(**common), timeout=timeout_s)
-            else:
-                raise CompressionSessionError(f"未知 Agent 实现编号:{agent_mode_id!r}")
-            answer = result.answer
-            error = result.error
-            stop_reason = "FINAL_ANSWER" if not error else "AGENT_ERROR"
-            actual_steps = int(getattr(result, "rounds", 0) or 0)
+        serialized = serialize_session(session)
+        turn = AgentTurn(
+            user_id=session.owner_id or "session-owner",
+            message=session.current_question,
+            scene_tag="general",
+            authenticated=True,
+            run_id=run_key,
+            context_entries=tuple(entry.item for entry in serialized),
+            context_strategy=artifact.strategy,
+            token_budget=artifact.token_budget + schema_tokens,
+            owner_id=None,
+        )
+        frozen_ids = (
+            ("system-prompt",)
+            + tuple(item.item_id for item in turn.context_entries)
+            + ("current-question",)
+        )
+        loop = AgentLoop(
+            llm=llm,
+            catalog=catalog,
+            executor=recording_executor,
+            # 统一原生底座(D1):all 装载,唯一自变量是上下文方式
+            tool_loading="all",
+            max_agent_steps=max_agent_steps,
+            context_builder=FrozenContextBuilder(ContextBuilder(), frozen_ids, artifact.build_result),
+        )
+        agent_result = await _asyncio.wait_for(loop.run(turn), timeout=timeout_s)
+        answer = agent_result.answer
+        error = agent_result.context_error if agent_result.degraded else None
+        stop_reason = agent_result.stop_reason or ""
+        actual_steps = agent_result.actual_steps
     except TimeoutError:
-        answer, error = "", "运行超时:单运行熔断"
-        stop_reason = "TIMEOUT"
+        answer, error, stop_reason = "", "运行超时:单运行熔断", "TIMEOUT"
     return {
         "answer": answer,
         "error": error,
@@ -428,16 +499,22 @@ async def run_current_combo(
         raise CompressionSessionError(
             f"未知上下文方式 {context_variant!r};可用:{sorted(compiled)}"
         )
-    if agent_mode_id not in AGENT_MODE_IDS:
-        raise CompressionSessionError(f"未知 Agent 实现编号:{agent_mode_id!r}")
+    if agent_mode_id != NATIVE_AGENT_MODE_ID:
+        raise CompressionSessionError(
+            f"未知 Agent 实现编号:{agent_mode_id!r};可用:{NATIVE_AGENT_MODE_ID}"
+        )
     artifact = compiled[context_variant]
     runner = cell_runner or _default_cell_runner
     run_key = f"{session_id}:{context_variant}:{agent_mode_id}"
+    configs = build_compression_run_configs(session, compiled, steps)
     raw = await runner(session, artifact, agent_mode_id, run_key, steps, llm=llm)
-    return _assemble_cell_result(session, artifact, context_variant, agent_mode_id, raw, compiled)
+    return _assemble_cell_result(
+        session, artifact, context_variant, agent_mode_id, raw, compiled,
+        config_hash=configs[run_key].config_hash,
+    )
 
 
-async def run_full_matrix(
+async def run_native_context_matrix(
     session_id: str,
     *,
     artifacts: dict[str, CompiledContext] | None = None,
@@ -447,7 +524,11 @@ async def run_full_matrix(
     should_stop: Callable[[], bool] | None = None,
     inter_cell_delay_s: float = 0.0,
 ) -> dict[str, Any]:
-    """操作三:复用同批四份冻结工件,12 格各运行 1 次(不重复生成上下文)。"""
+    """新默认上下文运行计划(混合路线 D1):4 种上下文 × 1 种固定原生配置(4×1)。
+
+    唯一自变量是 ``context_strategy``;变体复用同一 Session 版本、当前事件、
+    工具目录和 Mock;不创建 8 格。
+    """
     from bdlh_runtime.experiments import default_max_agent_steps
 
     steps = max_agent_steps or default_max_agent_steps()
@@ -457,10 +538,13 @@ async def run_full_matrix(
     else:
         session, variants, compiled = _load_frozen_batch(session_id)
 
-    units: list[RunUnit] = plan_compression_matrix(session_id)
+    units: list[RunUnit] = plan_native_context_runs(session_id)
     cells: list[CellRunResult] = []
     skipped: list[str] = []
     runner = cell_runner or _default_cell_runner
+    run_configs = build_compression_run_configs(
+        session, compiled, steps, agent_mode_ids=(NATIVE_AGENT_MODE_ID,)
+    )
     for unit in units:
         if should_stop is not None and should_stop():
             skipped.append(unit.unit_id)
@@ -470,13 +554,28 @@ async def run_full_matrix(
             session, artifact, unit.agent_mode_id, unit.unit_id, steps, llm=llm
         )
         cells.append(
-            _assemble_cell_result(session, artifact, unit.context_variant or "", unit.agent_mode_id, raw, compiled)
+            _assemble_cell_result(
+                session, artifact, unit.context_variant or "", unit.agent_mode_id, raw, compiled,
+                config_hash=run_configs[unit.unit_id].config_hash,
+            )
         )
         if inter_cell_delay_s:
             import asyncio as _asyncio
 
             await _asyncio.sleep(inter_cell_delay_s)
 
+    fixed_conditions = {
+        "session_id": session.session_id,
+        "session_version": session.session_version,
+        "source_session_hash": session.source_hash,
+        "repeat_count": COMPRESSION_REPEAT_COUNT,
+        "max_agent_steps": steps,
+        "context_variants": list(CONTEXT_MODES),
+        "agent_mode_ids": [NATIVE_AGENT_MODE_ID],
+        "independent_variable": ["context_strategy"],
+        "experiment_definition": "context-strategy-comparison",
+        "experiment_definition_note": "4×1:同一原生 Tool Calling 底座,唯一自变量是上下文方式",
+    }
     return {
         "test_type": TestType.COMPRESSION_CASE.value,
         "session_id": session_id,
@@ -486,10 +585,12 @@ async def run_full_matrix(
         "unit_count": len(units),
         "cells": [cell.__dict__ for cell in cells],
         "skipped_unit_ids": skipped,
-        # 三种 Agent 读取的四份工件哈希(同一批,完全一致)
         "frozen_artifact_hashes": {
             variant_id: artifact.compiled_context_hash for variant_id, artifact in compiled.items()
         },
+        "run_configs": {key: config.config_payload_with_hash() for key, config in run_configs.items()},
+        "fixed_conditions": fixed_conditions,
+        "fixed_conditions_hash": hash_of(fixed_conditions),
     }
 
 
@@ -500,6 +601,8 @@ def _assemble_cell_result(
     agent_mode_id: str,
     raw: dict[str, Any],
     compiled_batch: dict[str, CompiledContext],
+    *,
+    config_hash: str = "",
 ) -> CellRunResult:
     from dataclasses import asdict
 
@@ -531,6 +634,7 @@ def _assemble_cell_result(
         actual_agent_steps=int(raw.get("actual_agent_steps") or 0),
         context_artifact_hash=artifact.compiled_context_hash,
         error=raw.get("error"),
+        config_hash=config_hash,
     )
 
 

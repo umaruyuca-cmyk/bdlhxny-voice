@@ -1,5 +1,4 @@
-"""固定条件下的 Agent 实现方式对照运行器。"""
+"""评测运行器:长上下文压缩对照与统一运行遥测。
 
-from .ab_eval import ABCase, load_cases, run_ab_eval
-
-__all__ = ["ABCase", "load_cases", "run_ab_eval"]
+正式实验统一走 native-tool-calling 底座与实验模板(experiments/templates.py)。
+"""

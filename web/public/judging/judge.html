@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -120,12 +120,12 @@
 <p>判定全部由代码断言产生,版本号 <code>fixed-rules-v1</code> 写入每份工件 provenance——<strong>没有 LLM 判官</strong>,不存在「判官模型偏好」这个隐藏变量。</p>
     <h2 id="layers">三层断言</h2>
 <ul>
-  <li><strong>工具层</strong>:实际成功/发起的工具集合与题库金标比对(集合相等;ReAct 组以模型实际发起的 tool_calls 计,ToolNode 拦截的幻觉尝试不丢失);</li>
+  <li><strong>工具层</strong>:实际成功/发起的工具集合与题库金标比对(集合相等);</li>
   <li><strong>答案层</strong>:数字接地(答案中的非平凡数字必须来自某条工具结果)、C-1 高危操作语义、C-2 未授权建议结论;完整模式组用护栏修正后的答案判定;</li>
   <li><strong>上下文层(压缩对照)</strong>:强制项保留、关键事实出现、禁用事实不入答案、注入隔离。</li>
 </ul>
     <h2 id="output">输出护栏与判定顺序</h2>
-<p>完整模式组先经输出护栏(数字接地替换、高危操作拦截、风险披露追加),修正后的答案才进判官——三组的答案层检查同口径。护栏的每次修正都会记录在 guardrail_checks(response 时点)与运行事件流中。</p>
+<p>完整模式组先经输出护栏(数字接地替换、高危操作拦截、风险披露追加),修正后的答案才进判官——各实现的答案层检查同口径。护栏的每次修正都会记录在 guardrail_checks(response 时点)与运行事件流中。</p>
       </div>
     </div>
   </main>

@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -121,7 +121,7 @@
   <li><strong>上下文压缩用例 6 套</strong>,每套 <code>full-raw</code> 全量与 <code>budgeted-comp</code> 压缩两条变体;条目构成与元信息见<a href="/context/library">长上下文库</a>,设计口径见<a href="/context/design">长短对照设计</a>。</li>
 </ul>
     <h2 id="data">数据来源与冻结</h2>
-<p>题库、工具目录、冻结工具返回与变体上下文的唯一数据来源都是 PostgreSQL;引擎不直连库,全部经 data 服务 internal 接口读取。编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code> / <code>ab-eval-negative-v1</code> / <code>mock-eval-v1</code>),三组共用,隔离执行质量差异。详见<a href="/ops/">数据库与冻结数据</a>。</p>
+<p>题库、工具目录、冻结工具返回与变体上下文的唯一数据来源都是 PostgreSQL;引擎不直连库,全部经 data 服务 internal 接口读取。冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code> / <code>ab-eval-negative-v1</code> / <code>mock-eval-v1</code>),隔离执行质量差异。详见<a href="/ops/">数据库与冻结数据</a>。</p>
       </div>
     </div>
   </main>

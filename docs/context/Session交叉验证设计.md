@@ -1,9 +1,9 @@
-# Session 交叉验证设计（4 上下文策略 × 3 Agent 模式）
+# Session 交叉验证设计（4 上下文策略 × 2 Agent 模式；默认上下文实验为 4×1 原生底座）
 
 本文档是"固定问题、冻结 Session、冻结 Mock Tools、比较不同 Agent 实现方式"
 产品目标下的交叉验证完整设计，同时如实区分**已实现**与**仍属设计**的部分。
 当前压缩用例使用三个固定长 Session：产品演进与需求决策、上下文引擎排查、
-数据库与部署。每个 Session 独立生成 12 格矩阵；页面默认一次只处理用户选择的
+数据库与部署。每个 Session 独立生成 4×2 交叉诊断矩阵（历史上为 4×3/12 格，LangGraph 并入 native 底座后成为历史口径；默认上下文实验为 4×1）；页面默认一次只处理用户选择的
 一个 Session，不自动连续执行三个 Session。
 
 ## 1. 实验目标和结论边界
@@ -25,13 +25,13 @@ Mock fixture/评测标准下，单独观察两个变量：
   32K/64K 窗口测试需要继续加入自然的完整文件内容、日志与工具结果，
   **不得**用编号短句批量填充长度。
 
-## 2. 12 组矩阵与固定条件
+## 2. 交叉矩阵与固定条件（4×2；默认上下文实验为 4×1）
 
-| 上下文方式 ↓ / Agent 模式 → | 裸 Tool Calling | LangGraph ReAct | 完整工程 Agent |
+| 上下文方式 ↓ / Agent 模式 → | 裸 Tool Calling | 完整工程 Agent |
 |---|---|---|---|
-| full-session（完整透传） | 运行 | 运行 | 运行 |
-| recent-window（最近窗口） | 运行 | 运行 | 运行 |
-| single-summary（一次摘要） | 运行 | 运行 | 运行 |
+| full-session（完整透传） | 运行 | 运行 |
+| recent-window（最近窗口） | 运行 | 运行 |
+| single-summary（一次摘要） | 运行 | 运行 |
 | budgeted-session（按预算压缩） | 运行 | 运行 | 运行 |
 
 每个单元格固定：同一 `source_session_hash`、同一当前问题、同一模型与温度
@@ -157,7 +157,7 @@ budgeted 的约束保留率均为 100%，**recent-window 仅 33%**（丢失 6 �
 ## 11. 当前代码差距（诚实清单）
 
 已实现：session 加载校验、序列化（工具对合并）、四策略独立编译、工件
-hash 冻结、Mock 调度器、gold 机械评测、12 格 runner（compile-only 可无
+hash 冻结、Mock 调度器、gold 机械评测、4×2 runner（历史上为 12 格；compile-only 可无
 模型运行）、`--runs N` 完整模式。
 
 仍属设计/未完成（状态更新 2026-08-24）：
@@ -194,7 +194,7 @@ hash 冻结、Mock 调度器、gold 机械评测、12 格 runner（compile-only 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | P0（本次完成） | 修复污染实验的缺陷；session 包；数据入库；compile-only 链路 | 全部单测通过；6 项编译校验 PASS；四工件 hash 互异且同源 |
-| P1 | 用户手动选择一个压缩用例后运行 12 格实验 | 每格准确运行 1 次；报告按样本展示并可下钻，不生成稳定性结论 |
+| P1 | 用户手动选择一个压缩用例后运行 4×1 默认上下文实验（或显式触发 4×2 交叉诊断） | 每格准确运行 1 次；报告按样本展示并可下钻，不生成稳定性结论 |
 | P2（已实现，开关启用） | 接入模型 tokenizer、LLM 摘要器、成本记录 | 摘要成本单独入工件（`--llm-summary`；`LLM_TOKENIZER=tiktoken`） |
 | P3 | db 落库 + web 三视图 + 脱敏发布 | 公开站无 gold、无重跑入口 |
 | P4（已实现，开关启用） | 多因子重要度与 selection_value 实现与对照 | budgeted-v2 与 v1 的受控对照（`BUDGETED_SCORING=multi-factor-v2`） |

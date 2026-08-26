@@ -44,3 +44,26 @@ VALUES ('20260821-add-run-cancel-reason.sql', '为运行记录增加取消原因
   `python -m` / `engine/scripts/generate_cmp_fix_sql.py` 从过渡层数据重新生成。
 
 新库完整初始化顺序见 `../setup/README.md` 的《新库需要的后续变更脚本》。
+
+## 脚本依赖顺序（2026-08-26 更新）
+
+本日四个脚本彼此独立、均为增量/幂等，可按任意顺序分别执行（每个脚本自带
+BEGIN/COMMIT，失败整体回滚）。统一规范：执行前备份，执行后跑脚本尾部核验 SQL；
+应用启动、容器启动与测试不会自动执行迁移。
+
+- `20260826-run-config-snapshot.sql`：独立增量 DDL（run_batches / agent_runs /
+  test_jobs 增列与索引、native-matrix 执行范围），任意时间执行；历史行保持
+  NULL，不回填。DDL 用 IF NOT EXISTS + 末尾 database_changes 带
+  `ON CONFLICT (script_name) DO NOTHING`，可安全重跑。
+- `20260826-write-confirmations.sql`：独立新建 write_confirmations 表（写操作确认
+  记录，运行/工具/规范化参数绑定、单次消费）。CREATE TABLE IF NOT EXISTS + 末尾
+  `ON CONFLICT (script_name) DO NOTHING`，可安全重跑。
+- `20260826-scenario-pack-finance-marker.sql`：独立新建 scenario_packs 表并登记
+  finance 可选场景包（默认关闭）。CREATE TABLE IF NOT EXISTS + scenario_packs 用
+  `ON CONFLICT (pack_id)`、database_changes 用 `ON CONFLICT (script_name)`
+  DO NOTHING，可安全重跑；不改动任何既有金融用例或工具行。
+- `20260826-fix-comparison-mock-and-deps.sql`：**依赖 20260825 已写入的 cmp-* 用例**，
+  校正 Mock 匹配参数、四字段依赖结构，登记 cmp-fixtures-v2 与内容哈希；末尾
+  database_changes 已补 `ON CONFLICT (script_name) DO NOTHING`，可由
+  `engine/scripts/generate_cmp_fix_sql.py` 从过渡层数据重新生成后重跑。DDL 锁等待
+  已放宽到 60s 以适配 Data 服务在线场景。

@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -118,7 +118,7 @@
 <h2 id="schema">库结构</h2>
 <p>全部表结构在 <code>db/postgresql/setup/init.sql</code>(手动执行,无 Flyway):用例三表(定义/版本/变体)、数据快照、批次与运行、执行明细(run_events / model_calls+messages / tool_calls / guardrail_checks / run_measurements / context_builds 全家)、工件与发布(publications / publication_runs)、账号会话与工具目录八表。增量脚本放 <code>db/postgresql/changes/</code>,由所有者手动执行。</p>
     <h2 id="fixtures">冻结数据</h2>
-<p>编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),三组共用,隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
+<p>冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
       </div>
     </div>
   </main>

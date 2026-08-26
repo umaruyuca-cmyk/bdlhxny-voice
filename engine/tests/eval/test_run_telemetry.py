@@ -1,4 +1,4 @@
-"""统一运行遥测契约:九类事件、九段工件、有效性分类与三组执行器同口径记录。"""
+"""统一运行遥测契约:九类事件、工件分段、有效性分类与原生底座同口径记录。"""
 
 from __future__ import annotations
 
@@ -9,16 +9,9 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from bdlh_runtime.engine.output_guardrail import C1ComplianceCheck, OutputGuardrail
-from bdlh_runtime.evaluation.ab_eval import ABCase, run_ab_eval
-from bdlh_runtime.evaluation.baseline_agent import BASELINE_SYSTEM
-from bdlh_runtime.evaluation.frozen_observations import FrozenObservations
 from bdlh_runtime.evaluation.run_telemetry import (
-    EVENT_CONTEXT_COMPLETED,
     EVENT_GUARDRAIL_COMPLETED,
-    EVENT_JUDGMENT_COMPLETED,
     EVENT_MODEL_COMPLETED,
-    EVENT_OUTPUT_COMPLETED,
-    EVENT_RUN_COMPLETED,
     EVENT_RUN_STARTED,
     EVENT_TOOL_COMPLETED,
     EVENT_TOOL_REQUESTED,
@@ -28,27 +21,23 @@ from bdlh_runtime.evaluation.run_telemetry import (
     RunRecorder,
     build_run_artifact,
     classify_failure,
-    payload_hash,
+    record_governance_audits,
     record_output_guardrail,
-    record_treatment_audits,
     snapshot_messages,
     validity_of,
     verify_artifact_hash,
 )
-from bdlh_runtime.tools.catalog import catalog_from_snapshot
-from tests.eval.frozen_fixtures import frozen_payload
-from tests.helpers_registry import seeded_snapshot
 
 
 def _recorder() -> RunRecorder:
     return RunRecorder(
-        run_key="research-01:full-system:0",
+        run_key="research-01:native-tool-calling:0",
         case_id="research-01",
         case_version=1,
         variant_id="default",
         snapshot_id="research-01:fixture-v1",
         snapshot_hash="sha256:snap",
-        agent_mode="full-system",
+        agent_mode="native-tool-calling",
         context_strategy="fixed-case-input",
         model="glm-4.7-flash",
         repeat_index=0,
@@ -227,7 +216,7 @@ async def test_recording_llm_records_failed_call_category() -> None:
     assert row.error_category == "RATE_LIMITED"
 
 
-def test_treatment_audits_block_and_output_guardrail_rows() -> None:
+def test_governance_audits_block_and_output_guardrail_rows() -> None:
     recorder = _recorder()
     audit = SimpleNamespace(
         caller="guest",
@@ -237,7 +226,7 @@ def test_treatment_audits_block_and_output_guardrail_rows() -> None:
         status="REJECTED",
         audit_code="G3-AUTH-001",
     )
-    record_treatment_audits(recorder, [audit], [])
+    record_governance_audits(recorder, [audit], [])
     denied = recorder.record.tool_calls[-1]
     assert denied.status == "DENIED"
     assert denied.audit_code == "G3-AUTH-001"
@@ -256,97 +245,6 @@ def test_treatment_audits_block_and_output_guardrail_rows() -> None:
     assert [event["eventType"] for event in recorder.record.events].count(EVENT_GUARDRAIL_COMPLETED) >= 2
 
 
-def _case() -> ABCase:
-    return ABCase(
-        id="research-01",
-        category="金融研究",
-        message="宁德时代现在什么价",
-        scene_tag="market",
-        expected_tools=("market.get_realtime_quote",),
-        case_version=1,
-        variant_id="default",
-        snapshot_id="research-01:fixture-v1",
-        snapshot_hash="sha256:snap",
-        context_strategy="budgeted",
-        token_budget=8192,
-    )
-
-
-@pytest.mark.asyncio
-async def test_run_ab_eval_records_three_modes_valid_run(finance_pack) -> None:
-    report = await run_ab_eval(
-        runs_per_case=1,
-        llm=ScriptedToolModel(),
-        model="glm-4.7-flash",
-        with_react=True,
-        cases=[_case()],
-        catalog=catalog_from_snapshot(seeded_snapshot()),
-        frozen=FrozenObservations(frozen_payload()),
-        retry_delay_s=0,
-        inter_run_delay_s=0,
-    )
-    assert len(report.run_records) == 3
-    by_mode = {record.agent_mode: record for record in report.run_records}
-    assert set(by_mode) == {"baseline-tool-calling", "langgraph-react", "full-system"}
-    for record in report.run_records:
-        types = [event["eventType"] for event in record.events]
-        assert types[0] == EVENT_RUN_STARTED
-        assert types[-1] == EVENT_RUN_COMPLETED
-        for expected in (
-            EVENT_CONTEXT_COMPLETED,
-            EVENT_MODEL_COMPLETED,
-            EVENT_OUTPUT_COMPLETED,
-            EVENT_JUDGMENT_COMPLETED,
-        ):
-            assert expected in types, (record.agent_mode, expected)
-        assert record.status == "COMPLETE"
-        artifact = build_run_artifact(record)
-        assert verify_artifact_hash(artifact), record.agent_mode
-        assert artifact["provenance"]["snapshot_hash"] == "sha256:snap"
-        assert artifact["case"]["variant"] == "default"
-    # 完整模式独有:guardrail 事件与治理检查明细
-    treatment = by_mode["full-system"]
-    assert EVENT_GUARDRAIL_COMPLETED in [event["eventType"] for event in treatment.events]
-    assert treatment.guardrail_checks
-    assert treatment.tool_calls and treatment.tool_calls[0].status == "SUCCESS"
-    assert treatment.measurements["totalDurationMs"] >= 0
-    # 指标只统计 VALID
-    assert report.baseline.valid_runs == 1 and report.baseline.invalid_runs == 0
-    assert report.treatment.tool_selection_rate == 1.0
-
-
-@pytest.mark.asyncio
-async def test_run_ab_eval_429_is_invalid_and_excluded_from_rates() -> None:
-    report = await run_ab_eval(
-        runs_per_case=1,
-        llm=RateLimitModel(),
-        model="glm-4.7-flash",
-        with_react=True,
-        cases=[_case()],
-        catalog=catalog_from_snapshot(seeded_snapshot()),
-        frozen=FrozenObservations(frozen_payload()),
-        retry_delay_s=0,
-        inter_run_delay_s=0,
-    )
-    assert len(report.run_records) == 3
-    for record in report.run_records:
-        assert record.status == "INVALID"
-        assert record.error_category == "RATE_LIMITED"
-    for judgment in report.cases[0].baseline_runs + report.cases[0].treatment_runs:
-        assert judgment.validity == "INVALID"
-    assert report.baseline.total_runs == 1
-    assert report.baseline.valid_runs == 0
-    assert report.baseline.invalid_runs == 1
-    assert report.baseline.invalid_reasons == {"RATE_LIMITED": 1}
-    assert report.treatment.invalid_reasons == {"RATE_LIMITED": 1}
-    # 失败的模型调用按类别归档
-    assert all(row.status == "INVALID" for record in report.run_records for row in record.model_calls)
-
-
-def test_prompt_hash_covers_baseline_system() -> None:
-    assert payload_hash(BASELINE_SYSTEM).startswith("sha256:")
-
-
 def test_event_payload_keys_match_data_service_contract():
     """事件行键名必须与 data 服务 RunEventInput(camelCase)对齐。
 
@@ -360,7 +258,7 @@ def test_event_payload_keys_match_data_service_contract():
         variant_id="default",
         snapshot_id="s",
         snapshot_hash="h",
-        agent_mode="baseline-tool-calling",
+        agent_mode="native-tool-calling",
         context_strategy="fixed-case-input",
         model="m",
         repeat_index=0,

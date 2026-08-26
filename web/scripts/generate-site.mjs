@@ -14,25 +14,12 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC = path.join(WEB_ROOT, "public");
 const GITHUB = "https://github.com/umaruyuca-cmyk/bdlhxny-agent";
-
-/** 首页快速指引的目录规模数字:从发布 JSON 读取,避免手工同步过期;缺文件时回退字面量。 */
-function catalogTotal(file, fallback) {
-  try {
-    const data = JSON.parse(readFileSync(path.join(PUBLIC, "showcase-data", file), "utf8"));
-    return typeof data.total === "number" ? data.total : fallback;
-  } catch {
-    return fallback;
-  }
-}
-const TOOLS_TOTAL = catalogTotal("tools.json", 112);
-const CASES_TOTAL = catalogTotal("cases.json", 56);
 
 /** 顶栏/侧栏模块小图标(15px 线性风格,currentColor)。 */
 const NAV_ICON = {
@@ -83,11 +70,11 @@ const PAGES = {
   "/showcase/": [
     { href: "/showcase/", title: "用例详情" },
     { href: "/showcase/tools", title: "用例调用明细" },
-    { href: "/session-cross/", title: "Session 交叉验证" },
   ],
   "/experiment/": [
+    { href: "/experiment/", title: "模板中心" },
+    { href: "/experiment/batches", title: "批次列表" },
     { href: "/experiment/compression", title: "压缩用例" },
-    { href: "/experiment/comparison", title: "对比用例" },
   ],
   "/context/": [
     { href: "/context/", title: "压缩算法" },
@@ -225,97 +212,10 @@ ${extraScripts}
 }
 
 // ── 公告页数据脚本(只读正式发布索引;无发布数据时保持真实空状态)────────
-
-const announceScript = `
-<script>
-(function () {
-  "use strict";
-  // 公告页只读取「正式发布批次」的公开快照索引;不读取匿名临时结果、
-  // 开发调试批次或尚未运行的占位数据。索引为空时统一显示「尚未发布」。
-  fetch("/showcase-data/publications/index.json", { cache: "no-store" })
-    .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (index) {
-      var pubs = (index && index.formal_publications) || [];
-      var el = document.getElementById("announcePubState");
-      if (!el) return;
-      if (!pubs.length) {
-        el.textContent = "尚未发布:还没有经过审核的正式发布批次。公告展示的是维护者审核并发布的正式运行批次快照,不是用例定义本身;未发布前本页所有数据区保持空状态。";
-        return;
-      }
-      var latest = pubs[0];
-      el.textContent = "最新正式发布:" + (latest.published_at || "") + "(批次 " + String(latest.batch_id || "").slice(0, 8) + ");Agent 对比汇总、压缩结果与代表性实例以该批次公开快照为准。";
-    })
-    .catch(function () {
-      var el = document.getElementById("announcePubState");
-      if (el) el.textContent = "尚未发布(发布索引不可读)。";
-    });
-})();
-</script>`;
+// 公告页(public/index.html)与实验模板中心(public/experiment/index.html)
+// 为手工维护页面,不在 ALL_PAGES 内:重跑生成器不会覆盖这两页。
 
 // 根路径 index.html 即公告页(独立单页,侧栏无子级);系统说明见「系统概览」模块。
-
-// ── 公告(单页模块)─────────────────────────────────────────────────────
-
-const ANNOUNCE = {
-  path: "index.html",
-  title: "公告",
-  description: "系统定位与正式发布批次的公告空框架;未发布前统一显示「尚未发布」。",
-  moduleKey: "/",
-  currentPath: "/",
-  pageClass: "dashboard-page",
-  pageToc: false,
-  sections: [
-    {
-      id: "about",
-      title: "系统定位",
-      html: `<style>
-.home-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 4px}
-.fact-card{border:1px solid var(--doc-border);border-radius:10px;background:#fff;padding:12px 14px}
-.fact-card b{display:block;font-size:22px;font-weight:800;letter-spacing:-.01em}
-.fact-card span{font-size:12px;color:var(--doc-faint)}
-.fact-card a{font-size:12.5px;color:#1d4ed8;text-decoration:none;font-weight:650}
-.announce-empty{border:1px dashed var(--doc-border);border-radius:10px;background:#fff;padding:16px 18px;color:var(--doc-faint);margin:10px 0}
-.announce-empty b{color:var(--doc-text,#222)}
-</style>
-<p>本系统用于<strong>Agent 的对照评测</strong>,实验只分两类:<strong>压缩用例</strong>(三个版本化长 Session × 四种上下文方式 × 三种 Agent,每格单次样本)与<strong>对比用例</strong>(固定用例 × 三种 Agent × 重复 3 或 5 次)。全部指标由代码断言产生,未运行的数字显示「未运行」,不以估算冒充实测。</p>
-<div class="home-facts">
-  <div class="fact-card"><b>${TOOLS_TOTAL}</b><span>工具目录 · <a href="/tools/">浏览</a></span></div>
-  <div class="fact-card"><b>${CASES_TOTAL}</b><span>对比用例 · <a href="/cases/">用例库</a></span></div>
-  <div class="fact-card"><b>3</b><span>压缩长 Session · <a href="/context/library">长上下文库</a></span></div>
-  <div class="fact-card"><b>2</b><span>实验入口 · <a href="/experiment/compression">压缩 / 对比</a></span></div>
-</div>`,
-    },
-    {
-      id: "batches",
-      title: "正式发布批次说明",
-      html: `<div id="announcePubState" class="announce-empty"><b>尚未发布。</b>公告展示的是经过维护者审核的正式运行批次,不是用例定义本身。发布链路:用例库提供考题 → 压缩模块提供 Session → 运行系统产生答卷与证据 → 维护者审核并创建公开快照 → 本页只读取公开快照。当前没有任何正式发布批次。</div>`,
-    },
-    {
-      id: "agent-summary",
-      title: "Agent 对比汇总",
-      html: `<div class="announce-empty"><b>尚未发布。</b>正式批次发布后,这里展示三种 Agent 实现的对照汇总(成功次数、时长分布、Token 与停止原因口径);公告中的对比考题引用用例库的 <code>case_id + case_version</code>。</div>`,
-    },
-    {
-      id: "compression",
-      title: "压缩结果",
-      html: `<div class="announce-empty"><b>尚未发布。</b>正式批次发布后,这里展示三个压缩 Session 的 4×3 单次样本矩阵与压缩前后对照;公告中的压缩案例引用 <code>session_id + session_version + current_event_id</code>。当前可先查看<a href="/experiment/compression">压缩用例实验入口</a>与<a href="/context/library">长上下文库</a>的冻结工件概览。</div>`,
-    },
-    {
-      id: "examples",
-      title: "代表性实例",
-      html: `<div class="announce-empty"><b>尚未发布。</b>维护者从正式批次中选择代表性实例并发布后,这里提供入口;本页不维护另一套考题,不展示匿名临时结果,也不手工填写成绩。</div>`,
-    },
-    {
-      id: "drilldown",
-      title: "单次运行下钻",
-      html: `<div class="announce-empty"><b>尚未发布。</b>每个汇总数字在正式发布后都可下钻到单次运行的工具调用、参数来源、冻结 Mock 返回、Token、耗时与停止原因。</div>
-<div class="note" style="margin-top:16px">
-  <strong>口径说明</strong>:本站为纯静态展示,浏览不产生模型调用与费用;公告数字只来自发布校验后的正式运行批次公开快照;工具调用均来自冻结数据集,不访问真实外部系统;匿名测试结果保存在「我的测试」,不会自动进入本页。
-</div>`,
-    },
-  ],
-  extraScripts: announceScript,
-};
 
 // ── 系统概览模块 ────────────────────────────────────────────────────────
 
@@ -329,25 +229,29 @@ const ABOUT_SYSTEM = {
     {
       id: "about",
       title: "系统定位",
-      html: `<p>本系统用于<strong>Agent 实现方式的对照评测</strong>:同一题库、同一模型、同一份冻结工具数据,量化不同实现之间的可复核差异。权限、预算与红线由代码确定执行,语义理解交给模型。</p>
-<p>系统运行两类实验:</p>
-<ol>
-  <li><strong>实现方式对照</strong>:同一固定题库,对照<strong>裸 tool calling</strong> / <strong>LangGraph 官方 ReAct</strong> / <strong>完整工程模式</strong>三组实现,量化工具选择准确率、幻觉工具率、越权泄漏率与合规违规率;</li>
-  <li><strong>上下文压缩对照</strong>:同一长上下文用例,全量透传(<code>full</code>)与按预算压缩(<code>budgeted</code>)两种处理分别跑同一 Agent 逻辑、同一套评判标准,量化强制项保留率、关键事实出现与 token 净节省;另可发起<strong>联动对照</strong>:原始与压缩上下文分别过三组实现,检验压缩质量。</li>
-</ol>
+      html: `<p>本系统用于<strong>Agent 的对照评测</strong>:同一题库、同一模型、同一份冻结工具数据,量化不同实验条件之间的可复核差异。权限、预算与红线由代码确定执行,语义理解交给模型。</p>
+<p><strong>新正式实验以「实验模板 + 唯一自变量」定义</strong>,统一运行在原生 Tool Calling 底座上:</p>
+<ul>
+  <li><strong>治理开关对照</strong>(governance-on-off):同一循环、同一模型、同一完整工具目录与 Mock,只改变治理档位(off/standard),量化应拦截召回率、误拦截率、未确认写入与旁路事件;</li>
+  <li><strong>工具提供方式对照</strong>(tool-delivery-comparison):同一完整目录与排除项下比较 all / search,错误归因分检索/选择/调用/最终回答四段;</li>
+  <li><strong>工具可用性降级</strong>:版本化排除预设下观察首选路径、替代路径与诚实说明限制;</li>
+  <li><strong>温度稳定性 / 步数稳定性</strong>:逐运行独立模型客户端,请求值与实际生效参数分别记录;</li>
+  <li><strong>上下文实验</strong>:默认 4 种上下文方式 × 1 种固定原生配置(4×1),唯一自变量是上下文方式。</li>
+</ul>
+<p><strong>上下文压缩对照</strong>:同一长上下文用例,全量透传与按预算压缩两种处理分别跑同一 Agent 逻辑、同一套评判标准,量化强制项保留率、关键事实出现与 token 净节省。</p>
 <p>证据方式:全部指标由代码断言产生(判官版本 <code>fixed-rules-v1</code>),无 LLM 判官;未运行的数字显示「未运行」,不以估算冒充实测。</p>`,
     },
     {
       id: "architecture",
       title: "整体架构",
       html: `<p>四个服务,一条公私边界:</p>
-<div class="flow">web(纯静态展示层) ｜ engine(私有运行 API + 三组执行器) ｜ data(题库/记录/发布登记) ｜ PostgreSQL(唯一数据来源)</div>
+<div class="flow">web(纯静态展示层) ｜ engine(私有运行 API + 统一原生底座与模板执行器) ｜ data(题库/记录/发布登记) ｜ PostgreSQL(唯一数据来源)</div>
 <p>公开部署只含静态站(物理排除 /lab);评测批次由项目所有者在私有侧发起,经发布校验投影为静态产物。</p>
-<h3>一次运行(实现方式对照)</h3>
-<div class="flow">登录 → 运行台按题号发起批次 → 拉取冻结工具数据 → 三组交错执行(九类事件 + 逐步明细落库) → 九段运行工件 → 发布校验(门槛/敏感扫描/hash 复算) → 公开静态展示</div>
+<h3>一次运行(模板批次;旧实现对照为诊断入口)</h3>
+<div class="flow">登录 → 运行台选模板并预估精确运行数 → 拉取冻结工具数据 → 逐运行独立模型客户端按变体执行(九类事件 + 逐步明细落库 + config_hash) → 九段运行工件 → 发布校验(门槛/敏感扫描/hash 复算) → 公开静态展示</div>
 <h3>上下文压缩链路</h3>
 <div class="flow">长上下文条目 → 分类(强制/可压缩/仅引用/干扰) → 预算选择与压缩 → 工作上下文 → 同一 Agent 循环 → 同一判官 → 处理报告进工件</div>
-<p><strong>变量隔离</strong>:实现方式对照用冻结数据隔离执行质量、金标路由隔离路由误差;压缩对照只变上下文处理策略,其余全部固定;联动对照在此基础上把「上下文处理 × 实现方式」两个维度正交展开。</p>`,
+<p><strong>变量隔离</strong>:正式模板批次只动唯一自变量,其余条件冻结进运行配置快照(config_hash 同配置必同哈希),请求参数与实际生效参数分别记录;冻结数据隔离执行质量、金标路由隔离路由误差;压缩对照只变上下文处理策略。</p>`,
     },
   ],
 };
@@ -370,7 +274,7 @@ const ABOUT_BANKS = {
     {
       id: "data",
       title: "数据来源与冻结",
-      html: `<p>题库、工具目录、冻结工具返回与变体上下文的唯一数据来源都是 PostgreSQL;引擎不直连库,全部经 data 服务 internal 接口读取。编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code> / <code>ab-eval-negative-v1</code> / <code>mock-eval-v1</code>),三组共用,隔离执行质量差异。详见<a href="/ops/">数据库与冻结数据</a>。</p>`,
+      html: `<p>题库、工具目录、冻结工具返回与变体上下文的唯一数据来源都是 PostgreSQL;引擎不直连库,全部经 data 服务 internal 接口读取。冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code> / <code>ab-eval-negative-v1</code> / <code>mock-eval-v1</code>),隔离执行质量差异。详见<a href="/ops/">数据库与冻结数据</a>。</p>`,
     },
   ],
 };
@@ -392,7 +296,7 @@ const ABOUT_REPO = {
       title: "复现三步",
       html: `<ol>
   <li>本地启动(见 <code>deploy/本地启动说明.md</code>);</li>
-  <li>登录后进入运行台 <code>/lab/</code>:一键发起或按题号发起批次,亦可发起上下文压缩对照与联动对照;</li>
+  <li>登录后进入运行台 <code>/lab/</code>:按模板发起正式批次,亦可发起上下文压缩对照;</li>
   <li><code>npm run publish:showcase -- --git-commit &lt;sha&gt;</code> 投影到公开层。</li>
 </ol>`,
     },
@@ -424,10 +328,9 @@ const myTestsScript = `
     CANCELLED: "已取消", INTERRUPTED: "已中断", PARTIAL: "部分完成",
   };
   var SCOPE_LABEL = {
-    "comparison-full": "对比用例(三种 Agent)",
     "context-only": "生成四份上下文(0 个 Agent 运行)",
     "current-combo": "运行当前组合(1 个运行)",
-    "full-matrix": "完整 4×3(12 个运行)",
+    "native-matrix": "原生 4×1 上下文实验(4 个运行)",
   };
   var ACTIVE = { QUEUED: 1, RUNNING: 1 };
   var listEl = document.getElementById("jobList");
@@ -476,7 +379,7 @@ const myTestsScript = `
   function render(jobs) {
     if (!jobs.length) {
       stateEl.textContent = "";
-      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 或 <a href="/experiment/comparison">对比用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
+      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
       return;
     }
     stateEl.textContent = "共 " + jobs.length + " 个任务,按创建时间倒序;运行中的任务每 5 秒自动刷新。";
@@ -519,9 +422,22 @@ const myTestsScript = `
     if (!box) return;
     var result = payload.result || {};
     var units = payload.units || [];
-    var html = "";
+    var html = '<p><small><span class="tag off">个人测试 · 非正式结果</span> 不进入公告指标;只有维护者审核发布的批次才进入公告。</small></p>';
+    var def = result.fixed_conditions || {};
+    if (def.experiment_definition || result.fixed_conditions_hash) {
+      html += '<p><small>实验定义:' + esc(def.experiment_definition || "—") +
+        (def.experiment_definition_note ? "(" + esc(def.experiment_definition_note) + ")" : "") +
+        ' · 固定条件哈希 <code>' + esc(String(result.fixed_conditions_hash || "").slice(0, 16)) + "…</code></small></p>";
+    }
+    var rcs = result.run_configs || {};
+    var rcKeys = Object.keys(rcs);
+    if (rcKeys.length) {
+      html += '<p><small>运行配置快照(config_hash):' + rcKeys.map(function (k) {
+        return esc(k) + " → <code>" + esc(String((rcs[k] && rcs[k].config_hash) || "").slice(0, 12)) + "…</code>";
+      }).join(" · ") + "</small></p>";
+    }
     if (payload.test_type === "COMPARISON_CASE") {
-      html += "<h4>三种 Agent 结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
+      html += "<h4>实现结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
       Object.keys(result.by_agent || {}).forEach(function (mode) {
         var a = result.by_agent[mode];
         html += "<tr><td>" + esc(mode) + "</td><td>" + a.success_count + "/" + a.total_runs + "</td><td>" +
@@ -549,7 +465,7 @@ const myTestsScript = `
         html += "<tr><td>" + esc(v) + "</td><td>" + esc((stats.original_tokens || {})[v]) +
           "</td><td>" + esc((stats.working_tokens || {})[v]) + "</td></tr>";
       });
-      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「完整 4×3」。</small></p>";
+      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「原生 4×1」。</small></p>";
     } else {
       html += "<h4>矩阵单元</h4><table><thead><tr><th>上下文 × Agent</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
       units.forEach(function (u) {
@@ -557,7 +473,7 @@ const myTestsScript = `
       });
       html += "</tbody></table>";
       var hashes = result.frozen_artifact_hashes || {};
-      html += '<p><small>冻结工件哈希(三种 Agent 复用同一批):' +
+      html += '<p><small>冻结工件哈希(各实现复用同一批):' +
         Object.keys(hashes).map(function (v) { return esc(v) + " → <code>" + String(hashes[v]).slice(0, 18) + "…</code>"; }).join(" · ") +
         "</small></p>";
     }
@@ -611,19 +527,7 @@ const TEST_MY = {
   extraScripts: myTestsScript,
 };
 
-// ── 模块:实验(只有压缩用例与对比用例两个入口)────────────────────────
-
-const EXPERIMENT_ROOT_REDIRECT = {
-  path: "experiment/index.html",
-  title: "实验 · 压缩用例与对比用例",
-  description: "实验模块只有压缩用例与对比用例两个入口。",
-  moduleKey: "/experiment/",
-  currentPath: "/experiment/compression",
-  sections: [],
-  bodyHtml: `<p>实验模块只有两个入口:<a href="/experiment/compression">压缩用例</a>(三个长 Session × 四种上下文方式 × 三种 Agent)与<a href="/experiment/comparison">对比用例</a>(固定用例 × 三种 Agent × 重复 3 或 5 次)。即将进入压缩用例。</p>
-<meta http-equiv="refresh" content="0; url=/experiment/compression/">`,
-  pageToc: false,
-};
+// ── 模块:实验(模板中心为根,手工维护;压缩用例页由本脚本生成)──────────
 
 // 压缩用例页内联脚本:读长上下文库渲染三个 Session 与四策略概览;
 // 三个手动按钮只在点击时调用公开测试接口,页面加载不创建任何任务。
@@ -643,8 +547,8 @@ const compressionScript = `
     "single-summary": "一次摘要(基准)",
     "budgeted-session": "按预算压缩(本项目算法)",
   };
-  var AGENTS = ["baseline-tool-calling", "langgraph-react", "full-system"];
-  var selected = { session: null, mode: "budgeted-session", agent: "full-system" };
+  var AGENTS = ["native-tool-calling"]; // 统一原生底座
+  var selected = { session: null, mode: "budgeted-session", agent: "native-tool-calling" };
 
   fetch("/showcase-data/context-library.json", { cache: "no-store" })
     .then(function (res) { return res.ok ? res.json() : null; })
@@ -733,12 +637,11 @@ const compressionScript = `
       .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(1 个 Agent 运行)。到 <a href=\"/test/\">我的测试</a> 查看进度与结果。"); })
       .catch(function (e) { note("提交失败:" + e.message, true); });
   });
-  document.getElementById("btnRunMatrix").addEventListener("click", function () {
+  document.getElementById("btnRunNative").addEventListener("click", function () {
     var sid = requireSession(); if (!sid) return;
-    if (!window.confirm("运行完整 4×3 将创建 12 个 Agent 运行(复用已冻结的四份上下文工件,不重新压缩)。确认继续?")) return;
-    note("正在提交「运行完整 4×3」任务(12 个运行)…");
-    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "full-matrix" })
-      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(12 个运行,每格 1 次)。到 <a href=\"/test/\">我的测试</a> 查看矩阵结果。"); })
+    note("正在提交「原生 4×1」任务(4 个运行)…");
+    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "native-matrix" })
+      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(4 个运行:4 种上下文 × 1 种固定原生配置)。到 <a href=\"/test/\">我的测试</a> 查看结果。"); })
       .catch(function (e) { note("提交失败:" + e.message, true); });
   });
 })();
@@ -747,15 +650,15 @@ const compressionScript = `
 const EXPERIMENT_COMPRESSION = {
   path: "experiment/compression.html",
   title: "压缩用例 · 实验",
-  description: "三个长 Session × 四种上下文方式 × 三种 Agent;生成上下文与 Agent 运行拆开,每格单次样本。",
+  description: "三个长 Session × 四种上下文方式;默认上下文实验 4×1(原生底座);生成上下文与 Agent 运行拆开,每格单次样本。",
   moduleKey: "/experiment/",
   currentPath: "/experiment/compression",
   sections: [
     {
       id: "scope",
       title: "实验对象与数量口径",
-      html: `<p>压缩用例只使用上下文压缩模块维护的<strong>三个版本化长 Session</strong>:产品演进与需求决策、上下文引擎排查、数据库与部署。每个 Session 固定形成 <strong>4 种上下文方式 × 3 种 Agent = 12 个实验条件,每格只运行 1 次</strong>(本次结果为单次样本,不生成平均值或稳定性结论)。三个 Session 全部运行为 36 个运行——页面不提供默认连续执行三个 Session 的按钮。</p>
-<p>三个数量口径全链路分开:<code>repeat_count</code>(压缩用例每格固定 1)/ <code>max_agent_steps</code>(单次运行内模型判断+工具回传的最大步数,服务端配置)/ Agent 实现编号(固定三种)。</p>`,
+      html: `<p>压缩用例只使用上下文压缩模块维护的<strong>三个版本化长 Session</strong>:产品演进与需求决策、上下文引擎排查、数据库与部署。<strong>默认上下文实验是 4×1</strong>:4 种上下文方式 × 1 种固定原生 Tool Calling 配置(模板 <code>context-strategy-comparison</code>,唯一自变量 = <code>context_strategy</code>,其余条件冻结),共 4 个运行、每格 1 次。</p>
+<p>三个数量口径全链路分开:<code>repeat_count</code>(压缩用例每格固定 1)/ <code>max_agent_steps</code>(单次运行内模型判断+工具回传的最大步数,服务端配置)/ 实现编号(统一为原生 Tool Calling 底座一种)。</p>`,
     },
     {
       id: "sessions",
@@ -775,187 +678,16 @@ const EXPERIMENT_COMPRESSION = {
 <p>
   <button type="button" class="btn" id="btnGenerate">生成四份上下文(0 个 Agent 运行)</button>
   <button type="button" class="btn" id="btnRunCombo">运行当前组合(1 个运行)</button>
-  <button type="button" class="btn" id="btnRunMatrix">运行完整 4×3(12 个运行)</button>
+  <button type="button" class="btn" id="btnRunNative">运行原生 4×1(4 个运行 · 默认上下文实验)</button>
 </p>
 <div id="compressStatus" class="lab-note">按钮只在点击时调用公开测试接口;页面加载、静态站生成都不会创建实验任务。静态部署(无运行服务)时提交会失败并如实提示。</div>`,
     },
-    {
-      id: "matrix",
-      title: "4×3 结果矩阵(尚未运行)",
-      html: `<p>矩阵为 4 行(上下文方式)× 3 列(Agent 实现)。正式运行并发布前,每格显示空状态——不使用演示数字填充。</p>
-<table><thead><tr><th>上下文方式 \\ Agent</th><th>baseline-tool-calling</th><th>langgraph-react</th><th>full-system</th></tr></thead>
-<tbody>
-<tr><td>full-session</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-<tr><td>recent-window</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-<tr><td>single-summary</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-<tr><td>budgeted-session</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-</tbody></table>
-<p class="lab-note">三种 Agent 对同一种上下文读取内容和哈希完全相同的冻结工件,不分别重新摘要或压缩;每格只有一个样本,结果只代表「本次结果」。</p>`,
-    },
   ],
-  extraScripts: compressionScript,
+    extraScripts: compressionScript,
 };
 
 // 对比用例页内联脚本:读用例库公开投影;重复次数只允许 3/5;
 // 开始按钮只在点击时调用公开测试接口。
-const comparisonScript = `
-<script>
-(function () {
-  "use strict";
-  function esc(v) {
-    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
-    });
-  }
-  var state = { caseId: null, repeat: 3, selectedTools: [] };
-  var allCases = [];
-
-  fetch("/showcase-data/cases.json", { cache: "no-store" })
-    .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (data) {
-      allCases = (data && data.cases) || [];
-      var select = document.getElementById("caseSelect");
-      allCases.forEach(function (c) {
-        var o = document.createElement("option");
-        o.value = c.id;
-        o.textContent = c.id + "(" + (c.kind_label || c.kind) + ")";
-        select.appendChild(o);
-      });
-      var wanted = new URLSearchParams(location.search).get("case_id");
-      var initial = allCases.some(function (c) { return c.id === wanted; }) ? wanted : (allCases[0] || {}).id;
-      if (initial) {
-        select.value = initial;
-        selectCase(initial);
-      }
-      select.addEventListener("change", function () { selectCase(select.value); });
-    })
-    .catch(function () {
-      document.getElementById("caseDetail").innerHTML = '<div class="placeholder-block">用例库数据不可读。</div>';
-    });
-
-  function selectCase(id) {
-    var c = allCases.filter(function (x) { return x.id === id; })[0];
-    if (!c) return;
-    state.caseId = c.id;
-    state.selectedTools = (c.allowed_tools || []).slice();
-    document.getElementById("caseDetail").innerHTML =
-      "<p><strong>" + esc(c.title) + "</strong>(" + esc(c.kind_label || c.kind) + ",v" + esc(c.current_version) + ")</p>" +
-      "<p>固定问题:" + esc(c.message) + "</p>" +
-      "<p><small>标准工具范围(" + (c.allowed_tools || []).length + " 个,含目标工具与干扰工具):" +
-      (c.allowed_tools || []).map(esc).join("、") + "</small></p>";
-    var box = document.getElementById("toolBoxes");
-    box.innerHTML = (c.allowed_tools || []).map(function (t) {
-      return '<label class="tool-chip"><input type="checkbox" data-tool="' + esc(t) + '" checked> ' + esc(t) + "</label>";
-    }).join("");
-    Array.prototype.forEach.call(box.querySelectorAll("input"), function (input) {
-      input.addEventListener("change", function () {
-        state.selectedTools = Array.prototype.map.call(
-          box.querySelectorAll("input:checked"), function (el) { return el.getAttribute("data-tool"); }
-        );
-        updateCustom();
-      });
-    });
-    updateCustom();
-  }
-  function updateCustom() {
-    var c = allCases.filter(function (x) { return x.id === state.caseId; })[0] || {};
-    var isCustom = JSON.stringify(state.selectedTools) !== JSON.stringify((c.allowed_tools || []).slice());
-    document.getElementById("customHint").textContent = isCustom
-      ? "你修改了 Agent 可见工具,本次结果只代表自定义条件,不能与公告中的标准结果直接比较。"
-      : "当前为标准工具范围。";
-  }
-  function updateRuns() {
-    var repeat = parseInt(document.querySelector("input[name=repeat]:checked").value, 10);
-    state.repeat = repeat;
-    document.getElementById("runCount").textContent =
-      "3 种 Agent × " + repeat + " = " + 3 * repeat + " 个运行(单次最多步数由服务端配置)";
-  }
-  Array.prototype.forEach.call(document.querySelectorAll("input[name=repeat]"), function (r) {
-    r.addEventListener("change", updateRuns);
-  });
-  updateRuns();
-
-  document.getElementById("btnStart").addEventListener("click", function () {
-    if (!state.caseId) return;
-    var box = document.getElementById("comparisonStatus");
-    box.className = "lab-note";
-    box.textContent = "正在提交对比任务(3 种 Agent × " + state.repeat + " = " + 3 * state.repeat + " 个运行)…";
-    fetch("/api/v1/public/test-jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        test_type: "COMPARISON_CASE",
-        case_id: state.caseId,
-        repeat_count: state.repeat,
-        selected_tool_ids: state.selectedTools,
-      }),
-    }).then(function (res) {
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return res.json();
-    }).then(function (r) {
-      box.innerHTML = "任务已创建:<code>" + r.job_id + "</code>(" + r.unit_count + " 个运行)。到 <a href=\"/test/\">我的测试</a> 查看逐次结果与三种 Agent 分布。";
-    }).catch(function (e) {
-      box.className = "lab-note lab-note-error";
-      box.textContent = "提交失败:" + e.message + "(公开运行服务未部署或不可达;重复次数只允许 3 或 5)";
-    });
-  });
-})();
-</script>`;
-
-const EXPERIMENT_COMPARISON = {
-  path: "experiment/comparison.html",
-  title: "对比用例 · 实验",
-  description: "一个固定用例 × 三种 Agent × 重复 3 或 5 次;逐次保存结果与分布,不自动补跑。",
-  moduleKey: "/experiment/",
-  currentPath: "/experiment/comparison",
-  sections: [
-    {
-      id: "scope",
-      title: "运行数量口径",
-      html: `<p>一次对比任务自动包含<strong>全部三种 Agent 实现</strong>(固定 Agent 目录:baseline-tool-calling / langgraph-react / full-system),用户不能只挑表现更好的一种进入正式对比。重复次数只允许 <strong>3 或 5</strong>:</p>
-<ul>
-  <li>重复 3 次 → 3 种 Agent × 3 = <strong>9 个运行</strong>;</li>
-  <li>重复 5 次 → 3 种 Agent × 5 = <strong>15 个运行</strong>;</li>
-  <li>其他数值前端不提供、后端拒绝。</li>
-</ul>
-<p><code>max_agent_steps</code>(单次运行最大步数)由服务端配置并写入批次,与重复次数分开保存与显示;执行顺序按重复编号轮换,避免同一种 Agent 总是先运行。</p>`,
-    },
-    {
-      id: "case",
-      title: "选择用例与工具范围",
-      html: `<p><label>用例 <select id="caseSelect"></select></label></p>
-<div id="caseDetail"><div class="placeholder-block">正在读取用例库…</div></div>
-<h3>本次允许的 Mock 工具</h3>
-<div id="toolBoxes" class="tool-boxes"></div>
-<p class="lab-note" id="customHint">当前为标准工具范围。</p>`,
-    },
-    {
-      id: "run",
-      title: "开始三种 Agent 对比",
-      html: `<p>
-  <label><input type="radio" name="repeat" value="3" checked> 重复 3 次(9 个运行)</label>
-  <label><input type="radio" name="repeat" value="5"> 重复 5 次(15 个运行)</label>
-</p>
-<p id="runCount" class="lab-note">3 种 Agent × 3 = 9 个运行</p>
-<p><button type="button" class="btn" id="btnStart">开始三种 Agent 对比</button></p>
-<div id="comparisonStatus" class="lab-note">按钮只在点击时调用公开测试接口;同一批次固定问题、工具定义及顺序、Mock 版本、模型条件与步数上限。取消只阻止尚未开始的运行,已产生的运行与费用保留,无效运行单独显示、不自动补跑。</div>`,
-    },
-    {
-      id: "progress",
-      title: "任务进度与结果分布(尚未发起)",
-      html: `<div class="placeholder-block">尚未发起任务。任务在后台执行,关闭或刷新页面不停止;重新进入「我的测试」可继续查看。</div>
-<h3>三种 Agent 结果分布</h3>
-<table><thead><tr><th>Agent 实现</th><th>成功次数</th><th>时长最小/中位/最大</th><th>离散</th><th>无效</th></tr></thead>
-<tbody>
-<tr><td>baseline-tool-calling</td><td class="matrix-empty">尚未运行</td><td class="matrix-empty">—</td><td class="matrix-empty">—</td><td class="matrix-empty">—</td></tr>
-<tr><td>langgraph-react</td><td class="matrix-empty">尚未运行</td><td class="matrix-empty">—</td><td class="matrix-empty">—</td><td class="matrix-empty">—</td></tr>
-<tr><td>full-system</td><td class="matrix-empty">尚未运行</td><td class="matrix-empty">—</td><td class="matrix-empty">—</td><td class="matrix-empty">—</td></tr>
-</tbody></table>
-<p class="lab-note">汇总展示成功次数、最小值、中位数、最大值与离散情况,并保留每一次原始运行可下钻;分布数据只在真实任务完成后出现,不以示例数字填充。</p>`,
-    },
-  ],
-  extraScripts: comparisonScript,
-};
 
 // ── 模块:上下文压缩 ─────────────────────────────────────────────────────
 
@@ -1092,14 +824,9 @@ const CONTEXT_DESIGN = {
 </ul>`,
     },
     {
-      id: "linkage",
-      title: "联动对照(压缩质量 × 实现方式)",
-      html: `<p>压缩对照只换上下文处理策略、Agent 实现固定为完整工程模式;要回答「压缩后的内容到底好不好」,可发起<strong>联动对照</strong>:同一套长上下文的<strong>原始内容(full-raw)与压缩内容(budgeted-comp)分别过三种实现方式</strong>(裸 tool calling / LangGraph ReAct / 完整工程模式),得到 2 变体 × 3 组共 6 格对照——若压缩格在工具选择、关键事实召回、禁用事实泄漏上不劣于原始格,压缩即是划算的。登录后在运行台或<a href="/context/library">长上下文库</a>发起;结果口径见<a href="/context/results">用例结果</a>。</p>`,
-    },
-    {
       id: "launch",
       title: "如何发起",
-      html: `<p>登录后进入运行台:「压缩对照批次」或「联动对照(三组 × 两变体)」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>`,
+      html: `<p>登录后进入运行台「压缩对照批次」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>`,
     },
   ],
 };
@@ -1115,12 +842,12 @@ const CONTEXT_RESULTS = {
       id: "strategies",
       title: "四种策略",
       html: `<p>固定 Agent 实现方式,对照四种上下文处理策略:<strong>full-session</strong>(完整透传)、<strong>recent-window</strong>(最近窗口)、<strong>single-summary</strong>(一次摘要)、<strong>budgeted-session</strong>(按预算压缩,本项目算法)。模型窗口容纳不下 full 时该策略显示「不适用」,不把截断输入冒充 full。</p>
-<p>各 Session 四种方式的<strong>编译统计</strong>(压缩前后 Token、事件处理桶)见<a href="/context/library">长上下文库</a>;<strong>实验结果</strong>(4×3 单次样本矩阵)在<a href="/experiment/compression">压缩用例实验</a>发起运行,正式数字经维护者审核发布后出现在<a href="/#compression">公告页压缩结果区</a>。</p>`,
+<p>各 Session 四种方式的<strong>编译统计</strong>(压缩前后 Token、事件处理桶)见<a href="/context/library">长上下文库</a>;<strong>实验结果</strong>(默认 4×1 上下文实验)在<a href="/experiment/compression">压缩用例实验</a>发起运行,正式数字经维护者审核发布后出现在<a href="/">公告页</a>。</p>`,
     },
     {
       id: "table",
-      title: "策略与联动对照(读正式发布索引)",
-      html: `<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按「变体 × 实现方式」展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离。</div></div>`,
+      title: "策略对照(读正式发布索引)",
+      html: `<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按变体展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离。</div></div>`,
     },
     {
       id: "pairs",
@@ -1141,7 +868,7 @@ const CONTEXT_RESULTS = {
       var box = document.getElementById("strategyTable");
       if (box) {
         box.innerHTML = '<p class="lab-note">最新正式发布:' + String(pubs[0].published_at || "") +
-          "(批次 " + String(pubs[0].batch_id || "").slice(0, 8) + ")。逐项指标与实例下钻见<a href=\"/#compression\">公告页压缩结果区</a>;本页不再单独维护第二份结果展示。</p>";
+          "(批次 " + String(pubs[0].batch_id || "").slice(0, 8) + ")。逐项指标与实例下钻见<a href=\"/\">公告页</a>;本页不再单独维护第二份结果展示。</p>";
       }
     })
     .catch(function () { /* 缺索引保持占位 */ });
@@ -1188,7 +915,7 @@ const JUDGING_METRICS = {
   <li><code>forbidden_calls</code> / <code>confirmation_required</code>:禁止调用;写操作在自主运行中调用即视为未经确认执行;</li>
   <li><code>stop_when_facts_available</code>:必须事实须进入最终回答;事实齐备后的多余调用计入记录。</li>
 </ul>
-<p>指标在逐次运行上计算:调用覆盖率、依赖满足、替代路径命中、违规数、事实命中、多余/重复调用、实际步数与停止原因;三种 Agent 的重复分布(成功次数、最小/中位/最大、离散)只在聚合页展示。</p>`,
+<p>指标在逐次运行上计算:调用覆盖率、依赖满足、替代路径命中、违规数、事实命中、多余/重复调用、实际步数与停止原因;各实现的重复分布(成功次数、最小/中位/最大、离散)只在聚合页展示;结果按模板变量分组,不再默认按旧 agent_mode 分组。</p>`,
     },
     {
       id: "denominator",
@@ -1234,7 +961,7 @@ const JUDGING_JUDGE = {
       id: "layers",
       title: "三层断言",
       html: `<ul>
-  <li><strong>工具层</strong>:实际成功/发起的工具集合与题库金标比对(集合相等;ReAct 组以模型实际发起的 tool_calls 计,ToolNode 拦截的幻觉尝试不丢失);</li>
+  <li><strong>工具层</strong>:实际成功/发起的工具集合与题库金标比对(集合相等);</li>
   <li><strong>答案层</strong>:数字接地(答案中的非平凡数字必须来自某条工具结果)、C-1 高危操作语义、C-2 未授权建议结论;完整模式组用护栏修正后的答案判定;</li>
   <li><strong>上下文层(压缩对照)</strong>:强制项保留、关键事实出现、禁用事实不入答案、注入隔离。</li>
 </ul>`,
@@ -1242,7 +969,7 @@ const JUDGING_JUDGE = {
     {
       id: "output",
       title: "输出护栏与判定顺序",
-      html: `<p>完整模式组先经输出护栏(数字接地替换、高危操作拦截、风险披露追加),修正后的答案才进判官——三组的答案层检查同口径。护栏的每次修正都会记录在 guardrail_checks(response 时点)与运行事件流中。</p>`,
+      html: `<p>完整模式组先经输出护栏(数字接地替换、高危操作拦截、风险披露追加),修正后的答案才进判官——各实现的答案层检查同口径。护栏的每次修正都会记录在 guardrail_checks(response 时点)与运行事件流中。</p>`,
     },
   ],
 };
@@ -1301,7 +1028,7 @@ const ENGINE_LOOP = {
     {
       id: "events",
       title: "九类运行事件",
-      html: `<p>每次运行发出统一事件流并逐步落库:<code>run.started / context.completed / model.completed / tool.requested / tool.completed / guardrail.completed / output.completed / judgment.completed / run.completed</code>。事件只记录可观察过程,不记录隐藏思维;三组执行器同口径埋点。</p>`,
+      html: `<p>每次运行发出统一事件流并逐步落库:<code>run.started / context.completed / model.completed / tool.requested / tool.completed / guardrail.completed / output.completed / judgment.completed / run.completed</code>。事件只记录可观察过程,不记录隐藏思维;全部执行器同口径埋点。</p>`,
     },
   ],
 };
@@ -1428,7 +1155,7 @@ const OPS_DB = {
     {
       id: "fixtures",
       title: "冻结数据",
-      html: `<p>编排对照的冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),三组共用,隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>`,
+      html: `<p>冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>`,
     },
   ],
 };
@@ -1446,13 +1173,13 @@ const OPS_RUNAPI = {
       html: `<ul>
   <li><code>POST /api/v1/login</code> / <code>logout</code> — 所有者会话(连续失败锁定);</li>
   <li><code>GET /api/v1/cases</code> — 固定题库(题号/版本/变体);</li>
-  <li><code>GET /api/v1/context-cases</code> — 长上下文库元信息(条目构成与保守 token 估算);</li>
-  <li><code>POST /api/v1/context-compress</code> — 单用例现场压缩测试(只跑构建器,无模型调用);</li>
-  <li><code>POST /api/v1/eval-batches</code> — 发起编排对照批次(题号/次数/ReAct/模型/token 上限);</li>
+  <li><code>GET /api/v1/experiment-templates</code> — 实验模板清单(目的/唯一自变量/变体/冻结条件/权限与上限);</li>
+  <li><code>POST /api/v1/template-batches/plan</code> — 模板批次预估(精确运行数与变体 config_hash,不创建运行);</li>
+  <li><code>POST /api/v1/template-batches</code> — 按模板发起正式批次(固定用例 × 模板变体,统一原生底座);</li>
   <li><code>POST /api/v1/context-batches</code> — 发起上下文压缩对照批次(六套 × 两变体);</li>
-  <li><code>POST /api/v1/context-link-batches</code> — 发起联动对照批次(两变体 × 三组实现);</li>
   <li><code>GET /api/v1/jobs/{id}</code> 与 <code>POST /api/v1/jobs/{id}/cancel</code> — 作业状态与协作取消(幂等);</li>
-  <li><code>GET /api/v1/batches/{id}</code> / <code>GET /api/v1/runs/{id}/detail</code> — 批次运行列表与单次运行逐步明细。</li>
+  <li><code>GET /api/v1/batches/{id}</code> / <code>GET /api/v1/runs/{id}/detail</code> — 批次运行列表与单次运行逐步明细;</li>
+  <li><code>/api/v1/public/*</code> — 匿名受限测试接口(实验页运行入口)。</li>
 </ul>
 <p>接口不接受问题正文、系统提示词或工具列表;交互文档端点关闭;公开部署不包含此服务。</p>`,
     },
@@ -1614,7 +1341,6 @@ const CASES_DETAIL = {
 // ── 生成 ─────────────────────────────────────────────────────────────────
 
 const ALL_PAGES = [
-  ANNOUNCE,
   ABOUT_SYSTEM,
   ABOUT_BANKS,
   ABOUT_REPO,
@@ -1623,10 +1349,8 @@ const ALL_PAGES = [
   CASES_LIST,
   CASES_DETAIL,
   TEST_MY,
-  EXPERIMENT_ROOT_REDIRECT,
   EXPERIMENT_COMPRESSION,
-  EXPERIMENT_COMPARISON,
-  CONTEXT_ALGO,
+    CONTEXT_ALGO,
   CONTEXT_LIBRARY,
   CONTEXT_DESIGN,
   CONTEXT_RESULTS,

@@ -30,11 +30,6 @@ const DEFAULT_ARTIFACTS = path.join(REPO_ROOT, "engine", "var", "artifacts");
 const OUTPUT_DIR = path.join(WEB_ROOT, "public", "showcase-data");
 const FIELD_POLICY_VERSION = "showcase-v2";
 
-const GROUP_KEYS = {
-  baseline: { key: "baseline-tool-calling", label: "裸 tool calling" },
-  react: { key: "langgraph-react", label: "LangGraph 官方 ReAct" },
-  treatment: { key: "full-system", label: "完整工程模式" },
-};
 const METRIC_FIELDS = [
   "tool_selection_rate", "hallucination_rate", "invisible_tool_rate", "forbidden_leak_rate",
   "number_hallucination_rate", "c1_violation_rate", "c2_violation_rate", "mean_rounds",
@@ -284,81 +279,12 @@ function projectPublicRun(full, batchId) {
   return run;
 }
 
-/** 上下文压缩对照工件识别:策略变体聚合(by_variant),无实现方式组。 */
+/** 上下文压缩对照工件识别:策略变体聚合(by_variant)。 */
 function isContextArtifact(artifact) {
-  return artifact.experiment_type === "context-strategy" || (!artifact.groups && artifact.by_variant);
+  return artifact.experiment_type === "context-strategy" || Boolean(artifact.by_variant && !artifact.groups);
 }
 
-/** 联动对照工件识别:变体 × 实现方式双维聚合(by_group,键 "variant:mode")。 */
-function isContextLinkArtifact(artifact) {
-  return artifact.experiment_type === "context-link" || (!artifact.groups && artifact.by_group);
-}
-
-/** 联动对照组键 → 公开标签(变体标签 · 实现方式标签)。 */
-const CONTEXT_LINK_LABELS = {
-  variants: {
-    "full-raw": "原始内容(full-raw)",
-    "budgeted-comp": "压缩内容(budgeted-comp)",
-  },
-  modes: {
-    "baseline-tool-calling": "裸 tool calling",
-    "langgraph-react": "LangGraph ReAct",
-    "full-system": "完整工程模式",
-  },
-};
-
-function contextLinkGroupLabel(key) {
-  const [variant, ...modeParts] = key.split(":");
-  const mode = modeParts.join(":");
-  const variantLabel = CONTEXT_LINK_LABELS.variants[variant] || variant;
-  const modeLabel = CONTEXT_LINK_LABELS.modes[mode] || mode;
-  return `${variantLabel} · ${modeLabel}`;
-}
-
-function projectContextLinkBatchReport(artifact, batchId, gitCommit) {
-  const groups = Object.entries(artifact.by_group ?? {}).map(([key, agg]) => {
-    const valid = int(agg.valid_runs);
-    // 联动口径:压缩质量六格对照;基础编排指标取可对应映射,其余诚实 null
-    const projected = { task_success_rate: null };
-    for (const field of METRIC_FIELDS) projected[field] = null;
-    projected.tool_selection_rate = valid ? num(agg.tool_correct_runs / valid) : null;
-    projected.number_hallucination_rate = valid ? num(int(agg.number_hallucination_runs) / valid) : null;
-    projected.constraint_retention_rate = num(agg.mean_required_retention_rate);
-    projected.fact_recall_rate = valid ? num((valid - int(agg.missing_required_fact_runs)) / valid) : null;
-    projected.injection_isolated_rate = valid ? num(int(agg.injection_isolated_runs) / valid) : null;
-    projected.forbidden_fact_leak_rate = valid ? num(int(agg.forbidden_fact_leak_runs) / valid) : null;
-    projected.raw_tokens = num(agg.mean_original_tokens);
-    projected.working_tokens = num(agg.mean_working_tokens);
-    projected.median_duration_ms = num(agg.mean_duration_ms); // 均值口径,页面列头已标注
-    return {
-      key,
-      label: contextLinkGroupLabel(key),
-      valid_runs: valid,
-      invalid_runs: int(agg.invalid_runs),
-      metrics: pick(projected, ["task_success_rate", ...METRIC_FIELDS, "constraint_retention_rate",
-        "fact_recall_rate", "injection_isolated_rate", "forbidden_fact_leak_rate", "raw_tokens", "working_tokens"]),
-    };
-  });
-  return {
-    batch_id: batchId,
-    experiment_type: "context-link",
-    generated_at: artifact.generated_at,
-    git_commit: gitCommit,
-    model: str(artifact.model),
-    fixed_conditions: {
-      case_ids: [...new Set((artifact.run_records || []).map((row) => str(row.case_id)))].sort(),
-      runs_per_case: int(artifact.runs_per_case),
-      tool_data: "frozen",
-      agent_modes: Array.isArray(artifact.agent_modes) ? artifact.agent_modes.map(str) : [],
-      variable: "variant_x_mode",
-    },
-    groups,
-    outcome_counts: { win: null, regress: null, tie: null, both_fail: null, invalid: null },
-    cases: [],
-  };
-}
-
-/** 策略变体 → 公开组键/标签(renderStrategyTable 消费 full/budgeted 等策略键)。 */
+/** 策略变体 → 公开组键/标签。 */
 const CONTEXT_VARIANT_KEYS = {
   "full-raw": { key: "full", label: "full（全量透传 full-raw）" },
   "budgeted-comp": { key: "budgeted", label: "budgeted（按预算压缩）" },
@@ -407,91 +333,13 @@ function projectContextBatchReport(artifact, batchId, gitCommit) {
   };
 }
 
-function projectBatchReport(artifact, batchId, gitCommit, publishedRuns) {
-  if (isContextLinkArtifact(artifact)) {
-    return projectContextLinkBatchReport(artifact, batchId, gitCommit);
-  }
+function projectBatchReport(artifact, batchId, gitCommit, _publishedRuns) {
   if (isContextArtifact(artifact)) {
     return projectContextBatchReport(artifact, batchId, gitCommit);
   }
-  const groups = Object.entries(artifact.groups ?? {})
-    .filter(([source]) => GROUP_KEYS[source])
-    .map(([source, metrics]) => {
-      // task_success_rate 诚实口径:任务成功率判定未实现,不以工具选择率冒充(v1 行为)
-      const projected = { task_success_rate: null };
-      for (const field of METRIC_FIELDS) projected[field] = num(metrics[field]);
-      return {
-        key: GROUP_KEYS[source].key,
-        label: GROUP_KEYS[source].label,
-        valid_runs: int(metrics.valid_runs),
-        invalid_runs: int(metrics.invalid_runs),
-        metrics: pick(projected, ["task_success_rate", ...METRIC_FIELDS]),
-      };
-    });
-
-  const runIdsByCase = new Map();
-  for (const row of artifact.run_records || []) {
-    if (!row.run_id) continue;
-    const map = runIdsByCase.get(row.case_id) || {};
-    const arr = map[row.agent_mode] || [];
-    arr.push(row.run_id);
-    map[row.agent_mode] = arr;
-    runIdsByCase.set(row.case_id, map);
-  }
-
-  const cases = (artifact.cases ?? []).map((item) => {
-    const groupsOut = {};
-    for (const [source, agg] of Object.entries(item)) {
-      if (!GROUP_KEYS[source]) continue;
-      groupsOut[GROUP_KEYS[source].key] = {
-        correct: int(agg.correct),
-        hallucinated: int(agg.hallucinated),
-        total: int(agg.total),
-        duration_p50_ms: num(agg.duration_p50_ms),
-        duration_p95_ms: num(agg.duration_p95_ms),
-        estimated_token_runs: agg.estimated_token_runs === undefined ? 0 : int(agg.estimated_token_runs),
-      };
-    }
-    const runIds = {};
-    for (const [mode, ids] of Object.entries(runIdsByCase.get(String(item.id)) || {})) {
-      runIds[mode] = ids;
-    }
-    return { id: str(item.id), category: str(item.category), message: str(item.message), groups: groupsOut, run_ids: runIds };
-  });
-
-  return {
-    batch_id: batchId,
-    experiment_type: "agent-implementation",
-    generated_at: artifact.generated_at,
-    git_commit: gitCommit,
-    model: str(artifact.model),
-    fixed_conditions: {
-      case_ids: cases.map((c) => c.id),
-      runs_per_case: int(artifact.runs_per_case),
-      tool_data: artifact.executor === "frozen" ? "frozen" : "live",
-      variable: "agent_mode",
-    },
-    groups,
-    outcome_counts: outcomeCounts(cases, groups),
-    cases,
-  };
-}
-
-/** 五类结局按题比较裸调用 vs 完整模式(VALID 口径,correct 已只计有效运行)。 */
-function outcomeCounts(cases, groups) {
-  let win = 0, regress = 0, tie = 0, bothFail = 0;
-  for (const item of cases) {
-    const base = item.groups["baseline-tool-calling"];
-    const full = item.groups["full-system"];
-    if (!base || !full) continue;
-    const b = base.correct > 0, t = full.correct > 0;
-    if (b && t) tie += 1;
-    else if (t) win += 1;
-    else if (b) regress += 1;
-    else bothFail += 1;
-  }
-  const invalid = groups.reduce((sum, g) => sum + (g.invalid_runs || 0), 0);
-  return { win, regress, tie, both_fail: bothFail, invalid };
+  throw new Error(
+    `未知工件类型:${artifact.experiment_type || "(缺 experiment_type)"};当前仅支持 context-strategy(上下文压缩对照)批次发布`,
+  );
 }
 
 async function projectIndex(artifact, batchId, gitCommit, publishedAt, outputDir, batch, threshold) {

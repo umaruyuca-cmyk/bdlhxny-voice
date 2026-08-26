@@ -28,12 +28,13 @@ class FakeLlmData:
         return {"accountId": "acct-1", "username": "owner"} if token == "t" else None
 
     def list_cases(self) -> list[dict[str, Any]]:
-        return [{"id": "research-01", "variants": [{"variantId": "default"}]}]
+        # 压缩对照通道只接受带对照变体(full-raw / budgeted-comp)的 ctx 用例
+        return [{"id": "ctx-mini-port", "variants": [{"variantId": "full-raw"}, {"variantId": "budgeted-comp"}]}]
 
     def get_tool_catalog(self) -> dict[str, Any]:
         return {"capabilities": []}
 
-    def create_batch(self, *, name: str, fixed_conditions: dict[str, Any]) -> str:
+    def create_batch(self, *, name: str, experiment_type: str, fixed_conditions: dict[str, Any]) -> str:
         self.batch_fixed_conditions.append(fixed_conditions)
         return "batch-1"
 
@@ -123,18 +124,18 @@ def test_probe_endpoint_reports_missing_env(
 def test_batch_never_reads_account_config(
     client: TestClient, fake_data: FakeLlmData, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    """发起批次不触碰账号配置;模型名取请求默认(env 缺省链),密钥不进 fixed_conditions。"""
+    """发起批次不触碰账号配置;密钥不进 fixed_conditions(压缩对照通道)。"""
 
     monkeypatch.delenv("LLM_MODEL", raising=False)
     monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
 
-    def fake_execute(_request: Any, _catalog: Any, job: Any = None) -> tuple[dict[str, Any], list[Any]]:
+    def fake_execute(_request: Any, _views: Any, _selected: Any) -> tuple[dict[str, Any], list[Any]]:
         return {"run_records": []}, []
 
-    monkeypatch.setattr(run_api, "_execute_eval", fake_execute)
+    monkeypatch.setattr(run_api, "_execute_context_eval", fake_execute)
     resp = client.post(
-        "/api/v1/eval-batches",
-        json={"case_ids": ["research-01"], "runs": 1, "include_react": False},
+        "/api/v1/context-batches",
+        json={"case_ids": ["ctx-mini-port"], "runs": 1},
         headers=_auth(),
     )
     assert resp.status_code == 200

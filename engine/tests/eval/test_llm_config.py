@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from bdlh_runtime.evaluation import ab_eval
-from bdlh_runtime.run_api import EvalBatchRequest
+from bdlh_runtime.evaluation import context_eval
+from bdlh_runtime.run_api import ContextBatchRequest
 
 
 def _capture_create_llm(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
@@ -17,7 +17,7 @@ def _capture_create_llm(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         captured.update(kwargs)
         return object()
 
-    monkeypatch.setattr(ab_eval, "create_llm", fake_create_llm)
+    monkeypatch.setattr(context_eval, "create_llm", fake_create_llm)
     return captured
 
 
@@ -26,7 +26,7 @@ def test_build_llm_reads_env_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.internal/v1")
     captured = _capture_create_llm(monkeypatch)
 
-    llm = ab_eval.build_llm_from_env("Qwen/Qwen3.6-35B-A3B")
+    llm = context_eval.build_llm_from_env("Qwen/Qwen3.6-35B-A3B")
 
     assert llm is not None
     assert captured["base_url"] == "https://gateway.example.internal/v1"
@@ -41,19 +41,19 @@ def test_build_llm_requires_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
 
     with pytest.raises(RuntimeError, match="LLM_BASE_URL 未设置"):
-        ab_eval.build_llm_from_env("any-model")
+        context_eval.build_llm_from_env("any-model")
 
 
 def test_build_llm_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LLM_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="LLM_API_KEY 未设置"):
-        ab_eval.build_llm_from_env("any-model")
+        context_eval.build_llm_from_env("any-model")
 
 
 def test_request_model_defaults_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_MODEL", "glm-4.7")
-    assert EvalBatchRequest().model == "glm-4.7"
+    assert ContextBatchRequest().model == "glm-4.7"
 
     monkeypatch.delenv("LLM_MODEL", raising=False)
-    assert EvalBatchRequest().model == "Qwen/Qwen3.6-35B-A3B"
+    assert ContextBatchRequest().model == "Qwen/Qwen3.6-35B-A3B"

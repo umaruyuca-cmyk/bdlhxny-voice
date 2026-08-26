@@ -1,0 +1,388 @@
+"""模板批次统一执行底座(混合路线阶段 B2)。
+
+所有正式单变量模板经本模块在**同一个**原生 Tool Calling ``AgentLoop`` 上
+运行:两个治理变体(off/standard)使用相同消息构建、工具绑定、停止规则、
+最大轮次和最终回答流程,只改变治理配置;两个变体共用同一实现分支。
+
+Mock-only 结构保证:执行器固定为 ``FrozenFixtureExecutor``(或测试注入的
+等价 Mock),不发送外部请求、不写外部文件;即使治理关闭,写工具也只能
+进入无外部副作用的 Mock 执行器。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+from bdlh_runtime.context import ConservativeTokenCounter
+from bdlh_runtime.engine.loader import ToolLoader
+from bdlh_runtime.engine.loop import AgentLoop, AgentTurn, _tool_schema_tokens
+from bdlh_runtime.experiments.fixture_executor import FrozenFixtureExecutor
+from bdlh_runtime.experiments.fixture_hash import catalog_schema_hash
+from bdlh_runtime.experiments.run_config import (
+    GOVERNANCE_OFF,
+    RunConfig,
+)
+from bdlh_runtime.experiments.templates import PlannedRun, TemplateBatchPlan
+from bdlh_runtime.experiments.tool_catalog_snapshot import tool_manifests
+from bdlh_runtime.guardrails.confirmations import ConfirmationProvider
+from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog
+from bdlh_runtime.tools.search import ToolSearchIndex
+
+#: 模板上下文变体 → ContextStrategy 枚举值(recent-window 的枚举名是 recent-n)
+CONTEXT_STRATEGY_MAP = {
+    "full": "full",
+    "recent-window": "recent-n",
+    "single-summary": "single-summary",
+    "budgeted": "budgeted",
+    "budgeted-session": "budgeted",
+    "full-session": "full",
+}
+
+
+@dataclass
+class NativeRunRecord:
+    """一次模板运行的完整记录(统一事件结构,不因变体缺失关键字段)。"""
+
+    run_id: str
+    variant_label: str
+    repeat_index: int
+    config_hash: str
+    governance_profile: str
+    answer: str
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    audits: list[dict[str, Any]] = field(default_factory=list)
+    stop_reason: str = ""
+    actual_agent_steps: int = 0
+    duration_ms: int = 0
+    validity: str = "VALID"
+    error: str | None = None
+    visible_tools: list[str] = field(default_factory=list)
+    tool_schema_hash: str = ""
+    tool_schema_tokens: int = 0
+    search_log: list[dict[str, Any]] = field(default_factory=list)
+    bypassed_event_count: int = 0
+    observations: list[dict[str, Any]] = field(default_factory=list)
+    #: eligible catalog(完整目录 − 排除项)的内容哈希;all/search 组一致(C1/C3)
+    eligible_catalog_hash: str = ""
+    #: TOOL_NOT_VISIBLE 事件及随后是否恢复(再次搜索后装载并调用成功)
+    tool_not_visible_events: list[dict[str, Any]] = field(default_factory=list)
+    #: 实际发给 SDK 的模型参数(逐运行记录,防止「配置四种温度、请求全是 0.1」)
+    applied_model_params: dict[str, Any] = field(default_factory=dict)
+
+    def to_payload(self) -> dict[str, Any]:
+        return dict(self.__dict__)
+
+
+def build_llm_for_config(run_config: RunConfig, *, model: str | None = None) -> Any:
+    """按一份 RunConfig 构建本次运行的模型客户端(温度模板修复的核心)。
+
+    每次调用创建**独立**实例,temperature/max_output_tokens/
+    parallel_tool_calls 来自该运行的生效值——同一批次的不同温度变体
+    各自拿到自己的客户端,不再共享默认 0.1 的单实例。
+    env 缺失时 create_llm 返回 None(调用方降级,如实记录)。
+    """
+    from bdlh_runtime.infra.llm import create_llm
+
+    params = run_config.model
+    temperature = (
+        params.temperature_effective
+        if params.temperature_effective is not None
+        else (params.temperature_requested if params.temperature_requested is not None else 0.1)
+    )
+    return create_llm(
+        api_key=os.getenv("LLM_API_KEY"),
+        base_url=os.getenv("LLM_BASE_URL"),
+        model=model or os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"),
+        temperature=float(temperature),
+        max_output_tokens=params.max_output_tokens,
+        parallel_tool_calls=params.parallel_tool_calls,
+    )
+
+
+def applied_params_of(llm: Any) -> dict[str, Any]:
+    """从模型客户端读回实际生效参数(证据口径;读不到的键不臆造)。"""
+    if llm is None:
+        return {}
+    applied: dict[str, Any] = {}
+    temperature = getattr(llm, "temperature", None)
+    if temperature is not None:
+        applied["temperature"] = temperature
+    max_tokens = getattr(llm, "max_tokens", None)
+    if max_tokens is not None:
+        applied["max_output_tokens"] = max_tokens
+    model_kwargs = getattr(llm, "model_kwargs", None) or {}
+    if "parallel_tool_calls" in model_kwargs:
+        applied["parallel_tool_calls"] = bool(model_kwargs["parallel_tool_calls"])
+    return applied
+
+
+def build_template_catalog(visible_tools: tuple[str, ...] | list[str]) -> tuple[ToolCatalog, list[ToolCard]]:
+    """从对比目录快照构建本批工具目录(eligible catalog 由调用方计算)。
+
+    search 提供方式需要 ``search_tools`` 元工具:不在快照名单内时补登记
+    (Schema 与正式目录同一投影),否则 search 装载无法向模型提供检索入口。
+    """
+    from bdlh_runtime.experiments.tool_catalog_snapshot import build_comparison_catalog
+    from bdlh_runtime.tools.catalog import _parameters_for
+
+    catalog, ordered = build_comparison_catalog(tuple(visible_tools))
+    if not catalog.contains("search_tools"):
+        catalog.register(
+            ToolCard(
+                name="search_tools",
+                description="按自然语言描述从 eligible catalog(完整目录减排除项)检索工具,"
+                "返回候选名称、说明与排名;命中后装载进后续上下文。",
+                parameters=_parameters_for("search_tools", ("query",)),
+                required_scope=[],
+            )
+        )
+    return catalog, ordered
+
+
+async def run_native_agent(
+    *,
+    run_config: RunConfig,
+    message: str,
+    visible_tools: tuple[str, ...] | list[str],
+    llm: Any,
+    fixtures: list[dict[str, Any]] | None = None,
+    history: list[dict[str, str]] | None = None,
+    scene_tag: str = "general",
+    authenticated: bool = True,
+    user_id: str = "template-runner",
+    fixture_version: str | int = 1,
+    confirmation_provider: ConfirmationProvider | None = None,
+    encoder: Any | None = None,
+    run_id: str | None = None,
+    executor: Any | None = None,
+    variant_label: str = "",
+    repeat_index: int = 0,
+    timeout_seconds: float | None = None,
+) -> NativeRunRecord:
+    """按一份 RunConfig 在统一原生循环上执行一次运行。
+
+    - ``tool_delivery`` = all/search 经 ToolLoader 落地;search 使用
+      catalog 基座(完整目录 − 排除项)且不回退;
+    - 治理档位与写确认提供方透传给中间件;
+    - 执行器固定 Mock(冻结 fixture);``executor`` 参数仅供测试注入替身。
+    """
+    run_config.validate()
+    # 逐运行模型客户端:llm=None 时按本运行生效参数构建独立实例
+    # (温度变体各自拿到自己的温度;共享外部实例仅用于测试注入 Fake)
+    per_run_llm = llm if llm is not None else build_llm_for_config(run_config)
+    applied_params = applied_params_of(per_run_llm)
+    llm_missing = llm is None and per_run_llm is None
+    catalog, ordered_cards = build_template_catalog(visible_tools)
+    mock_executor = executor or FrozenFixtureExecutor(fixtures or [], fixture_version=fixture_version)
+    loader = ToolLoader(
+        catalog,
+        tool_loading=run_config.tool_delivery,
+        excluded_tools=frozenset(run_config.tools.excluded_tools),
+        encoder=encoder,
+        # 正式口径:search 候选 = 完整目录 − 排除项(catalog 基座),不回退
+        search_base="catalog",
+        fallback_policy="none",
+    )
+    loop = AgentLoop(
+        llm=per_run_llm,
+        catalog=catalog,
+        executor=mock_executor,
+        loader=loader,
+        max_agent_steps=run_config.limits.max_agent_steps,
+        max_tool_calls=run_config.limits.max_tool_calls,
+        max_calls_per_tool=run_config.limits.max_calls_per_tool,
+        governance_profile=run_config.governance_profile,
+        confirmation_provider=confirmation_provider,
+        search_top_k=run_config.tools.search_top_k,
+    )
+    strategy = CONTEXT_STRATEGY_MAP.get(run_config.context_strategy, run_config.context_strategy)
+    turn = AgentTurn(
+        user_id=user_id,
+        message=message,
+        scene_tag=scene_tag,
+        authenticated=authenticated,
+        history=list(history or []),
+        run_id=run_id or f"native:{run_config.config_hash[:12]}",
+        context_strategy=strategy,
+        token_budget=run_config.context.token_budget,
+    )
+    eligible_manifests = [
+        {"name": card.name, "description": card.description, "parameters": card.parameters}
+        for card in loader.eligible_catalog()
+    ]
+    started = time.perf_counter()
+    timeout = timeout_seconds if timeout_seconds is not None else float(run_config.limits.agent_timeout_seconds)
+    loaded_names: tuple[str, ...] = ()
+    try:
+        result = await asyncio.wait_for(loop.run(turn), timeout=timeout)
+        answer = result.answer
+        error = result.context_error if result.degraded else None
+        if llm_missing:
+            error = error or (
+                "LLM_UNAVAILABLE: api key 或 base_url 未配置(create_llm 返回 None),本运行未执行任何模型调用"
+            )
+        stop_reason = result.stop_reason or ""
+        actual_steps = result.actual_steps
+        audits = [audit.model_dump() for audit in result.audits]
+        observations = [
+            obs.model_dump(mode="json") if hasattr(obs, "model_dump") else dict(obs)
+            for obs in result.observations
+        ]
+        # 实际装载集合(最后一轮 bind_tools 的真源):排除项/搜索动态装载/
+        # 每轮变化都以它为准,不用初始完整列表冒充(混合路线证据口径修正)
+        loaded_names = tuple(result.loaded_tools or ())
+    except TimeoutError:
+        answer, error, stop_reason, actual_steps = "", "运行超时:单运行熔断", "TIMEOUT", 0
+        audits, observations = [], []
+    # 实际装载集合(排除项/搜索动态装载都以它为准);快路径/超时无 bind_tools 时如实为空
+    actual_cards = [catalog.get(name) for name in loaded_names if catalog.contains(name)] if loaded_names else []
+    actual_manifests = tool_manifests(actual_cards)
+    from bdlh_runtime.evaluation.run_telemetry import classify_failure, validity_of
+
+    status, category = classify_failure(error)
+    call_records = list(getattr(mock_executor, "call_records", []) or [])
+    record = NativeRunRecord(
+        run_id=turn.run_id,
+        variant_label=variant_label,
+        repeat_index=repeat_index,
+        config_hash=run_config.config_hash,
+        governance_profile=run_config.governance_profile,
+        answer=str(answer or ""),
+        tool_calls=call_records,
+        audits=audits,
+        stop_reason=stop_reason,
+        actual_agent_steps=actual_steps,
+        duration_ms=round((time.perf_counter() - started) * 1000),
+        validity=validity_of(status),
+        error=error,
+        # 证据口径:visible_tools/Schema 哈希/Token 均为实际装载集合;
+        # 初始完整目录另记 eligible_catalog_hash,二者分开
+        visible_tools=list(loaded_names),
+        tool_schema_hash=catalog_schema_hash(actual_manifests) if actual_manifests else "",
+        tool_schema_tokens=_tool_schema_tokens(actual_cards, ConservativeTokenCounter()) if actual_cards else 0,
+        search_log=list(loader.search_log),
+        bypassed_event_count=sum(1 for row in audits if row.get("bypassed")),
+        observations=observations,
+        eligible_catalog_hash=catalog_schema_hash(eligible_manifests),
+        tool_not_visible_events=_not_visible_events(audits, call_records),
+        applied_model_params=applied_params,
+    )
+    if category:
+        record.error = record.error or category
+    return record
+
+
+def _not_visible_events(audits: list[dict[str, Any]], call_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """提取 TOOL_NOT_VISIBLE 拒绝事件及恢复情况(后续同工具是否成功调用)。"""
+    events: list[dict[str, Any]] = []
+    for row in audits:
+        if row.get("audit_code") != "TOOL_NOT_VISIBLE":
+            continue
+        tool = str(row.get("tool_name") or "")
+        recovered = any(str(call.get("tool")) == tool for call in call_records)
+        events.append(
+            {
+                "tool": tool,
+                "audit_code": "TOOL_NOT_VISIBLE",
+                "recovered": recovered,
+                "recovery_note": "未加载工具被拒绝执行;模型再次搜索装载后可恢复" if recovered else "未恢复",
+            }
+        )
+    return events
+
+
+async def run_template_batch(
+    plan: TemplateBatchPlan,
+    *,
+    message: str,
+    visible_tools: tuple[str, ...] | list[str],
+    llm: Any = None,
+    fixtures: list[dict[str, Any]] | None = None,
+    fixture_version: str | int = 1,
+    confirmation_provider_factory: Any | None = None,
+    encoder: Any | None = None,
+    should_stop: Any | None = None,
+    on_run_done: Any | None = None,
+) -> dict[str, Any]:
+    """按已校验的模板批次计划逐运行执行;返回批次结果(逐次运行+配置快照)。
+
+    ``llm=None``(生产路径):每次运行按各自 RunConfig 的生效参数构建
+    **独立**模型客户端(温度/输出上限/并行工具调用逐运行生效);
+    显式传入 llm 仅用于测试注入 Fake(共享实例不影响配置记录口径,
+    applied_model_params 会如实反映实例属性)。
+    ``on_run_done(record_dict)`` 在每次运行完成后回调(作业进度用)。
+    """
+    runs: list[dict[str, Any]] = []
+    skipped: list[str] = []
+    for planned in plan.runs:
+        if should_stop is not None and should_stop():
+            skipped.append(planned.run_id)
+            continue
+        provider = None
+        if confirmation_provider_factory is not None:
+            provider = confirmation_provider_factory(planned)
+        record = await run_native_agent(
+            run_config=planned.run_config,
+            message=message,
+            visible_tools=visible_tools,
+            llm=llm,
+            fixtures=fixtures,
+            fixture_version=fixture_version,
+            confirmation_provider=provider,
+            encoder=encoder,
+            run_id=planned.run_id,
+            variant_label=planned.variant_label,
+            repeat_index=planned.repeat_index,
+        )
+        payload = record.to_payload()
+        runs.append(payload)
+        if on_run_done is not None:
+            with contextlib.suppress(Exception):  # 进度回调失败不影响执行
+                on_run_done(payload)
+    return {
+        "template_id": plan.template_id,
+        "template_version": plan.template_version,
+        "classification": plan.classification,
+        "independent_variable": list(plan.independent_variable),
+        "run_count": plan.run_count,
+        "fixed_conditions": plan.fixed_conditions,
+        "fixed_conditions_hash": plan.fixed_conditions_hash,
+        "runs": runs,
+        "skipped_run_ids": skipped,
+        "by_variant": _aggregate_by_variant(runs),
+    }
+
+
+def _aggregate_by_variant(runs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in runs:
+        grouped.setdefault(str(row.get("variant_label")), []).append(row)
+    summary: dict[str, dict[str, Any]] = {}
+    for label, rows in grouped.items():
+        valid = [row for row in rows if row.get("validity") == "VALID"]
+        summary[label] = {
+            "total_runs": len(rows),
+            "valid_runs": len(valid),
+            "bypassed_event_count": sum(int(row.get("bypassed_event_count") or 0) for row in rows),
+            "stop_reasons": sorted({str(row.get("stop_reason")) for row in rows}),
+        }
+    return summary
+
+
+__all__ = [
+    "CONTEXT_STRATEGY_MAP",
+    "NativeRunRecord",
+    "applied_params_of",
+    "build_llm_for_config",
+    "build_template_catalog",
+    "run_native_agent",
+    "run_template_batch",
+    "PlannedRun",
+    "ToolSearchIndex",
+    "GOVERNANCE_OFF",
+]

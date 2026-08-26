@@ -1,7 +1,6 @@
 """deploy/.env 加载器:统一配置入口。
 
-所有需要 LLM 配置的 CLI(``session_cross_eval`` / ``context_eval`` /
-``ab_eval``)在 main() 入口调用 ``load_deploy_env()``,把 ``deploy/.env``
+需要 LLM 配置的 CLI(``context_eval`` 等)在 main() 入口调用 ``load_deploy_env()``,把 ``deploy/.env``
 中的键注入进程环境;已存在的环境变量优先,不覆盖。
 
 查找顺序:

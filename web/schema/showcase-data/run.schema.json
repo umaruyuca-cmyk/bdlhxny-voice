@@ -16,7 +16,7 @@
       "additionalProperties": false,
       "required": ["agent_mode", "model", "repeat_index"],
       "properties": {
-        "agent_mode": { "enum": ["baseline-tool-calling", "langgraph-react", "full-system"] },
+        "agent_mode": { "enum": ["native-tool-calling"] },
         "context_strategy": { "enum": ["full", "recent-n", "single-summary", "budgeted", null] },
         "model": { "type": "string", "minLength": 1 },
         "repeat_index": { "type": "integer", "minimum": 1 }

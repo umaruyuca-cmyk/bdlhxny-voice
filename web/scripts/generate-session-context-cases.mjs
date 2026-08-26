@@ -171,7 +171,6 @@ function variantsFor(caseId) {
       notes: "项目待验证策略，必须和三个独立基准分开统计。",
     },
   ];
-  const agentModes = ["baseline-tool-calling", "langgraph-react", "full-system"];
   return {
     schema_version: "1.0",
     case_id: caseId,
@@ -190,7 +189,6 @@ function variantsFor(caseId) {
       gold_visible_to_compiler: false,
       gold_visible_to_agent: false,
     },
-    agent_modes: agentModes,
     context_variants: contextVariants,
     compiled_context_artifact_required_fields: [
       "case_id", "case_version", "source_session_hash", "variant_id", "strategy_version",
@@ -199,10 +197,6 @@ function variantsFor(caseId) {
       "original_tokens", "working_tokens", "build_duration_ms", "build_model_calls",
       "build_input_tokens", "build_output_tokens", "build_cost", "warnings",
     ],
-    matrix: contextVariants.flatMap((variant) => agentModes.map((agentMode) => ({
-      context_variant: variant.variant_id,
-      agent_mode: agentMode,
-    }))),
   };
 }
 

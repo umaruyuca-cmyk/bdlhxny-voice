@@ -1,6 +1,6 @@
 """统一运行遥测:九类事件、逐步明细与九段统一工件(开发计划 §4.3、评测文档 §9)。
 
-三组执行器(裸调用 / 官方 ReAct / 完整模式)同口径产出 ``RunRecord``:
+执行器(统一原生 Tool Calling 底座)同口径产出 ``RunRecord``:
 - 九类事件流(``run_events``);
 - 每次模型调用(``model_calls`` + ``model_call_messages``)与每次工具执行(``tool_calls``);
 - guardrail 检查明细(``guardrail_checks``)与分阶段测量(``run_measurements``);
@@ -67,10 +67,8 @@ RUN_STATUS_CANCELLED = "CANCELLED"
 VALIDITY_VALID = "VALID"
 VALIDITY_INVALID = "INVALID"
 
-#: 三组执行器的 agent_mode 值(与 agent_runs.agent_mode 一致)
-MODE_BASELINE = "baseline-tool-calling"
-MODE_REACT = "langgraph-react"
-MODE_TREATMENT = "full-system"
+#: agent_mode 值(与 agent_runs.agent_mode 一致):统一原生 Tool Calling 底座。
+MODE_NATIVE = "native-tool-calling"
 
 # token 口径:model_call_messages 粗估用 chars//4;上下文构建用
 # ConservativeTokenCounter(版本见 context.token_count,工件 provenance 记录)
@@ -549,7 +547,7 @@ def snapshot_messages(messages: list[Any]) -> list[dict[str, Any]]:
 
 
 def _usage_of(response: Any) -> tuple[int, int, bool]:
-    """(input_tokens, output_tokens, 是否估算);与 baseline/判官同口径。"""
+    """(input_tokens, output_tokens, 是否估算);与判官同口径。"""
 
     usage = getattr(response, "usage_metadata", None)
     if usage is not None:
@@ -578,13 +576,13 @@ def _tool_names_of(response: Any) -> list[str]:
     return names
 
 
-# ── RecordingLLM / RecordingExecutor:三组执行器同口径包装 ────────────────
+# ── RecordingLLM / RecordingExecutor:执行器同口径包装 ────────────────
 
 
 class _RecordingBoundModel(Runnable):
     """bind_tools 结果的记录包装:ainvoke/astream/invoke 记录后透传。
 
-    必须是 Runnable:create_react_agent 会做 ``prompt | model`` 组合,
+    必须是 Runnable:部分编排会把 ``prompt | model`` 组合成管道,
     鸭子类型对象无法进入该管道。
     """
 
@@ -812,10 +810,10 @@ class RecordingExecutor:
         return getattr(self._inner, name)
 
 
-# ── 完整模式专属:治理审计 → guardrail_checks / DENIED tool_calls ─────────
+# ── 治理审计 → guardrail_checks / DENIED tool_calls ─────────────────────
 
 
-def record_treatment_audits(recorder: RunRecorder, audits: list[Any], observations: list[Any]) -> None:
+def record_governance_audits(recorder: RunRecorder, audits: list[Any], observations: list[Any]) -> None:
     """GovernanceMiddleware 审计(G7)转明细:拦截写 DENIED 工具行 + action 检查行。"""
 
     for audit in audits:
@@ -900,8 +898,7 @@ def context_build_payload(
     """ContextBuildResult → data 服务 ``/runs/{id}/context-builds`` 请求体。
 
     items 必须是本次构建的请求条目(与 report.decisions 一一对应)。
-    tokenizer_version/compression_version 可按批次口径覆盖(session-cross
-    的 tiktoken / multi-factor-v2 批次),默认保守口径 + structured-text-v1。
+    tokenizer_version/compression_version 可按批次口径覆盖,默认保守口径 + structured-text-v1。
     """
 
     report = result.report
@@ -992,7 +989,7 @@ def _artifact_context_section(record: RunRecord) -> dict[str, Any]:
             "required_retained": None,
             "selected_items": [],
             "omitted_items": [],
-            "note": "本组模型输入不经 ContextBuilder(裸调用/官方 ReAct 直拼)",
+            "note": "本组模型输入不经 ContextBuilder",
         }
     decisions = build.get("decisions") or []
     selected = [
@@ -1086,6 +1083,9 @@ def build_run_artifact(record: RunRecord) -> dict[str, Any]:
             "snapshot_id": record.snapshot_id,
             "judge_version": record.provenance.get("judge_version", ""),
             "tokenizer_version": record.provenance.get("tokenizer_version", TOKENIZER_VERSION),
+            # 运行配置快照(混合路线阶段A3):配置体 + SHA-256;旧运行无此键
+            "per_run_config": record.provenance.get("per_run_config"),
+            "config_hash": record.provenance.get("config_hash", ""),
         },
         "context": _artifact_context_section(record),
         "steps": steps,

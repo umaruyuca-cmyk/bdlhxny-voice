@@ -1,8 +1,14 @@
-"""工具装载（设计文档 §4.2）：scoped 映射与 search 动态装载。
+"""工具装载（设计文档 §4.2;混合路线 C1/C2 扩展）。
 
-``scoped``：运行启动时按「场景标签 → 工具包」装载固定子集。
-``search``：初始仅装载元工具 ``search_tools``；命中 ToolCard 会话缓存后
-进入后续 ``bind_tools``；连续未命中回退宽包。
+``all``:完整公开 Mock 工具目录减去显式 ``excluded_tools``,按稳定工具名
+排序;不按 scene/scene_tag/market/portfolio/research/general 缩小集合。
+``scoped``:运行启动时按「场景标签 → 工具包」装载固定子集(内核能力,
+压缩对照等场景使用;正式模板使用 all/search)。
+``search``：初始仅装载元工具 ``search_tools``;候选范围由 ``search_base``
+决定:``catalog``(完整目录减排除项=eligible catalog)或
+``scoped``(场景子集)。命中 ToolCard 会话缓存后进入后续
+``bind_tools``;回退策略显式化(``fallback_policy``),正式口径为
+``none``——不允许静默切换到 scoped 宽包。
 身份标签（``authenticated``）由调用方授予。装载结果交给循环 ``bind_tools``
 与治理中间件 G1。
 
@@ -11,6 +17,8 @@
 """
 
 from __future__ import annotations
+
+import time
 
 from bdlh_runtime.engine.semantic_router.encoder import Encoder
 from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog
@@ -58,7 +66,11 @@ SCENE_TOOLSETS: dict[str, frozenset[str]] = dict(_CORE_SCENE_TOOLSETS)
 
 _DEFAULT_SCENE = "general"
 _WIDE_PACK_SCENE = "general"
-_ALLOWED_LOADING = frozenset({"scoped", "search"})
+_ALLOWED_LOADING = frozenset({"scoped", "search", "all"})
+#: search 候选基座:catalog=完整目录减排除项(正式);scoped=场景子集
+_ALLOWED_SEARCH_BASE = frozenset({"scoped", "catalog"})
+#: 回退策略:legacy=连续未命中回退 scoped 宽包;none=不回退(正式)
+_ALLOWED_FALLBACK = frozenset({"legacy", "none"})
 
 
 def reset_scene_toolsets_to_core() -> None:
@@ -88,7 +100,16 @@ def set_wide_pack_scene(scene: str) -> None:
 
 
 class ToolLoader:
-    """按 scoped / search 策略取出当次装载集合；search 命中缓存在本实例内。"""
+    """按 all / scoped / search 策略取出当次装载集合;search 命中缓存在本实例内。
+
+    - ``excluded_tools``:显式排除项(all 与 search 共用同一排除口径);
+    - ``search_base``:search 候选基座,``catalog`` 为新正式口径
+      (完整目录减排除项 = eligible catalog,与 all 组一致);
+    - ``fallback_policy``:``none`` 不回退(新正式);``legacy`` 保留旧
+      连续未命中回退 scoped 宽包行为;
+    - ``search_log``:每次检索的记录(查询/候选/分数/排名/耗时/命中),
+      供工件归因(混合路线 C3)。
+    """
 
     def __init__(
         self,
@@ -98,12 +119,26 @@ class ToolLoader:
         encoder: Encoder | None = None,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
         miss_fallback_limit: int = MISS_FALLBACK_LIMIT,
+        excluded_tools: frozenset[str] | set[str] | None = None,
+        search_base: str = "scoped",
+        fallback_policy: str | None = None,
     ) -> None:
         loading = (tool_loading or "scoped").strip().lower()
         if loading not in _ALLOWED_LOADING:
-            raise ValueError("tool_loading 仅支持 scoped|search")
+            raise ValueError("tool_loading 仅支持 all|scoped|search")
+        base = (search_base or "scoped").strip().lower()
+        if base not in _ALLOWED_SEARCH_BASE:
+            raise ValueError("search_base 仅支持 catalog|scoped")
+        if fallback_policy is None:
+            # 新正式口径(catalog 基座)默认不回退;旧 scoped 基座保留旧行为
+            fallback_policy = "none" if base == "catalog" else "legacy"
+        if fallback_policy not in _ALLOWED_FALLBACK:
+            raise ValueError("fallback_policy 仅支持 legacy|none")
         self._catalog = catalog
         self._tool_loading = loading
+        self._excluded = frozenset(excluded_tools or ())
+        self._search_base = base
+        self._fallback_policy = fallback_policy
         self._index = (
             ToolSearchIndex(encoder, similarity_threshold=similarity_threshold) if encoder is not None else None
         )
@@ -111,6 +146,7 @@ class ToolLoader:
         self._miss_streak = 0
         self._fallback = False
         self._miss_fallback_limit = max(1, miss_fallback_limit)
+        self._search_log: list[dict[str, object]] = []
 
     @property
     def tool_loading(self) -> str:
@@ -121,8 +157,40 @@ class ToolLoader:
         return self._fallback
 
     @property
+    def fallback_policy(self) -> str:
+        return self._fallback_policy
+
+    @property
+    def search_base(self) -> str:
+        return self._search_base
+
+    @property
+    def excluded_tools(self) -> frozenset[str]:
+        return self._excluded
+
+    @property
     def cached_names(self) -> tuple[str, ...]:
         return tuple(sorted(self._cache))
+
+    @property
+    def search_log(self) -> list[dict[str, object]]:
+        """检索记录副本(C3 工件归因:查询/候选/排名/耗时/命中)。"""
+        return [dict(row) for row in self._search_log]
+
+    def eligible_catalog(self) -> list[ToolCard]:
+        """eligible catalog = 完整公开目录 − 显式排除项 − search_tools 元工具。
+
+        all 与新正式 search 共用同一 eligible 口径(按稳定工具名排序)。
+        """
+        return [
+            card
+            for card in sorted(self._catalog.list(), key=lambda item: item.name)
+            if card.name != SEARCH_TOOLS_NAME and card.name not in self._excluded
+        ]
+
+    def load_all(self) -> list[ToolCard]:
+        """``all`` 装载:完整公开目录减排除项,按稳定工具名排序,不做场景收窄。"""
+        return self.eligible_catalog()
 
     def load_scoped(
         self,
@@ -134,12 +202,16 @@ class ToolLoader:
         scene_scopes = SCENE_TOOLSETS.get(scene_tag, SCENE_TOOLSETS[_DEFAULT_SCENE])
         loaded: list[ToolCard] = []
         for card in self._catalog.list():
+            if card.name in self._excluded:
+                continue
             if _visible_in_scene(card, scene_scopes, authenticated=authenticated):
                 loaded.append(card)
         return loaded
 
     def load_for_turn(self, scene_tag: str, *, authenticated: bool = False) -> list[ToolCard]:
-        """当轮 ``bind_tools`` 集合：search 为元工具 + 缓存；回退后为宽包。"""
+        """当轮 ``bind_tools`` 集合。"""
+        if self._tool_loading == "all":
+            return self.load_all()
         if self._tool_loading == "search" and not self._fallback:
             return self._search_pack()
         if self._fallback:
@@ -147,7 +219,13 @@ class ToolLoader:
         return self.load_scoped(scene_tag, authenticated=authenticated)
 
     def granted_scopes(self, scene_tag: str, *, authenticated: bool) -> frozenset[str]:
-        """供治理中间件 G3 使用的授权标签（场景 toolset ∪ 身份）。"""
+        """供治理中间件 G3 使用的授权标签（场景 toolset ∪ 身份）。
+
+        工具可见性与执行授权是两个概念:``all``/``catalog`` 基座只扩大
+        **对模型可见**的工具集合,不扩大用户的执行授权——授权始终来自
+        场景标签与登录身份(scoped 同口径)。受限工具在 ``all`` 模式下
+        对 LLM 可见,执行时由 G3 按真实身份裁决(混合路线 C1)。
+        """
         effective = _WIDE_PACK_SCENE if self._fallback else scene_tag
         scene_scopes = SCENE_TOOLSETS.get(effective, SCENE_TOOLSETS[_DEFAULT_SCENE])
         if authenticated:
@@ -162,21 +240,61 @@ class ToolLoader:
         scene_tag: str,
         authenticated: bool,
     ) -> dict[str, object]:
-        """对权限过滤后的目录做检索；命中写入会话缓存，连续未命中触发宽包回退。"""
-        visible = self.load_scoped(scene_tag, authenticated=authenticated)
-        hits: list[ToolCard] = []
+        """对候选集合做检索;命中写入会话缓存,连续未命中按策略处理。
+
+        - ``search_base=catalog``:候选 = eligible catalog(与 all 组一致),
+          不做场景预筛,搜索条件完全由 LLM 提出;
+        - ``search_base=scoped``:候选 = 场景可见集(旧口径);
+        - 回退仅在 ``fallback_policy=legacy`` 时发生,且每次都会记录。
+        """
+        if self._search_base == "catalog":
+            visible = self.eligible_catalog()
+        else:
+            visible = self.load_scoped(scene_tag, authenticated=authenticated)
+        started = time.perf_counter()
+        scored: list[tuple[float, ToolCard]] = []
         if self._index is not None:
-            hits = self._index.search(query, visible, top_k=top_k)
+            scored = self._index.search_scored(query, visible, top_k=top_k)
+        duration_ms = round((time.perf_counter() - started) * 1000)
+        hits = [card for _score, card in scored]
         if hits:
             self._miss_streak = 0
             for card in hits:
                 self._cache[card.name] = card
         else:
             self._miss_streak += 1
-            if self._miss_streak >= self._miss_fallback_limit:
+            if (
+                self._fallback_policy == "legacy"
+                and self._miss_streak >= self._miss_fallback_limit
+            ):
                 self._fallback = True
+        ranked_candidates = [
+            {"name": card.name, "description": card.description, "score": round(score, 4), "rank": rank}
+            for rank, (score, card) in enumerate(scored, start=1)
+        ]
+        record: dict[str, object] = {
+            "query": query,
+            "top_k": top_k,
+            "base": self._search_base,
+            "eligible_catalog": [
+                {"name": card.name, "description": card.description}
+                for card in sorted(visible, key=lambda item: item.name)
+            ],
+            "candidates": ranked_candidates,
+            "hits": [card.name for card in hits],
+            "hit_count": len(hits),
+            "duration_ms": duration_ms,
+            "fallback": self._fallback,
+            "fallback_policy": self._fallback_policy,
+            "cached": sorted(self._cache),
+        }
+        if self._index is not None:
+            record["threshold"] = self._index.threshold
+        self._search_log.append(record)
         return {
             "query": query,
+            # 返回候选名称、普通语言说明与排名;下一轮装载完整 Schema
+            "results": ranked_candidates,
             "names": [card.name for card in hits],
             "count": len(hits),
             "fallback": self._fallback,

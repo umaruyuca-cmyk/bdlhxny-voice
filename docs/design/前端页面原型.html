@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Touchstone · Agent 对照评测平台</title>
+<style>
+:root{
+  --bg:#fafafa; --panel:#ffffff; --ink:#111318; --ink-2:#4b5058; --ink-3:#8a9099;
+  --line:#e8e8ea; --line-2:#f0f0f2;
+  --accent:#3b3ef4; --accent-ink:#2e31c9; --accent-bg:#eef0fe;
+  --ok:#0f7b3d; --ok-bg:#e8f5ec;
+  --warn:#9a5b00; --warn-bg:#fbf1de;
+  --neutral:#5d6470; --neutral-bg:#f2f3f5;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{font:14px/1.7 -apple-system,"SF Pro Text","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
+::selection{background:var(--accent-bg)}
+/* ── 顶栏 ── */
+.topbar{background:rgba(255,255,255,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.topbar-inner{max-width:1160px;margin:0 auto;display:flex;align-items:center;gap:6px;padding:0 24px;height:56px}
+.wordmark{display:flex;align-items:baseline;gap:10px;cursor:pointer;margin-right:30px}
+.wordmark b{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.wordmark span{font-size:11px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.nav{display:flex;gap:2px;flex:1}
+.nav button{border:0;background:none;padding:7px 13px;border-radius:8px;font-size:13.5px;color:var(--ink-2);cursor:pointer;font-weight:500;letter-spacing:.01em}
+.nav button:hover{color:var(--ink);background:var(--neutral-bg)}
+.nav button.on{color:var(--ink);font-weight:600;background:var(--neutral-bg)}
+.top-right{display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--ink-3)}
+.role-switch{border:1px solid var(--line);border-radius:8px;padding:5px 12px;background:#fff;cursor:pointer;font-size:12.5px;color:var(--ink);font-weight:500}
+.role-switch:hover{border-color:var(--ink-3)}
+/* ── 布局 ── */
+.wrap{max-width:1160px;margin:0 auto;padding:40px 24px 80px}
+.view{display:none}.view.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+h1{font-size:26px;font-weight:700;letter-spacing:-.02em;margin-bottom:8px}
+.page-sub{color:var(--ink-2);font-size:14px;max-width:720px;margin-bottom:28px}
+h2{font-size:15px;font-weight:650;letter-spacing:-.01em;margin:0 0 12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px 24px}
+.panel + .panel{margin-top:16px}
+.crumb{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2);cursor:pointer;margin-bottom:18px;font-weight:500}
+.crumb:hover{color:var(--accent)}
+.crumb svg{width:14px;height:14px}
+/* ── 徽章 ── */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:99px;font-size:11.5px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.badge::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.b-green{background:var(--ok-bg);color:var(--ok)}
+.b-orange{background:var(--warn-bg);color:var(--warn)}
+.b-gray{background:var(--neutral-bg);color:var(--neutral)}
+.b-blue{background:var(--accent-bg);color:var(--accent-ink)}
+.b-outline{border:1px solid var(--line);color:var(--ink-3);background:#fff}
+.b-outline::before{display:none}
+/* ── 模板卡片 ── */
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:14px}
+.tpl-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s,box-shadow .15s;cursor:pointer}
+.tpl-card:hover{border-color:#c9ccd4;box-shadow:0 1px 2px rgba(16,17,19,.04),0 8px 24px -12px rgba(16,17,19,.12)}
+.tpl-card.locked{opacity:.62;cursor:default}
+.tpl-card.locked:hover{border-color:var(--line);box-shadow:none}
+.tpl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.tpl-name{font-weight:650;font-size:15px;letter-spacing:-.01em;line-height:1.45}
+.tpl-purpose{font-size:13px;color:var(--ink-2)}
+.tpl-var{font-size:12.5px;color:var(--ink-2);border-top:1px solid var(--line-2);padding-top:10px}
+.tpl-var b{color:var(--ink);font-weight:600}
+.tpl-tech{font-size:11.5px;color:var(--ink-3);font-family:var(--mono)}
+.tpl-foot{display:flex;justify-content:space-between;align-items:center;margin-top:2px}
+.tpl-perm{font-size:12px;color:var(--ink-3)}
+.tpl-go{font-size:13px;font-weight:600;color:var(--accent)}
+.locked .tpl-go{color:var(--ink-3)}
+/* ── 按钮 ── */
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;padding:9px 20px;font-size:13.5px;font-weight:600;cursor:pointer;letter-spacing:.01em}
+.btn:hover{background:var(--accent-ink)}
+.btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--ink-3)}
+.btn:disabled{border-color:var(--line);background:var(--neutral-bg);color:var(--ink-3);cursor:not-allowed}
+/* ── 发起页 ── */
+.run-layout{display:grid;grid-template-columns:1.05fr 1fr;gap:16px;align-items:start}
+@media(max-width:920px){.run-layout{grid-template-columns:1fr}}
+.def-list{list-style:none;display:flex;flex-direction:column;gap:12px;font-size:13.5px}
+.def-list li{display:flex;gap:12px}
+.def-list .k{color:var(--ink-3);min-width:72px;flex-shrink:0;font-size:12.5px;padding-top:1px}
+.warn-bar{border:1px solid #eed9ae;background:#fdf8ec;border-radius:var(--r);padding:12px 16px;font-size:13px;color:var(--warn);margin-bottom:16px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;letter-spacing:.01em}
+.field select,.field input{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13.5px;background:#fff;color:var(--ink)}
+.field select:focus,.field input:focus{outline:2px solid var(--accent-bg);border-color:var(--accent)}
+.field .hint{font-size:12px;color:var(--ink-3);margin-top:5px}
+details.adv{border:1px solid var(--line);border-radius:var(--r);padding:12px 16px;margin-bottom:16px}
+details.adv summary{font-size:13px;font-weight:600;cursor:pointer;color:var(--accent)}
+.estimate{display:flex;justify-content:space-between;align-items:center;gap:16px;background:#f7f8fe;border:1px solid #dfe3fb;border-radius:var(--r);padding:16px 20px;margin-top:20px}
+.estimate .num{font-size:15px;font-weight:700;color:var(--accent-ink)}
+.estimate .formula{font-size:12px;color:var(--ink-3);margin-top:2px}
+/* ── 批次详情 ── */
+.hash{font-family:var(--mono);font-size:12px;background:var(--neutral-bg);border-radius:6px;padding:2px 8px;color:var(--ink-2);cursor:pointer}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid var(--line-2);padding:10px 12px;text-align:left;vertical-align:top}
+th{font-weight:600;font-size:12px;color:var(--ink-3);letter-spacing:.04em;text-transform:none;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+td.mono{font-family:var(--mono);font-size:12.5px}
+.null-cell{color:var(--warn);font-weight:600}
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.stat{border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:14px 18px}
+.stat b{display:block;font-size:24px;font-weight:700;letter-spacing:-.02em}
+.stat span{font-size:12px;color:var(--ink-3)}
+.cell-ok{color:var(--ok);font-weight:650}
+.drill{font-size:12.5px;color:var(--accent);cursor:pointer;font-weight:500}
+.drill:hover{text-decoration:underline}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:0}
+.tabs button{border:0;background:none;padding:9px 14px;font-size:13px;font-weight:500;color:var(--ink-3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.note{font-size:12.5px;color:var(--ink-3);border-top:1px solid var(--line-2);padding-top:12px;margin-top:14px}
+.proto-tag{position:fixed;bottom:14px;right:16px;font-size:11px;color:var(--ink-3);background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 10px}
+.sec{margin-top:32px}
+.doc-card{flex-direction:row;justify-content:space-between;align-items:center}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="wordmark" id="homeBtn"><b>Touchstone</b><span>Agent Eval</span></div>
+    <nav class="nav" id="nav">
+      <button data-v="announce">公告</button>
+      <button data-v="templates" class="on">实验</button>
+      <button data-v="mytests">我的测试</button>
+      <button data-v="assets">数据资产</button>
+      <button data-v="docs">文档</button>
+    </nav>
+    <div class="top-right">
+      <span id="roleLabel">匿名访客</span>
+      <button class="role-switch" id="roleBtn">切换为所有者</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ══════════ 公告 ══════════ -->
+<section class="view" id="v-announce">
+  <div class="eyebrow">Announcements</div>
+  <h1>公告</h1>
+  <p class="page-sub">本平台仅展示经维护者审核并发布的正式实验批次快照。所有数字来自真实运行记录,未运行的项目标注「尚未运行」,不以估算值替代。</p>
+  <div class="stat-row">
+    <div class="stat"><b>112</b><span>工具目录</span></div>
+    <div class="stat"><b>20</b><span>对比用例</span></div>
+    <div class="stat"><b>3</b><span>长对话语料</span></div>
+    <div class="stat"><b>7</b><span>实验模板(6 项正式 + 1 项历史诊断)</span></div>
+  </div>
+  <div class="panel" style="border-style:dashed">
+    <b>尚未发布。</b>
+    <p style="color:var(--ink-2);font-size:13px;margin-top:6px">发布链路:实验模板与固定题库 → 后台运行产生结果与证据 → 维护者审核 → 公开快照。当前没有已发布的正式批次。匿名访客的运行结果保存在「我的测试」,不会进入公告。</p>
+  </div>
+</section>
+
+<!-- ══════════ 实验 · 模板中心 ══════════ -->
+<section class="view on" id="v-templates">
+  <div class="eyebrow">Experiments</div>
+  <h1>实验模板</h1>
+  <p class="page-sub">每项正式实验仅改变一个受控变量,其余条件全部冻结,以保证结果差异可归因。模板由平台统一定义,访客与所有者均不能自定义实验条件。</p>
+  <div class="tpl-grid" id="tplGrid"></div>
+  <div class="sec">
+    <h2>最近批次</h2>
+    <div class="panel" style="padding:6px 12px">
+      <table>
+        <tr><th>批次</th><th>实验</th><th>类型</th><th>规模</th><th>状态</th><th>时间</th></tr>
+        <tr><td class="mono">b7f3a2c1</td><td>工具调用治理的有效性验证</td><td><span class="badge b-green">正式单变量</span></td><td>2 组 × 3 次 = 6 次运行</td><td class="cell-ok">已完成</td><td>2026-08-26 14:02</td></tr>
+        <tr><td class="mono">e19d04b8</td><td>长上下文记忆策略对比</td><td><span class="badge b-green">正式单变量</span></td><td>4 组 × 1 次 = 4 次运行</td><td>进行中 2/4</td><td>2026-08-26 13:47</td></tr>
+        <tr><td class="mono">9c55e1aa</td><td>历史实现方案整体诊断</td><td><span class="badge b-gray">历史诊断</span> <span class="badge b-outline">旧实验定义</span></td><td>2 组 × 3 次 = 6 次运行</td><td class="cell-ok">已完成</td><td>2026-08-20 11:15</td></tr>
+      </table>
+    </div>
+    <p class="note">历史批次保留可读并标注「旧实验定义」;历史诊断模板同时改变了循环、上下文组织、工具装载与治理,其结果不可归因于单一变量。</p>
+  </div>
+</section>
+
+<!-- ══════════ 实验 · 统一发起页 ══════════ -->
+<section class="view" id="v-run">
+  <span class="crumb" data-back="templates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>返回实验模板</span>
+  <div class="eyebrow">New Run</div>
+  <h1 id="runTitle">发起实验</h1>
+  <p class="page-sub" id="runSub"></p>
+  <div class="warn-bar" id="runWarn" style="display:none"></div>
+  <div class="run-layout">
+    <div class="panel">
+      <h2>实验定义(由模板固定,不可修改)</h2>
+      <ul class="def-list" id="defList"></ul>
+    </div>
+    <div class="panel">
+      <h2>批次配置</h2>
+      <div class="field">
+        <label>考题(来自平台固定题库)</label>
+        <select id="fCase"></select>
+        <div class="hint" id="fCaseHint"></div>
+      </div>
+      <div class="field" id="fPresetWrap" style="display:none">
+        <label>工具可用性档位</label>
+        <select id="fPreset">
+          <option>完整工具目录(112 个,无排除)</option>
+          <option>排除首选工具,保留替代工具</option>
+          <option>同时排除首选与替代工具</option>
+        </select>
+        <div class="hint">匿名访客仅可选择预设档位;登录所有者可在允许列表内自定义排除项。</div>
+      </div>
+      <div class="field">
+        <label>重复次数(范围由模板限定)</label>
+        <select id="fRepeat"></select>
+        <div class="hint">重复运行用于评估结果稳定性,每次运行相互独立。</div>
+      </div>
+      <div class="field" id="fCtxOnlyWrap" style="display:none">
+        <label><input type="checkbox" id="fCtxOnly" style="width:auto;margin-right:6px">仅生成 4 份上下文工件,不执行 Agent 运行</label>
+      </div>
+      <details class="adv" id="advBox">
+        <summary>高级设置(仅所有者)</summary>
+        <div class="field" style="margin-top:12px">
+          <label>单次运行工具调用上限(默认 6,最大 10)</label>
+          <input type="number" value="6" min="1" max="10">
+        </div>
+        <div class="field">
+          <label>单一工具重复调用上限(默认 2)</label>
+          <input type="number" value="2" min="1" max="4">
+        </div>
+      </details>
+      <div class="estimate">
+        <div>
+          <div class="num" id="estNum">2 组 × 3 次 = 6 次运行</div>
+          <div class="formula" id="estNote">提交后由后台队列执行,关闭页面不影响运行;结果保留在「我的测试」。</div>
+        </div>
+        <button class="btn" id="submitBtn">提交批次</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 实验 · 批次详情 ══════════ -->
+<section class="view" id="v-batch">
+  <span class="crumb" data-back="templates"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>返回实验模板</span>
+  <div class="eyebrow">Batch Result</div>
+  <h1>工具调用治理的有效性验证 <span class="badge b-green">正式单变量</span> <span class="badge b-blue" id="batchAnon" style="display:none">个人测试 · 非正式结果</span></h1>
+  <p class="page-sub">批次 <span class="hash">b7f3a2c1</span> · 2026-08-26 14:02 完成 · 6 次运行</p>
+
+  <div class="panel">
+    <h2>实验口径</h2>
+    <ul class="def-list">
+      <li><span class="k">实验目的</span><span>验证工具调用治理层对越权调用与未确认写入的拦截能力,同时衡量其对正常调用的误伤程度。</span></li>
+      <li><span class="k">受控变量</span><span><b>治理配置</b>:治理关闭 / 标准治理</span></li>
+      <li><span class="k">冻结条件</span><span>同一 Agent 循环实现、同一模型与提示词版本、同一份 112 项工具目录、同一份冻结数据、相同调用上限——两组仅治理配置不同。</span></li>
+      <li><span class="k">技术口径</span><span class="tpl-tech">governance-on-off v1 · variable: governance_profile · config_hash <span class="hash">a94f2c7e</span> · fixed <span class="hash">f81c0d9a</span></span></li>
+      <li><span class="k">工具可见性</span><span>112 项全部可见(无排除)· Schema 哈希 <span class="hash">c3d91b</span> · Schema Token 38,412</span></li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>请求参数与实际生效参数</h2>
+    <table>
+      <tr><th>参数</th><th>请求值</th><th>生效值</th><th>说明</th></tr>
+      <tr><td class="mono">temperature</td><td class="mono">0.1</td><td class="mono">0.1</td><td>—</td></tr>
+      <tr><td class="mono">tool_choice</td><td class="mono">auto</td><td class="mono">auto</td><td>标准工具选择实验的固定值</td></tr>
+      <tr><td class="mono">seed</td><td class="mono">42</td><td class="mono null-cell">null</td><td>当前模型不支持 seed 参数,未生效(适配器已记录原因)</td></tr>
+      <tr><td class="mono">parallel_tool_calls</td><td class="mono">false</td><td class="mono">false</td><td>—</td></tr>
+    </table>
+    <p class="note">生效值为 null 表示该参数未被模型接受;平台不会将未生效参数记录为已生效。</p>
+  </div>
+
+  <div class="sec">
+    <h2>结果 · 按治理配置分组</h2>
+    <div class="tabs"><button class="on">治理指标</button><button>逐次运行</button></div>
+    <div class="panel" style="border-top-left-radius:0">
+      <table>
+        <tr><th>分组</th><th>应拦截召回率</th><th>误拦截率</th><th>未确认写入执行</th><th>旁路事件</th><th>审计完整率</th><th>下钻</th></tr>
+        <tr><td>治理关闭</td><td>—(全部放行)</td><td>—</td><td class="mono">4 次(仅 Mock,无外部副作用)</td><td class="mono">11</td><td class="mono">100%</td><td><span class="drill">3 次运行</span></td></tr>
+        <tr><td>标准治理</td><td class="cell-ok">6/6</td><td class="cell-ok">0/9</td><td class="mono">0 次</td><td class="mono">0</td><td class="mono">100%</td><td><span class="drill">3 次运行</span></td></tr>
+      </table>
+      <p class="note">两组使用相同循环、相同工具目录与相同输入,唯一差异为治理配置。治理关闭组被放行的操作均有审计记录,且仅进入 Mock 沙箱执行。单次运行可下钻:工具调用链、参数来源、冻结数据返回值、Token 消耗、耗时与停止原因。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 我的测试 ══════════ -->
+<section class="view" id="v-mytests">
+  <div class="eyebrow">My Runs</div>
+  <h1>我的测试</h1>
+  <p class="page-sub">此处为你发起的全部运行记录。个人测试结果不会进入公告;已审核发布的正式批次见「公告」。</p>
+  <div class="panel" style="padding:6px 12px">
+    <table>
+      <tr><th>任务</th><th>实验</th><th>状态</th><th>进度</th><th>操作</th></tr>
+      <tr><td class="mono">job_8f2c</td><td>工具提供方式对比</td><td>进行中</td><td>4/6 次运行</td><td><span class="drill">取消</span></td></tr>
+      <tr><td class="mono">job_3a91</td><td>长上下文记忆策略对比(仅生成工件)</td><td class="cell-ok">已完成</td><td>4/4 份</td><td><span class="drill">查看结果</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════ 数据资产 ══════════ -->
+<section class="view" id="v-assets">
+  <div class="eyebrow">Assets</div>
+  <h1>数据资产</h1>
+  <p class="page-sub">平台全部实验基于以下三类版本化资产运行,资产版本随批次记录并可复核。</p>
+  <div class="tpl-grid">
+    <div class="tpl-card"><div class="tpl-head"><span class="tpl-name">用例库</span></div><div class="tpl-purpose">20 条固定考题,以 case_id + 版本号引用;详情页标注被哪些模板使用。</div><div class="tpl-foot"><span></span><span class="tpl-go">浏览 →</span></div></div>
+    <div class="tpl-card"><div class="tpl-head"><span class="tpl-name">工具目录</span></div><div class="tpl-purpose">112 项 Mock 工具(96 通用 + 16 领域 + 1 检索),全站唯一展示入口。</div><div class="tpl-foot"><span></span><span class="tpl-go">浏览 →</span></div></div>
+    <div class="tpl-card"><div class="tpl-head"><span class="tpl-name">长对话语料</span></div><div class="tpl-purpose">3 段版本化长对话及四种上下文策略的实测数据。</div><div class="tpl-foot"><span></span><span class="tpl-go">浏览 →</span></div></div>
+  </div>
+</section>
+
+<!-- ══════════ 文档 ══════════ -->
+<section class="view" id="v-docs">
+  <div class="eyebrow">Documentation</div>
+  <h1>文档</h1>
+  <p class="page-sub">平台设计、引擎实现与评判口径的完整说明。指标定义全站仅维护一份。</p>
+  <div class="tpl-grid">
+    <div class="tpl-card doc-card"><div><div class="tpl-name">系统与复现</div><div class="tpl-purpose">平台定位、架构、题库构成与复现步骤。</div></div><span class="tpl-go">→</span></div>
+    <div class="tpl-card doc-card"><div><div class="tpl-name">引擎与治理</div><div class="tpl-purpose">Agent 循环、工具装载策略、治理规则与输出护栏。</div></div><span class="tpl-go">→</span></div>
+    <div class="tpl-card doc-card"><div><div class="tpl-name">上下文压缩</div><div class="tpl-purpose">四种上下文策略的算法定义与预算分配。</div></div><span class="tpl-go">→</span></div>
+    <div class="tpl-card doc-card"><div><div class="tpl-name">评判与口径</div><div class="tpl-purpose">指标定义(唯一一份)、判官规则与无效运行口径。</div></div><span class="tpl-go">→</span></div>
+    <div class="tpl-card doc-card"><div><div class="tpl-name">数据与运维</div><div class="tpl-purpose">数据库结构、冻结数据、工件发布与部署边界。</div></div><span class="tpl-go">→</span></div>
+  </div>
+</section>
+
+</div>
+<div class="proto-tag">设计原型 v2 · 依据 11 号混合路线 D2/D3 · 数据为示例</div>
+
+<script>
+/* ── 视图切换 ── */
+var navBtns=document.querySelectorAll('#nav button');
+function show(v){
+  document.querySelectorAll('.view').forEach(function(s){s.classList.remove('on')});
+  document.getElementById('v-'+v).classList.add('on');
+  navBtns.forEach(function(b){b.classList.toggle('on',b.dataset.v===v||((v==='run'||v==='batch')&&b.dataset.v==='templates'))});
+  window.scrollTo(0,0);
+}
+navBtns.forEach(function(b){b.onclick=function(){show(b.dataset.v)}});
+document.getElementById('homeBtn').onclick=function(){show('announce')};
+document.querySelectorAll('.crumb').forEach(function(c){c.onclick=function(){show(c.dataset.back)}});
+
+/* ── 角色切换 ── */
+var role='anon';
+document.getElementById('roleBtn').onclick=function(){
+  role=role==='anon'?'owner':'anon';
+  this.textContent=role==='anon'?'切换为所有者':'切换为匿名访客';
+  document.getElementById('roleLabel').textContent=role==='anon'?'匿名访客':'登录所有者';
+  document.getElementById('advBox').style.display=role==='owner'?'block':'none';
+  document.getElementById('batchAnon').style.display=role==='anon'?'inline-flex':'none';
+  renderTemplates();
+};
+
+/* ── 模板数据 ── */
+var TPLS=[
+ {id:'context-strategy-comparison',v:'v1',type:'green',tname:'正式单变量',title:'长上下文记忆策略对比',plain:'针对数万字量级的长对话,比较四种上下文组织策略(完整上下文、最近窗口、单轮摘要、预算化裁剪)在回答质量与 Token 消耗上的差异。',variable:'context_strategy',varPlain:'上下文策略',variants:['完整上下文','最近窗口','单轮摘要','预算化裁剪'],perm:'anon',repeat:[1],ctx:true},
+ {id:'governance-on-off',v:'v1',type:'green',tname:'正式单变量',title:'工具调用治理的有效性验证',plain:'验证治理层(身份校验、参数校验、调用预算、写入确认)对越权调用的拦截能力,并衡量其对正常调用的误伤程度。',variable:'governance_profile',varPlain:'治理配置',variants:['治理关闭','标准治理'],perm:'anon',repeat:[3,5]},
+ {id:'tool-delivery-comparison',v:'v1',type:'green',tname:'正式单变量',title:'工具提供方式对比',plain:'比较两种工具装载方式:将 112 项工具完整提供给模型,或仅提供检索入口、由模型按需搜索并加载,评估选择准确率与 Token 效率。',variable:'tool_delivery',varPlain:'工具提供方式',variants:['全量装载','检索式装载'],perm:'anon',repeat:[3,5]},
+ {id:'temperature-stability',v:'v1',type:'green',tname:'正式单变量',title:'采样温度与输出稳定性',plain:'在同一考题下按多个温度档位重复采样,量化输出的一致性与发散程度,为正式实验选择稳定的温度配置。',variable:'temperature_effective',varPlain:'采样温度',variants:['0 / 0.1','0.3','0.7'],perm:'anon',repeat:[3,5]},
+ {id:'tool-availability-degradation',v:'v1',type:'green',tname:'正式单变量',title:'工具可用性降级与诚实性',plain:'分档移除首选工具与替代工具,检验模型能否选择可接受的降级路径,或在无法获取数据时明确说明限制,而非虚构结果。',variable:'excluded_tools 预设',varPlain:'工具可用性档位',variants:['完整目录','排除首选','排除首选与替代'],perm:'anon',repeat:[3],preset:true},
+ {id:'max-agent-steps-stability',v:'v1',type:'green',tname:'正式单变量',title:'步数上限对任务完成率的影响',plain:'分别设置 3、4、5 步 Agent 循环上限,观察任务完成率、截断情况与资源消耗的变化。',variable:'max_agent_steps',varPlain:'步数上限',variants:['3 步','4 步','5 步'],perm:'owner',repeat:[3,5]},
+ {id:'legacy-implementation-profile-diagnostic',v:'v0',type:'gray',tname:'历史诊断',title:'历史实现方案整体诊断',plain:'上一代两套实现方案的整体对照。两套方案同时改变了循环、上下文组织、工具装载与治理,结果不可归因于单一变量,仅供历史对照。',variable:'legacy_agent_mode',varPlain:'实现方案',variants:['baseline','full-system'],perm:'owner',repeat:[3,5],legacy:true},
+];
+var curTpl=TPLS[1];
+function renderTemplates(){
+  var g=document.getElementById('tplGrid');g.innerHTML='';
+  TPLS.forEach(function(t){
+    var locked=t.perm==='owner'&&role==='anon';
+    var card=document.createElement('div');card.className='tpl-card'+(locked?' locked':'');
+    card.innerHTML='<div class="tpl-head"><span class="tpl-name">'+t.title+'</span><span class="badge b-'+t.type+'">'+t.tname+'</span></div>'
+      +'<div class="tpl-purpose">'+t.plain+'</div>'
+      +'<div class="tpl-var">受控变量:<b>'+t.varPlain+'</b> — '+t.variants.join(' / ')+'</div>'
+      +'<div class="tpl-tech">'+t.id+' '+t.v+' · variable: '+t.variable+'</div>'
+      +'<div class="tpl-foot"><span class="tpl-perm">'+(t.perm==='anon'?'免登录可用':'仅登录所有者')+'</span>'
+      +'<span class="tpl-go">'+(locked?'需登录':'发起实验 →')+'</span></div>';
+    if(!locked)card.onclick=function(){openRun(t)};
+    g.appendChild(card);
+  });
+}
+/* ── 发起页 ── */
+function openRun(t){
+  curTpl=t;show('run');
+  document.getElementById('runTitle').textContent=t.title;
+  document.getElementById('runSub').textContent=t.plain;
+  var w=document.getElementById('runWarn');
+  if(t.legacy){w.style.display='block';w.textContent='该模板为整体实现方案诊断:两组同时改变了循环、上下文组织、工具装载与治理,结果不可归因于单一变量,不作为正式实验结论。';}
+  else if(t.type==='orange'){w.style.display='block';w.textContent='专项交叉模板:一次改变两个条件,结果不可归因于单一变量。';}
+  else w.style.display='none';
+  var dl=document.getElementById('defList');
+  dl.innerHTML='<li><span class="k">实验目的</span><span>'+t.plain+'</span></li>'
+   +'<li><span class="k">受控变量</span><span><b>'+t.varPlain+'</b> — '+t.variants.join(' / ')+'</span></li>'
+   +'<li><span class="k">冻结条件</span><span>同一 Agent 循环实现、同一模型与提示词版本、同一份工具目录、同一份冻结数据、同一评判规则。批次中仅受控变量不同。</span></li>'
+   +'<li><span class="k">技术口径</span><span class="tpl-tech">'+t.id+' '+t.v+' · variable: '+t.variable+' · engine: native-tool-calling · fixture-v1 · judge-v1</span></li>';
+  var cs=document.getElementById('fCase');cs.innerHTML='';
+  var cases=t.ctx?['长对话 A · 客服会话(约 62k tokens)','长对话 B · 多项目协作(约 48k tokens)','长对话 C · 旅行规划(约 35k tokens)']
+    :['case-weather-001 v1 · 天气查询(含降级路径)','case-portfolio-004 v1 · 持仓汇总','case-report-009 v1 · 研报要点提取'];
+  cases.forEach(function(c){var o=document.createElement('option');o.textContent=c;cs.appendChild(o)});
+  document.getElementById('fCaseHint').textContent=t.ctx?'三段版本化长对话,任选一段作为实验输入':'题库由平台维护并版本化,不支持提交自定义问题';
+  document.getElementById('fPresetWrap').style.display=t.preset?'block':'none';
+  document.getElementById('fCtxOnlyWrap').style.display=t.ctx?'block':'none';
+  var rp=document.getElementById('fRepeat');rp.innerHTML='';
+  t.repeat.forEach(function(r){var o=document.createElement('option');o.textContent=r+' 次';o.value=r;rp.appendChild(o)});
+  rp.onchange=updateEst;document.getElementById('fCtxOnly').onchange=updateEst;
+  document.getElementById('advBox').style.display=role==='owner'?'block':'none';
+  updateEst();
+}
+function updateEst(){
+  var n=curTpl.variants.length,r=+document.getElementById('fRepeat').value;
+  var ctxOnly=curTpl.ctx&&document.getElementById('fCtxOnly').checked;
+  document.getElementById('estNum').textContent=ctxOnly?('生成 '+n+' 份上下文工件(不执行 Agent 运行)'):(n+' 组 × '+r+' 次 = '+ (n*r) +' 次运行');
+}
+document.getElementById('submitBtn').onclick=function(){show('batch')};
+renderTemplates();
+</script>
+</body>
+</html>

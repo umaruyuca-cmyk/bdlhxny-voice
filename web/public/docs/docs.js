@@ -1,6 +1,48 @@
-/* 站点共享脚本：侧栏级联手风琴互斥 / 移动端侧栏 / 目录滚动跟随 */
+/* 站点共享脚本：顶栏导航注入 / 侧栏级联手风琴互斥 / 移动端侧栏 / 目录滚动跟随 */
 (function () {
   "use strict";
+
+  // 0. 原型 v2 外壳(前端信息架构 §三:5 个一级模块):wordmark + 五导航 + 角色标签。
+  //    导航注入到既有 topbar,旧页面不改标记即可获得新外壳;活动态按路径推导。
+  (function injectChrome() {
+    var inner = document.querySelector(".topbar-inner");
+    if (!inner) return;
+    var brand = inner.querySelector(".brand");
+    if (brand) brand.innerHTML = '<span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span>';
+
+    var NAV = [
+      { href: "/", label: "公告", match: function (p) { return p === "/" || p === "/index.html"; } },
+      { href: "/experiment/", label: "实验", match: function (p) { return p.indexOf("/experiment") === 0 || p.indexOf("/lab") === 0; } },
+      { href: "/test/", label: "我的测试", match: function (p) { return p.indexOf("/test") === 0; } },
+      { href: "/assets/", label: "数据资产", match: function (p) {
+        return ["/cases", "/tools", "/context", "/assets", "/showcase"].some(function (prefix) {
+          return p.indexOf(prefix) === 0;
+        });
+      } },
+      { href: "/docs/", label: "文档", match: function (p) {
+        return ["/about", "/engine", "/judging", "/ops", "/docs"].some(function (prefix) {
+          return p.indexOf(prefix) === 0;
+        });
+      } },
+    ];
+    var path = location.pathname;
+    var nav = document.createElement("nav");
+    nav.className = "site-nav";
+    nav.setAttribute("aria-label", "站点模块导航");
+    nav.innerHTML = NAV.map(function (item) {
+      return '<a href="' + item.href + '"' + (item.match(path) ? ' class="on"' : "") + ">" + item.label + "</a>";
+    }).join("");
+    inner.insertBefore(nav, inner.querySelector(".topbar-actions") || null);
+
+    var actions = inner.querySelector(".topbar-actions");
+    if (actions && !actions.querySelector(".role-label")) {
+      var role = document.createElement("span");
+      role.className = "role-label";
+      actions.insertBefore(role, actions.firstChild);
+      var user = sessionStorage.getItem("lab_user");
+      role.textContent = user ? "登录所有者" : "匿名访客";
+    }
+  })();
 
   // 1. 侧栏级联手风琴：单开模式——展开一组时收起其他组(原生 details 负责自身开合)
   var sideGroups = Array.prototype.slice.call(document.querySelectorAll(".side-group"));
@@ -48,6 +90,8 @@
   var logoutBtn = document.querySelector(".topbar-logout");
   function refreshAuthState() {
     var logged = !!sessionStorage.getItem("lab_token");
+    var role = document.querySelector(".role-label");
+    if (role) role.textContent = logged ? "登录所有者" : "匿名访客";
     // 运行台只在私有部署存在:公开页 HTML 不硬链接 /lab,登录态由脚本动态赋址
     if (labBtn) {
       labBtn.style.display = logged ? "inline-flex" : "none";
@@ -74,18 +118,17 @@
   }
 
   if (loginBtn) {
-    loginBtn.setAttribute("title", "登录后进入运行台:一键发起对照批次、勾选工具可见集、压缩测试与联动对照");
+    loginBtn.setAttribute("title", "登录后可在实验模块发起正式批次、使用高级设置并查看自己的全部批次");
     var mask = document.createElement("div");
     mask.className = "login-mask";
     mask.innerHTML =
       '<div class="login-dialog" role="dialog" aria-label="所有者登录">' +
       "<h3>所有者登录</h3>" +
-      '<p class="login-sub">仅项目所有者；密码连续输错 5 次将锁定 15 分钟。登录后直接进入运行台，可：</p>' +
+      '<p class="login-sub">仅项目所有者；密码连续输错 5 次将锁定 15 分钟。登录后留在当前页，可：</p>' +
       '<ul class="login-caps">' +
-      "<li><strong>一键发起对照实验</strong>（或按题号发起：重复次数 / 模型 / 冻结数据集 / 工具可见集 / Token 上限）</li>" +
+      "<li><strong>按实验模板发起正式批次</strong>（预估运行数 → 确认 → 提交；可使用高级设置）</li>" +
       "<li>跟踪批次进度，运行中可协作取消</li>" +
-      "<li>长上下文压缩测试与「三组 × 两变体」联动对照</li>" +
-      "<li>查看每次运行的完整明细：逐步事件流、模型与工具调用记录、护栏检查结果、耗时与 Token 消耗</li>" +
+      "<li>查看「我的批次」全部历史与单次运行完整明细</li>" +
       "</ul>" +
       '<label>用户名<input class="login-user" type="text" autocomplete="username"></label>' +
       '<label>密码<input class="login-pass" type="password" autocomplete="current-password"></label>' +
@@ -143,11 +186,11 @@
             sessionStorage.setItem("lab_token", outcome.body.token);
             sessionStorage.setItem("lab_user", outcome.body.username || "");
             refreshAuthState();
-            err.textContent = "登录成功，正在进入运行台…";
+            err.textContent = "登录成功，正在刷新当前页…";
             setTimeout(function () {
               close();
-              // 登录即运行台:发起对照实验 / 工具勾选 / 压缩测试都在那里
-              location.href = "/lab/";
+              // 登录后留在当前页刷新角色视图(实验模块同页双角色);不硬跳运行台
+              location.reload();
             }, 600);
           } else if (outcome.status === 423) {
             err.textContent = "账号已锁定，请稍后再试";

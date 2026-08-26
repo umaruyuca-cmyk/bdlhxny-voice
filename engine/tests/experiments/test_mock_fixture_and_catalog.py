@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from bdlh_runtime.evaluation.comparison_agent import FrozenFixtureExecutor, comparison_tool_catalog
 from bdlh_runtime.experiments.case_validator import (
     validate_all,
     validate_all_comparison_cases,
@@ -22,6 +21,7 @@ from bdlh_runtime.experiments.comparison_cases_data import (
     all_mock_fixtures,
     fixture_set_source_hash,
 )
+from bdlh_runtime.experiments.fixture_executor import FrozenFixtureExecutor
 from bdlh_runtime.experiments.fixture_hash import catalog_schema_hash, fixture_content_hash, normalize_fixture
 from bdlh_runtime.experiments.public_case_repository import DataClientCaseRepository
 from bdlh_runtime.experiments.tool_catalog_snapshot import (
@@ -142,11 +142,11 @@ def test_fixture_statuses_recorded(status: str):
     assert executor.call_records[0]["status"] == status
 
 
-def test_three_agents_share_same_schema_and_hash():
+def test_same_tools_share_same_schema_and_hash():
     tools = ("order.get_status", "crm.search_customer", "support.search_tickets")
-    catalog_a, cards_a = comparison_tool_catalog(tools)
-    catalog_b, cards_b = comparison_tool_catalog(tools)
-    catalog_c, cards_c = comparison_tool_catalog(list(tools))
+    catalog_a, cards_a = build_comparison_catalog(tools)
+    catalog_b, cards_b = build_comparison_catalog(tools)
+    catalog_c, cards_c = build_comparison_catalog(list(tools))
     ha = catalog_schema_hash(tool_manifests(cards_a))
     hb = catalog_schema_hash(tool_manifests(cards_b))
     hc = catalog_schema_hash(tool_manifests(cards_c))
@@ -245,7 +245,7 @@ def test_validate_all_includes_sessions():
 
 def test_production_path_does_not_mock_final_answer(monkeypatch):
     """生产执行器没有固定最终答案路径;本测试只检查模块级不存在答案表。"""
-    import bdlh_runtime.evaluation.comparison_agent as mod
+    import bdlh_runtime.experiments.fixture_executor as mod
 
     source = Path(mod.__file__).read_text(encoding="utf-8")
     assert "MOCK_FINAL_ANSWER" not in source

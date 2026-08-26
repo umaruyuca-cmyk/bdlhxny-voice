@@ -138,6 +138,27 @@ class RunControllerTest {
     }
 
     @Test
+    void listsBatchesWithDefaultLimitAndClampsRange() throws Exception {
+        UUID cursor = UUID.randomUUID();
+        java.util.Map<String, Object> emptyPage = new java.util.LinkedHashMap<>();
+        emptyPage.put("batches", java.util.List.of());
+        emptyPage.put("nextCursor", null);
+        when(repository.listBatches(20, null)).thenReturn(emptyPage);
+        when(repository.listBatches(100, cursor)).thenReturn(emptyPage);
+
+        mvc.perform(get("/internal/v1/batches"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.batches").isArray());
+
+        mvc.perform(get("/internal/v1/batches")
+                        .param("limit", "500")
+                        .param("cursor", cursor.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.batches").isArray());
+        verify(repository).listBatches(100, cursor);
+    }
+
+    @Test
     void returnsRunDetailFromRepository() throws Exception {
         UUID runId = UUID.randomUUID();
         when(repository.getRunDetail(runId)).thenReturn(Map.of(

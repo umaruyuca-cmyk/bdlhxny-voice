@@ -4,20 +4,23 @@ import assert from "node:assert/strict";
 import { REDIRECTS, redirectFor } from "../scripts/redirect-map.mjs";
 
 /**
- * 站点结构契约(两类实验口径):公告单页(空框架)+ 系统概览 /about(3)+
- * 实例展示 /showcase + 实验 /experiment(只有压缩用例与对比用例两个入口)+
- * 上下文压缩 /context(4,含长上下文库)+ 评判标准 /judging(4)+
- * 引擎与治理 /engine(6)+ 数据与运行 /ops(5)+ 工具目录 /tools + 用例库 /cases。
- * 公告为独立单页模块:侧栏直达链接、无子级;全站去品牌化(不出现项目代号)。
+ * 站点结构契约(原型 v2 · 前端信息架构 §三):顶部五导航(公告 / 实验 / 我的测试 / 数据资产 / 文档),
+ * 由 docs.js 注入所有页面;旧侧栏外壳由 CSS 隐藏,不再作为结构要求。
+ * 公告单页(空框架 + 静态事实卡)+ 数据资产 /assets(用例库/工具目录/长上下文库)+
+ * 文档 /docs(系统与复现/引擎与治理/上下文压缩/评判与口径/数据与运维)+
+ * 实验 /experiment(模板中心为根;发起 run 与批次详情 batch 为二级页,带返回上级入口)。
  */
 
-const MODULE_HREFS = ["/", "/about/", "/showcase/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/"];
+const NAV_HREFS = ["/", "/experiment/", "/test/", "/assets/", "/docs/"];
 
 const SITE_PAGES = [
   "/index.html",
+  "/assets/index.html",
+  "/docs/index.html",
   "/about/index.html", "/about/banks.html", "/about/repo.html",
   "/showcase/index.html", "/showcase/tools.html",
-  "/experiment/index.html", "/experiment/compression.html", "/experiment/comparison.html",
+  "/experiment/index.html", "/experiment/compression.html",
+  "/experiment/run.html", "/experiment/batches.html", "/experiment/batch.html",
   "/test/index.html",
   "/context/index.html", "/context/library.html", "/context/design.html", "/context/results.html",
   "/judging/index.html", "/judging/metrics.html", "/judging/judge.html", "/judging/invalid.html",
@@ -27,8 +30,13 @@ const SITE_PAGES = [
   "/ops/deploy.html", "/ops/roadmap.html",
 ];
 
-/** 实验/我的测试三页:唯一允许调用公开测试接口与使用交互控件的公开页。 */
-const EXPERIMENT_PAGES = ["/experiment/compression.html", "/experiment/comparison.html", "/test/index.html"];
+/** 实验模块页:允许匿名公开接口 + 同源所有者通道白名单(与 nginx/dev-server 反代同口径)。 */
+const EXPERIMENT_PAGES = [
+  "/experiment/index.html", "/experiment/compression.html",
+  "/experiment/run.html", "/experiment/batches.html", "/experiment/batch.html",
+  "/test/index.html",
+];
+const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|experiment-templates|template-batches|batches|jobs|runs)(\/|\?|["'`]|$))/;
 
 async function readPage(page) {
   return readFile(new URL(`../public${page}`, import.meta.url), "utf8");
@@ -45,54 +53,35 @@ test("旧展示地址保留跳转页(不重复公告内容)", async () => {
   }
 });
 
-test("模块页齐备,共享级联导航壳(顶栏动作 + 侧栏级联模块树 + 页内目录)", async () => {
-  assert.equal(SITE_PAGES.length, 29);
+test("模块页齐备,共享原型外壳(顶栏 wordmark + docs.js 注入五导航 + 角色标签)", async () => {
+  assert.equal(SITE_PAGES.length, 33);
+  const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
+  for (const href of NAV_HREFS) {
+    assert.ok(sharedJs.includes(`"${href}"`), `docs.js 注入的导航缺少模块 ${href}`);
+  }
+  for (const label of ["公告", "实验", "我的测试", "数据资产", "文档"]) {
+    assert.ok(sharedJs.includes(`"${label}"`), `docs.js 导航缺少条目「${label}」`);
+  }
+  assert.match(sharedJs, /role-label/, "docs.js 需注入角色标签(匿名访客/登录所有者)");
   for (const page of SITE_PAGES) {
     const html = await readPage(page);
     assert.match(html, /docs\.css/, `${page} 必须引用 docs.css`);
     assert.match(html, /docs\.js/, `${page} 必须引入共享导航脚本`);
     assert.match(html, /class="brand"/, `${page} 顶栏必须有品牌行`);
-    assert.match(html, /class="side-tree"/, `${page} 侧栏必须有级联模块树`);
-    for (const href of MODULE_HREFS) {
-      // 实验模块只有两个子入口,模块根以子链接前缀出现在侧栏树
-      const probe = href === "/experiment/" ? 'href="/experiment/' : `href="${href}"`;
-      assert.ok(html.includes(probe), `${page} 侧栏树缺少模块 ${href}`);
-    }
     assert.ok(html.includes("topbar-gh"), `${page} 顶栏需要 GitHub 外链`);
-    // 单页模块(公告 / 我的测试)在侧栏是直达链接,无分组展开
-    if (page !== "/index.html" && page !== "/test/index.html") {
-      assert.match(html, /side-group here" open/, `${page} 当前模块必须默认展开`);
-    }
-    if (page === "/test/index.html") {
-      assert.match(html, /class="side-item active" href="\/test\/"/, "我的测试当前页直达链接高亮");
-    }
+    assert.ok(html.includes("topbar-login"), `${page} 顶栏需要登录入口`);
   }
 });
 
-test("本页目录与正文同在详情区,不占用模块侧栏", async () => {
-  for (const page of SITE_PAGES) {
+test("二级页面提供返回上级入口,无导航死胡同(IA §二.8)", async () => {
+  const backLinks = {
+    "/experiment/run.html": 'class="crumb" href="/experiment/"',
+    "/experiment/batches.html": null, // 一级模块页,顶栏导航即返回
+    "/experiment/batch.html": 'class="crumb" href="/experiment/batches"',
+  };
+  for (const [page, probe] of Object.entries(backLinks)) {
     const html = await readPage(page);
-    const aside = html.match(/<aside class="docs-side"[\s\S]*?<\/aside>/);
-    assert.ok(aside, `${page} 模块侧栏存在`);
-    assert.ok(!aside[0].includes("本页目录"), `${page} 模块侧栏不得放本页目录`);
-    if (page === "/index.html") {
-      assert.doesNotMatch(html, /class="page-toc"/, "数据首页已有左侧模块目录,不应再显示重复的页内目录");
-      assert.match(html, /class="detail-layout detail-layout-full"/, "数据首页应使用全宽详情区");
-      continue;
-    }
-    if (page === "/experiment/index.html") {
-      continue; // 实验模块根是跳转页(两个入口的导航壳在子页)
-    }
-    assert.match(html, /class="page-toc"/, `${page} 需有页内目录`);
-    assert.match(html, /aria-label="本页目录"/, `${page} 页内目录需有可访问标签`);
-    // 生成页:页内目录为 aside,位于 detail-layout 内。
-    // DOM 中保持目录在正文前,桌面端由 CSS 放到右侧,窄屏放回正文上方;
-    // showcase 三页手维护,自身侧栏已含目录,只检查存在性
-    if (!page.startsWith("/showcase/")) {
-      const m = html.match(/<div class="detail-layout">\s*<aside class="page-toc"/);
-      assert.ok(m, `${page} 页内目录须位于 detail-layout 内`);
-      assert.match(html, /class="detail-body"/, `${page} 正文须在 detail-body 内`);
-    }
+    if (probe) assert.ok(html.includes(probe), `${page} 需要返回上级入口`);
   }
 });
 
@@ -108,14 +97,11 @@ test("详情页使用正文居中、右侧页内目录的标准阅读比例", as
   assert.match(css, /@media \(max-width:\s*1240px\)/, "中等屏幕需要收起三栏布局");
 });
 
-test("公告为独立单页:侧栏直达链接无子级,系统说明并入新模块「系统概览」", async () => {
+test("公告为独立单页:eyebrow/事实卡/单一空态面板,系统说明并入「系统概览」", async () => {
   const announce = await readPage("/index.html");
-  assert.match(announce, /<a class="side-item[^>]*>(?:<svg[\s\S]*?<\/svg>)?公告<\/a>/, "公告必须是侧栏直达链接(单页模块)");
-  const 公告块 = announce.match(/<a class="side-item[^>]*>公告<\/a>\s*<details/);
-  assert.equal(公告块, null, "公告之后不应再有属于公告的子级分组");
-  for (const anchor of ["about", "batches", "agent-summary", "compression", "examples", "drilldown"]) {
-    assert.ok(announce.includes(`id="${anchor}"`), `公告页缺少第 ${anchor} 节`);
-  }
+  assert.match(announce, /class="eyebrow"/, "公告页使用原型 eyebrow 版式");
+  assert.match(announce, /stat-row/, "公告页有静态事实卡");
+  assert.match(announce, /panel-dashed/, "公告页有虚线空态面板");
   for (const moved of ["id=\"architecture\"", "id=\"banks\"", "id=\"repo\""]) {
     assert.ok(!announce.includes(moved), `公告页不应再包含系统说明节 ${moved}(已迁入系统概览)`);
   }
@@ -127,23 +113,30 @@ test("公告为独立单页:侧栏直达链接无子级,系统说明并入新模
   assert.ok(repo.includes('id="repo"') && repo.includes('id="gates"'), "仓库与门禁在系统概览模块");
 });
 
-test("模块首页从公告页可达(互链)", async () => {
-  const home = await readPage("/index.html");
-  for (const href of MODULE_HREFS.slice(1)) {
-    // 实验模块只有两个子入口(压缩/对比),模块根以子链接前缀可达
-    const probe = href === "/experiment/" ? 'href="/experiment/' : `href="${href}"`;
-    assert.ok(home.includes(probe), `公告页缺少模块入口 ${href}`);
+test("五模块导航由共享脚本注入,每个模块首页可达(原型 §总览)", async () => {
+  const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
+  assert.match(sharedJs, /site-nav/, "docs.js 注入顶部导航");
+  for (const page of ["/index.html", "/assets/index.html", "/docs/index.html"]) {
+    const html = await readPage(page);
+    assert.match(html, /src="\/docs\/docs\.js"/, `${page} 依赖共享导航脚本`);
+  }
+  const assets = await readPage("/assets/index.html");
+  for (const href of ["/cases/", "/tools/", "/context/library"]) {
+    assert.ok(assets.includes(`href="${href}"`), `数据资产页缺少入口 ${href}`);
+  }
+  const docsHome = await readPage("/docs/index.html");
+  for (const href of ["/about/", "/engine/", "/context/", "/judging/", "/ops/"]) {
+    assert.ok(docsHome.includes(`href="${href}"`), `文档页缺少入口 ${href}`);
   }
 });
 
-test("全站去品牌化:公开页不出现项目代号,品牌行为通用描述", async () => {
+test("品牌按原型呈现:wordmark Touchstone / Agent Eval,无主题化文案", async () => {
   for (const page of SITE_PAGES) {
     const html = await readPage(page);
-    assert.doesNotMatch(html, /touchstone/i, `${page} 不得出现项目代号`);
     assert.doesNotMatch(html, /タカラダ|グリッド|ダイナゼノン|エヴァンゲリオン/, `${page} 不得出现主题化文案`);
   }
   const announce = await readPage("/index.html");
-  assert.match(announce, /Agent 对照评测/, "品牌行为中性描述");
+  assert.match(announce, /wordmark/, "品牌 wordmark 由顶栏承载");
 });
 
 test("机甲主题子页 /home 已下线:301 回公告页,服务器不再服务该前缀", async () => {
@@ -161,16 +154,17 @@ test("机甲主题子页 /home 已下线:301 回公告页,服务器不再服务�
   assert.match(nginx, /location \/about\//, "nginx 需服务系统概览模块前缀");
 });
 
-test("旧路径 301:redirect-map 与两台服务器一致", async () => {
+test("旧路径 301:redirect-map 与两台服务器一致;/docs/ 与 /assets/ 为模块首页", async () => {
   assert.equal(redirectFor("/docs/cases"), "/cases/");
   assert.equal(redirectFor("/docs/cases.html"), "/cases/");
   assert.equal(redirectFor("/showcase/context"), "/context/results");
-  assert.equal(redirectFor("/docs"), "/");
+  assert.equal(redirectFor("/docs"), null, "/docs 为文档模块首页,不再 301");
   assert.equal(redirectFor("/docs/docs.css"), null, "静态资产不重定向");
 
   const devServer = await readFile(new URL("../dev-server.js", import.meta.url), "utf8");
   assert.match(devServer, /redirectFor/, "dev-server 需接入 301 映射");
   assert.match(devServer, /301/, "dev-server 需以 301 重定向");
+  assert.match(devServer, /"\/assets", "\/docs"/, "dev-server 需服务 /assets 与 /docs 模块前缀");
 
   const nginx = await readFile(new URL("../nginx.conf", import.meta.url), "utf8");
   for (const [from, to] of REDIRECTS) {
@@ -180,22 +174,28 @@ test("旧路径 301:redirect-map 与两台服务器一致", async () => {
       `nginx 缺少 301:${from} → ${to}`,
     );
   }
+  assert.match(nginx, /location \/docs\/ \{[\s\S]*?\/docs\/index\.html/, "nginx /docs/ 回落到文档模块首页");
+  assert.match(nginx, /location \/assets\/ \{[\s\S]*?\/assets\/index\.html/, "nginx 服务数据资产模块");
   assert.match(nginx, /location \/experiment\//, "nginx 需服务新模块前缀");
   assert.match(nginx, /location \/ops\//, "nginx 需服务新模块前缀");
 });
 
-test("公开页零后端依赖(实验两页仅允许公开测试接口)", async () => {
+test("公开页零后端依赖(实验模块页允许公开测试接口与所有者通道白名单)", async () => {
   for (const page of SITE_PAGES) {
     const html = await readPage(page);
     const isExperiment = EXPERIMENT_PAGES.includes(page);
     if (page === "/ops/run-api.html") {
       assert.doesNotMatch(html, /fetch\(|XMLHttpRequest|axios/, "ops/run-api 文档页也不得发起真实后端调用");
     } else if (isExperiment) {
-      assert.doesNotMatch(html, /\/api\/v1\/(?!public)/, `${page} 只允许 /api/v1/public/ 公开测试接口`);
+      // 同源契约(前后端对接文档 §2):公开接口 + 所有者通道白名单,其余维护者端点禁止
+      const offenders = [...html.matchAll(/\/api\/v1\/[a-z\-]+(\/[a-z\-]+)?/g)].map((m) => m[0]);
+      for (const api of offenders) {
+        assert.ok(EXPERIMENT_API_OK.test(api), `${page} 引用了白名单之外的端点:${api}`);
+      }
     } else {
       assert.doesNotMatch(html, /\/api\/v1\//, `${page} 不得出现后端 API`);
     }
-    // 任意文本输入全站禁止;选择控件(勾选/单选/下拉)仅实验两页允许;
+    // 任意文本输入全站禁止;选择控件(勾选/单选/下拉)仅实验模块页允许;
     // showcase 空框架页的 disabled 占位控件(display-only)豁免
     assert.doesNotMatch(html, /<textarea/, `${page} 不得出现文本域`);
     assert.doesNotMatch(html, /type="text"/, `${page} 不得出现任意文本输入`);
@@ -205,80 +205,90 @@ test("公开页零后端依赖(实验两页仅允许公开测试接口)", async 
     } else {
       assert.doesNotMatch(html, /<form/, `${page} 不得出现表单提交`);
     }
-    assert.doesNotMatch(html, /sessionStorage|localStorage/, `${page} 无会话概念`);
+    // 会话读写收敛在共享脚本(docs.js/experiment.js),页面 HTML 不内联
+    assert.doesNotMatch(html, /sessionStorage|localStorage/, `${page} 无内联会话读写`);
     assert.doesNotMatch(html, /href="\/lab/, `${page} 不得硬链接运行台(公开镜像物理排除 /lab)`);
     for (const url of [...html.matchAll(/fetch\((["'])([^"']+)\1/g)].map((m) => m[2])) {
-      const allowed = url.startsWith("/showcase-data/") || (isExperiment && url.startsWith("/api/v1/public/"));
-      assert.ok(allowed, `${page} 的 fetch 只允许 /showcase-data/(实验页另允许公开测试接口):${url}`);
+      const allowed = url.startsWith("/showcase-data/") ||
+        (isExperiment && EXPERIMENT_API_OK.test(url));
+      assert.ok(allowed, `${page} 的 fetch 只允许 /showcase-data/(实验模块页另允许契约 API):${url}`);
     }
   }
 });
 
-test("实验模块只有压缩用例与对比用例两个入口", async () => {
+test("实验模块:模板中心为唯一入口;发起与详情为二级页(原型 §实验)", async () => {
   const index = await readPage("/experiment/index.html");
-  assert.match(index, /\/experiment\/compression/, "实验根页指向压缩用例");
-  assert.match(index, /\/experiment\/comparison/, "实验根页指向对比用例");
-  const compression = await readPage("/experiment/compression.html");
-  const comparison = await readPage("/experiment/comparison.html");
-  // 侧栏树只有两个子项
-  for (const html of [compression, comparison]) {
-    const module = html.match(/<details class="side-group[^>]*open[^>]*>\s*<summary>[\s\S]*?<\/details>/g) || [];
-    const experimentGroup = module.find((block) => block.includes("实验"));
-    assert.ok(experimentGroup, "实验模块侧栏分组存在");
-    assert.equal((experimentGroup.match(/<li>/g) || []).length, 2, "实验模块一级只有两个入口");
-  }
-  // 压缩用例页:Session 为原地选中,不得有指向自身的「进入实验」链接
-  assert.doesNotMatch(compression, /用该 Session 进入压缩用例实验/, "压缩页内不得有自指的进入实验链接");
-  assert.match(compression, /data-select-session/, "压缩页 Session 列表有原地选中按钮");
-  assert.match(compression, /currentSessionId/, "压缩页操作区显示当前作用于的 Session");
-  // 压缩用例页:三个手动操作 + 12 格矩阵空状态
-  assert.match(compression, /生成四份上下文/, "压缩页有「生成四份上下文」按钮");
-  assert.match(compression, /运行当前组合/, "压缩页有「运行当前组合」按钮");
-  assert.match(compression, /运行完整 4×3/, "压缩页有「运行完整 4×3」按钮");
-  assert.match(compression, /context-library\.json/, "压缩页读长上下文库(三个 Session 数据源)");
-  const matrixCells = (compression.match(/matrix-empty/g) || []).length;
-  assert.ok(matrixCells >= 12, `压缩页 4×3 矩阵需 12 个空状态格子(实际 ${matrixCells})`);
-  // 对比用例页:重复 3/5、9/15、工具范围与自定义条件提示
-  assert.match(comparison, /cases\.json/, "对比页读用例库公开投影");
-  assert.match(comparison, /value="3"/, "对比页提供重复 3 次选项");
-  assert.match(comparison, /value="5"/, "对比页提供重复 5 次选项");
-  assert.doesNotMatch(comparison, /value="[24678]"/, "对比页不提供 3/5 之外的重复次数");
-  assert.match(comparison, /9 个运行/, "对比页显示 3×3=9");
-  assert.match(comparison, /15 个运行/, "对比页显示 3×5=15");
-  assert.match(comparison, /自定义条件/, "对比页提示自定义工具范围口径");
-  assert.match(comparison, /尚未发起/, "对比页任务进度为真实空状态");
+  assert.match(index, /实验模板/, "实验根页是模板中心");
+  assert.match(index, /唯一自变量|仅改变一个受控变量/, "模板中心写明单变量口径");
+  assert.match(index, /loadTemplates|test-options|experiment-templates/, "模板中心从模板注册表读数据");
+  assert.match(index, /\/experiment\/run\?template=/, "模板卡片进入统一发起页");
+  // 对比用例旧入口已删除,由统一发起页取代
+  await assert.rejects(() => readPage("/experiment/comparison.html"), "对比用例入口页应已删除(由 /experiment/run 取代)");
+
+  // 模板卡片:标题/受控变量用规范中文,技术口径行保留原变量名(IA §二.7 文案分层)
+  const experimentJs = await readFile(new URL("../public/docs/experiment.js", import.meta.url), "utf8");
+  assert.match(experimentJs, /formal-single-variable/, "classification 兼容 real 注册表值");
+  assert.match(experimentJs, /长上下文记忆策略对比/, "模板标题有中文展示名映射");
+  assert.match(experimentJs, /完整上下文/, "变体标签有中文展示名映射");
+
+  // 统一发起页:plan → 确认 → 提交;变体不可编辑;预估条必须先显示
+  const run = await readPage("/experiment/run.html");
+  assert.match(run, /template-batches\/plan/, "发起页所有者路径接 plan 预估");
+  assert.match(run, /精确运行数/, "预估条必须显示精确运行数");
+  assert.match(run, /变体由模板定义,任何角色不可编辑/, "变体数组任何角色不可编辑");
+  assert.match(run, /高级设置\(仅所有者/, "高级设置仅所有者渲染");
+  assert.match(run, /受控变量/, "左栏展示受控变量");
+  assert.match(run, /断开页面不影响后台任务/, "提交前提示断页不中断");
+
+  // 批次列表:公告 Tab + 我的批次 Tab
+  const batches = await readPage("/experiment/batches.html");
+  assert.match(batches, /公告批次/, "批次列表有公告 Tab");
+  assert.match(batches, /我的批次/, "批次列表有我的批次 Tab");
+  assert.match(batches, /publications\/index\.json/, "公告 Tab 读发布索引");
+  assert.match(batches, /个人测试 · 非正式结果/, "匿名批次标记非正式结果");
+
+  // 批次详情:口径卡 + 请求/生效参数 + 按变量分组;哈希 8 位短显
+  const batch = await readPage("/experiment/batch.html");
+  assert.match(batch, /实验口径/, "批次详情有口径卡");
+  assert.match(batch, /请求参数与实际生效参数/, "批次详情有请求/生效对照表");
+  assert.match(batch, /按受控变量分组/, "结果按模板变量分组(不按 agent_mode)");
+  assert.match(batch, /个人测试 · 非正式结果/, "匿名任务视图标记非正式结果");
+  assert.match(batch, /E\.hashChip/, "批次哈希统一用 hashChip 组件");
+  assert.match(experimentJs, /slice\(0, 8\)/, "哈希 chip 8 位短显(共享组件)");
+  assert.match(batch, /\/api\/v1\/runs\//, "所有者视图可下钻单次运行明细");
+  assert.match(batch, /无模板/, "无模板批次挂中性标记");
 });
 
 test("我的测试页:读公开任务接口,空状态与匿名声明齐全", async () => {
   const page = await readPage("/test/index.html");
   assert.match(page, /\/api\/v1\/public\/test-jobs/, "我的测试页读取公开任务接口");
-  assert.match(page, /匿名测试结果/, "页面固定显示匿名结果声明");
-  assert.match(page, /不进入公告指标/, "声明不进入公告指标");
+  assert.match(page, /个人测试结果不会进入公告|匿名测试结果/, "页面固定显示非正式结果声明");
+  assert.match(page, /不会进入公告|不进入公告指标/, "声明不进入公告");
   assert.match(page, /尚未发起任何测试/, "空任务时显示真实空状态");
   assert.match(page, /每 5 秒自动刷新/, "运行中任务自动刷新进度");
   assert.match(page, /data-cancel/, "运行中任务可取消(只阻止未开始单元)");
   assert.doesNotMatch(page, /\/api\/v1\/(?!public\/)/, "只允许匿名公开接口");
-  // 顶栏导航:全站页面提供「我的测试」入口
-  const home = await readPage("/index.html");
-  assert.match(home, /href="\/test\/"/, "顶栏需有我的测试入口");
+  // 顶部导航:五模块含「我的测试」,由共享脚本注入全站
+  const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
+  assert.match(sharedJs, /\/test\//, "共享导航含我的测试入口");
 });
 
 test("实验页手动触发:任务提交只在函数体内,由点击调用", async () => {
-  for (const page of ["/experiment/compression.html", "/experiment/comparison.html"]) {
-    const html = await readPage(page);
-    const posts = [...html.matchAll(/fetch\("\/api\/v1\/public\/test-jobs"/g)];
-    assert.ok(posts.length > 0, `${page} 应有公开测试接口提交入口`);
-    // 静态口径:提交调用必须封装在函数内(return fetch),或全部出现在点击处理函数注册之后
-    const wrapped = [...html.matchAll(/return fetch\("\/api\/v1\/public\/test-jobs"/g)];
-    const clickIdx = html.indexOf('addEventListener("click"');
-    const firstPost = html.indexOf('fetch("/api/v1/public/test-jobs"');
-    const encapsulated =
-      wrapped.length === posts.length ||
-      (clickIdx !== -1 && firstPost > clickIdx);
-    assert.ok(encapsulated, `${page} 的任务提交必须由点击触发(页面加载不创建任务)`);
-    assert.match(html, /addEventListener\("click"/, `${page} 需有点击触发入口`);
-    assert.match(html, /页面加载|不会创建实验任务|只在点击时/, `${page} 需声明页面加载不创建任务`);
-  }
+  // 压缩用例页:字面 fetch 封装在 postJob 内,按钮点击才调用
+  const compression = await readPage("/experiment/compression.html");
+  const posts = [...compression.matchAll(/fetch\(\"\/api\/v1\/public\/test-jobs\"/g)];
+  assert.ok(posts.length > 0, "压缩页应有公开测试接口提交入口");
+  const wrapped = [...compression.matchAll(/return fetch\(\"\/api\/v1\/public\/test-jobs\"/g)];
+  assert.equal(wrapped.length, posts.length, "压缩页提交必须封装在函数内");
+  assert.match(compression, /只在点击时调用公开测试接口/, "压缩页声明页面加载不创建任务");
+
+  // 统一发起页:提交走共享 API 封装(E.post),由提交按钮点击触发;预估先行
+  const run = await readPage("/experiment/run.html");
+  assert.match(run, /E\.post\("\/api\/v1\/template-batches"/, "所有者提交走模板批次端点");
+  assert.match(run, /E\.post\("\/api\/v1\/public\/test-jobs"/, "匿名提交走公开测试端点");
+  const submitIdx = run.indexOf('document.getElementById("submitBtn").addEventListener("click", submit)');
+  assert.ok(submitIdx > -1, "发起页提交必须由按钮点击触发(页面加载不创建任务)");
+  assert.match(run, /disabled/, "提交按钮在预估确认前保持禁用");
 });
 
 test("用例库:数据驱动渲染,公开投影不含评判配置", async () => {
@@ -302,16 +312,13 @@ test("用例库:数据驱动渲染,公开投影不含评判配置", async () => 
   }
 });
 
-test("公告页空框架:只读正式发布索引,未发布统一显示空状态", async () => {
+test("公告页空框架:只读正式发布索引与静态资产,未发布统一显示空状态", async () => {
   const announce = await readPage("/index.html");
   assert.match(announce, /<body class="dashboard-page">/, "首页保持全宽仪表盘布局体系");
-  assert.match(announce, /正式发布批次说明/, "公告页预留批次说明区");
-  assert.match(announce, /Agent 对比汇总/, "公告页预留 Agent 对比汇总区");
-  assert.match(announce, /压缩结果/, "公告页预留压缩结果区");
-  assert.match(announce, /代表性实例/, "公告页预留代表性实例区");
-  assert.match(announce, /单次运行下钻/, "公告页预留单次运行下钻区");
   assert.match(announce, /尚未发布/, "未发布时统一显示「尚未发布」空状态");
+  assert.doesNotMatch(announce, /id="(agent-summary|examples|drilldown|compression)"/, "五个空区块已合并为单一发布公告区(IA §4.5,不再有独立锚点节)");
   assert.match(announce, /publications\/index\.json/, "公告页只读正式发布索引");
+  assert.doesNotMatch(announce, /\/api\/v1\//, "公告页零后端依赖(公开镜像无 engine 也可展示)");
   assert.doesNotMatch(announce, /showcase-data\/index\.json/, "公告页不再读取旧批次索引");
   assert.doesNotMatch(announce, /showcase-data\/batches\//, "公告页不再加载开发调试批次产物");
   assert.doesNotMatch(announce, /renderDashboard|renderHomeBanner/, "公告页不再渲染批次仪表盘");
@@ -358,10 +365,12 @@ test("静态站生成不发起实验:生成器只读 showcase-data 静态产物"
   assert.doesNotMatch(generator, /fetch\(|urllib|http\.request|axios/, "generate-site.mjs 不发起网络请求");
 });
 
-test("旧 docs 页面已删除,资产保留", async () => {
+test("docs 目录:静态资产保留,index 为文档模块首页(原型 v2)", async () => {
   const docsCss = await readFile(new URL("../public/docs/docs.css", import.meta.url), "utf8");
   assert.ok(docsCss.length > 0, "docs.css 必须保留(全站样式)");
-  for (const legacy of ["index", "cases", "eval", "agents", "skill", "tools", "comparison", "results"]) {
+  const docsHome = await readFile(new URL("../public/docs/index.html", import.meta.url), "utf8");
+  assert.match(docsHome, /<h1>文档<\/h1>/, "docs/index.html 为文档模块首页");
+  for (const legacy of ["cases", "eval", "agents", "skill", "tools", "comparison", "results"]) {
     await assert.rejects(
       () => readFile(new URL(`../public/docs/${legacy}.html`, import.meta.url)),
       `${legacy}.html 应已迁移删除`,

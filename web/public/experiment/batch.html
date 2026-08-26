@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>实验 · 批次详情</title>
+<meta name="description" content="批次详情:首屏口径卡(实验目的、受控变量、冻结条件、技术口径、请求/生效参数对照),第二屏按模板变量分组的结果矩阵与单次运行下钻。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head></head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <div class="topbar-actions">
+      <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
+    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
+    <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
+    <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+  </div>
+</header>
+<main class="docs-main">
+
+    <a class="crumb" href="/experiment/batches"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>返回批次列表</a>
+    <div class="eyebrow">Batch Result</div>
+    <h1 id="batchTitle">批次详情</h1>
+    <div id="batchMeta" class="lab-note" style="margin-bottom:12px">正在解析批次标识…</div>
+    <div id="jobBox" class="exp-panel" style="display:none;padding:14px 18px"></div>
+    <div id="batchWarn" class="warn-bar" style="display:none"></div>
+    <div id="mainPanels" style="display:none">
+      <div class="exp-panel" id="caliber" style="margin-bottom:16px">
+        <h2 style="font-size:15px;margin-top:0">实验口径</h2>
+        <ul class="def-list" id="defList"></ul>
+      </div>
+      <div class="exp-panel" id="params" style="margin-bottom:16px">
+        <h2 style="font-size:15px;margin-top:0">请求参数与实际生效参数</h2>
+        <div id="paramBox"></div>
+        <p class="note-line">生效值为 null 表示该参数未被模型接受;平台不会将未生效参数记录为已生效,原因见说明列。</p>
+      </div>
+      <div class="exp-panel" id="result">
+        <h2 style="font-size:15px;margin-top:0" id="resultTitle">结果</h2>
+        <div id="resultBox"><div class="placeholder-block">尚未运行。</div></div>
+      </div>
+    </div>
+    <div id="batchError" style="display:none" class="placeholder-block"></div>
+</main>
+<script src="/docs/docs.js"></script>
+<script src="/docs/experiment.js"></script>
+<script>
+(function () {
+  "use strict";
+  var E = window.EXP;
+  var params = new URLSearchParams(location.search);
+  var pathId = decodeURIComponent(location.pathname.replace(/^\/experiment\/batch\/?/, "").replace(/\/+$/, ""));
+  var batchId = pathId || params.get("id") || "";
+  var ownerJobId = params.get("job") || "";
+  var templateCache = {};
+
+  function fail(message) {
+    document.getElementById("batchMeta").style.display = "none";
+    var box = document.getElementById("batchError");
+    box.style.display = "block";
+    box.innerHTML = E.esc(message) + ' <a href="/experiment/batches">返回批次列表</a>';
+  }
+  function meta(html) { document.getElementById("batchMeta").innerHTML = html; }
+  function showWarn(text) {
+    var bar = document.getElementById("batchWarn");
+    bar.style.display = "block";
+    bar.textContent = text;
+  }
+
+  function templateMap() {
+    if (templateCache.done) return Promise.resolve(templateCache);
+    return E.loadTemplates().then(function (payload) {
+      (payload.templates || []).forEach(function (t) { templateCache[t.template_id] = t; });
+      templateCache.done = true;
+      return templateCache;
+    }).catch(function () { templateCache.done = true; return templateCache; });
+  }
+
+  var MODEL_PARAMS = [
+    ["temperature", "采样温度"],
+    ["top_p", "核采样阈值"],
+    ["reasoning_effort", "推理力度"],
+    ["seed", "随机种子"],
+    ["tool_choice", "工具选择"],
+    ["parallel_tool_calls", "并行工具调用"],
+    ["max_output_tokens", "输出上限"],
+  ];
+  function paramTable(model, applied) {
+    applied = applied || {};
+    var reasons = (model && model.unsupported_reasons) || [];
+    var rows = MODEL_PARAMS.map(function (pair) {
+      var name = pair[0];
+      var requested = model ? model[name + "_requested"] : undefined;
+      var effective = model ? model[name + "_effective"] : undefined;
+      if (requested === undefined && effective === undefined && applied[name] === undefined) return "";
+      var appliedValue = applied[name] !== undefined ? applied[name] : effective;
+      var shown = requested === undefined ? "—" : requested;
+      var note = "—";
+      if (requested != null && appliedValue == null && effective == null) {
+        var hit = reasons.filter(function (r) { return String(r).indexOf(name) === 0; });
+        note = hit.length ? hit.join(";") : "模型适配器未确认支持,未生效";
+      }
+      return '<tr><td class="mono">' + E.esc(name) + '</td><td class="mono">' + E.esc(shown) + "</td>" +
+        '<td class="mono' + (requested != null && appliedValue == null && effective == null ? " null-cell" : "") + '">' +
+        E.esc(appliedValue == null && effective == null ? "null" : appliedValue) + "</td><td>" + E.esc(note) + "</td></tr>";
+    }).join("");
+    if (!rows) return '<div class="placeholder-block">无模型参数记录。</div>';
+    return '<table class="exp-table"><tr><th>参数</th><th>请求值</th><th>生效值</th><th>说明</th></tr>' + rows + "</table>";
+  }
+
+  /* 进度区(所有者作业或匿名任务,轮询 + 协作取消) */
+  function renderProgress(getFn, cancelFn, isActive) {
+    var box = document.getElementById("jobBox");
+    function draw(data) {
+      var done = data.completed_units != null ? data.completed_units
+        : ((data.progress && data.progress.done != null) ? data.progress.done : "—");
+      var total = data.total_units != null ? data.total_units : ((data.progress && data.progress.total) || "—");
+      var current = (data.progress && data.progress.current) || "";
+      var pct = (typeof done === "number" && typeof total === "number" && total > 0) ? Math.round(done * 100 / total) : 0;
+      var status = (data.status === "running") ? "进行中" : E.jobStatusLabel(data.status);
+      var cancelBtn = isActive(data) ? ' <button type="button" class="btn-ghost" id="cancelRun">取消(仅阻止未开始的运行)</button>' : "";
+      box.style.display = "block";
+      box.innerHTML = "<div><b>" + status + "</b> · " + done + "/" + total + (current ? " · 当前:" + E.esc(current) : "") + cancelBtn + "</div>" +
+        '<div class="prog" style="margin-top:8px"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
+        (data.error ? '<div class="lab-note" style="color:#b91c1c">错误:' + E.esc(data.error) + "</div>" : "");
+      var btn = document.getElementById("cancelRun");
+      if (btn) {
+        btn.addEventListener("click", function () {
+          cancelFn().then(function () { getFn().then(draw).catch(function () {}); }).catch(function () {});
+        });
+      }
+    }
+    E.poll(getFn, draw, isActive, 5000);
+  }
+
+  /* 匿名任务视图(公开测试接口;个人测试 · 非正式结果) */
+  function renderJobView(jobId) {
+    var getJob = function () { return E.get("/api/v1/public/test-jobs/" + encodeURIComponent(jobId)); };
+    function draw(job) {
+      var badges = E.badge("b-blue", "个人测试 · 非正式结果");
+      var result = job.result || {};
+      var cls = job.template_id ? (result.classification || "") : "";
+      var heading = job.template_id ? E.title({ template_id: job.template_id }) : "批次详情";
+      document.getElementById("batchTitle").innerHTML = heading + " " + badges + (cls ? " " + E.classificationBadge(cls) : "");
+      meta("任务 " + E.hashChip(job.job_id) + " · 发起于 " + E.fmtTime(job.created_at) + " · " +
+        (job.test_type === "COMPRESSION_CASE" ? "压缩用例" : "对比用例") + " · 状态 " + E.jobStatusLabel(job.status));
+      if (job.template_id) {
+        var def = result.fixed_conditions || {};
+        templateMap().then(function (cache) {
+          var t = cache[job.template_id];
+          var rawVariants = def.variant_labels || (t ? (t.variants || []).map(function (v) { return v.label; }) : []);
+          var variants = t ? rawVariants.map(function (v) { return E.variantLabel(t, v); }) : rawVariants;
+          var frozenModel = (def.frozen_run_config && def.frozen_run_config.model) || {};
+          var firstRun = (result.runs || [])[0] || {};
+          document.getElementById("defList").innerHTML =
+            '<li><span class="k">实验目的</span><span>' + E.esc(t ? t.purpose : job.template_id) + "</span></li>" +
+            '<li><span class="k">受控变量</span><span><b>' + E.esc(t ? E.varLabel(t) : (def.independent_variable || []).join(",")) + "</b>" +
+            (variants.length ? " — " + E.esc(variants.join(" / ")) : "") + "</span></li>" +
+            '<li><span class="k">冻结条件</span><span>统一原生底座、服务端模型配置、平台工具目录与冻结数据;批次中仅受控变量不同。重复 ' + E.esc(def.repeat_count || job.repeat_count) + " 次。</span></li>" +
+            '<li><span class="k">技术口径</span><span class="tpl-tech">' + E.esc(job.template_id) + " v" + E.esc(job.template_version || (t ? t.version : "?")) +
+            " · variable: " + E.esc((def.independent_variable || (t ? t.independent_variable : [])).join(",")) +
+            " · fixed " + E.hashChip(result.fixed_conditions_hash || "") + "</span></li>";
+          document.getElementById("paramBox").innerHTML = paramTable(frozenModel, firstRun.applied_model_params);
+        });
+      } else {
+        document.getElementById("defList").innerHTML =
+          '<li><span class="k">实验目的</span><span>公开通道测试任务(非模板批次);实验定义以任务固定条件为准。</span></li>' +
+          '<li><span class="k">任务范围</span><span>' + E.esc(job.execution_scope || "") + " · " + (job.session_id ? "Session " + E.esc(job.session_id) : "用例 " + E.esc(job.case_id || "")) + "</span></li>" +
+          '<li><span class="k">固定条件哈希</span><span>' + E.hashChip(result.fixed_conditions_hash || "") + "</span></li>";
+        document.getElementById("paramBox").innerHTML = '<div class="placeholder-block">公开测试通道不展示参数对照表(逐单元明细见「我的测试」)。</div>';
+      }
+      document.getElementById("mainPanels").style.display = "block";
+      renderJobResult(job);
+      if (E.jobActive(job.status)) {
+        renderProgress(getJob, function () {
+          return E.post("/api/v1/public/test-jobs/" + encodeURIComponent(jobId) + "/cancel");
+        }, function (data) { return E.jobActive(data.status); });
+        E.poll(getJob, function (fresh) { renderJobResult(fresh); }, function (data) { return E.jobActive(data.status); }, 5000);
+      }
+    }
+    getJob().then(draw).catch(function (err) {
+      if (err.status === 404) fail("批次不存在或无权查看:匿名任务仅本人可见(404 不泄露存在性);所有者批次需登录后查看。");
+      else fail("任务读取失败:" + (err.message || "服务不可达"));
+    });
+  }
+
+  function renderJobResult(job) {
+    var box = document.getElementById("resultBox");
+    var result = job.result || {};
+    if (job.status === "QUEUED" || job.status === "RUNNING") {
+      var units = job.units || [];
+      var doneCount = units.filter(function (u) { return u.status === "COMPLETE"; }).length;
+      box.innerHTML = '<div class="placeholder-block">批次进行中:已完成 ' + doneCount + "/" + units.length + " 单元;结果完成后在此展示。</div>";
+      return;
+    }
+    if (job.template_id && result.by_variant) {
+      document.getElementById("resultTitle").textContent = "结果 · 按受控变量分组";
+      var rows = Object.keys(result.by_variant).map(function (label) {
+        var v = result.by_variant[label];
+        return "<tr><td>" + E.esc(label) + "</td><td>" + v.total_runs + "</td>" +
+          '<td class="cell-ok">' + v.valid_runs + "</td>" +
+          '<td class="mono">' + E.esc(v.bypassed_event_count || 0) + "</td>" +
+          '<td class="mono">' + E.esc((v.stop_reasons || []).join("、") || "—") + "</td></tr>";
+      }).join("");
+      var runsHtml = (result.runs || []).map(function (r) {
+        return "<tr><td>" + E.esc(r.variant_label) + " · 第" + ((r.repeat_index || 0) + 1) + "次</td>" +
+          "<td>" + (r.validity === "VALID" ? '<span class="cell-ok">有效</span>' : '<span class="null-cell">' + E.esc(r.validity || "无效") + "</span>") + "</td>" +
+          '<td class="mono">' + E.esc(r.actual_agent_steps || "—") + "</td>" +
+          '<td class="mono">' + E.esc(r.stop_reason || "—") + "</td>" +
+          '<td class="mono">' + E.esc(r.duration_ms || "—") + " ms</td>" +
+          "<td>" + E.hashChip(r.config_hash) + "</td></tr>";
+      }).join("");
+      box.innerHTML = '<table class="exp-table"><tr><th>分组</th><th>运行数</th><th>有效</th><th>旁路事件</th><th>停止原因</th></tr>' + rows + "</table>" +
+        '<h3 style="font-size:14px;margin:18px 0 6px">逐次运行(' + (result.runs || []).length + ")</h3>" +
+        '<table class="exp-table"><tr><th>运行</th><th>有效性</th><th>步数</th><th>停止原因</th><th>耗时</th><th>config_hash</th></tr>' + runsHtml + "</table>" +
+        ((result.skipped_run_ids || []).length ? '<p class="note-line">取消后未执行的运行:' + E.esc(result.skipped_run_ids.join("、")) + "</p>" : "");
+      return;
+    }
+    if (job.execution_scope === "context-only") {
+      var stats = result.stats || {};
+      var variants = ["full-session", "recent-window", "single-summary", "budgeted-session"];
+      box.innerHTML = '<table class="exp-table"><tr><th>上下文方式</th><th>压缩前 Token</th><th>压缩后 Token</th></tr>' +
+        variants.map(function (v) {
+          var original = (stats.original_tokens || {})[v];
+          var working = (stats.working_tokens || {})[v];
+          return "<tr><td>" + E.esc(v) + "</td><td class=\"mono\">" + E.esc(original != null ? original : "—") +
+            '</td><td class="mono">' + E.esc(working != null ? working : "—") + "</td></tr>";
+        }).join("") + "</table>" +
+        '<p class="note-line">本任务 0 个 Agent 运行(只生成四份上下文工件);完整压缩前后对照见<a href="/context/library">长上下文库</a>。</p>';
+      return;
+    }
+    var units = job.units || [];
+    box.innerHTML = '<table class="exp-table"><tr><th>单元</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr>' +
+      units.map(function (u) {
+        return "<tr><td>" + E.esc((u.context_variant ? u.context_variant + " × " : "") + u.agent_mode_id + " · 第" + ((u.repeat_index || 0) + 1) + "次") + "</td>" +
+          "<td>" + (u.task_success ? '<span class="cell-ok">成功</span>' : '<span class="null-cell">未成功</span>') + (u.validity === "INVALID" ? ' <span class="null-cell">无效</span>' : "") + "</td>" +
+          '<td class="mono">' + E.esc(u.actual_agent_steps || "—") + '</td><td class="mono">' + E.esc(u.stop_reason || "—") + '</td><td class="mono">' + E.esc(u.duration_ms || "—") + " ms</td></tr>";
+      }).join("") + "</table>" +
+      (job.error ? '<p class="note-line">错误:' + E.esc(job.error) + "</p>" : "");
+  }
+
+  /* 所有者批次视图(数据服务口径卡 + 请求/生效参数 + 变量分组矩阵) */
+  function renderOwnerView(batch) {
+    var fc = batch.fixedConditions || {};
+    var noTemplate = !fc.template_id;
+    var cls = fc.template_classification || "";
+    var heading = fc.template_id ? E.title({ template_id: fc.template_id }) : "批次详情";
+    document.getElementById("batchTitle").innerHTML = heading + " " +
+      (noTemplate ? E.esc("无模板") : E.classificationBadge(cls));
+    if (cls === "special-cross") showWarn("专项交叉模板:一次改变两个条件,结果不可归因于单一变量。");
+    meta("批次 " + E.hashChip(batch.id) + " · " + E.esc(batch.name || "") + " · 创建 " + E.fmtTime(batch.createdAt) +
+      " · " + E.batchStatusLabel(batch.status) + " · " + (batch.runs || []).length + " 次运行");
+
+    templateMap().then(function (cache) {
+      var t = cache[fc.template_id];
+      var rawVariants = fc.variant_labels || (t ? (t.variants || []).map(function (v) { return v.label; }) : []);
+      var variants = t ? rawVariants.map(function (v) { return E.variantLabel(t, v); }) : rawVariants;
+      var frozen = fc.frozen_run_config || {};
+      var firstRun = (batch.runs || [])[0] || {};
+      var mc = firstRun.modelConfig || {};
+      var perRun = mc.perRunConfig || {};
+      var tools = perRun.tools || {};
+      var excluded = tools.excluded_tools || [];
+      document.getElementById("defList").innerHTML =
+        '<li><span class="k">实验目的</span><span>' + E.esc(t ? t.purpose : (fc.template_id || "无模板批次")) + "</span></li>" +
+        '<li><span class="k">受控变量</span><span><b>' + E.esc(t ? E.varLabel(t) : (fc.independent_variable || []).join(",")) + "</b>" +
+        (variants.length ? " — " + E.esc(variants.join(" / ")) : "") + "</span></li>" +
+        '<li><span class="k">冻结条件</span><span>' + E.esc(frozenSummary(frozen, fc)) + ";批次中仅受控变量不同。</span></li>" +
+        '<li><span class="k">技术口径</span><span class="tpl-tech">' + E.esc(fc.template_id || "无模板") + " v" + E.esc(fc.template_version || "?") +
+        " · variable: " + E.esc((fc.independent_variable || []).join(",")) +
+        " · config " + E.hashChip(mc.configHash || "") + " · fixed " + E.hashChip(fc.fixed_conditions_hash || "") + "</span></li>" +
+        '<li><span class="k">工具可见性</span><span>' +
+        (excluded.length ? "排除 " + excluded.length + " 项(" + excluded.slice(0, 3).join(", ") + (excluded.length > 3 ? "…" : "") + ")"
+          : "完整目录可见(无排除)") +
+        " · 目录 " + E.esc(tools.catalog_version || "—") +
+        " · Schema 哈希 " + E.hashChip(mc.toolSchemaHash || "") +
+        " · 合格目录哈希 " + E.hashChip(mc.eligibleCatalogHash || "") + "</span></li>";
+      document.getElementById("paramBox").innerHTML = (batch.runs || []).length
+        ? paramTable(perRun.model || {})
+        : '<div class="placeholder-block">批次进行中:参数对照将在运行落库后展示。</div>';
+    });
+
+    document.getElementById("mainPanels").style.display = "block";
+    renderOwnerResult(batch);
+
+    if (ownerJobId) {
+      renderProgress(function () { return E.get("/api/v1/jobs/" + encodeURIComponent(ownerJobId)); },
+        function () { return E.post("/api/v1/jobs/" + encodeURIComponent(ownerJobId) + "/cancel"); },
+        function (data) { return data.status === "running"; });
+    } else if (batch.status === "RUNNING") {
+      E.poll(function () { return E.get("/api/v1/batches/" + encodeURIComponent(batch.id)); },
+        renderOwnerResult, function (data) { return data.status === "RUNNING"; }, 5000);
+    }
+  }
+
+  function frozenSummary(frozen, fc) {
+    var parts = [];
+    if (frozen.execution_engine) parts.push("循环 " + frozen.execution_engine);
+    if (frozen.model && frozen.model.model_id) parts.push("模型 " + frozen.model.model_id);
+    if (frozen.tools && frozen.tools.catalog_version) parts.push("工具目录 " + frozen.tools.catalog_version);
+    if (frozen.fixture_version || fc.fixture_set_id) parts.push("冻结数据 " + (fc.fixture_set_id || frozen.fixture_version));
+    if (frozen.judge_version) parts.push("评判 " + frozen.judge_version);
+    if (frozen.prompt_version) parts.push("提示词 " + frozen.prompt_version);
+    parts.push("重复 " + (fc.repeat_count != null ? fc.repeat_count : "?") + " 次");
+    return parts.join(" · ");
+  }
+
+  function renderOwnerResult(batch) {
+    var box = document.getElementById("resultBox");
+    var runs = batch.runs || [];
+    if (batch.status === "FAILED") {
+      box.innerHTML = '<div class="placeholder-block">批次执行失败:固定条件校验或执行前检查未通过,不生成结果矩阵;失败原因见作业记录与批次状态。</div>';
+      return;
+    }
+    if (!runs.length) {
+      box.innerHTML = '<div class="placeholder-block">批次进行中:运行明细在完成后逐次落库;断开页面不影响后台执行。</div>';
+      return;
+    }
+    document.getElementById("resultTitle").textContent = "结果 · 按受控变量分组";
+    var groups = {};
+    runs.forEach(function (r) {
+      var mc = r.modelConfig || {};
+      var key = mc.variantLabel || r.variant_id || "—";
+      groups[key] = groups[key] || [];
+      groups[key].push(r);
+    });
+    var rows = Object.keys(groups).map(function (label) {
+      var list = groups[label];
+      var complete = list.filter(function (r) { return r.status === "COMPLETE"; }).length;
+      return "<tr><td>" + E.esc(label) + "</td><td>" + list.length + "</td><td>" + complete + "</td>" +
+        "<td>" + (list.length - complete) + "</td>" +
+        '<td><button type="button" class="drill" data-group="' + E.esc(label) + '">展开 ' + list.length + " 次运行</button></td></tr>";
+    }).join("");
+    box.innerHTML = '<table class="exp-table"><tr><th>分组</th><th>运行数</th><th>完成</th><th>无效/失败</th><th>下钻</th></tr>' + rows + "</table>" +
+      '<div id="groupDrill"></div>';
+    Array.prototype.forEach.call(box.querySelectorAll("[data-group]"), function (btn) {
+      btn.addEventListener("click", function () { drillGroup(groups[btn.getAttribute("data-group")]); });
+    });
+  }
+
+  function drillGroup(runs) {
+    var box = document.getElementById("groupDrill");
+    box.innerHTML = runs.map(function (r, index) {
+      var mc = r.modelConfig || {};
+      var repeatIndex = mc.repeatIndex != null ? mc.repeatIndex : index;
+      return '<div class="run-drill"><b>' + E.esc(mc.variantLabel || r.variant_id) + " · 第" + (repeatIndex + 1) + "次</b> · " +
+        E.batchStatusLabel(r.status) + " · config " + E.hashChip(mc.configHash || "") +
+        (r.error_category ? ' · <span class="null-cell">' + E.esc(r.error_category) + "</span>" : "") +
+        ' <button type="button" class="drill" data-run="' + E.esc(r.id) + '">单次运行明细</button>' +
+        '<div class="run-detail" id="run-' + E.esc(r.id) + '" style="display:none"></div></div>';
+    }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll("[data-run]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var target = document.getElementById("run-" + btn.getAttribute("data-run"));
+        if (target.style.display === "block") { target.style.display = "none"; return; }
+        target.style.display = "block";
+        if (target.getAttribute("data-loaded")) return;
+        E.get("/api/v1/runs/" + encodeURIComponent(btn.getAttribute("data-run")) + "/detail").then(function (detail) {
+          target.setAttribute("data-loaded", "1");
+          var toolCalls = detail.toolCalls || [];
+          var modelCalls = detail.modelCalls || [];
+          var measurements = (detail.measurements || [])[0] || {};
+          target.innerHTML =
+            '<div class="stat-mini">' +
+            '<span class="m"><b>' + E.esc(toolCalls.length) + "</b>工具调用</span>" +
+            '<span class="m"><b>' + E.esc(modelCalls.length) + "</b>模型调用</span>" +
+            '<span class="m"><b>' + E.esc(measurements.total_duration_ms != null ? measurements.total_duration_ms : "—") + "</b>总耗时 ms</span>" +
+            '<span class="m"><b>' + E.esc(measurements.prompt_tokens != null ? measurements.prompt_tokens : "—") + "</b>输入 Token</span>" +
+            '<span class="m"><b>' + E.esc(measurements.completion_tokens != null ? measurements.completion_tokens : "—") + "</b>输出 Token</span>" +
+            "</div>" +
+            (toolCalls.length ? '<table class="exp-table"><tr><th>#</th><th>工具</th><th>状态</th><th>冻结命中</th><th>耗时</th></tr>' +
+              toolCalls.map(function (c) {
+                return "<tr><td>" + E.esc(c.sequence) + '</td><td class="mono">' + E.esc(c.tool_name) + "</td><td>" + E.esc(c.status) +
+                  "</td><td>" + (c.fixture_hit ? "是" : "否") + '</td><td class="mono">' + E.esc(c.duration_ms != null ? c.duration_ms : "—") + " ms</td></tr>";
+              }).join("") + "</table>" : "") +
+            '<p class="note-line">事件流 ' + (detail.events || []).length + " 条;护栏检查 " + (detail.guardrailChecks || []).length +
+            " 条;工件 " + (detail.artifacts || []).length + " 件。</p>";
+        }).catch(function (err) {
+          target.innerHTML = '<div class="placeholder-block">明细读取失败:' + E.esc(err.message || "数据服务不可用") + "</div>";
+        });
+      });
+    });
+  }
+
+  if (!batchId) { fail("缺少批次标识。"); }
+  else if (E.isOwner()) {
+    E.get("/api/v1/batches/" + encodeURIComponent(batchId)).then(renderOwnerView).catch(function (err) {
+      if (err.status === 404 || err.status === 503) renderJobView(batchId);
+      else fail("批次读取失败:" + (err.message || "服务不可达"));
+    });
+  } else {
+    renderJobView(batchId);
+  }
+})();
+</script>
+
+</body>
+
+</html>

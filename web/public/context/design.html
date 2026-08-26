@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -111,7 +111,6 @@
       <ul>
         <li><a href="#cases">六套用例 × 两条变体</a></li>
         <li><a href="#assertions">上下文断言</a></li>
-        <li><a href="#linkage">联动对照(压缩质量 × 实现方式)</a></li>
         <li><a href="#launch">如何发起</a></li>
       </ul>
     </aside>
@@ -132,10 +131,8 @@
   <li><strong>forbidden_facts 不入答案</strong>:过期/旧口径取值不得出现在最终答案;</li>
   <li><strong>注入隔离</strong>:untrusted 条目不在指令区且被包裹(或被整体隔离)。</li>
 </ul>
-    <h2 id="linkage">联动对照(压缩质量 × 实现方式)</h2>
-<p>压缩对照只换上下文处理策略、Agent 实现固定为完整工程模式;要回答「压缩后的内容到底好不好」,可发起<strong>联动对照</strong>:同一套长上下文的<strong>原始内容(full-raw)与压缩内容(budgeted-comp)分别过三种实现方式</strong>(裸 tool calling / LangGraph ReAct / 完整工程模式),得到 2 变体 × 3 组共 6 格对照——若压缩格在工具选择、关键事实召回、禁用事实泄漏上不劣于原始格,压缩即是划算的。登录后在运行台或<a href="/context/library">长上下文库</a>发起;结果口径见<a href="/context/results">用例结果</a>。</p>
     <h2 id="launch">如何发起</h2>
-<p>登录后进入运行台:「压缩对照批次」或「联动对照(三组 × 两变体)」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>
+<p>登录后进入运行台「压缩对照批次」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>
       </div>
     </div>
   </main>

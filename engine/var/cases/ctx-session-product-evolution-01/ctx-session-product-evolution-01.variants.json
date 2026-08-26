@@ -16,11 +16,6 @@
     "gold_visible_to_compiler": false,
     "gold_visible_to_agent": false
   },
-  "agent_modes": [
-    "baseline-tool-calling",
-    "langgraph-react",
-    "full-system"
-  ],
   "context_variants": [
     {
       "variant_id": "full-session",
@@ -124,55 +119,5 @@
     "build_output_tokens",
     "build_cost",
     "warnings"
-  ],
-  "matrix": [
-    {
-      "context_variant": "full-session",
-      "agent_mode": "baseline-tool-calling"
-    },
-    {
-      "context_variant": "full-session",
-      "agent_mode": "langgraph-react"
-    },
-    {
-      "context_variant": "full-session",
-      "agent_mode": "full-system"
-    },
-    {
-      "context_variant": "recent-window",
-      "agent_mode": "baseline-tool-calling"
-    },
-    {
-      "context_variant": "recent-window",
-      "agent_mode": "langgraph-react"
-    },
-    {
-      "context_variant": "recent-window",
-      "agent_mode": "full-system"
-    },
-    {
-      "context_variant": "single-summary",
-      "agent_mode": "baseline-tool-calling"
-    },
-    {
-      "context_variant": "single-summary",
-      "agent_mode": "langgraph-react"
-    },
-    {
-      "context_variant": "single-summary",
-      "agent_mode": "full-system"
-    },
-    {
-      "context_variant": "budgeted-session",
-      "agent_mode": "baseline-tool-calling"
-    },
-    {
-      "context_variant": "budgeted-session",
-      "agent_mode": "langgraph-react"
-    },
-    {
-      "context_variant": "budgeted-session",
-      "agent_mode": "full-system"
-    }
   ]
 }

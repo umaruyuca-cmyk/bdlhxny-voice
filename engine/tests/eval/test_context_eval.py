@@ -303,8 +303,8 @@ async def test_two_variant_comparison_passes_context_assertions(finance_pack):
         assert artifact["context"]["working_tokens"] > 0
         assert artifact["provenance"]["snapshot_hash"].startswith("sha256:")
 
-    port_full = by_key["ctx-mini-port:full-raw:treatment:0"]
-    port_budgeted = by_key["ctx-mini-port:budgeted-comp:treatment:0"]
+    port_full = by_key["ctx-mini-port:full-raw:native:0"]
+    port_budgeted = by_key["ctx-mini-port:budgeted-comp:native:0"]
     # 压缩生效:budgeted 工作上下文显著小于 full,且仍受预算约束
     assert port_budgeted.context_build["workingTokens"] <= port_budgeted.context_build["tokenBudget"]
     assert port_budgeted.context_build["workingTokens"] < port_full.context_build["workingTokens"]
@@ -381,48 +381,3 @@ async def test_required_overflow_marks_run_invalid(finance_pack):
     assert "required context needs" in (judgment.context_error or "")
     # 其余运行不受影响
     assert all(r.judgment.validity == "VALID" for r in report.variant_runs if r is not overflow[0])
-
-@pytest.mark.asyncio
-async def test_linkage_modes_project_variant_by_mode_groups(finance_pack):
-    """联动对照:原始/压缩内容分别过裸调用与完整模式,组键=变体:实现方式。"""
-    from bdlh_runtime.evaluation.context_eval import (  # noqa: PLC0415
-        MODE_BASELINE,
-        _report_payload,
-        summarize_by_group,
-    )
-
-    cases = load_context_variant_cases(_views(), _fake_data())
-    report = await run_context_eval(
-        cases=cases,
-        llm=ScriptedContextModel(),
-        model="glm-4.7-flash",
-        catalog=catalog_from_snapshot(seeded_snapshot()),
-        frozen=FrozenObservations(frozen_payload()),
-        data=_fake_data(),
-        inter_run_delay_s=0,
-        agent_modes=("baseline", "treatment"),
-    )
-    keys = {record.run_key for record in report.run_records}
-    assert "ctx-mini-port:full-raw:baseline:0" in keys
-    assert "ctx-mini-port:full-raw:treatment:0" in keys
-    # 双维聚合:变体 × 实现方式
-    groups = summarize_by_group(report)
-    assert "full-raw:baseline-tool-calling" in groups
-    assert "budgeted-comp:baseline-tool-calling" in groups
-    assert "budgeted-comp:full-system" in groups
-    # 报告载荷按联动口径输出(发布侧消费同键)
-    payload = _report_payload(report)
-    assert payload["experiment_type"] == "context-link"
-    assert payload["validity_threshold"]["groups"]["full-raw:baseline-tool-calling"]["valid"] >= 1
-    # 裸组喂原始内容:注入条目原样平铺(未包裹,无隔离)是诚实结果;
-    # 压缩喂入经构建器隔离,untrusted 不进喂入文本
-    baseline_full = next(
-        o for o in report.variant_runs if o.agent_mode == MODE_BASELINE and o.variant_id == "full-raw"
-    )
-    baseline_budgeted = next(
-        o for o in report.variant_runs if o.agent_mode == MODE_BASELINE and o.variant_id == "budgeted-comp"
-    )
-    assert baseline_full.judgment.untrusted_wrapped is False
-    assert baseline_budgeted.judgment.untrusted_wrapped is True
-    assert baseline_full.judgment.tool_correct
-    assert baseline_budgeted.judgment.tool_correct

@@ -39,8 +39,15 @@ from bdlh_runtime.context import (
     ContextWindowError,
 )
 from bdlh_runtime.engine.semantic_router.encoder import Encoder
+from bdlh_runtime.guardrails.confirmations import ConfirmationProvider, ConfirmationStore
 from bdlh_runtime.guardrails.contracts import GuardrailContext
-from bdlh_runtime.guardrails.middleware import AuditRecord, GovernanceMiddleware, ToolExecutor
+from bdlh_runtime.guardrails.middleware import (
+    GOVERNANCE_PROFILE_OFF,
+    GOVERNANCE_PROFILE_STANDARD,
+    AuditRecord,
+    GovernanceMiddleware,
+    ToolExecutor,
+)
 from bdlh_runtime.tools.catalog import ToolCard, ToolCatalog
 from bdlh_runtime.tools.search import DEFAULT_TOP_K, SEARCH_TOOLS_NAME
 
@@ -135,7 +142,13 @@ class AgentResult:
 
 
 class AgentLoop:
-    """scoped / search 装载 + 原生 tool calling 循环。"""
+    """all / scoped / search 装载 + 原生 tool calling 循环(混合路线 B2 统一底座)。
+
+    新正式单变量模板统一使用本循环:``tool_loading``(即 tool_delivery)、
+    ``governance_profile``、``context_strategy``(经 AgentTurn)与限制参数
+    (``max_agent_steps``/``max_tool_calls``/``max_calls_per_tool``)显式注入,
+    不通过实现方式分支分别运行治理开关。
+    """
 
     def __init__(
         self,
@@ -153,6 +166,10 @@ class AgentLoop:
         visible_override: frozenset[str] | None = None,
         search_top_k: int | None = None,
         max_agent_steps: int | None = None,
+        governance_profile: str = GOVERNANCE_PROFILE_STANDARD,
+        confirmation_provider: ConfirmationProvider | None = None,
+        confirmation_store: ConfirmationStore | None = None,
+        max_calls_per_tool: int = 0,
     ) -> None:
         self._llm = llm
         self._catalog = catalog
@@ -174,6 +191,16 @@ class AgentLoop:
         # GT-8 检索档 top_k 批次变量:设置后固定检索条数(覆盖模型自报值,
         # 单一变量纪律);None=现状(模型自报 1..8,默认 3)。
         self._search_top_k = search_top_k
+        # 混合路线 B2/B3:治理档位与写确认提供方显式注入;两个治理变体
+        # (off/standard)使用同一循环、同一消息构建与停止规则,只改变治理配置。
+        if governance_profile not in {GOVERNANCE_PROFILE_STANDARD, GOVERNANCE_PROFILE_OFF}:
+            raise ValueError(f"governance_profile 只能是 standard|off,收到 {governance_profile!r}")
+        self._governance_profile = governance_profile
+        self._confirmation_provider = confirmation_provider
+        # 权威确认存储:显式传入优先;提供方自带 store(AutoGrant)时共用同一份,
+        # 保证中间件校验的正是授予方写入的记录(闭环)
+        self._confirmation_store = confirmation_store or getattr(confirmation_provider, "store", None)
+        self._max_calls_per_tool = max(0, max_calls_per_tool)
 
     async def run(self, turn: AgentTurn, *, stream: StreamSink | None = None) -> AgentResult:
         if self._router is not None:
@@ -205,7 +232,11 @@ class AgentLoop:
                 authenticated_user_id=turn.user_id or "guest",
                 read_only=True,
                 max_tool_calls=self._max_tool_calls,
+                governance_profile=self._governance_profile,
+                max_calls_per_tool=self._max_calls_per_tool,
             ),
+            confirmation_provider=self._confirmation_provider,
+            confirmation_store=self._confirmation_store,
         )
         # 首轮可见工具 Schema 预算预留(循环内每轮重算并复核)
         initial_cards = self._loader.load_for_turn(turn.scene_tag, authenticated=turn.authenticated)

@@ -25,6 +25,9 @@ ON CONFLICT (id, version) DO UPDATE SET
 DELETE FROM touchstone.fixture_tool_responses
 WHERE fixture_set_id = 'cmp-fixtures-v2' AND fixture_set_version = 2;
 
+-- 放宽 DDL 锁等待:ALTER TABLE 取 ACCESS EXCLUSIVE 锁,Data 服务在线时可能短暂
+-- 排队;顶部 5s 太短会触发 lock_timeout 中断整段事务(与"不停止服务亦可执行"矛盾)。
+SET LOCAL lock_timeout = '60s';
 ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN arguments_hash DROP NOT NULL;
 ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN response_hash DROP NOT NULL;
 
@@ -583,5 +586,6 @@ UPDATE touchstone.data_snapshots SET
 WHERE case_id LIKE 'cmp-%';
 
 INSERT INTO touchstone.database_changes (script_name, description)
-VALUES ('20260826-fix-comparison-mock-and-deps.sql', '校正20条对比用例 Mock 匹配、依赖结构与 fixture 内容哈希');
+VALUES ('20260826-fix-comparison-mock-and-deps.sql', '校正20条对比用例 Mock 匹配、依赖结构与 fixture 内容哈希')
+ON CONFLICT (script_name) DO NOTHING;
 COMMIT;

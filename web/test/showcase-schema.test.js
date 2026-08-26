@@ -21,15 +21,15 @@ const indexSample = {
 
 const batchSample = {
   batch_id: "b1",
-  experiment_type: "agent-implementation",
+  experiment_type: "context-strategy",
   generated_at: "2026-08-21T12:00:00+08:00",
   git_commit: "abc1234",
   model: "glm-4.7-flash",
-  fixed_conditions: { case_ids: ["research-01"], runs_per_case: 1, tool_data: "frozen", variable: "agent_mode" },
+  fixed_conditions: { case_ids: ["ctx-mini-port"], runs_per_case: 1, tool_data: "frozen", variable: "context_strategy" },
   groups: [
     {
-      key: "baseline-tool-calling",
-      label: "裸 tool calling",
+      key: "budgeted",
+      label: "budgeted（按预算压缩）",
       valid_runs: 1,
       invalid_runs: 0,
       metrics: {
@@ -48,35 +48,25 @@ const batchSample = {
     },
   ],
   outcome_counts: { win: null, regress: null, tie: null, both_fail: null, invalid: null },
-  cases: [
-    {
-      id: "research-01",
-      category: "金融研究",
-      message: "宁德时代现在什么价",
-      groups: {
-        "baseline-tool-calling": { correct: 1, hallucinated: 0, total: 1, duration_p50_ms: 3000, estimated_token_runs: 0 },
-      },
-      run_ids: { "baseline-tool-calling": ["b1-baseline-research-01-1"] },
-    },
-  ],
+  cases: [],
 };
 
 const runSample = {
-  run_id: "b1-baseline-research-01-1",
+  run_id: "b1-budgeted-ctx-mini-port-1",
   batch_id: "b1",
-  case_id: "research-01",
+  case_id: "ctx-mini-port",
   status: "COMPLETE",
-  validity: "UNCLASSIFIED",
-  experiment: { agent_mode: "baseline-tool-calling", context_strategy: null, model: "glm-4.7-flash", repeat_index: 1 },
+  validity: "VALID",
+  experiment: { agent_mode: "native-tool-calling", context_strategy: "budgeted", model: "glm-4.7-flash", repeat_index: 1 },
   sections: {
-    fixed_input: { message: "宁德时代现在什么价", scene: "research", authenticated: false, history_count: 0, allowed_tools: null },
-    context: null,
-    visible_tools: null,
+    fixed_input: { message: "组合仓最新净值是多少", scene: "research", authenticated: false, history_count: 0, allowed_tools: null },
+    context: { strategy: "budgeted", raw_tokens: 9000, working_tokens: 1200, required_retained: true, item_counts: { retained: 3, compressed: 2, referenced: 0, isolated: 1, omitted: 1 } },
+    visible_tools: ["fund.get_nav"],
     model_steps: [{ seq: 1, decision: "call_tool", latency_ms: 800 }],
-    code_decisions: null,
-    tool_results: [{ seq: 1, name: "market.get_realtime_quote", status: "SUCCESS", summary: { price: 185.5 }, source: "fixture://ab-eval", data_time: "2026-08-19T14:32:00+08:00" }],
+    code_decisions: [{ seq: 1, allowed: true }],
+    tool_results: [{ seq: 1, name: "fund.get_nav", status: "SUCCESS", summary: { nav: 1.85 }, source: "fixture://ab-eval", data_time: "2026-08-19T14:32:00+08:00" }],
     output_checks: null,
-    final_result: { answer_excerpt: "现价 185.50 元", citations: null, audit_codes: [], judgment: null },
+    final_result: { answer_excerpt: "组合仓最新净值 1.85。", citations: null, audit_codes: [], judgment: null },
     cost: { duration_ms: 3000, prompt_tokens: 1000, completion_tokens: 50, tokens_estimated: false },
   },
 };

@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item active" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -147,10 +147,9 @@
     CANCELLED: "已取消", INTERRUPTED: "已中断", PARTIAL: "部分完成",
   };
   var SCOPE_LABEL = {
-    "comparison-full": "对比用例(三种 Agent)",
     "context-only": "生成四份上下文(0 个 Agent 运行)",
     "current-combo": "运行当前组合(1 个运行)",
-    "full-matrix": "完整 4×3(12 个运行)",
+    "native-matrix": "原生 4×1 上下文实验(4 个运行)",
   };
   var ACTIVE = { QUEUED: 1, RUNNING: 1 };
   var listEl = document.getElementById("jobList");
@@ -199,7 +198,7 @@
   function render(jobs) {
     if (!jobs.length) {
       stateEl.textContent = "";
-      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 或 <a href="/experiment/comparison">对比用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
+      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
       return;
     }
     stateEl.textContent = "共 " + jobs.length + " 个任务,按创建时间倒序;运行中的任务每 5 秒自动刷新。";
@@ -242,9 +241,22 @@
     if (!box) return;
     var result = payload.result || {};
     var units = payload.units || [];
-    var html = "";
+    var html = '<p><small><span class="tag off">个人测试 · 非正式结果</span> 不进入公告指标;只有维护者审核发布的批次才进入公告。</small></p>';
+    var def = result.fixed_conditions || {};
+    if (def.experiment_definition || result.fixed_conditions_hash) {
+      html += '<p><small>实验定义:' + esc(def.experiment_definition || "—") +
+        (def.experiment_definition_note ? "(" + esc(def.experiment_definition_note) + ")" : "") +
+        ' · 固定条件哈希 <code>' + esc(String(result.fixed_conditions_hash || "").slice(0, 16)) + "…</code></small></p>";
+    }
+    var rcs = result.run_configs || {};
+    var rcKeys = Object.keys(rcs);
+    if (rcKeys.length) {
+      html += '<p><small>运行配置快照(config_hash):' + rcKeys.map(function (k) {
+        return esc(k) + " → <code>" + esc(String((rcs[k] && rcs[k].config_hash) || "").slice(0, 12)) + "…</code>";
+      }).join(" · ") + "</small></p>";
+    }
     if (payload.test_type === "COMPARISON_CASE") {
-      html += "<h4>三种 Agent 结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
+      html += "<h4>实现结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
       Object.keys(result.by_agent || {}).forEach(function (mode) {
         var a = result.by_agent[mode];
         html += "<tr><td>" + esc(mode) + "</td><td>" + a.success_count + "/" + a.total_runs + "</td><td>" +
@@ -272,7 +284,7 @@
         html += "<tr><td>" + esc(v) + "</td><td>" + esc((stats.original_tokens || {})[v]) +
           "</td><td>" + esc((stats.working_tokens || {})[v]) + "</td></tr>";
       });
-      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「完整 4×3」。</small></p>";
+      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「原生 4×1」。</small></p>";
     } else {
       html += "<h4>矩阵单元</h4><table><thead><tr><th>上下文 × Agent</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
       units.forEach(function (u) {
@@ -280,7 +292,7 @@
       });
       html += "</tbody></table>";
       var hashes = result.frozen_artifact_hashes || {};
-      html += '<p><small>冻结工件哈希(三种 Agent 复用同一批):' +
+      html += '<p><small>冻结工件哈希(各实现复用同一批):' +
         Object.keys(hashes).map(function (v) { return esc(v) + " → <code>" + String(hashes[v]).slice(0, 18) + "…</code>"; }).join(" · ") +
         "</small></p>";
     }

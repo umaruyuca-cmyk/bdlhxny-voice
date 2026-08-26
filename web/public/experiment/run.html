@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>实验 · 发起</title>
+<meta name="description" content="统一实验发起页:实验定义由模板固定;配置变更后先预估精确运行数,确认后提交;断开页面不停止后台任务。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <div class="topbar-actions">
+      <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
+    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
+    <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
+    <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+  </div>
+</header>
+<main class="docs-main">
+    <a class="crumb" href="/experiment/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>返回实验模板</a>
+    <div class="eyebrow">New Run</div>
+    <h1 id="runTitle">发起实验</h1>
+    <div id="runSub" class="page-sub" style="margin-bottom:14px">正在读取模板…</div>
+    <div id="runWarn" class="warn-bar" style="display:none"></div>
+    <div id="runBody" style="display:none">
+      <div class="run-layout">
+        <div class="exp-panel" id="definition">
+          <h2 style="font-size:15px;margin-top:0">实验定义(由模板固定,不可修改)</h2>
+          <ul class="def-list" id="defList"></ul>
+        </div>
+        <div class="exp-panel" id="config">
+          <h2 style="font-size:15px;margin-top:0">批次配置</h2>
+          <div class="field" id="fCaseWrap">
+            <label>考题(来自平台固定题库,不能自己出题)</label>
+            <select id="fCase"></select>
+            <div class="hint" id="fCaseHint">题库由平台维护并版本化,不支持提交自定义问题。</div>
+          </div>
+          <div class="field" id="fSessionWrap" style="display:none">
+            <label>长对话 Session(版本化语料)</label>
+            <select id="fSession"></select>
+            <div class="hint">三段版本化长对话,任选一段作为实验输入。</div>
+          </div>
+          <div class="field" id="fPresetWrap" style="display:none">
+            <label>工具可用性档位(版本化预设)</label>
+            <select id="fPreset"></select>
+            <div class="hint">匿名访客与所有者都只能选择预设档位;预设由平台统一定义。</div>
+          </div>
+          <div class="field" id="fModeWrap" style="display:none">
+            <label>运行方式</label>
+            <select id="fMode">
+              <option value="context-only">只生成四份上下文工件(不运行 Agent)</option>
+              <option value="native-matrix">运行原生 4×1(四种上下文方式 × 1,共 4 个运行)</option>
+            </select>
+            <div class="hint">生成与运行互不自动触发;该入口为公开测试通道,任务保留在「我的测试」。</div>
+          </div>
+          <div class="field" id="fRepeatWrap">
+            <label>重复次数(范围由模板限定)</label>
+            <select id="fRepeat"></select>
+            <div class="hint">重复运行用于评估结果稳定性,每次运行相互独立。</div>
+          </div>
+          <details class="adv" id="advBox" style="display:none">
+            <summary>高级设置(仅所有者,字段白名单内)</summary>
+            <div id="advFields"></div>
+          </details>
+          <div class="estimate">
+            <div>
+              <div class="num" id="estNum">—</div>
+              <div class="formula" id="estNote">配置变更后自动重新预估;提交前必须显示精确运行数。</div>
+              <div class="err" id="estErr" style="display:none"></div>
+            </div>
+            <button type="button" class="btn-primary" id="submitBtn" disabled>提交批次</button>
+          </div>
+        </div>
+      </div>
+      <p class="lab-note" style="margin-top:14px">断开页面不影响后台任务;提交后由后台队列执行,结果保留在批次详情与「我的测试」。客户端只能提交固定编号与白名单配置字段;问题正文、系统提示、工具定义、模型地址与密钥一律被服务端拒绝。</p>
+    </div>
+    <div id="runError" style="display:none" class="placeholder-block"></div>
+</main>
+<script src="/docs/docs.js"></script>
+<script src="/docs/experiment.js"></script>
+<script>
+(function () {
+  "use strict";
+  var E = window.EXP;
+  var params = new URLSearchParams(location.search);
+  var templateId = params.get("template") || "";
+  var owner = E.isOwner();
+  var state = { template: null, options: null, plan: null, estimate: null, blocked: "" };
+
+  var ADV_LABELS = {
+    "limits.max_tool_calls": "单次运行工具调用上限",
+    "limits.max_calls_per_tool": "单一工具重复调用上限",
+    "limits.max_agent_steps": "单次运行最大步数",
+    "tools.search_top_k": "检索装载 top_k(1–8)",
+  };
+
+  function fail(message) {
+    document.getElementById("runSub").style.display = "none";
+    var box = document.getElementById("runError");
+    box.style.display = "block";
+    box.innerHTML = E.esc(message) + ' <a href="/experiment/">返回实验模板</a>';
+  }
+  function warn(text) {
+    var bar = document.getElementById("runWarn");
+    if (!text) { bar.style.display = "none"; return; }
+    bar.style.display = "block";
+    bar.textContent = text;
+  }
+
+  function loadAll() {
+    var optionsPromise = E.get("/api/v1/public/test-options");
+    var templatesPromise = owner
+      ? E.get("/api/v1/experiment-templates").then(function (p) { return (p && p.templates) || []; })
+      : optionsPromise.then(function (p) { return (p.templates && p.templates.templates) || []; });
+    return Promise.all([optionsPromise, templatesPromise]).then(function (results) {
+      state.options = results[0];
+      var templates = results[1];
+      state.template = templates.filter(function (t) { return t.template_id === templateId; })[0] || null;
+      if (!state.template) {
+        fail("未知实验模板:" + E.esc(templateId || "(未指定)"));
+        return null;
+      }
+      return state.template;
+    });
+  }
+
+  function renderDefinition() {
+    var t = state.template;
+    document.getElementById("runTitle").textContent = E.title(t);
+    document.getElementById("runSub").textContent = t.purpose;
+    var variants = (t.variants || []).map(function (v) { return E.variantLabel(t, v.label); }).join(" / ");
+    var frozen = [];
+    var fc = t.frozen_conditions || {};
+    if (fc.model && fc.model.model_id) frozen.push("模型 " + fc.model.model_id);
+    if (fc.limits && fc.limits.max_agent_steps) frozen.push("单次运行步数上限 " + fc.limits.max_agent_steps);
+    if (fc.tools && fc.tools.catalog_version) frozen.push("工具目录 " + fc.tools.catalog_version);
+    if (fc.fixture_version) frozen.push("冻结数据 " + fc.fixture_version);
+    if (fc.judge_version) frozen.push("评判规则 " + fc.judge_version);
+    if (fc.prompt_version) frozen.push("提示词版本 " + fc.prompt_version);
+    document.getElementById("defList").innerHTML =
+      "<li><span class=\"k\">实验目的</span><span>" + E.esc(t.purpose) + "</span></li>" +
+      '<li><span class="k">受控变量</span><span><b>' + E.esc(E.varLabel(t)) + "</b>" + (variants ? " — " + E.esc(variants) : "") + "。变体由模板定义,任何角色不可编辑。</span></li>" +
+      '<li><span class="k">冻结条件</span><span>' + E.esc(frozen.join(";") || "统一 Agent 循环、模型与工具目录、冻结数据、评判规则") + ";批次中仅受控变量不同。</span></li>" +
+      '<li><span class="k">技术口径</span><span class="tpl-tech">' + E.esc(t.template_id) + " v" + E.esc(t.version) +
+      " · variable: " + E.esc((t.independent_variable || []).join(",")) +
+      " · engine: native-tool-calling" + (t.requires_capability ? " · 需要模型能力: " + E.esc(t.requires_capability) : "") + "</span></li>";
+    if (t.classification === "special-cross") {
+      warn("专项交叉模板:一次改变两个条件,结果不可归因于单一变量。");
+    }
+  }
+
+  function fillSelect(select, items, valueOf, labelOf, preferred) {
+    select.innerHTML = "";
+    items.forEach(function (item) {
+      var option = document.createElement("option");
+      option.value = valueOf(item);
+      option.textContent = labelOf(item);
+      select.appendChild(option);
+    });
+    if (preferred) select.value = preferred;
+  }
+
+  function renderConfig() {
+    var t = state.template;
+    var options = state.options;
+    var isComparison = (t.allowed_test_types || []).indexOf("COMPARISON_CASE") >= 0;
+
+    if (isComparison) {
+      var cases = options.comparison_cases || [];
+      fillSelect(
+        document.getElementById("fCase"),
+        cases,
+        function (c) { return c.case_id; },
+        function (c) { return c.title + "(" + c.case_id + " v" + c.case_version + ")"; },
+        params.get("case") || ""
+      );
+      document.getElementById("fCaseHint").textContent = cases.length
+        ? "共 " + cases.length + " 道公开考题;只发送题号,不发送问题正文。"
+        : "公开考题清单为空(数据服务不可用或未配置)。";
+    } else {
+      document.getElementById("fCaseWrap").style.display = "none";
+      document.getElementById("fSessionWrap").style.display = "block";
+      var sessions = options.sessions || [];
+      fillSelect(
+        document.getElementById("fSession"),
+        sessions,
+        function (s) { return s.session_id; },
+        function (s) { return s.title + "(约 " + (s.estimated_tokens || "?") + " tokens · " + (s.event_count || "?") + " 个事件)"; },
+        params.get("session") || ""
+      );
+      document.getElementById("fModeWrap").style.display = "block";
+      document.getElementById("fRepeatWrap").style.display = "none";
+    }
+
+    if (t.template_id === "tool-availability-degradation") {
+      document.getElementById("fPresetWrap").style.display = "block";
+      fillSelect(
+        document.getElementById("fPreset"),
+        options.tool_exclusion_presets || [],
+        function (p) { return p.preset_id; },
+        function (p) { return p.description; },
+        params.get("preset") || "full-catalog"
+      );
+    }
+
+    var lo = (t.repeat_count_range || [1, 1])[0];
+    var hi = (t.repeat_count_range || [1, 1])[1];
+    var repeatValues = [];
+    if (isComparison) {
+      if (owner) {
+        for (var i = lo; i <= hi; i++) repeatValues.push(i);
+      } else {
+        var allowed = ((options.quota || {}).repeat_options) || [];
+        allowed.forEach(function (value) { if (value >= lo && value <= hi) repeatValues.push(value); });
+      }
+      var repeatSelect = document.getElementById("fRepeat");
+      repeatSelect.innerHTML = "";
+      if (!repeatValues.length) {
+        var option = document.createElement("option");
+        option.value = "";
+        option.textContent = "无可用档位";
+        repeatSelect.appendChild(option);
+      } else {
+        repeatValues.forEach(function (value) {
+          var o = document.createElement("option");
+          o.value = value;
+          o.textContent = value + " 次";
+          repeatSelect.appendChild(o);
+        });
+      }
+    }
+
+    if (owner && (t.advanced_allowed_paths || []).length) {
+      document.getElementById("advBox").style.display = "block";
+      var box = document.getElementById("advFields");
+      box.innerHTML = "";
+      t.advanced_allowed_paths.forEach(function (path) {
+        var field = document.createElement("div");
+        field.className = "field";
+        field.innerHTML = '<label>' + E.esc(ADV_LABELS[path] || path) + '</label>' +
+          '<input type="number" data-adv-path="' + E.esc(path) + '" min="1" placeholder="留空 = 模板默认值">';
+        box.appendChild(field);
+      });
+    }
+  }
+
+  function advancedPayload() {
+    var advanced = {};
+    Array.prototype.forEach.call(document.querySelectorAll("#advFields [data-adv-path]"), function (input) {
+      var value = String(input.value || "").trim();
+      if (!value) return;
+      var parsed = Number(value);
+      if (!Number.isFinite(parsed)) return;
+      var parts = input.getAttribute("data-adv-path").split(".");
+      var node = advanced;
+      for (var i = 0; i < parts.length - 1; i++) {
+        node[parts[i]] = node[parts[i]] || {};
+        node = node[parts[i]];
+      }
+      node[parts[parts.length - 1]] = parsed;
+    });
+    return Object.keys(advanced).length ? advanced : null;
+  }
+
+  function currentRequest() {
+    var t = state.template;
+    var isComparison = (t.allowed_test_types || []).indexOf("COMPARISON_CASE") >= 0;
+    var request = { template_id: t.template_id };
+    if (isComparison) {
+      request.case_id = document.getElementById("fCase").value;
+      var repeat = document.getElementById("fRepeat").value;
+      if (repeat) request.repeat_count = Number(repeat);
+      var preset = document.getElementById("fPresetWrap").style.display !== "none" ? document.getElementById("fPreset").value : "";
+      if (preset) request.preset_id = preset;
+      if (owner) request.advanced = advancedPayload();
+    } else {
+      request.test_type = "COMPRESSION_CASE";
+      request.session_id = document.getElementById("fSession").value;
+      request.execution_scope = document.getElementById("fMode").value;
+      request.repeat_count = 1;
+    }
+    return request;
+  }
+
+  /* 预估:所有者走 /plan(精确,服务端口径);匿名本地按变体数×重复(预设模板=1 组) */
+  var planTimer = null;
+  function refreshEstimate() {
+    if (planTimer) clearTimeout(planTimer);
+    planTimer = setTimeout(runEstimate, 350);
+  }
+
+  function setEstimate(text, note, error, blocked) {
+    document.getElementById("estNum").textContent = text;
+    document.getElementById("estNote").textContent = note || "配置变更后自动重新预估;提交前必须显示精确运行数。";
+    var errBox = document.getElementById("estErr");
+    if (error) { errBox.style.display = "block"; errBox.textContent = error; }
+    else errBox.style.display = "none";
+    state.blocked = blocked || "";
+    document.getElementById("submitBtn").disabled = !!blocked;
+  }
+
+  function runEstimate() {
+    var t = state.template;
+    var isComparison = (t.allowed_test_types || []).indexOf("COMPARISON_CASE") >= 0;
+    if (!isComparison) {
+      var scope = document.getElementById("fMode").value;
+      if (scope === "context-only") {
+        setEstimate("生成 4 份上下文工件(不执行 Agent 运行)", "四份工件 = 四种上下文策略各构建一次;生成完成不自动运行。", "", "");
+      } else {
+        setEstimate("4 组 × 1 次 = 4 次运行", "四种上下文方式 × 统一原生底座;每格 1 次。", "", "");
+      }
+      return;
+    }
+    var request = currentRequest();
+    if (!request.case_id) { setEstimate("—", "请选择考题。", "", "未选择考题"); return; }
+    if (!request.repeat_count) { setEstimate("—", "当前无可用重复档位。", "模板区间与匿名配额没有交集,请登录后发起。", "无重复档位"); return; }
+    if (owner) {
+      var planRequest = { template_id: request.template_id, repeat_count: request.repeat_count };
+      if (request.preset_id) planRequest.preset_id = request.preset_id;
+      if (request.advanced) planRequest.advanced = request.advanced;
+      E.post("/api/v1/template-batches/plan", planRequest).then(function (plan) {
+        state.plan = plan;
+        setEstimate(plan.run_count + " 次运行", (plan.runs || []).length ? ((plan.fixed_conditions && plan.fixed_conditions.variant_labels || []).length + " 组 × " + request.repeat_count + " 次 = " + plan.run_count + " 次运行(服务端精确预估)") : "", "", "");
+      }).catch(function (err) {
+        state.plan = null;
+        setEstimate("预估失败", "预估接口返回错误;", err.message, err.message);
+      });
+    } else {
+      var groups = request.preset_id ? 1 : (t.variants || []).length;
+      var count = groups * request.repeat_count;
+      if (count > E.ANON_RUN_CAP) {
+        setEstimate(count + " 次运行", "匿名上限 " + E.ANON_RUN_CAP + " 次/批次。", "计划运行数 " + count + " 超过匿名上限 " + E.ANON_RUN_CAP + ",请减少重复次数或登录后发起。", "超上限");
+      } else {
+        setEstimate(groups + " 组 × " + request.repeat_count + " 次 = " + count + " 次运行", "关闭页面不影响运行;结果保留在「我的测试」。", "", "");
+      }
+    }
+  }
+
+  function submit() {
+    var t = state.template;
+    var isComparison = (t.allowed_test_types || []).indexOf("COMPARISON_CASE") >= 0;
+    var button = document.getElementById("submitBtn");
+    button.disabled = true;
+    button.textContent = "提交中…";
+    var submitJob;
+    if (isComparison && owner) {
+      submitJob = E.post("/api/v1/template-batches", currentRequest());
+    } else {
+      var payload = currentRequest();
+      if (isComparison) payload.test_type = "COMPARISON_CASE";
+      submitJob = E.post("/api/v1/public/test-jobs", payload);
+    }
+    submitJob.then(function (result) {
+      var target = isComparison && owner
+        ? "/experiment/batch/" + encodeURIComponent(result.batch_id) + "?job=" + encodeURIComponent(result.job_id || "")
+        : "/experiment/batch/" + encodeURIComponent(result.job_id);
+      location.href = target;
+    }).catch(function (err) {
+      button.disabled = false;
+      button.textContent = "提交批次";
+      var message = err.status === 429 ? "已有批次在运行,请等待完成后再发起(全局仅一个批次槽)。"
+        : err.status === 503 ? "系统异常:数据服务不可用,请稍后再试。"
+        : err.message;
+      setEstimate("提交失败", "", message, message);
+    });
+  }
+
+  if (!templateId) { location.replace("/experiment/"); }
+  else {
+    loadAll().then(function (t) {
+      if (!t) return;
+      if (!owner && !t.anonymous_allowed) {
+        fail("该模板仅登录所有者可用(" + E.esc(t.template_id) + ")。请登录后从模板中心发起。");
+        return;
+      }
+      document.getElementById("runBody").style.display = "block";
+      renderDefinition();
+      renderConfig();
+      ["fCase", "fSession", "fPreset", "fMode", "fRepeat"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener("change", refreshEstimate);
+      });
+      Array.prototype.forEach.call(document.querySelectorAll("#advFields input"), function (input) {
+        input.addEventListener("input", refreshEstimate);
+      });
+      document.getElementById("submitBtn").addEventListener("click", submit);
+      refreshEstimate();
+    }).catch(function (err) {
+      fail("模板与选项读取失败:" + E.esc(err.message || "服务不可达") + ";需要 engine 服务与 API 反代。");
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

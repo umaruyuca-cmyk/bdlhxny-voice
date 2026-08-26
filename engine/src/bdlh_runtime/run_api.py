@@ -23,8 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from bdlh_runtime.data_client import DataClient, DataServiceError
-from bdlh_runtime.evaluation.ab_eval import DEFAULT_INTERLEAVE_SEED, _report_payload, load_cases, run_ab_eval
-from bdlh_runtime.evaluation.context_eval import COMPARISON_VARIANTS
+from bdlh_runtime.evaluation.context_eval import COMPARISON_VARIANTS, DEFAULT_INTERLEAVE_SEED
 from bdlh_runtime.evaluation.run_telemetry import (
     ARTIFACT_VERSION,
     RunRecord,
@@ -33,7 +32,6 @@ from bdlh_runtime.evaluation.run_telemetry import (
     validity_of,
     verify_artifact_hash,
 )
-from bdlh_runtime.experiments import AGENT_MODE_IDS as _AGENT_MODE_IDS
 from bdlh_runtime.experiments.compression import public_session_overview
 from bdlh_runtime.experiments.job_store import JobStore, sha256_hex
 from bdlh_runtime.experiments.public_service import AnonymousJobService, PublicTestError
@@ -115,40 +113,6 @@ def _bearer_token(authorization: str | None) -> str | None:
 
 def _data() -> DataClient:
     return DataClient()
-
-
-class EvalBatchRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    case_ids: list[str] | None = Field(default=None, max_length=100, description="固定题号子集；空表示全部")
-    runs: int = Field(default=1, ge=1, le=5, description="每题每种实现的重复次数")
-    include_react: bool = Field(default=True, description="是否包含 LangGraph ReAct 实现")
-    model: str = Field(
-        default_factory=lambda: os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"),
-        min_length=1,
-        max_length=100,
-        description="模型名；缺省取 LLM_MODEL 环境变量（唯一请求级可配项，base_url 与密钥只在服务端环境变量）",
-    )
-    max_total_tokens: int | None = Field(
-        default=None,
-        ge=1,
-        description="批次 token 上限(任务四):累计消耗达到后停止发起新运行;缺省取 EVAL_MAX_TOTAL_TOKENS(未设=不限)",
-    )
-    fixture_set_id: str | None = Field(
-        default=None,
-        max_length=100,
-        description="冻结数据集(GT-2);缺省 ab-eval;负例集 ab-eval-negative-v1,通用集 mock-eval-v1",
-    )
-    visible_tools: list[str] | None = Field(
-        default=None,
-        description="工具可见集(GT-4):null=按场景默认;[] 为显式空集(能力缺口实验);元素必须属于工具目录",
-    )
-    search_top_k: int | None = Field(
-        default=None,
-        ge=1,
-        le=8,
-        description="检索装载档 top_k 批次变量(GT-8):设置后固定 search_tools 返回条数;缺省=模型自报(1..8,默认3)",
-    )
 
 
 class LoginRequest(BaseModel):
@@ -289,78 +253,6 @@ def _probe_llm(base_url: str, model: str, api_key: str) -> tuple[bool, str]:
     return False, f"HTTP {response.status_code}: {message}"
 
 
-@app.post("/api/v1/eval-batches")
-def start_eval_batch(
-    request: EvalBatchRequest,
-    account: Annotated[dict[str, Any], Depends(require_login)],
-) -> dict[str, str]:
-    data = _data()
-    try:
-        catalog = data.list_cases()
-        known = {str(case["id"]) for case in catalog}
-        unknown = [case_id for case_id in request.case_ids or [] if case_id not in known]
-        if unknown:
-            raise HTTPException(status_code=400, detail=f"未知 case_id：{unknown}")
-        _validate_visible_tools(data, request.visible_tools)
-        if not _BATCH_SLOTS.acquire(blocking=False):
-            raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
-        batch_id = data.create_batch(
-            name=f"Agent 对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
-            fixed_conditions={
-                "caseIds": request.case_ids or sorted(known),
-                "runsPerCase": request.runs,
-                "includeReact": request.include_react,
-                "model": request.model,
-                "toolData": "frozen",
-                # 门槛配置随批次记录(结果在工件 validity_threshold;任务五消费)
-                "minValidSamples": int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5")),
-                "interleaveSeed": DEFAULT_INTERLEAVE_SEED,
-                "maxTotalTokens": _max_total_tokens(request),
-                "fixtureSetId": request.fixture_set_id or "ab-eval",
-                "visibleTools": request.visible_tools,
-                "searchTopK": request.search_top_k,
-            },
-        )
-    except DataServiceError as exc:
-        with contextlib.suppress(ValueError):
-            _BATCH_SLOTS.release()
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    # LLM 配置唯一真源是服务端 env;模型客户端由 runner 内部 build_llm_from_env 构建
-    job_id = uuid4().hex[:12]
-    job: dict[str, Any] = {
-        "job_id": job_id,
-        "batch_id": batch_id,
-        "status": "running",
-        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "request": request.model_dump(),
-        "report": None,
-        "error": None,
-        "cancel_requested": False,
-    }
-    _JOBS[job_id] = job
-
-    def task() -> None:
-        try:
-            payload, run_records = _execute_eval(request, catalog, job=job)
-            _persist_runs(data, batch_id, request, payload, run_records)
-            _persist_artifact(batch_id, payload)
-            batch_status = "CANCELLED" if payload.get("stop_reason") == "CANCELLED" else "COMPLETE"
-            data.complete_batch(batch_id, batch_status)
-            job["status"] = "cancelled" if batch_status == "CANCELLED" else "done"
-            job["report"] = payload
-        except Exception as exc:  # 作业失败进入可见状态，不能让服务进程退出
-            with contextlib.suppress(DataServiceError):
-                data.complete_batch(batch_id, "FAILED")
-            job["status"] = "error"
-            job["error"] = f"{type(exc).__name__}: {exc}"
-        finally:
-            _BATCH_SLOTS.release()
-
-    threading.Thread(target=task, daemon=True).start()
-    return {"job_id": job_id, "batch_id": batch_id}
-
-
 @app.get("/api/v1/jobs/{job_id}")
 def get_job(job_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
     job = _JOBS.get(job_id)
@@ -407,7 +299,8 @@ def start_context_batch(
         selected = request.case_ids or sorted(known)
         batch_id = data.create_batch(
             name=f"上下文压缩对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
-            fixed_conditions={
+            experiment_type="context-strategy",
+            fixed_conditions=_with_conditions_hash({
                 "caseIds": selected,
                 "runsPerVariant": request.runs,
                 "variants": list(COMPARISON_VARIANTS),
@@ -417,7 +310,7 @@ def start_context_batch(
                 "minValidSamples": int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5")),
                 "interleaveSeed": DEFAULT_INTERLEAVE_SEED,
                 "maxTotalTokens": _max_total_tokens(request),
-            },
+            }),
         )
     except DataServiceError as exc:
         with contextlib.suppress(ValueError):
@@ -434,6 +327,7 @@ def start_context_batch(
         "report": None,
         "error": None,
     }
+    _init_job_progress(job, len(selected) * len(COMPARISON_VARIANTS) * request.runs, per_run=False)
     _JOBS[job_id] = job
 
     def task() -> None:
@@ -442,6 +336,7 @@ def start_context_batch(
             _persist_runs(data, batch_id, request, payload, run_records)
             _persist_artifact(batch_id, payload)
             data.complete_batch(batch_id, "COMPLETE")
+            _finish_job_progress(job)
             job["status"] = "done"
             job["report"] = payload
         except Exception as exc:  # 作业失败进入可见状态，不能让服务进程退出
@@ -456,271 +351,22 @@ def start_context_batch(
     return {"job_id": job_id, "batch_id": batch_id}
 
 
-class ContextLinkBatchRequest(BaseModel):
-    """联动对照批次:同一长上下文 原始(full-raw)/压缩(budgeted-comp) × 三组实现。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    case_ids: list[str] | None = Field(default=None, max_length=100, description="ctx 用例子集;空表示全部对照用例")
-    runs: int = Field(default=1, ge=1, le=5, description="每格(变体 × 实现)重复次数")
-    model: str = Field(
-        default_factory=lambda: os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"),
-        min_length=1,
-        max_length=100,
-    )
-
-
-class ContextCompressRequest(BaseModel):
-    """单用例压缩测试:只跑构建器(无模型调用),返回处理报告。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    case_id: str = Field(min_length=1, max_length=100)
-    variant_id: str = Field(default="budgeted-comp", max_length=100, description="取哪个变体的策略与预算")
-    token_budget: int | None = Field(default=None, ge=1, description="覆盖预算;缺省取变体预算")
-
-
-def _context_case_ids(views: list[dict[str, Any]]) -> set[str]:
-    return {
-        str(view["id"])
-        for view in views
-        if any(str(item.get("variantId")) in COMPARISON_VARIANTS for item in view.get("variants") or [])
-    }
-
-
-@app.get("/api/v1/context-cases")
-def list_context_cases(account: Annotated[dict[str, Any], Depends(require_login)]) -> list[dict[str, Any]]:
-    """长上下文库元信息:条目构成 + 保守口径 token 估算(库页列表与压缩测试共用)。"""
-    from bdlh_runtime.context.token_count import ConservativeTokenCounter
-
-    counter = ConservativeTokenCounter()
-    try:
-        views = _data().list_cases()
-    except DataServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    out: list[dict[str, Any]] = []
-    for view in views:
-        variants = [str(item.get("variantId")) for item in view.get("variants") or []]
-        if not any(variant in COMPARISON_VARIANTS for variant in variants):
-            continue
-        case_id = str(view["id"])
-        version = int(view.get("version") or 1)
-        variant_budgets: dict[str, Any] = {}
-        items: list[dict[str, Any]] = []
-        for variant_id in COMPARISON_VARIANTS:
-            if variant_id not in variants:
-                continue
-            payload = _data().get_case_variant_context(case_id, version, variant_id)
-            rows = payload.get("items") or []
-            variant_budgets[variant_id] = {
-                "strategy": str(payload.get("contextStrategy") or ""),
-                "token_budget": int(payload.get("tokenBudget") or 0),
-            }
-            if not items:
-                items = rows
-        counts = {"required": 0, "compressible": 0, "reference_only": 0, "distractor": 0}
-        token_total = 0
-        for row in items:
-            key = str(row.get("classification") or "compressible")
-            counts[key if key in counts else "compressible"] += 1
-            token_total += counter.count(str(row.get("content") or ""))
-        out.append(
-            {
-                "case_id": case_id,
-                "title": str(view.get("title") or ""),
-                "message": str(view.get("message") or ""),
-                "scene": str(view.get("scene") or ""),
-                "authenticated": bool(view.get("authenticated")),
-                "item_count": len(items),
-                "token_estimate": token_total,
-                "item_counts": counts,
-                "variants": variant_budgets,
-            }
-        )
-    return out
-
-
-@app.post("/api/v1/context-compress")
-def compress_context_case(
-    request: ContextCompressRequest, account: Annotated[dict[str, Any], Depends(require_login)]
+@app.get("/api/v1/batches")
+def list_batches(
+    limit: int = 20,
+    cursor: str | None = None,
+    account: Annotated[dict[str, Any], Depends(require_login)] = None,
 ) -> dict[str, Any]:
-    """单用例现场压缩测试:构建器按变体策略/预算执行一次,返回逐条决策(无模型调用)。"""
-    from bdlh_runtime.context import (
-        CONSERVATIVE_TOKENIZER_VERSION,
-        ContextBuilder,
-        ContextBuildRequest,
-        ContextStrategy,
-    )
-    from bdlh_runtime.evaluation.context_eval import (
-        _OWNER_ID,
-        COMPARISON_VARIANTS,
-        fixture_items_to_context_items,
-    )
+    """所有者批次列表(新到旧,分页):模板口径、规模与状态。
 
-    data = _data()
+    行字段:id / template_id / template_classification / independent_variable /
+    repeat_count / variant_count / run_count / status / created_at;
+    无模板键的批次对应字段为 null。
+    """
     try:
-        views = data.list_cases()
+        return _data().list_batches(limit=limit, cursor=cursor)
     except DataServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    known = _context_case_ids(views)
-    if request.case_id not in known:
-        raise HTTPException(status_code=400, detail=f"未知或非对照用例：{request.case_id}")
-    view = next(item for item in views if str(item["id"]) == request.case_id)
-    version = int(view.get("version") or 1)
-    if request.variant_id not in COMPARISON_VARIANTS:
-        raise HTTPException(status_code=400, detail=f"变体必须是 {list(COMPARISON_VARIANTS)} 之一")
-    try:
-        payload = data.get_case_variant_context(request.case_id, version, request.variant_id)
-    except DataServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    strategy = str(payload.get("contextStrategy") or "budgeted")
-    budget = request.token_budget or int(payload.get("tokenBudget") or 0)
-    items = payload.get("items") or []
-    if not items:
-        raise HTTPException(status_code=400, detail=f"变体 {request.case_id}/{request.variant_id} 无上下文条目")
-    try:
-        builder = ContextBuilder()
-        built = builder.build(
-            ContextBuildRequest(
-                items=fixture_items_to_context_items(tuple(items)),
-                token_budget=budget,
-                strategy=ContextStrategy(strategy),
-                owner_id=_OWNER_ID,
-            )
-        )
-    except ValueError as exc:
-        return {
-            "case_id": request.case_id,
-            "variant_id": request.variant_id,
-            "strategy": strategy,
-            "token_budget": budget,
-            "status": "FAILED",
-            "error": str(exc),
-            "tokenizer_version": CONSERVATIVE_TOKENIZER_VERSION,
-        }
-    report = built.report
-    return {
-        "case_id": request.case_id,
-        "variant_id": request.variant_id,
-        "strategy": strategy,
-        "token_budget": report.token_budget,
-        "status": "COMPLETE",
-        "original_tokens": report.original_tokens,
-        "working_tokens": report.working_tokens,
-        "required_retained": report.required_retained,
-        "tokenizer_version": CONSERVATIVE_TOKENIZER_VERSION,
-        "counts": report.counts,
-        "warnings": list(report.warnings),
-        "decisions": [
-            {
-                "item_id": decision.item_id,
-                "action": decision.action.value,
-                "reason": decision.reason,
-                "input_tokens": decision.input_tokens,
-                "output_tokens": decision.output_tokens,
-            }
-            for decision in report.decisions
-        ],
-        "working_excerpt": "\n".join(message.content for message in built.messages)[:2000],
-    }
-
-
-@app.post("/api/v1/context-link-batches")
-def start_context_link_batch(
-    request: ContextLinkBatchRequest,
-    account: Annotated[dict[str, Any], Depends(require_login)],
-) -> dict[str, str]:
-    """联动对照:同一长上下文 原始/压缩内容分别过三组实现,检验压缩质量。"""
-    from bdlh_runtime.evaluation.context_eval import LINKAGE_MODES
-
-    data = _data()
-    try:
-        views = data.list_cases()
-        known = _context_case_ids(views)
-        unknown = [case_id for case_id in request.case_ids or [] if case_id not in known]
-        if unknown:
-            raise HTTPException(status_code=400, detail=f"未知或非对照用例：{unknown}")
-        if not _BATCH_SLOTS.acquire(blocking=False):
-            raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
-        selected = request.case_ids or sorted(known)
-        batch_id = data.create_batch(
-            name=f"上下文联动对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
-            fixed_conditions={
-                "caseIds": selected,
-                "runsPerCell": request.runs,
-                "variants": list(COMPARISON_VARIANTS),
-                "agentModes": list(LINKAGE_MODES),
-                "model": request.model,
-                "toolData": "frozen",
-                "minValidSamples": int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5")),
-                "interleaveSeed": DEFAULT_INTERLEAVE_SEED,
-            },
-        )
-    except DataServiceError as exc:
-        with contextlib.suppress(ValueError):
-            _BATCH_SLOTS.release()
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    job_id = uuid4().hex[:12]
-    job: dict[str, Any] = {
-        "job_id": job_id,
-        "batch_id": batch_id,
-        "status": "running",
-        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "request": request.model_dump(),
-        "report": None,
-        "error": None,
-    }
-    _JOBS[job_id] = job
-
-    def task() -> None:
-        try:
-            payload, run_records = _execute_context_link_eval(request, views, selected)
-            _persist_runs(data, batch_id, request, payload, run_records)
-            _persist_artifact(batch_id, payload)
-            data.complete_batch(batch_id, "COMPLETE")
-            job["status"] = "done"
-            job["report"] = payload
-        except Exception as exc:  # 作业失败进入可见状态，不能让服务进程退出
-            with contextlib.suppress(DataServiceError):
-                data.complete_batch(batch_id, "FAILED")
-            job["status"] = "error"
-            job["error"] = f"{type(exc).__name__}: {exc}"
-        finally:
-            _BATCH_SLOTS.release()
-
-    threading.Thread(target=task, daemon=True).start()
-    return {"job_id": job_id, "batch_id": batch_id}
-
-
-def _execute_context_link_eval(
-    request: ContextLinkBatchRequest,
-    views: list[dict[str, Any]],
-    selected: list[str],
-) -> tuple[dict[str, Any], list[RunRecord]]:
-    from bdlh_runtime.evaluation.context_eval import (
-        LINKAGE_MODES,
-        load_context_variant_cases,
-        run_context_eval,
-    )
-    from bdlh_runtime.evaluation.context_eval import (
-        _report_payload as context_report_payload,
-    )
-
-    data = _data()
-    cases = [case for case in load_context_variant_cases(views, data) if case.case_id in set(selected)]
-    report = asyncio.run(
-        run_context_eval(
-            cases=cases,
-            llm=None,  # runner 内部回落 build_llm_from_env(env 是唯一配置真源)
-            model=request.model,
-            runs_per_variant=request.runs,
-            data=data,
-            inter_run_delay_s=float(os.getenv("EVAL_INTER_RUN_DELAY_S", "1")),
-            agent_modes=LINKAGE_MODES,
-        )
-    )
-    return context_report_payload(report), report.run_records
 
 
 @app.get("/api/v1/batches/{batch_id}")
@@ -764,6 +410,11 @@ def _anon_token(request: Request, response: Response | None = None) -> str:
 @app.get("/api/v1/public/test-options")
 def public_test_options(request: Request, response: Response) -> dict[str, Any]:
     """公开测试选项:固定用例/Session 清单 + 服务端固定条件(只读,不创建任务)。"""
+    from bdlh_runtime.experiments.templates import (
+        ROLE_ANONYMOUS,
+        template_registry_payload,
+    )
+
     _anon_token(request, response)
     quota = _public_service.quota
     try:
@@ -776,23 +427,307 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
         cases = get_case_repository().public_projection()  # type: ignore[attr-defined]
     except Exception:  # noqa: BLE001
         cases = []
+    from bdlh_runtime.experiments import NATIVE_AGENT_MODE_ID, native_context_run_count
+    from bdlh_runtime.experiments.templates import tool_exclusion_presets
+
     return {
         "sessions": sessions,
         "comparison_cases": cases,
+        # 实验模板清单(匿名视角):目的、唯一自变量、变体、冻结条件与精确运行数
+        "templates": template_registry_payload(role=ROLE_ANONYMOUS),
+        # 工具排除预设(版本化常量;tool-availability-degradation 模板的档位下拉)
+        "tool_exclusion_presets": [
+            {
+                "preset_id": preset.preset_id,
+                "description": preset.description,
+                "excluded_tool_count": len(preset.excluded_tools),
+            }
+            for preset in tool_exclusion_presets()
+        ],
         "fixed_conditions": {
             "test_types": ["COMPRESSION_CASE", "COMPARISON_CASE"],
-            "agent_mode_ids": list(_AGENT_MODE_IDS),
+            # 对比用例统一经实验模板在原生底座上发起
+            "agent_mode_ids": [NATIVE_AGENT_MODE_ID],
+            "native_agent_mode_id": NATIVE_AGENT_MODE_ID,
             "repeat_options": list(quota.repeat_options),
             "compression_repeat_count": 1,
             "max_agent_steps": quota.max_agent_steps,
             "run_counts": {
-                "comparison_repeat_3": 9,
-                "comparison_repeat_5": 15,
-                "compression_session_matrix": 12,
-                "compression_all_sessions_theoretical": 36,
+                "compression_native_matrix": native_context_run_count(),
             },
         },
         "quota": quota.as_dict(),
+    }
+
+
+@app.get("/api/v1/experiment-templates")
+def list_experiment_templates(
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """所有者视角的完整模板清单(含 owner-only 模板与高级设置白名单)。"""
+    from bdlh_runtime.experiments.templates import ROLE_OWNER, template_registry_payload
+
+    return template_registry_payload(role=ROLE_OWNER)
+
+
+class TemplateBatchPlanRequest(BaseModel):
+    """模板批次计划请求(预估与发起共用;预估不执行任何运行)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: str = Field(min_length=1, max_length=100)
+    repeat_count: int = Field(ge=1, le=20)
+    preset_id: str | None = Field(
+        default=None, max_length=100, description="工具排除预设(仅 tool-availability-degradation)"
+    )
+    variant_labels: list[str] | None = Field(
+        default=None, max_length=20, description="模板既有变体的子集;不能上传任意变体"
+    )
+    context_only: bool = Field(default=False, description="只生成输入不运行(仅上下文模板允许)")
+    advanced: dict[str, Any] | None = Field(default=None, description="高级设置;键必须落在模板白名单内")
+
+
+class TemplateBatchRequest(TemplateBatchPlanRequest):
+    """模板批次发起请求:模板作用于固定用例(问题/工具/Mock 来自用例库版本)。"""
+
+    case_id: str = Field(min_length=1, max_length=100)
+
+
+def _template_model_capability() -> Any:
+    """按服务端 env 构建能力描述(不发起网络调用;未配置即视为不支持)。"""
+    from bdlh_runtime.infra.llm import capabilities_of, create_llm
+
+    return capabilities_of(create_llm(api_key=os.getenv("LLM_API_KEY")))
+
+
+def _plan_owner_template_batch(request: TemplateBatchPlanRequest) -> Any:
+    from bdlh_runtime.experiments.templates import ROLE_OWNER, TemplatePlanError, plan_template_batch
+
+    try:
+        return plan_template_batch(
+            request.template_id,
+            repeat_count=request.repeat_count,
+            role=ROLE_OWNER,
+            advanced=request.advanced,
+            preset_id=request.preset_id,
+            variant_labels=request.variant_labels,
+            context_only=request.context_only,
+            model_capability=_template_model_capability(),
+        )
+    except TemplatePlanError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except ValueError as exc:  # RunConfigError 等(高级字段值非法)
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+def _template_purpose(template_id: str) -> str:
+    from bdlh_runtime.experiments.templates import TemplatePlanError, get_template
+
+    try:
+        return get_template(template_id).purpose
+    except TemplatePlanError:
+        return ""
+
+
+@app.post("/api/v1/template-batches/plan")
+def plan_template_batch_endpoint(
+    request: TemplateBatchPlanRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """模板批次预估:精确运行数、变体配置哈希与冻结条件;不创建任何运行。"""
+    plan = _plan_owner_template_batch(request)
+    payload = plan.to_payload()
+    payload["purpose"] = _template_purpose(plan.template_id)
+    return payload
+
+
+def template_run_model_config(plan: Any, row: dict[str, Any], *, fixture_set_id: str = "") -> dict[str, Any]:
+    """模板运行落库载荷(阻断5):模板标识/配置哈希/完整快照进 modelConfig JSONB。
+
+    只构建载荷不执行;data 服务侧新列(template_id/config_hash/per_run_config)
+    由增量脚本提供,此处同时把字段冗余进 JSONB,保证现有表也能稳定写入与查询。
+    """
+    from bdlh_runtime.experiments.templates import EXPERIMENT_DEFINITION_VERSION
+
+    run_config = row.get("run_config") or {}
+    return {
+        "templateId": plan.template_id,
+        "templateVersion": plan.template_version,
+        "experimentDefinitionVersion": EXPERIMENT_DEFINITION_VERSION,
+        "variantLabel": row.get("variant_label"),
+        "repeatIndex": row.get("repeat_index"),
+        "configHash": row.get("config_hash") or run_config.get("config_hash"),
+        "executionEngine": run_config.get("execution_engine"),
+        "governanceProfile": row.get("governance_profile") or run_config.get("governance_profile"),
+        "toolDelivery": run_config.get("tool_delivery"),
+        "perRunConfig": run_config,
+        "toolSchemaHash": row.get("tool_schema_hash"),
+        "eligibleCatalogHash": row.get("eligible_catalog_hash"),
+        "fixtureSetId": fixture_set_id,
+    }
+
+
+def _execute_template_batch(
+    plan: Any, case: Any, *, model: str, llm: Any = None, on_run_done: Any = None
+) -> dict[str, Any]:
+    """模板批次执行(逐运行构建模型客户端;测试注入 Fake 验证接线,不调真实模型)。
+
+    ``llm=None``(生产):每次运行按各自 RunConfig 生效参数创建独立客户端
+    ——温度变体真正携带各自温度,max_output_tokens/parallel_tool_calls 同步生效。
+    """
+    from bdlh_runtime.experiments.template_runner import run_template_batch
+
+    return asyncio.run(
+        run_template_batch(
+            plan,
+            message=case.message,
+            visible_tools=case.allowed_tools,
+            llm=llm,
+            fixtures=list((case.conditions or {}).get("mock_fixtures") or []),
+            fixture_version=str(case.fixture_set_id),
+            on_run_done=on_run_done,
+        )
+    )
+
+
+def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any, result: dict[str, Any]) -> None:
+    """逐运行落库:模板标识与配置快照进 modelConfig;失败由调用方记入作业错误。"""
+    for row in result.get("runs") or []:
+        run_id = data.create_run(
+            {
+                "batchId": batch_id,
+                "caseId": case.case_id,
+                "caseVersion": case.case_version,
+                "variantId": str(row.get("variant_label") or ""),
+                "snapshotId": "",
+                "agentMode": "native-tool-calling",
+                "contextStrategy": str((row.get("run_config") or {}).get("context_strategy") or "full"),
+                "model": str(((row.get("run_config") or {}).get("model") or {}).get("model_id") or ""),
+                "gitCommit": os.getenv("GIT_COMMIT", "unknown"),
+                "modelConfig": template_run_model_config(plan, row, fixture_set_id=str(case.fixture_set_id)),
+            }
+        )
+        data.complete_run(
+            run_id,
+            {
+                "answer_excerpt": str(row.get("answer") or "")[:200],
+                "stop_reason": row.get("stop_reason"),
+                "actual_agent_steps": row.get("actual_agent_steps"),
+                "config_hash": row.get("config_hash"),
+            },
+            status="COMPLETE" if row.get("validity") == "VALID" else "INVALID",
+            error_category=row.get("error"),
+        )
+
+
+def _public_template_case(case_id: str) -> Any:
+    from bdlh_runtime.experiments.public_case_repository import get_case_repository
+
+    case = get_case_repository().get_public_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=400, detail=f"未知或非公开对比用例:{case_id}")
+    return case
+
+
+@app.post("/api/v1/template-batches")
+def start_template_batch(
+    request: TemplateBatchRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, str]:
+    """所有者按模板发起批次:固定用例 × 模板变体,统一原生底座执行。
+
+    上下文类模板(context-strategy-comparison)不在此入口——它作用于压缩
+    Session,请使用压缩用例的「原生 4×1」入口。
+    """
+    from bdlh_runtime.experiments.templates import CLASSIFICATION_FORMAL, TemplatePlanError, get_template
+
+    try:
+        template = get_template(request.template_id)
+    except TemplatePlanError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if template.classification != CLASSIFICATION_FORMAL:
+        raise HTTPException(
+            status_code=400,
+            detail="该模板分类不支持从模板入口发起;请选择正式单变量模板",
+        )
+    if "COMPARISON_CASE" not in template.allowed_test_types:
+        raise HTTPException(
+            status_code=400,
+            detail="该模板不作用于对比用例;上下文模板请使用压缩用例的「原生 4×1」入口",
+        )
+    if request.context_only:
+        raise HTTPException(status_code=400, detail="发起接口不接受 context_only;预估请用 /template-batches/plan")
+    case = _public_template_case(request.case_id)
+    plan = _plan_owner_template_batch(request)
+    model = os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+    data = _data()
+    if not _BATCH_SLOTS.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
+    try:
+        conditions = {
+            **plan.fixed_conditions,
+            "case_id": case.case_id,
+            "case_version": case.case_version,
+            "model": model,
+            "fixture_set_id": str(case.fixture_set_id),
+            "template_plan_hash": plan.fixed_conditions_hash,
+        }
+        batch_id = data.create_batch(
+            name=f"模板实验 {plan.template_id} {datetime.now().astimezone().isoformat(timespec='seconds')}",
+            experiment_type=f"template:{plan.template_id}",
+            fixed_conditions=_with_conditions_hash(conditions),
+        )
+    except DataServiceError as exc:
+        with contextlib.suppress(ValueError):
+            _BATCH_SLOTS.release()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    job_id = uuid4().hex[:12]
+    job: dict[str, Any] = {
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "template_id": plan.template_id,
+        "classification": plan.classification,
+        "status": "running",
+        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "request": request.model_dump(),
+        "report": None,
+        "error": None,
+        "cancel_requested": False,
+    }
+    _init_job_progress(job, plan.run_count, per_run=True)
+    _JOBS[job_id] = job
+
+    def task() -> None:
+        def bump_progress(row: dict[str, Any]) -> None:
+            progress = job.get("progress") or {}
+            progress["done"] = int(progress.get("done") or 0) + 1
+            repeat_no = int(row.get("repeat_index") or 0) + 1
+            progress["current"] = f"{row.get('variant_label')} · 第{repeat_no}次"
+
+        try:
+            report = _execute_template_batch(plan, case, model=model, on_run_done=bump_progress)
+            _persist_template_runs(data, batch_id, plan, case, report)
+            _persist_artifact(batch_id, report)
+            data.complete_batch(batch_id, "COMPLETE")
+            _finish_job_progress(job)
+            job["status"] = "done"
+            job["report"] = report
+        except Exception as exc:  # noqa: BLE001 —— 作业失败进入可见状态,不能让服务进程退出
+            with contextlib.suppress(DataServiceError):
+                data.complete_batch(batch_id, "FAILED")
+            job["status"] = "error"
+            job["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            _BATCH_SLOTS.release()
+
+    threading.Thread(target=task, daemon=True).start()
+    return {
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "template_id": plan.template_id,
+        "classification": plan.classification,
+        "formal": str(plan.classification == CLASSIFICATION_FORMAL).lower(),
     }
 
 
@@ -877,48 +812,7 @@ def cancel_public_test_job(job_id: str, request: Request, response: Response) ->
     }
 
 
-def _execute_eval(
-    request: EvalBatchRequest,
-    catalog: list[dict[str, Any]],
-    job: dict[str, Any] | None = None,
-) -> tuple[dict[str, Any], list[RunRecord]]:
-    # LLM 配置唯一真源是服务端 env;llm=None → run_ab_eval 内部 build_llm_from_env
-    async def run() -> Any:
-        return await run_ab_eval(
-            runs_per_case=request.runs,
-            model=request.model,
-            with_react=request.include_react,
-            cases=load_cases(_select_case_views(catalog, request.case_ids)),
-            llm=None,
-            should_stop=(lambda: bool(job.get("cancel_requested"))) if job is not None else None,
-            max_total_tokens=_max_total_tokens(request),
-            fixture_set_id=request.fixture_set_id or "ab-eval",
-            visible_tools=request.visible_tools,
-            search_top_k=request.search_top_k,
-            # 低 RPM 档账号的限流缓解:拉大运行间间隔(缺省 1s;环境变量可覆盖)
-            inter_run_delay_s=float(os.getenv("EVAL_INTER_RUN_DELAY_S", "1")),
-        )
-
-    report = asyncio.run(run())
-    return _report_payload(report), report.run_records
-
-
-def _select_case_views(catalog: list[dict[str, Any]], case_ids: list[str] | None) -> list[dict[str, Any]]:
-    """按请求题号过滤执行用例;未指定=全部(仅含带 default 变体的用例)。
-
-    ctx-* 压缩对照用例只有 full-raw/budgeted-comp 变体、无 default 变体,
-    属 context-batches 通道,不进编排批次——此前 case_ids 未过滤执行列表,
-    目录一旦含无 default 变体的用例,load_cases 即抛"没有 default 变体"。
-    """
-    if case_ids:
-        wanted = set(case_ids)
-        return [view for view in catalog if str(view.get("id")) in wanted]
-    return [
-        view for view in catalog if any(str(item.get("variantId")) == "default" for item in view.get("variants") or [])
-    ]
-
-
-def _max_total_tokens(request: EvalBatchRequest | ContextBatchRequest) -> int | None:
+def _max_total_tokens(request: ContextBatchRequest) -> int | None:
     requested = getattr(request, "max_total_tokens", None)
     if requested is not None:
         return requested
@@ -926,24 +820,24 @@ def _max_total_tokens(request: EvalBatchRequest | ContextBatchRequest) -> int | 
     return int(raw) if raw.isdigit() else None
 
 
-def _validate_visible_tools(data: DataClient, visible_tools: list[str] | None) -> None:
-    """GT-4 可见集校验:元素必须 ⊆ 工具目录(含 search_tools);未知名 → 400。
+def _with_conditions_hash(conditions: dict[str, Any]) -> dict[str, Any]:
+    """批次固定条件附加规范化哈希(阶段A3):哈希覆盖除自身外的全部字段。"""
+    from bdlh_runtime.experiments.run_config import hash_of
 
-    None=按场景默认;[] 是显式空集(能力缺口实验,GT-5 勾选页"全不选"路径),
-    与 null 严格区分,不进入比对。
-    """
-    if not visible_tools:
-        return
-    try:
-        payload = data.get_tool_catalog()
-    except DataServiceError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    known = {str(item.get("name")) for item in payload.get("capabilities") or []}
-    if "search_tools" in visible_tools:
-        known = known | {"search_tools"}
-    unknown = [name for name in visible_tools if name not in known]
-    if unknown:
-        raise HTTPException(status_code=400, detail=f"未知工具名：{sorted(set(unknown))}")
+    return {**conditions, "fixed_conditions_hash": hash_of(conditions)}
+
+
+def _init_job_progress(job: dict[str, Any], total: int, *, per_run: bool) -> None:
+    """作业进度字段:total=精确运行数;per_run 的模板批次逐运行更新 done/current,
+    旧入口 runner 无逐运行回调,done 保持 None(完成后一次性置满)。"""
+    job["progress"] = {"total": int(total), "done": 0 if per_run else None, "current": ""}
+
+
+def _finish_job_progress(job: dict[str, Any]) -> None:
+    progress = job.get("progress")
+    if progress is not None:
+        progress["done"] = progress["total"]
+        progress["current"] = ""
 
 
 def _execute_context_eval(
@@ -977,7 +871,7 @@ def _execute_context_eval(
 def _persist_runs(
     data: DataClient,
     batch_id: str,
-    request: EvalBatchRequest | ContextBatchRequest,
+    request: ContextBatchRequest,
     payload: dict[str, Any],
     run_records: list[RunRecord],
 ) -> None:
@@ -993,7 +887,7 @@ def _persist_runs(
 
 
 def _persist_one_run(
-    data: DataClient, batch_id: str, request: EvalBatchRequest | ContextBatchRequest, record: RunRecord
+    data: DataClient, batch_id: str, request: ContextBatchRequest, record: RunRecord
 ) -> str:
     run_id = data.create_run(
         {
@@ -1010,7 +904,9 @@ def _persist_one_run(
                 "runs": request.runs,
                 "toolData": "frozen",
                 "repeatIndex": record.repeat_index,
-                "fixtureSetId": getattr(request, "fixture_set_id", None) or "ab-eval",
+                "fixtureSetId": "ab-eval",
+                # 运行配置快照哈希(阶段A3;配置体在工件 provenance.per_run_config)
+                "configHash": record.provenance.get("config_hash") or None,
             },
         }
     )

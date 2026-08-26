@@ -78,6 +78,71 @@ public class RunRepository {
         }
     }
 
+    /**
+     * 批次列表(所有者视角,新到旧 keyset 分页)。
+     *
+     * cursor = 上一页最后一条批次 id;按 (created_at, id) 二元组比较翻页。
+     * 模板口径列(template_id / template_classification / independent_variable /
+     * repeat_count / variant_count)从 fixed_conditions JSONB 提取,历史批次
+     * (无模板键)为 null,由调用方按「旧实验定义」展示。
+     */
+    public Map<String, Object> listBatches(int limit, UUID cursor) {
+        String sql =
+                """
+                SELECT b.id, b.name, b.experiment_type, b.status, b.created_at, b.completed_at,
+                       b.fixed_conditions->>'template_id' AS template_id,
+                       b.fixed_conditions->>'template_classification' AS template_classification,
+                       array_to_string(ARRAY(
+                           SELECT jsonb_array_elements_text(
+                               COALESCE(b.fixed_conditions->'independent_variable', '[]'::jsonb))
+                       ), ', ') AS independent_variable,
+                       (b.fixed_conditions->>'repeat_count')::int AS repeat_count,
+                       jsonb_array_length(COALESCE(b.fixed_conditions->'variant_labels', '[]'::jsonb)) AS variant_count,
+                       (SELECT count(*) FROM touchstone.agent_runs r WHERE r.batch_id = b.id) AS run_count
+                FROM touchstone.run_batches b
+                """;
+        List<Map<String, Object>> rows;
+        if (cursor == null) {
+            rows = jdbc.query(
+                    sql + " ORDER BY b.created_at DESC, b.id DESC LIMIT ?",
+                    this::mapBatchSummaryRow,
+                    limit);
+        } else {
+            rows = jdbc.query(
+                    sql
+                            + """
+                              WHERE (b.created_at, b.id) < (
+                                  SELECT z.created_at, z.id FROM touchstone.run_batches z WHERE z.id = ?
+                              )
+                              ORDER BY b.created_at DESC, b.id DESC LIMIT ?
+                              """,
+                    this::mapBatchSummaryRow,
+                    cursor,
+                    limit);
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("batches", rows);
+        payload.put("nextCursor", rows.size() == limit ? rows.get(rows.size() - 1).get("id") : null);
+        return payload;
+    }
+
+    private Map<String, Object> mapBatchSummaryRow(java.sql.ResultSet rs, int rowNumber) throws java.sql.SQLException {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", rs.getObject("id"));
+        row.put("name", rs.getString("name"));
+        row.put("experimentType", rs.getString("experiment_type"));
+        row.put("templateId", rs.getString("template_id"));
+        row.put("templateClassification", rs.getString("template_classification"));
+        row.put("independentVariable", rs.getString("independent_variable"));
+        row.put("repeatCount", rs.getObject("repeat_count"));
+        row.put("variantCount", rs.getObject("variant_count"));
+        row.put("runCount", rs.getObject("run_count"));
+        row.put("status", rs.getString("status"));
+        row.put("createdAt", rs.getObject("created_at"));
+        row.put("completedAt", rs.getObject("completed_at"));
+        return row;
+    }
+
     public Map<String, Object> getBatch(UUID batchId) {
         Map<String, Object> batch = jdbc.queryForObject(
                 """
@@ -106,13 +171,32 @@ public class RunRepository {
                 jdbc.queryForList(
                         """
                         SELECT id, case_id, case_version, variant_id, agent_mode,
-                               context_strategy, model, status, error_category,
-                               created_at, completed_at
+                               context_strategy, model, model_config::text AS model_config,
+                               status, error_category, created_at, completed_at
                         FROM touchstone.agent_runs
                         WHERE batch_id = ?
                         ORDER BY case_id, agent_mode
                         """,
-                        batchId));
+                        batchId)
+                        .stream()
+                        .map(row -> {
+                            Object configText = row.get("model_config");
+                            if (configText != null) {
+                                try {
+                                    row.put(
+                                            "modelConfig",
+                                            objectMapper.readTree(String.valueOf(configText)));
+                                } catch (JsonProcessingException exception) {
+                                    throw new IllegalStateException(
+                                            "invalid run model_config JSON", exception);
+                                }
+                            } else {
+                                row.put("modelConfig", null);
+                            }
+                            row.remove("model_config");
+                            return row;
+                        })
+                        .toList());
         return batch;
     }
 

@@ -1,8 +1,6 @@
-/** 旧路径 → 新位置(任务六 §11 迁移映射;html 页面 301,静态资产 /docs/*.css|js 保留原位)。 */
+/** 旧路径 → 新位置(任务六 §11 迁移映射;html 页面 301,静态资产 /docs/*.css|js 保留原位)。
+ *  原型 v2:/docs/ 现为「文档」模块首页(五模块导航),不再 301 回公告页。 */
 export const REDIRECTS = new Map([
-  ["/docs", "/"],
-  ["/docs/", "/"],
-  ["/docs/index", "/"],
   ["/announce", "/"],
   ["/announce/", "/"],
   ["/docs/comparison", "/experiment/"],

@@ -17,10 +17,9 @@ class PublicQuotaConfig:
     daily_jobs_per_anonymous: int = 10
     comparison_daily_jobs: int = 10
     compression_context_daily_jobs: int = 5
-    compression_matrix_daily_jobs: int = 1
     queue_timeout_s: int = 120
-    matrix_queue_timeout_s: int = 300
     max_job_duration_s: int = 900
+    #: 4×1 原生矩阵一次运行 4 格,时长上限单独配置
     matrix_max_job_duration_s: int = 300
     max_agent_steps: int = 8
     repeat_options: tuple[int, ...] = (3, 5)
@@ -38,9 +37,7 @@ class PublicQuotaConfig:
             daily_jobs_per_anonymous=_int("PUBLIC_DAILY_JOBS_PER_ANON", 10),
             comparison_daily_jobs=_int("PUBLIC_COMPARISON_DAILY_JOBS", 10),
             compression_context_daily_jobs=_int("PUBLIC_COMPRESSION_CONTEXT_DAILY_JOBS", 5),
-            compression_matrix_daily_jobs=_int("PUBLIC_COMPRESSION_MATRIX_DAILY_JOBS", 1),
             queue_timeout_s=_int("PUBLIC_QUEUE_TIMEOUT_S", 120),
-            matrix_queue_timeout_s=_int("PUBLIC_MATRIX_QUEUE_TIMEOUT_S", 300),
             max_job_duration_s=_int("PUBLIC_MAX_JOB_DURATION_S", 900),
             matrix_max_job_duration_s=_int("PUBLIC_MATRIX_MAX_JOB_DURATION_S", 300),
             max_agent_steps=default_max_agent_steps(),
@@ -53,9 +50,7 @@ class PublicQuotaConfig:
             "daily_jobs_per_anonymous": self.daily_jobs_per_anonymous,
             "comparison_daily_jobs": self.comparison_daily_jobs,
             "compression_context_daily_jobs": self.compression_context_daily_jobs,
-            "compression_matrix_daily_jobs": self.compression_matrix_daily_jobs,
             "queue_timeout_s": self.queue_timeout_s,
-            "matrix_queue_timeout_s": self.matrix_queue_timeout_s,
             "max_job_duration_s": self.max_job_duration_s,
             "matrix_max_job_duration_s": self.matrix_max_job_duration_s,
             "max_agent_steps": self.max_agent_steps,

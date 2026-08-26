@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -110,7 +110,7 @@
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
         <li><a href="#strategies">四种策略</a></li>
-        <li><a href="#table">策略与联动对照(读正式发布索引)</a></li>
+        <li><a href="#table">策略对照(读正式发布索引)</a></li>
         <li><a href="#pairs">正反例成对展示</a></li>
       </ul>
     </aside>
@@ -118,9 +118,9 @@
         <h1>用例结果 · 上下文压缩</h1>
 <h2 id="strategies">四种策略</h2>
 <p>固定 Agent 实现方式,对照四种上下文处理策略:<strong>full-session</strong>(完整透传)、<strong>recent-window</strong>(最近窗口)、<strong>single-summary</strong>(一次摘要)、<strong>budgeted-session</strong>(按预算压缩,本项目算法)。模型窗口容纳不下 full 时该策略显示「不适用」,不把截断输入冒充 full。</p>
-<p>各 Session 四种方式的<strong>编译统计</strong>(压缩前后 Token、事件处理桶)见<a href="/context/library">长上下文库</a>;<strong>实验结果</strong>(4×3 单次样本矩阵)在<a href="/experiment/compression">压缩用例实验</a>发起运行,正式数字经维护者审核发布后出现在<a href="/#compression">公告页压缩结果区</a>。</p>
-    <h2 id="table">策略与联动对照(读正式发布索引)</h2>
-<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按「变体 × 实现方式」展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离。</div></div>
+<p>各 Session 四种方式的<strong>编译统计</strong>(压缩前后 Token、事件处理桶)见<a href="/context/library">长上下文库</a>;<strong>实验结果</strong>(默认 4×1 上下文实验)在<a href="/experiment/compression">压缩用例实验</a>发起运行,正式数字经维护者审核发布后出现在<a href="/">公告页</a>。</p>
+    <h2 id="table">策略对照(读正式发布索引)</h2>
+<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按变体展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离。</div></div>
     <h2 id="pairs">正反例成对展示</h2>
 <p>同一用例的成功运行与失败运行并排展示,标注唯一变化的策略与来自校验器的失败原因;没有失败样本时显示「暂无失败样本」,且完整批次始终可查。</p><div id="contextPairs"><div class="placeholder-block">尚未发布。</div></div>
       </div>
@@ -141,7 +141,7 @@
       var box = document.getElementById("strategyTable");
       if (box) {
         box.innerHTML = '<p class="lab-note">最新正式发布:' + String(pubs[0].published_at || "") +
-          "(批次 " + String(pubs[0].batch_id || "").slice(0, 8) + ")。逐项指标与实例下钻见<a href="/#compression">公告页压缩结果区</a>;本页不再单独维护第二份结果展示。</p>";
+          "(批次 " + String(pubs[0].batch_id || "").slice(0, 8) + ")。逐项指标与实例下钻见<a href="/">公告页</a>;本页不再单独维护第二份结果展示。</p>";
       }
     })
     .catch(function () { /* 缺索引保持占位 */ });

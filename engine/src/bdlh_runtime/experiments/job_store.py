@@ -94,7 +94,7 @@ class JobRecord:
 
     job_id: str
     test_type: str  # COMPRESSION_CASE | COMPARISON_CASE
-    execution_scope: str  # comparison-full | context-only | current-combo | full-matrix
+    execution_scope: str  # template-batch | context-only | current-combo | native-matrix
     status: str = JOB_STATUS_QUEUED
     #: 发起者:ANONYMOUS / OWNER / SYSTEM
     requester_type: str = REQUESTER_ANONYMOUS
@@ -120,6 +120,12 @@ class JobRecord:
     custom_conditions: bool = False
     tool_catalog_version: str = ""
     fixture_set_id: str = ""
+    #: 模板化任务(混合路线):模板标识/版本与计划哈希;非模板任务为 None/""
+    template_id: str | None = None
+    template_version: int | None = None
+    template_plan_hash: str = ""
+    #: 工具排除预设(template-availability-degradation 匿名路径)
+    template_preset_id: str | None = None
     quota_snapshot: dict[str, Any] = field(default_factory=dict)
     idempotency_key: str | None = None
     cancel_requested: bool = False

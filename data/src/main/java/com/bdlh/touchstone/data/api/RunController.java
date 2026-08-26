@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -39,6 +40,14 @@ public class RunController {
             @Valid @RequestBody CompleteBatchRequest request) {
         runs.completeBatch(batchId, request);
         return ResponseEntity.accepted().build();
+    }
+
+    @GetMapping("/batches")
+    public Map<String, Object> listBatches(
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) UUID cursor) {
+        // 上限 100:所有者批次列表分页保护;cursor = 上一页最后一条批次 id
+        return runs.listBatches(Math.min(Math.max(limit, 1), 100), cursor);
     }
 
     @GetMapping("/batches/{batchId}")

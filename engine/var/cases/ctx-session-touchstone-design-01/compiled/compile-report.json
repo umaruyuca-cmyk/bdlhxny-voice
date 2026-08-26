@@ -928,7 +928,7 @@
       "scores": [],
       "scoring_version": "",
       "status": "COMPLETE",
-      "compile_wall_ms": 11
+      "compile_wall_ms": 10
     },
     "single-summary": {
       "case_id": "ctx-session-touchstone-design-01",
@@ -1211,7 +1211,7 @@
       "omitted_event_ids": [],
       "original_tokens": 9403,
       "working_tokens": 2881,
-      "build_duration_ms": 9,
+      "build_duration_ms": 10,
       "build_model_calls": 0,
       "build_input_tokens": 0,
       "build_output_tokens": 0,
@@ -1225,7 +1225,7 @@
       "scores": [],
       "scoring_version": "",
       "status": "COMPLETE",
-      "compile_wall_ms": 10
+      "compile_wall_ms": 11
     },
     "budgeted-session": {
       "case_id": "ctx-session-touchstone-design-01",
@@ -1792,7 +1792,7 @@
       "omitted_event_ids": [],
       "original_tokens": 9403,
       "working_tokens": 4090,
-      "build_duration_ms": 44,
+      "build_duration_ms": 42,
       "build_model_calls": 0,
       "build_input_tokens": 0,
       "build_output_tokens": 0,
@@ -1806,7 +1806,7 @@
       "scores": [],
       "scoring_version": "",
       "status": "COMPLETE",
-      "compile_wall_ms": 44
+      "compile_wall_ms": 43
     }
   },
   "checks": [
@@ -1828,9 +1828,9 @@
       ]
     },
     {
-      "check": "matrix_has_12_cells",
+      "check": "matrix_has_8_cells",
       "passed": true,
-      "detail": "12 cells"
+      "detail": "8 cells"
     },
     {
       "check": "completed_variants_fit_budget",

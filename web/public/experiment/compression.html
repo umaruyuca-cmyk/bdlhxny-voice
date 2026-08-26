@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>压缩用例 · 实验</title>
-<meta name="description" content="三个长 Session × 四种上下文方式 × 三种 Agent;生成上下文与 Agent 运行拆开,每格单次样本。">
+<meta name="description" content="三个长 Session × 四种上下文方式;默认上下文实验 4×1(原生底座);生成上下文与 Agent 运行拆开,每格单次样本。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
@@ -39,14 +39,14 @@
         <ul>
           <li><a href="/showcase/">用例详情</a></li>
           <li><a href="/showcase/tools">用例调用明细</a></li>
-          <li><a href="/session-cross/">Session 交叉验证</a></li>
         </ul>
       </details>
     <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
+          <li><a href="/experiment/">模板中心</a></li>
+          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression" class="active">压缩用例</a></li>
-          <li><a href="/experiment/comparison">对比用例</a></li>
         </ul>
       </details>
     <a class="side-item" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
@@ -112,14 +112,13 @@
         <li><a href="#scope">实验对象与数量口径</a></li>
         <li><a href="#sessions">三个 Session 概览</a></li>
         <li><a href="#actions">三个手动操作</a></li>
-        <li><a href="#matrix">4×3 结果矩阵(尚未运行)</a></li>
       </ul>
     </aside>
       <div class="detail-body">
         <h1>压缩用例 · 实验</h1>
 <h2 id="scope">实验对象与数量口径</h2>
-<p>压缩用例只使用上下文压缩模块维护的<strong>三个版本化长 Session</strong>:产品演进与需求决策、上下文引擎排查、数据库与部署。每个 Session 固定形成 <strong>4 种上下文方式 × 3 种 Agent = 12 个实验条件,每格只运行 1 次</strong>(本次结果为单次样本,不生成平均值或稳定性结论)。三个 Session 全部运行为 36 个运行——页面不提供默认连续执行三个 Session 的按钮。</p>
-<p>三个数量口径全链路分开:<code>repeat_count</code>(压缩用例每格固定 1)/ <code>max_agent_steps</code>(单次运行内模型判断+工具回传的最大步数,服务端配置)/ Agent 实现编号(固定三种)。</p>
+<p>压缩用例只使用上下文压缩模块维护的<strong>三个版本化长 Session</strong>:产品演进与需求决策、上下文引擎排查、数据库与部署。<strong>默认上下文实验是 4×1</strong>:4 种上下文方式 × 1 种固定原生 Tool Calling 配置(模板 <code>context-strategy-comparison</code>,唯一自变量 = <code>context_strategy</code>,其余条件冻结),共 4 个运行、每格 1 次。</p>
+<p>三个数量口径全链路分开:<code>repeat_count</code>(压缩用例每格固定 1)/ <code>max_agent_steps</code>(单次运行内模型判断+工具回传的最大步数,服务端配置)/ 实现编号(统一为原生 Tool Calling 底座一种)。</p>
     <h2 id="sessions">三个 Session 概览</h2>
 <div id="sessionList"><div class="placeholder-block">正在读取长上下文库…</div></div>
 <p class="lab-note">当前输入 = Session 最新一条有效用户消息,只发送一次,不进入历史压缩;其之前的事件构成历史。四种方式经过相同的输入构建、Token 统计与工件冻结;只有「按预算压缩」是本项目算法,完整/最近窗口/一次摘要为对照方法。<strong>各 Session 四种方式的压缩前后 Token 明细见<a href="/context/library">长上下文库</a></strong>,本页只维护实验入口,不重复展示第二份数字。</p>
@@ -133,19 +132,9 @@
 <p>
   <button type="button" class="btn" id="btnGenerate">生成四份上下文(0 个 Agent 运行)</button>
   <button type="button" class="btn" id="btnRunCombo">运行当前组合(1 个运行)</button>
-  <button type="button" class="btn" id="btnRunMatrix">运行完整 4×3(12 个运行)</button>
+  <button type="button" class="btn" id="btnRunNative">运行原生 4×1(4 个运行 · 默认上下文实验)</button>
 </p>
 <div id="compressStatus" class="lab-note">按钮只在点击时调用公开测试接口;页面加载、静态站生成都不会创建实验任务。静态部署(无运行服务)时提交会失败并如实提示。</div>
-    <h2 id="matrix">4×3 结果矩阵(尚未运行)</h2>
-<p>矩阵为 4 行(上下文方式)× 3 列(Agent 实现)。正式运行并发布前,每格显示空状态——不使用演示数字填充。</p>
-<table><thead><tr><th>上下文方式 \ Agent</th><th>baseline-tool-calling</th><th>langgraph-react</th><th>full-system</th></tr></thead>
-<tbody>
-<tr><td>full-session</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-<tr><td>recent-window</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-<tr><td>single-summary</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-<tr><td>budgeted-session</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td><td class="matrix-empty">待运行</td></tr>
-</tbody></table>
-<p class="lab-note">三种 Agent 对同一种上下文读取内容和哈希完全相同的冻结工件,不分别重新摘要或压缩;每格只有一个样本,结果只代表「本次结果」。</p>
       </div>
     </div>
   </main>
@@ -167,8 +156,8 @@
     "single-summary": "一次摘要(基准)",
     "budgeted-session": "按预算压缩(本项目算法)",
   };
-  var AGENTS = ["baseline-tool-calling", "langgraph-react", "full-system"];
-  var selected = { session: null, mode: "budgeted-session", agent: "full-system" };
+  var AGENTS = ["native-tool-calling"]; // 统一原生底座
+  var selected = { session: null, mode: "budgeted-session", agent: "native-tool-calling" };
 
   fetch("/showcase-data/context-library.json", { cache: "no-store" })
     .then(function (res) { return res.ok ? res.json() : null; })
@@ -257,12 +246,11 @@
       .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(1 个 Agent 运行)。到 <a href="/test/">我的测试</a> 查看进度与结果。"); })
       .catch(function (e) { note("提交失败:" + e.message, true); });
   });
-  document.getElementById("btnRunMatrix").addEventListener("click", function () {
+  document.getElementById("btnRunNative").addEventListener("click", function () {
     var sid = requireSession(); if (!sid) return;
-    if (!window.confirm("运行完整 4×3 将创建 12 个 Agent 运行(复用已冻结的四份上下文工件,不重新压缩)。确认继续?")) return;
-    note("正在提交「运行完整 4×3」任务(12 个运行)…");
-    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "full-matrix" })
-      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(12 个运行,每格 1 次)。到 <a href="/test/">我的测试</a> 查看矩阵结果。"); })
+    note("正在提交「原生 4×1」任务(4 个运行)…");
+    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "native-matrix" })
+      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(4 个运行:4 种上下文 × 1 种固定原生配置)。到 <a href="/test/">我的测试</a> 查看结果。"); })
       .catch(function (e) { note("提交失败:" + e.message, true); });
   });
 })();

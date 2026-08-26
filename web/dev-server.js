@@ -41,8 +41,10 @@ const server = http.createServer(async (request, response) => {
 });
 
 async function serveStatic(requestPath, request, response) {
-  // 开发代理(可选):仅匿名公共测试接口,仅显式配置 RUN_API_PROXY 时启用
-  if (runApiProxy && requestPath.startsWith("/api/v1/public/")) {
+  // 开发代理(可选):匿名公共接口 + 实验页所有者通道(登录/模板/plan/批次/作业),
+  // 与 nginx.conf 的反代白名单同口径;仅显式配置 RUN_API_PROXY 时启用
+  const ownerApiPattern = /^\/api\/v1\/(login|logout|experiment-templates|template-batches|batches|jobs|runs)(\/|$)/;
+  if (runApiProxy && (requestPath.startsWith("/api/v1/public/") || ownerApiPattern.test(requestPath))) {
     const target = new URL(runApiProxy + request.url);
     const proxied = http.request(
       target,
@@ -59,6 +61,12 @@ async function serveStatic(requestPath, request, response) {
     request.pipe(proxied);
     return;
   }
+  // 批次详情 /experiment/batch/<id>:静态站无服务端路由,统一落到 batch.html
+  // (与 nginx 的 try_files 同口径;批次标识由页面从 pathname 解析)
+  if (requestPath.startsWith("/experiment/batch/")) {
+    await serveStaticFile("/experiment/batch.html", response);
+    return;
+  }
   // 旧路径 301(任务六 §11:/docs/* 页面与 /showcase/context 迁至七模块新位置;
   // /docs/ 下的 css/js 资产保留原位,不在映射内)
   const redirect = redirectFor(requestPath);
@@ -67,14 +75,14 @@ async function serveStatic(requestPath, request, response) {
     response.end();
     return;
   }
-  // 模块前缀(机甲首页 + 六模块):无尾斜杠 302 到模块首页;{page} 自动补 .html
-  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/session-cross", "/lab", "/experiment", "/test", "/context", "/judging", "/engine", "/ops"];
+  // 模块前缀(五模块首页 + 子模块):无尾斜杠 302 到模块首页;{page} 自动补 .html
+  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/lab", "/experiment", "/test", "/context", "/judging", "/engine", "/ops", "/assets", "/docs"];
   if (MODULE_PREFIXES.includes(requestPath)) {
     response.writeHead(302, { Location: requestPath + "/" });
     response.end();
     return;
   }
-  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/session-cross/", "/lab/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/"];
+  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/lab/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/", "/assets/", "/docs/"];
   // 模块子页带尾斜杠(/experiment/compression/)301 去斜杠:子页是 *.html 文件
   // 不是目录;目录索引(如 /experiment/ 自身)除外。与 nginx 的去斜杠 rewrite 同口径。
   if (requestPath !== "/" && requestPath.endsWith("/")) {
@@ -120,6 +128,37 @@ async function serveStatic(requestPath, request, response) {
     return;
   }
 
+  await streamFile(filePath, fileStats, request, response);
+}
+
+/** 按扩展名输出静态文件(统一 no-store;HEAD 不输出正文)。 */
+async function serveStaticFile(relativeTarget, response) {
+  const decodedPath = decodeURIComponent(relativeTarget);
+  const relative = decodedPath.replace(/^[/\\]+/, "");
+  const filePath = path.resolve(publicDirectory, relative);
+  const publicRoot = path.resolve(publicDirectory);
+  if (filePath !== publicRoot && !filePath.startsWith(`${publicRoot}${path.sep}`)) {
+    response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("禁止访问");
+    return;
+  }
+  let fileStats;
+  try {
+    fileStats = await stat(filePath);
+  } catch {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("页面不存在");
+    return;
+  }
+  if (!fileStats.isFile()) {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("页面不存在");
+    return;
+  }
+  await streamFile(filePath, fileStats, { method: "GET" }, response);
+}
+
+async function streamFile(filePath, fileStats, request, response) {
   const contentType = contentTypes.get(path.extname(filePath).toLowerCase()) || "application/octet-stream";
   response.writeHead(200, {
     "Content-Type": contentType,

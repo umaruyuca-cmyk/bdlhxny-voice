@@ -299,113 +299,30 @@ def test_run_detail_proxies_data_service(client: TestClient) -> None:
     assert response.json()["id"] == "run-9"
 
 
-def test_request_rejects_question_or_tool_fields(client: TestClient) -> None:
-    response = client.post(
-        "/api/v1/eval-batches",
-        json={"case_ids": ["research-01"], "message": "任意问题"},
-        headers=_auth(),
-    )
-    assert response.status_code == 422
-
-
-def test_batch_persists_stepwise_records_for_each_mode(
-    client: TestClient,
-    fake_data: FakeDataClient,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-) -> None:
-    """任务一验收:逐运行落库(事件/明细/测量/工件)且 run_id 回填 report。"""
-    monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
-    recorders = [
-        _sample_recorder("baseline-tool-calling"),
-        _sample_recorder("langgraph-react"),
-        _sample_recorder("full-system"),
-    ]
-
-    def fake_execute(
-        _request: Any, _catalog: Any, job: Any = None, llm_config=None
-    ) -> tuple[dict[str, Any], list[Any]]:
-        payload = {
-            "cases": [
-                {
-                    "id": "research-01",
-                    "baseline": {"tool_correct": 1},
-                    "react": {"tool_correct": 1},
-                    "treatment": {"tool_correct": 1},
-                    "lineage": [],
-                }
-            ],
-            "run_records": [{"run_key": recorder.record.run_key, "run_id": None} for recorder in recorders],
-        }
-        return payload, [recorder.record for recorder in recorders]
-
-    monkeypatch.setattr(run_api, "_execute_eval", fake_execute)
-    response = client.post(
-        "/api/v1/eval-batches",
-        json={"case_ids": ["research-01"], "runs": 1},
-        headers=_auth(),
-    )
-    assert response.status_code == 200
-    job = _poll(client, response.json()["job_id"])
-    assert job["status"] == "done"
-
-    # 三组各一条运行记录,variant/snapshot 来自 data 服务视图(非拼接)
-    assert [run["agentMode"] for run in fake_data.created_runs] == [
-        "baseline-tool-calling",
-        "langgraph-react",
-        "full-system",
-    ]
-    for run in fake_data.created_runs:
-        assert run["variantId"] == "default"
-        assert run["snapshotId"] == "research-01:fixture-v1"
-
-    # 事件流与测量逐运行写入
-    assert len(fake_data.saved_events) == 3
-    assert all(events and events[0]["eventType"] == "run.started" for _run_id, events in fake_data.saved_events)
-    assert len(fake_data.saved_measurements) == 3
-    assert len(fake_data.evaluations) == 3
-    assert all(payload["valid_run"] for _run_id, payload in fake_data.evaluations)
-
-    # 工件文件双写 + run_artifacts 登记 + hash 可复算
-    assert len(fake_data.saved_artifacts) == 3
-    for run_id, artifact_payload in fake_data.saved_artifacts:
-        artifact_file = tmp_path / "runs" / f"{run_id}.json"
-        assert artifact_file.is_file()
-        import json as jsonlib
-
-        artifact = jsonlib.loads(artifact_file.read_text(encoding="utf-8"))
-        assert artifact["artifact_hash"] == artifact_payload["content_hash"]
-        assert artifact["artifact_hash"].startswith("sha256:")
-
-    # run_id 回填进 report
-    assert [row["run_id"] for row in job["report"]["run_records"]] == ["run-1", "run-2", "run-3"]
-    assert len(fake_data.completed) == 3
-
-
 def test_invalid_run_is_not_marked_valid(
     client: TestClient,
     fake_data: FakeDataClient,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    """429 注入运行:validRun=False、状态 INVALID、工件仍落盘。"""
+    """429 注入运行:validRun=False、状态 INVALID、工件仍落盘(压缩对照通道)。"""
     monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
-    recorder = _sample_recorder("baseline-tool-calling", status="INVALID", error_category="RATE_LIMITED")
+    recorder = _sample_recorder("native-tool-calling", status="INVALID", error_category="RATE_LIMITED")
+    recorder.record.case_id = "ctx-mini-port"
+    recorder.record.variant_id = "budgeted-comp"
 
-    def fake_execute(
-        _request: Any, _catalog: Any, job: Any = None, llm_config=None
-    ) -> tuple[dict[str, Any], list[Any]]:
-        return {"cases": [], "run_records": [{"run_key": recorder.record.run_key, "run_id": None}]}, [recorder.record]
+    def fake_execute(_request: Any, _views: Any, _selected: Any) -> tuple[dict[str, Any], list[Any]]:
+        return {"run_records": [{"run_key": recorder.record.run_key, "run_id": None}]}, [recorder.record]
 
-    monkeypatch.setattr(run_api, "_execute_eval", fake_execute)
+    monkeypatch.setattr(run_api, "_execute_context_eval", fake_execute)
     response = client.post(
-        "/api/v1/eval-batches",
-        json={"case_ids": ["research-01"], "runs": 1, "include_react": False},
+        "/api/v1/context-batches",
+        json={"case_ids": ["ctx-mini-port"], "runs": 1},
         headers=_auth(),
     )
     assert response.status_code == 200
     job = _poll(client, response.json()["job_id"])
-    assert job["status"] == "done"
+    assert job["status"] == "done", job.get("error")
     assert fake_data.evaluations[0][1]["valid_run"] is False
     assert fake_data.evaluations[0][1]["status"] == "INVALID"
     # agent_runs.status 同源透传(不再恒 COMPLETE):状态与错误类别一并落库
@@ -413,11 +330,6 @@ def test_invalid_run_is_not_marked_valid(
     assert fake_data.completed_payloads[0]["error_category"] == "RATE_LIMITED"
     assert fake_data.saved_artifacts[0][1]["content_hash"].startswith("sha256:")
     assert (tmp_path / "runs" / "run-1.json").is_file()
-
-
-def test_unknown_case_is_rejected(client: TestClient) -> None:
-    response = client.post("/api/v1/eval-batches", json={"case_ids": ["missing"]}, headers=_auth())
-    assert response.status_code == 400
 
 
 def _auth() -> dict[str, str]:
@@ -442,7 +354,7 @@ def test_context_batch_persists_variant_runs(
 ) -> None:
     """任务二验收:压缩对照批次逐变体落库,context_builds 写入真实报告。"""
     monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
-    recorder = _sample_recorder("full-system")
+    recorder = _sample_recorder("native-tool-calling")
     recorder.record.case_id = "ctx-mini-port"
     recorder.record.variant_id = "budgeted-comp"
     recorder.record.snapshot_id = "ctx-mini-port:budgeted-comp:fixture-v1"
@@ -533,70 +445,5 @@ def test_context_batch_rejects_non_comparison_cases(client: TestClient) -> None:
         "/api/v1/context-batches",
         json={"case_ids": ["research-01"]},
         headers=_auth(),
-    )
-    assert response.status_code == 400
-
-
-def test_select_case_views_filters_ids_and_skips_ctx_variants() -> None:
-    """case_ids 必须真正过滤执行列表;全部题目时跳过无 default 变体的 ctx 用例。
-
-    回归:此前 case_ids 只校验不过滤,目录含 ctx-* 用例(无 default 变体)时
-    load_cases 直接抛"没有 default 变体",任何批次都失败。
-    """
-    catalog = [
-        {"id": "research-01", "variants": [{"variantId": "default"}]},
-        {"id": "ctx-port-01", "variants": [{"variantId": "full-raw"}, {"variantId": "budgeted-comp"}]},
-        {"id": "chat-01", "variants": [{"variantId": "default"}]},
-    ]
-    picked = run_api._select_case_views(catalog, ["research-01", "ctx-port-01"])
-    assert [view["id"] for view in picked] == ["research-01", "ctx-port-01"]
-    default_only = run_api._select_case_views(catalog, None)
-    assert [view["id"] for view in default_only] == ["research-01", "chat-01"]
-
-def test_context_cases_list_ctx_library_metadata(client: TestClient, fake_data: FakeDataClient) -> None:
-    """长上下文库端点:只列带对照变体的用例,带条目构成与 token 估算。"""
-    response = client.get("/api/v1/context-cases", headers={"Authorization": "Bearer test-token"})
-    assert response.status_code == 200
-    cases = response.json()
-    assert [case["case_id"] for case in cases] == ["ctx-mini-port"]
-    meta = cases[0]
-    assert meta["item_count"] == 1
-    assert meta["item_counts"]["required"] == 1
-    assert meta["token_estimate"] > 0
-    assert meta["variants"]["budgeted-comp"]["token_budget"] == 12288
-
-
-def test_context_compress_runs_builder_without_llm(client: TestClient, fake_data: FakeDataClient) -> None:
-    """压缩测试端点:只跑构建器,返回逐条决策与 token 口径,无模型调用。"""
-    response = client.post(
-        "/api/v1/context-compress",
-        headers={"Authorization": "Bearer test-token"},
-        json={"case_id": "ctx-mini-port"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "COMPLETE"
-    assert body["strategy"] == "budgeted"
-    assert body["token_budget"] == 12288
-    assert body["required_retained"] is True
-    assert body["working_tokens"] <= body["token_budget"]
-    assert body["decisions"] and body["decisions"][0]["action"] in {"kept", "compressed", "referenced", "omitted"}
-
-
-def test_context_compress_rejects_unknown_case(client: TestClient, fake_data: FakeDataClient) -> None:
-    response = client.post(
-        "/api/v1/context-compress",
-        headers={"Authorization": "Bearer test-token"},
-        json={"case_id": "no-such-case"},
-    )
-    assert response.status_code == 400
-    assert "未知" in response.json()["detail"]
-
-
-def test_context_link_batch_rejects_unknown_case(client: TestClient, fake_data: FakeDataClient) -> None:
-    response = client.post(
-        "/api/v1/context-link-batches",
-        headers={"Authorization": "Bearer test-token"},
-        json={"case_ids": ["nope"], "runs": 1},
     )
     assert response.status_code == 400

@@ -13,7 +13,7 @@ from bdlh_runtime.experiments.job_store import JobStore, sha256_hex
 from bdlh_runtime.experiments.public_service import AnonymousJobService
 
 
-def _fake_comparison_executor(job):
+def _fake_template_executor(job):
     return {
         "runs": [
             {"unit_id": unit.unit_id, "task_success": True, "validity": "VALID",
@@ -29,6 +29,10 @@ def _fake_compression_executor(job, should_stop=lambda: False):
     return {"cells": [], "stats": {}}
 
 
+#: 匿名可用的对比模板(governance-on-off:2 变体 × repeat_count)
+TEMPLATE_ID = "governance-on-off"
+
+
 def _client(tmp_path, *, repository=None):
     from tests.experiments.test_jobs import MemoryRepo, _case
 
@@ -36,7 +40,7 @@ def _client(tmp_path, *, repository=None):
     service = AnonymousJobService(
         store,
         case_repository=repository or MemoryRepo([_case()]),
-        comparison_executor=_fake_comparison_executor,
+        template_executor=_fake_template_executor,
         compression_executor=_fake_compression_executor,
         thread_factory=lambda target: (target(), None)[1],  # 同步执行
     )
@@ -75,49 +79,72 @@ def test_options_issues_anonymous_cookie(client):
     payload = response.json()
     assert payload["fixed_conditions"]["repeat_options"] == [3, 5]
     assert payload["fixed_conditions"]["run_counts"] == {
-        "comparison_repeat_3": 9,
-        "comparison_repeat_5": 15,
-        "compression_session_matrix": 12,
-        "compression_all_sessions_theoretical": 36,
+        "compression_native_matrix": 4,
     }
+    assert payload["fixed_conditions"]["agent_mode_ids"] == ["native-tool-calling"]
     # 公开选项不含评判配置与 gold
     assert "call_relation" not in response.text and "gold" not in response.text
 
 
+def test_options_expose_tool_exclusion_presets(client):
+    """发起页 tool-availability-degradation 档位下拉数据源:预设只暴露编号/说明/数量。"""
+    body = client.get("/api/v1/public/test-options").json()
+    presets = body.get("tool_exclusion_presets") or []
+    ids = [row["preset_id"] for row in presets]
+    assert "remove-preferred" in ids
+    assert all("excluded_tools" not in row for row in presets)
+    assert all(row["description"] for row in presets)
+
+
 def test_create_comparison_job_rejects_bad_repeat(client):
-    for bad in (1, 2, 4, 7):
+    """对比模板 repeat_count 超出模板区间(1..5)一律拒绝。"""
+    for bad in (0, 6, 7):
         response = client.post(
             "/api/v1/public/test-jobs",
-            json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": bad},
+            json={"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+                  "case_id": "cmp-x", "repeat_count": bad},
         )
         assert response.status_code == 400, bad
         assert "repeat_count" in response.json()["detail"]
+
+
+def test_create_comparison_job_without_template_rejected(client):
+    """对比任务必须携带 template_id:缺 template_id 拒绝。"""
+    response = client.post(
+        "/api/v1/public/test-jobs",
+        json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+    )
+    assert response.status_code == 400
+    assert "模板" in response.json()["detail"]
 
 
 def test_create_comparison_job_rejects_custom_inputs(client):
     for field in ("message", "system_prompt", "tool_schema", "mock_result", "model_base_url", "api_key"):
         response = client.post(
             "/api/v1/public/test-jobs",
-            json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3, field: "x"},
+            json={"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+                  "case_id": "cmp-x", "repeat_count": 3, field: "x"},
         )
         assert response.status_code == 400, field
 
 
-def test_create_job_returns_nine_units_and_not_publishable(client):
+def test_create_job_returns_six_units_and_not_publishable(client):
     response = client.post(
         "/api/v1/public/test-jobs",
-        json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+        json={"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+              "case_id": "cmp-x", "repeat_count": 3},
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["unit_count"] == 9
+    assert payload["unit_count"] == 6
     assert payload["publishable"] is False  # 匿名运行固定不可发布
 
 
 def test_anonymous_cannot_read_others_jobs(client):
     created = client.post(
         "/api/v1/public/test-jobs",
-        json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+        json={"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+              "case_id": "cmp-x", "repeat_count": 3},
     ).json()
     # 另一个匿名身份(无同一 Cookie)看不到该任务
     stranger = TestClient(run_api.app)
@@ -132,12 +159,13 @@ def test_anonymous_cannot_read_others_jobs(client):
 def test_list_jobs_scoped_to_own_identity(client):
     client.post(
         "/api/v1/public/test-jobs",
-        json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+        json={"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+              "case_id": "cmp-x", "repeat_count": 3},
     )
     mine = client.get("/api/v1/public/test-jobs")
     assert mine.status_code == 200
     rows = mine.json()
-    assert len(rows) == 1 and rows[0]["total_units"] == 9
+    assert len(rows) == 1 and rows[0]["total_units"] == 6
     stranger = TestClient(run_api.app).get("/api/v1/public/test-jobs")
     assert stranger.json() == []
 
@@ -155,25 +183,25 @@ def test_compression_context_only_creates_zero_units(client):
     assert response.json()["unit_count"] == 0  # 只生成上下文:0 个 Agent 运行
 
 
-def test_compression_full_matrix_creates_twelve_units(client):
+def test_compression_native_matrix_creates_four_units(client):
     response = client.post(
         "/api/v1/public/test-jobs",
         json={
             "test_type": "COMPRESSION_CASE",
             "session_id": "ctx-session-context-engine-debug-01",
-            "execution_scope": "full-matrix",
+            "execution_scope": "native-matrix",
             "repeat_count": 1,
         },
     )
     assert response.status_code == 200
-    assert response.json()["unit_count"] == 12
+    assert response.json()["unit_count"] == 4  # 原生 4×1:四种上下文 × 一种统一配置
     # 压缩矩阵不接受其他重复次数
     bad = client.post(
         "/api/v1/public/test-jobs",
         json={
             "test_type": "COMPRESSION_CASE",
             "session_id": "ctx-session-context-engine-debug-01",
-            "execution_scope": "full-matrix",
+            "execution_scope": "native-matrix",
             "repeat_count": 3,
         },
     )
@@ -195,7 +223,8 @@ def test_unknown_session_rejected(client):
 def test_results_response_hides_internal_fields(client):
     created = client.post(
         "/api/v1/public/test-jobs",
-        json={"test_type": "COMPARISON_CASE", "case_id": "cmp-x", "repeat_count": 3},
+        json={"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+              "case_id": "cmp-x", "repeat_count": 3},
     ).json()
     detail = client.get(f"/api/v1/public/test-jobs/{created['job_id']}").json()
     assert "quota_snapshot" not in detail  # 公开视图不暴露内部快照

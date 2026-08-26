@@ -6,7 +6,8 @@
 - 匿名任务固定 publishable=false,不自动进入正式指标和公告。
 
 执行器可注入(测试用 Fake);生产默认调用 experiments.compression /
-experiments.comparison 的真实实现(LLM 配置唯一真源是服务端 env)。
+experiments.template_runner 的真实实现(LLM 配置唯一真源是服务端 env)。
+对比用例一律经实验模板发起(template_id)。
 """
 
 from __future__ import annotations
@@ -20,18 +21,16 @@ from typing import Any
 from bdlh_runtime.experiments import (
     COMPRESSION_SCOPE_CONTEXT_ONLY,
     COMPRESSION_SCOPE_CURRENT_COMBO,
-    COMPRESSION_SCOPE_FULL_MATRIX,
+    COMPRESSION_SCOPE_NATIVE_MATRIX,
     COMPRESSION_SCOPES,
+    NATIVE_AGENT_MODE_ID,
     RunUnit,
     TestType,
-    plan_comparison_runs,
-    plan_compression_matrix,
+    plan_native_context_runs,
     validate_repeat_count,
 )
 from bdlh_runtime.experiments.comparison import (
     CaseRepository,
-    ComparisonCaseError,
-    resolve_visible_tools,
 )
 from bdlh_runtime.experiments.job_store import (
     JOB_STATUS_CANCELLED,
@@ -64,16 +63,17 @@ class AnonymousJobService:
         *,
         case_repository: CaseRepository | None = None,
         quota: PublicQuotaConfig | None = None,
-        comparison_executor: Callable[..., Any] | None = None,
         compression_executor: Callable[..., Any] | None = None,
+        template_executor: Callable[..., Any] | None = None,
         thread_factory: Callable[..., threading.Thread] | None = None,
     ):
         self.store = store
         self.case_repository = case_repository
         self.quota = quota or PublicQuotaConfig.from_env()
         # 生产执行器:async (job, ...) -> dict;测试注入同步/假实现均可
-        self._comparison_executor = comparison_executor or _default_comparison_executor
         self._compression_executor = compression_executor or _default_compression_executor
+        # 模板化匿名任务执行器(模板不只可看,也能发起)
+        self._template_executor = template_executor or _default_template_executor
         self._thread_factory = thread_factory or (
             lambda target: threading.Thread(target=target, daemon=True)
         )
@@ -97,8 +97,13 @@ class AnonymousJobService:
                 f"test_type 只能是 COMPRESSION_CASE 或 COMPARISON_CASE,收到 {test_type_raw!r}"
             ) from None
 
-        if test_type is TestType.COMPARISON_CASE:
-            job = self._create_comparison_job(request, job_id=new_job_id())
+        if "template_id" in request:
+            job = self._create_template_job(request, job_id=new_job_id())
+        elif test_type is TestType.COMPARISON_CASE:
+            raise PublicTestError(
+                "对比用例必须经实验模板发起:请在请求中提供 template_id"
+                "(请在请求中提供 template_id)"
+            )
         else:
             job = self._create_compression_job(request, job_id=new_job_id())
 
@@ -120,43 +125,67 @@ class AnonymousJobService:
             thread.start()
         return job
 
-    def _create_comparison_job(self, request: dict[str, Any], *, job_id: str) -> JobRecord:
+    def _create_template_job(self, request: dict[str, Any], *, job_id: str) -> JobRecord:
+        """模板化匿名任务:正式单变量模板 → 精确运行单元(混合路线阻断1)。
+
+        - 只允许「允许匿名」且支持 COMPARISON_CASE 的模板;
+        - 计划全部在创建时经 plan_template_batch 校验(权限/区间/上限/预设);
+        - 单元 = 计划内的每次运行(unit_id 即模板 run_id),执行走统一原生底座。
+        """
+        from bdlh_runtime.experiments.templates import (
+            ROLE_ANONYMOUS,
+            TemplatePlanError,
+            plan_template_batch,
+        )
+
+        template_id = str(request.get("template_id") or "")
         case_id = str(request.get("case_id") or "")
         if not case_id:
-            raise PublicTestError("对比用例必须提供 case_id")
+            raise PublicTestError("模板任务必须提供 case_id(模板作用于固定用例)")
         if self.case_repository is None:
-            raise PublicTestError("当前服务未配置用例库,不能发起对比用例测试")
+            raise PublicTestError("当前服务未配置用例库,不能发起模板测试")
         case = self.case_repository.get_public_case(case_id)
         if case is None:
             raise PublicTestError(f"未知或非公开对比用例:{case_id}")
-        repeat_count = request.get("repeat_count")
+        repeat_raw = request.get("repeat_count", 1)
         try:
-            validate_repeat_count(TestType.COMPARISON_CASE, int(repeat_count))
+            repeat_count = int(repeat_raw)
         except (TypeError, ValueError):
-            raise PublicTestError(
-                f"对比用例 repeat_count 只能是 {list(self.quota.repeat_options)},收到 {repeat_count!r}"
-            ) from None
-        selected_raw = request.get("selected_tool_ids")
+            raise PublicTestError(f"repeat_count 必须是整数,收到 {repeat_raw!r}") from None
+        preset_id = request.get("preset_id")
         try:
-            selected, custom = resolve_visible_tools(case, selected_raw)
-        except ComparisonCaseError as exc:
+            plan = plan_template_batch(
+                template_id,
+                repeat_count=repeat_count,
+                role=ROLE_ANONYMOUS,
+                preset_id=str(preset_id) if preset_id else None,
+            )
+        except TemplatePlanError as exc:
             raise PublicTestError(str(exc)) from None
-        units = plan_comparison_runs(case.case_id, int(repeat_count))
+        if plan.context_only or not plan.runs:
+            raise PublicTestError("该模板不产生 Agent 运行(仅上下文生成),请使用压缩用例入口")
         return JobRecord(
             job_id=job_id,
             test_type=TestType.COMPARISON_CASE.value,
-            execution_scope="comparison-full",
+            execution_scope="template-batch",
             status=JOB_STATUS_QUEUED,
             case_id=case.case_id,
             case_version=case.case_version,
-            repeat_count=int(repeat_count),
-            selected_tool_ids=list(selected),
-            custom_conditions=custom,
+            repeat_count=repeat_count,
             fixture_set_id=case.fixture_set_id,
+            template_id=plan.template_id,
+            template_version=plan.template_version,
+            template_plan_hash=plan.fixed_conditions_hash,
+            template_preset_id=str(preset_id) if preset_id else None,
             units=[
-                JobUnit(seq=index + 1, unit_id=unit.unit_id, agent_mode_id=unit.agent_mode_id,
-                        repeat_index=unit.repeat_index)
-                for index, unit in enumerate(units)
+                JobUnit(
+                    seq=index + 1,
+                    unit_id=run.run_id,
+                    agent_mode_id=NATIVE_AGENT_MODE_ID,
+                    repeat_index=run.repeat_index,
+                    context_variant=run.variant_label,
+                )
+                for index, run in enumerate(plan.runs)
             ],
         )
 
@@ -183,17 +212,22 @@ class AnonymousJobService:
         if scope == COMPRESSION_SCOPE_CURRENT_COMBO:
             if not context_variant or not agent_mode_id:
                 raise PublicTestError("运行当前组合必须提供 context_variant 与 agent_mode_id")
+            if agent_mode_id != NATIVE_AGENT_MODE_ID:
+                raise PublicTestError(
+                    f"运行当前组合的 agent_mode_id 只能是 {NATIVE_AGENT_MODE_ID},收到 {agent_mode_id!r}"
+                )
             units = [
                 JobUnit(seq=1, unit_id=f"{session_id}:{context_variant}:{agent_mode_id}",
                         agent_mode_id=str(agent_mode_id), repeat_index=0,
                         context_variant=str(context_variant))
             ]
-        elif scope == COMPRESSION_SCOPE_FULL_MATRIX:
-            matrix: list[RunUnit] = plan_compression_matrix(session_id)
+        elif scope == COMPRESSION_SCOPE_NATIVE_MATRIX:
+            # 新默认上下文运行计划:4 种上下文 × 1 种固定原生配置(4×1)
+            native_units: list[RunUnit] = plan_native_context_runs(session_id)
             units = [
                 JobUnit(seq=index + 1, unit_id=unit.unit_id, agent_mode_id=unit.agent_mode_id,
                         repeat_index=0, context_variant=unit.context_variant)
-                for index, unit in enumerate(matrix)
+                for index, unit in enumerate(native_units)
             ]
         return JobRecord(
             job_id=job_id,
@@ -224,29 +258,11 @@ class AnonymousJobService:
                     f"今日对比用例测试次数已达上限({self.quota.comparison_daily_jobs}),请明天再试"
                 )
         else:
-            matrix_used = sum(
-                1 for row in todays
-                if row.test_type == TestType.COMPRESSION_CASE.value
-                and row.execution_scope == COMPRESSION_SCOPE_FULL_MATRIX
-            )
             context_used = sum(
                 1 for row in todays
                 if row.test_type == TestType.COMPRESSION_CASE.value
-                and row.execution_scope != COMPRESSION_SCOPE_FULL_MATRIX
             )
-            matrix_exhausted = (
-                job.execution_scope == COMPRESSION_SCOPE_FULL_MATRIX
-                and matrix_used >= self.quota.compression_matrix_daily_jobs
-            )
-            if matrix_exhausted:
-                raise PublicTestError(
-                    f"今日完整 4×3 测试次数已达上限({self.quota.compression_matrix_daily_jobs})"
-                )
-            context_exhausted = (
-                job.execution_scope != COMPRESSION_SCOPE_FULL_MATRIX
-                and context_used >= self.quota.compression_context_daily_jobs
-            )
-            if context_exhausted:
+            if context_used >= self.quota.compression_context_daily_jobs:
                 raise PublicTestError(
                     f"今日压缩上下文生成次数已达上限({self.quota.compression_context_daily_jobs})"
                 )
@@ -262,12 +278,15 @@ class AnonymousJobService:
         self.store.save(job)
         deadline = time.monotonic() + (
             self.quota.matrix_max_job_duration_s
-            if job.execution_scope == COMPRESSION_SCOPE_FULL_MATRIX
+            if job.execution_scope == COMPRESSION_SCOPE_NATIVE_MATRIX
             else self.quota.max_job_duration_s
         )
         try:
-            if job.test_type == TestType.COMPARISON_CASE.value:
-                result = self._comparison_executor(job)
+            if job.template_id:
+                result = self._template_executor(
+                    job,
+                    should_stop=lambda: job.cancel_requested or time.monotonic() > deadline,
+                )
             else:
                 result = self._compression_executor(
                     job,
@@ -315,7 +334,13 @@ class AnonymousJobService:
                        "repeat_count", "max_agent_steps", "total_runs", "unit_count",
                        "by_agent", "invalid_runs", "custom_conditions", "selected_tool_ids",
                        "fixture_set_id", "execution_order", "frozen_artifact_hashes",
-                       "skipped_unit_ids", "stats", "fingerprint"}
+                       "skipped_unit_ids", "stats", "fingerprint",
+                       # 运行配置快照(阶段A3):配置体不含 gold,可进公开摘要
+                       "run_configs", "fixed_conditions", "fixed_conditions_hash",
+                       # 模板批次摘要(混合路线):模板标识/分类/自变量/按变体聚合
+                       "template_id", "template_version", "classification",
+                       "independent_variable", "by_variant", "run_count",
+                       "skipped_run_ids"}
         }
         self.store.save(job)
 
@@ -360,37 +385,55 @@ _ALLOWED_REQUEST_FIELDS = frozenset(
         "repeat_count",
         "selected_tool_ids",
         "idempotency_key",
+        # 模板化匿名任务(混合路线):只接受模板编号与预设编号,
+        # 变体数组/高级设置仍不可提交(由模板常量决定)
+        "template_id",
+        "preset_id",
     }
 )
 
 
-def _default_comparison_executor(job: JobRecord) -> dict[str, Any]:
-    """生产执行器(同步包装):从仓库读取用例,按冻结条件运行 3×repeat_count 次。"""
+def _default_template_executor(
+    job: JobRecord, *, should_stop: Callable[[], bool] = lambda: False
+) -> dict[str, Any]:
+    """生产模板执行器(同步包装):重建计划并在统一原生底座上运行。
+
+    LLM 配置唯一真源是服务端 env(与旧入口一致);测试注入 template_executor
+    替身,不触发本函数。计划重建参数与创建时一致(模板常量 + 持久化的
+    repeat_count/preset_id),确定性可复现。
+    """
     import asyncio
-    from dataclasses import asdict
 
-    from bdlh_runtime.experiments import default_max_agent_steps
-    from bdlh_runtime.experiments.comparison import run_comparison_case
-
-    assert job.case_id
     from bdlh_runtime.experiments.public_case_repository import get_case_repository
+    from bdlh_runtime.experiments.template_runner import run_template_batch
+    from bdlh_runtime.experiments.templates import ROLE_ANONYMOUS, plan_template_batch
 
+    assert job.case_id and job.template_id
     repository = get_case_repository()
     case = repository.get_public_case(job.case_id)
     if case is None:
         raise PublicTestError(f"未知或非公开对比用例:{job.case_id}")
+    plan = plan_template_batch(
+        job.template_id,
+        repeat_count=job.repeat_count,
+        role=ROLE_ANONYMOUS,
+        preset_id=job.template_preset_id,
+    )
     result = asyncio.run(
-        run_comparison_case(
-            case,
-            job.repeat_count,
-            selected_tool_ids=tuple(job.selected_tool_ids) or None,
-            max_agent_steps=job.max_agent_steps or default_max_agent_steps(),
-            should_stop=lambda: job.cancel_requested,
+        run_template_batch(
+            plan,
+            message=case.message,
+            visible_tools=case.allowed_tools,
+            # llm=None:每次运行按各自生效参数构建独立客户端(温度等逐运行生效)
+            llm=None,
+            fixtures=list((case.conditions or {}).get("mock_fixtures") or []),
+            fixture_version=str(case.fixture_set_id),
+            should_stop=should_stop,
         )
     )
-    payload = asdict(result)
-    payload["runs"] = [row.__dict__ for row in result.runs]
-    return payload
+    # 单元对齐:_apply_result 按 unit_id 匹配,模板 run_id 即单元号
+    result["runs"] = [dict(row, unit_id=row.get("run_id")) for row in result.get("runs") or []]
+    return result
 
 
 def _default_compression_executor(job: JobRecord, *, should_stop: Callable[[], bool] = lambda: False) -> dict[str, Any]:
@@ -417,16 +460,18 @@ def _default_compression_executor(job: JobRecord, *, should_stop: Callable[[], b
             compression_module.run_current_combo(
                 job.session_id,
                 job.context_variant or "",
-                job.agent_mode_id or "",
+                NATIVE_AGENT_MODE_ID,
                 max_agent_steps=steps,
             )
         )
         return {"cells": [cell.__dict__], "session_id": job.session_id,
                 "frozen_artifact_hashes": {cell.context_variant: cell.context_artifact_hash}}
-    return asyncio.run(
-        compression_module.run_full_matrix(
-            job.session_id,
-            max_agent_steps=steps,
-            should_stop=should_stop,
+    if job.execution_scope == COMPRESSION_SCOPE_NATIVE_MATRIX:
+        return asyncio.run(
+            compression_module.run_native_context_matrix(
+                job.session_id,
+                max_agent_steps=steps,
+                should_stop=should_stop,
+            )
         )
-    )
+    raise PublicTestError(f"未知压缩操作 execution_scope:{job.execution_scope!r}")

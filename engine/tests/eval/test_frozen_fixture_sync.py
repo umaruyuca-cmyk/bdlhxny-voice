@@ -63,8 +63,8 @@ def test_frozen_fixture_rows_match_seed_in_order():
     )
 
 
-def test_ab_eval_rows_are_all_success_for_frozen_lookup():
-    """ab-eval 集语义不变:全部 SUCCESS(负例请落 ab-eval-negative-v1 等独立冻结集)。"""
+def test_frozen_lookup_rows_are_all_success():
+    """ab-eval 冻结集语义不变:全部 SUCCESS(负例请落 ab-eval-negative-v1 等独立冻结集)。"""
     statuses = {status for _key, _tool, status in _rows("ab-eval")}
     assert statuses == {"SUCCESS"}, "ab-eval 集出现非 SUCCESS 行,需同步调整替身与查找语义"
 

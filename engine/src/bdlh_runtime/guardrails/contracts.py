@@ -45,6 +45,10 @@ class GuardrailContext(BaseModel):
     enabled_actions: frozenset[str] = frozenset()
     max_tool_calls: int = Field(default=20, ge=0)
     max_runtime_seconds: int = Field(default=120, ge=1)
+    #: 治理档位(混合路线 B3):standard=完整 G1-G7;off=仅硬边界+旁路事件
+    governance_profile: str = Field(default="standard")
+    #: 单工具重复调用预算(0=不限制);与整次调用预算 max_tool_calls 分开
+    max_calls_per_tool: int = Field(default=0, ge=0)
 
 
 ReplacementT = TypeVar("ReplacementT")
