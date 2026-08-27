@@ -24,6 +24,10 @@ class BaselineResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     error: str | None = None
+    # LangGraph 官方 ReAct 对照组专用：模型实际发起的 tool_calls 名单。
+    # ToolNode 会拦截非法工具名（不执行），只有这份名单能完整记录幻觉尝试；
+    # 裸调用组无门禁，attempted == executed，保持为空即可。
+    attempted_tools: list[str] = field(default_factory=list)
 
 
 def _tool_spec(card: Any) -> dict[str, Any]:
@@ -79,17 +83,23 @@ def _extract_tokens(response: Any) -> tuple[int, int]:
     # langchain 0.2+: usage_metadata typed object
     um = getattr(response, "usage_metadata", None)
     if um is not None:
-        return int(getattr(um, "input_tokens", 0) or 0), int(getattr(um, "output_tokens", 0) or 0)
+        p = int(getattr(um, "input_tokens", 0) or 0)
+        c = int(getattr(um, "output_tokens", 0) or 0)
+        if p > 0 or c > 0:
+            return p, c
+    # response_metadata.token_usage (OpenAI format)
     meta = getattr(response, "response_metadata", None)
-    if not isinstance(meta, dict):
-        return 0, 0
-    usage = meta.get("token_usage") or meta.get("usage") or {}
-    if not isinstance(usage, dict) or not usage:
-        # Fallback: estimate from response text
-        text = _extract_text(response)
-        approx = max(1, len(text) // 4)
-        return approx, approx
-    return int(usage.get("prompt_tokens", 0) or 0), int(usage.get("completion_tokens", 0) or 0)
+    if isinstance(meta, dict):
+        usage = meta.get("token_usage") or meta.get("usage") or {}
+        if isinstance(usage, dict) and usage:
+            p = int(usage.get("prompt_tokens", 0) or 0)
+            c = int(usage.get("completion_tokens", 0) or 0)
+            if p > 0 or c > 0:
+                return p, c
+    # Fallback: estimate from response text (rough, but captures relative diff)
+    text = _extract_text(response)
+    approx = max(1, len(text) // 4)
+    return 0, approx
 
 
 _BASELINE_SYSTEM = (

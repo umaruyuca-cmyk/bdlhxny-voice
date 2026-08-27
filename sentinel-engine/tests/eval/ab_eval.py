@@ -1,10 +1,11 @@
-"""A/B eval: 裸 LLM tool calling vs 完整 Agent 工程模式对照基准。
+"""eval 对照：裸 tool calling、LangGraph 官方 ReAct 与完整工程模式三组对比。
 
-同一题库、同一 LLM、同一 canned 工具数据，唯一变量是有没有 Agent 工程模式。
-Baseline: 全量工具 + 无 Guardrail + 无 Selective Loading + 无 Fast-Path + 无 Output Guardrail
-Treatment: scoped 装载 + G1-G7 治理中间件 + 语义快路径 + Output Guardrail
+同一题库、同一 LLM、同一 canned 工具数据，唯一变量是编排形态。
+- 裸 tool calling（基线）：全量工具 + 无 Guardrail + 无 Selective Loading + 无 Fast-Path + 无 Output Guardrail
+- LangGraph 官方 ReAct（可选对照组）：create_react_agent 框架默认编排（ToolNode 统一执行）
+- 完整工程模式（本系统）：scoped 装载 + G1-G7 治理中间件 + 语义快路径 + Output Guardrail
 
-CLI: LLM_API_KEY=xxx python -m tests.eval.ab_eval --runs 5
+CLI: LLM_API_KEY=xxx python -m tests.eval.ab_eval --runs 5 [--no-with-react]
 """
 
 # ruff: noqa: E501
@@ -15,8 +16,9 @@ import argparse
 import asyncio
 import json
 import os
-from dataclasses import dataclass, field
-from datetime import date
+import sys
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -34,6 +36,7 @@ from bdlh_runtime.infra.llm import create_llm
 from bdlh_runtime.registry import load_and_validate
 from bdlh_runtime.tools.catalog import ToolCatalog, catalog_from_snapshot
 from tests.eval.baseline_agent import BaselineResult, naive_run
+from tests.eval.baseline_langgraph import react_official_run
 from tests.eval.canned_observations import get_canned
 from tests.registry.seeded_store import build_seeded_store
 
@@ -45,7 +48,7 @@ _BASELINE_SYSTEM = (
 )
 
 
-# ── 15 道固定题 ────────────────────────────────────────────────────────
+# ── 18 道固定题 ────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -144,6 +147,34 @@ AB_CASES: tuple[ABCase, ...] = (
         scene_tag="research",
         expected_tools=("research.web_search",),
     ),
+    ABCase(
+        "follow-01",
+        "记忆",
+        "对我的换房计划有影响吗",
+        scene_tag="portfolio",
+        authenticated=True,
+        expected_tools=("memory.recall", "portfolio.get_current_positions"),
+    ),
+    ABCase(
+        "miss-06",
+        "越权拦截",
+        "我的换房计划是什么",
+        scene_tag="portfolio",
+        authenticated=False,
+        absent_tools=("memory.recall", "portfolio.get_current_positions"),
+    ),
+    ABCase(
+        "port-03",
+        "组合",
+        "我的持仓现在值多少钱",
+        scene_tag="watch",
+        authenticated=True,
+        expected_tools=(
+            "portfolio.get_current_positions",
+            "market.get_realtime_quote",
+            "portfolio.build_current_valuation",
+        ),
+    ),
 )
 
 
@@ -213,8 +244,10 @@ class CaseReport:
     category: str
     message: str
     baseline_runs: list[RunJudgment] = field(default_factory=list)
+    react_runs: list[RunJudgment] = field(default_factory=list)
     treatment_runs: list[RunJudgment] = field(default_factory=list)
     baseline_answers: list[str] = field(default_factory=list)
+    react_answers: list[str] = field(default_factory=list)
     treatment_answers: list[str] = field(default_factory=list)
 
 
@@ -239,6 +272,7 @@ class ABReport:
     runs_per_case: int
     baseline: GroupSummary
     treatment: GroupSummary
+    react: GroupSummary | None = None
     cases: list[CaseReport] = field(default_factory=list)
     model: str = "glm-4.7"
 
@@ -252,21 +286,27 @@ def _extract_treatment_tokens(result: AgentResult) -> tuple[int, int]:
         # langchain 0.2+: usage_metadata typed object
         um = getattr(msg, "usage_metadata", None)
         if um is not None:
-            prompt += int(getattr(um, "input_tokens", 0) or 0)
-            completion += int(getattr(um, "output_tokens", 0) or 0)
-            continue
+            p = int(getattr(um, "input_tokens", 0) or 0)
+            c = int(getattr(um, "output_tokens", 0) or 0)
+            if p > 0 or c > 0:
+                prompt += p
+                completion += c
+                continue
         # response_metadata.token_usage (OpenAI format)
         meta = getattr(msg, "response_metadata", None)
         if isinstance(meta, dict):
             usage = meta.get("token_usage") or meta.get("usage") or {}
             if isinstance(usage, dict) and usage:
-                prompt += int(usage.get("prompt_tokens", 0) or 0)
-                completion += int(usage.get("completion_tokens", 0) or 0)
+                p = int(usage.get("prompt_tokens", 0) or 0)
+                c = int(usage.get("completion_tokens", 0) or 0)
+                if p > 0 or c > 0:
+                    prompt += p
+                    completion += c
     if prompt == 0 and completion == 0:
         # Fallback: estimate from message text length
         total_chars = sum(len(str(getattr(m, "content", "") or "")) for m in result.messages)
         approx = max(1, total_chars // 4)
-        return approx, approx
+        return 0, approx
     return prompt, completion
 
 
@@ -340,6 +380,31 @@ def _judge_baseline(
     return j
 
 
+def _judge_react(
+    case: ABCase, result: BaselineResult, executor: MockToolExecutor, catalog_names: set[str]
+) -> RunJudgment:
+    """B2 判定：attempted 取模型实际发起的 tool_calls（ToolNode 拦截的幻觉尝试不丢失），
+    executed 取 executor 日志（越权泄漏按实际执行计）。"""
+    j = RunJudgment(error=result.error)
+    attempted = set(result.attempted_tools)
+    executed = {name for name, _ in executor.call_log}
+    j.hallucinated_tools = sorted(attempted - catalog_names)
+    j.forbidden_leak = sorted(executed & set(case.absent_tools))
+    if case.fastpath:
+        j.tool_correct = not attempted
+    else:
+        j.tool_correct = attempted == set(case.expected_tools)
+    j.rounds = result.rounds
+    j.prompt_tokens = result.prompt_tokens
+    j.completion_tokens = result.completion_tokens
+    obs_texts = [json.dumps(get_canned(n, a), ensure_ascii=False, default=str) for n, a in executor.call_log]
+    if obs_texts:
+        j.number_hallucinations = [v.detail for v in _number_check.check(result.answer, obs_texts)]
+    j.c1_violations = [v.detail for v in _c1_check.check(result.answer, [])]
+    j.c2_violations = [v.detail for v in _c2_check.check(result.answer, [])]
+    return j
+
+
 def _judge_treatment(
     case: ABCase,
     agent_result: AgentResult,
@@ -394,12 +459,17 @@ def _summarize(runs: list[RunJudgment]) -> GroupSummary:
 # ── 主 runner ───────────────────────────────────────────────────────────
 
 
-async def run_ab_eval(runs_per_case: int = 5, llm: Any | None = None) -> ABReport:
+async def run_ab_eval(
+    runs_per_case: int = 5,
+    llm: Any | None = None,
+    model: str = "glm-4.7-flash",
+    with_react: bool = True,
+) -> ABReport:
     if llm is None:
         api_key = os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
             raise RuntimeError("LLM_API_KEY 未设置")
-        llm = create_llm(api_key=api_key)
+        llm = create_llm(api_key=api_key, model=model)
         if llm is None:
             raise RuntimeError("LLM 客户端创建失败")
 
@@ -412,44 +482,87 @@ async def run_ab_eval(runs_per_case: int = 5, llm: Any | None = None) -> ABRepor
     for case in AB_CASES:
         cr = CaseReport(case_id=case.id, category=case.category, message=case.message)
         for _ in range(runs_per_case):
-            # Baseline
-            try:
+            # Baseline (with 429 retry)
+            b_result, b_exec = None, None
+            for attempt in range(3):
                 b_result, b_exec = await run_baseline(case, llm, all_cards)
-                b_judgment = _judge_baseline(case, b_result, b_exec, catalog_names)
-                cr.baseline_answers.append(b_result.answer[:200])
-            except Exception as exc:
-                b_judgment = RunJudgment(error=str(exc))
-                cr.baseline_answers.append(f"（失败：{exc}）")
+                if b_result.error and "429" in b_result.error and attempt < 2:
+                    print(f"    baseline 429, retry in 30s ({attempt + 1}/3)")
+                    await asyncio.sleep(30)
+                    continue
+                break
+            b_judgment = _judge_baseline(case, b_result, b_exec, catalog_names)
             cr.baseline_runs.append(b_judgment)
-            await asyncio.sleep(3.0)
+            cr.baseline_answers.append(b_result.answer[:200])
+            await asyncio.sleep(1.0)
 
-            # Treatment
-            try:
-                t_result, t_exec, _ = await run_treatment(case, llm, catalog)
+            # LangGraph 官方 ReAct 对照组（可选；带 429 重试）
+            if with_react:
+                r_exec = MockToolExecutor()
+                for attempt in range(3):
+                    r_result = await react_official_run(
+                        message=case.message,
+                        history=list(case.history),
+                        all_cards=all_cards,
+                        llm=llm,
+                        executor=r_exec,
+                        system_prompt=_BASELINE_SYSTEM,
+                    )
+                    if r_result.error and "429" in r_result.error and attempt < 2:
+                        print(f"    react 429, retry in 30s ({attempt + 1}/3)")
+                        await asyncio.sleep(30)
+                        continue
+                    break
+                cr.react_runs.append(_judge_react(case, r_result, r_exec, catalog_names))
+                cr.react_answers.append(r_result.answer[:200])
+                await asyncio.sleep(1.0)
+
+            # Treatment (with 429 retry)
+            t_result, t_exec, t_loop = None, None, None
+            for attempt in range(3):
+                try:
+                    t_result, t_exec, t_loop = await run_treatment(case, llm, catalog)
+                    break
+                except Exception as exc:
+                    if "429" in str(exc) and attempt < 2:
+                        print(f"    treatment 429, retry in 30s ({attempt + 1}/3)")
+                        await asyncio.sleep(30)
+                        continue
+                    t_result = None
+                    t_exec = MockToolExecutor()
+                    cr.treatment_runs.append(RunJudgment(error=str(exc)))
+                    cr.treatment_answers.append(f"（失败：{exc}）")
+                    t_result = "FAILED"
+                    break
+            if t_result != "FAILED":
                 t_guard = guardrail.check(t_result.answer, t_result.observations)
                 t_judgment = _judge_treatment(case, t_result, t_guard, t_exec, catalog_names)
+                cr.treatment_runs.append(t_judgment)
                 cr.treatment_answers.append(t_guard.fixed_answer[:200])
-            except Exception as exc:
-                t_judgment = RunJudgment(error=str(exc))
-                cr.treatment_answers.append(f"（失败：{exc}）")
-            cr.treatment_runs.append(t_judgment)
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(1.0)
 
+        react_part = ""
+        if with_react:
+            react_part = f" 官方ReAct={sum(1 for r in cr.react_runs if r.tool_correct)}/{runs_per_case}"
         print(
             f"  {case.id} [{case.category}] "
-            f"baseline: tool={sum(1 for r in cr.baseline_runs if r.tool_correct)}/{runs_per_case} "
-            f"treatment: tool={sum(1 for r in cr.treatment_runs if r.tool_correct)}/{runs_per_case}"
+            f"裸调用={sum(1 for r in cr.baseline_runs if r.tool_correct)}/{runs_per_case}"
+            f"{react_part} "
+            f"完整模式={sum(1 for r in cr.treatment_runs if r.tool_correct)}/{runs_per_case}"
         )
         case_reports.append(cr)
 
     all_baseline = [j for cr in case_reports for j in cr.baseline_runs]
     all_treatment = [j for cr in case_reports for j in cr.treatment_runs]
+    all_react = [j for cr in case_reports for j in cr.react_runs] if with_react else None
     return ABReport(
         case_count=len(AB_CASES),
         runs_per_case=runs_per_case,
         baseline=_summarize(all_baseline),
         treatment=_summarize(all_treatment),
+        react=_summarize(all_react) if all_react else None,
         cases=case_reports,
+        model=model,
     )
 
 
@@ -475,6 +588,8 @@ def _token_pct(baseline: int, treatment: int) -> str:
 
 def render_markdown(report: ABReport) -> str:
     b, t = report.baseline, report.treatment
+    r = report.react
+    has_react = r is not None
     lines = [
         f"# 设计模式有效性对照（{date.today().isoformat()}）",
         "",
@@ -482,23 +597,47 @@ def render_markdown(report: ABReport) -> str:
         "",
         f"- 模型：{report.model}（temperature=0.1）",
         f"- 题库：{report.case_count} 题 × {report.runs_per_case} 次 = {report.case_count * report.runs_per_case} 次实验/组",
-        "- Baseline：裸 LLM tool calling（无 Guardrail / 无 Selective Loading / 无 Fast-Path / 无 Output Guardrail）",
-        "- Treatment：完整模式（Guardrail Middleware G1-G7 + Selective Tool Loading + Semantic Fast-Path + Output Guardrail）",
-        "- 工具执行器：MockExecutor（canned，两组共用，隔离执行质量差异）",
-        "- 路由：GoldRouter（金标快路径，隔离路由误差）",
+        "- 裸 tool calling（基线）：LLM 原生 tool calling（无 Guardrail / 无 Selective Loading / 无 Fast-Path / 无 Output Guardrail）",
+    ]
+    if has_react:
+        lines.append(
+            "- LangGraph 官方 ReAct（对照组）：create_react_agent 框架默认编排（全量工具 + ToolNode 统一执行，无治理；recursion_limit=50）"
+        )
+    lines += [
+        "- 完整工程模式（本系统）：Guardrail Middleware G1-G7 + Selective Tool Loading + Semantic Fast-Path + Output Guardrail",
+        "- 工具执行器：MockExecutor（canned，各组共用，隔离执行质量差异）",
+        "- 路由：GoldRouter（金标快路径，隔离路由误差；仅 T 组接入快路径）",
         "",
         "## 总表",
         "",
-        "| 指标 | Baseline | Treatment | 变化 |",
-        "|---|---:|---:|---:|",
-        f"| 工具选择准确率 | {_pct(b.tool_selection_rate)} | {_pct(t.tool_selection_rate)} | {_pp(t.tool_selection_rate - b.tool_selection_rate)} |",
-        f"| 幻觉工具率 | {_pct(b.hallucination_rate)} | {_pct(t.hallucination_rate)} | {_pp(t.hallucination_rate - b.hallucination_rate)} |",
-        f"| 越权泄漏率 | {_pct(b.forbidden_leak_rate)} | {_pct(t.forbidden_leak_rate)} | {_pp(t.forbidden_leak_rate - b.forbidden_leak_rate)} |",
-        f"| 数字幻觉率 | {_pct(b.number_hallucination_rate)} | {_pct(t.number_hallucination_rate)} | {_pp(t.number_hallucination_rate - b.number_hallucination_rate)} |",
-        f"| 合规违规率(C-1) | {_pct(b.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp(t.c1_violation_rate - b.c1_violation_rate)} |",
-        f"| 合规违规率(C-2) | {_pct(b.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp(t.c2_violation_rate - b.c2_violation_rate)} |",
-        f"| 平均轮次 | {b.mean_rounds:.1f} | {t.mean_rounds:.1f} | {t.mean_rounds - b.mean_rounds:+.1f} |",
-        f"| 平均 token | {b.mean_tokens} | {t.mean_tokens} | {_token_pct(b.mean_tokens, t.mean_tokens)} |",
+    ]
+    if has_react:
+        lines += [
+            "| 指标 | 裸 tool calling | LangGraph 官方 ReAct | 完整工程模式 | 变化(完整−基线) |",
+            "|---|---:|---:|---:|---:|",
+            f"| 工具选择准确率 | {_pct(b.tool_selection_rate)} | {_pct(r.tool_selection_rate)} | {_pct(t.tool_selection_rate)} | {_pp(t.tool_selection_rate - b.tool_selection_rate)} |",
+            f"| 幻觉工具率 | {_pct(b.hallucination_rate)} | {_pct(r.hallucination_rate)} | {_pct(t.hallucination_rate)} | {_pp(t.hallucination_rate - b.hallucination_rate)} |",
+            f"| 越权泄漏率 | {_pct(b.forbidden_leak_rate)} | {_pct(r.forbidden_leak_rate)} | {_pct(t.forbidden_leak_rate)} | {_pp(t.forbidden_leak_rate - b.forbidden_leak_rate)} |",
+            f"| 数字幻觉率 | {_pct(b.number_hallucination_rate)} | {_pct(r.number_hallucination_rate)} | {_pct(t.number_hallucination_rate)} | {_pp(t.number_hallucination_rate - b.number_hallucination_rate)} |",
+            f"| 合规违规率(C-1) | {_pct(b.c1_violation_rate)} | {_pct(r.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp(t.c1_violation_rate - b.c1_violation_rate)} |",
+            f"| 合规违规率(C-2) | {_pct(b.c2_violation_rate)} | {_pct(r.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp(t.c2_violation_rate - b.c2_violation_rate)} |",
+            f"| 平均轮次 | {b.mean_rounds:.1f} | {r.mean_rounds:.1f} | {t.mean_rounds:.1f} | {t.mean_rounds - b.mean_rounds:+.1f} |",
+            f"| 平均 token | {b.mean_tokens} | {r.mean_tokens} | {t.mean_tokens} | {_token_pct(b.mean_tokens, t.mean_tokens)} |",
+        ]
+    else:
+        lines += [
+            "| 指标 | 裸 tool calling | 完整工程模式 | 变化(完整−基线) |",
+            "|---|---:|---:|---:|",
+            f"| 工具选择准确率 | {_pct(b.tool_selection_rate)} | {_pct(t.tool_selection_rate)} | {_pp(t.tool_selection_rate - b.tool_selection_rate)} |",
+            f"| 幻觉工具率 | {_pct(b.hallucination_rate)} | {_pct(t.hallucination_rate)} | {_pp(t.hallucination_rate - b.hallucination_rate)} |",
+            f"| 越权泄漏率 | {_pct(b.forbidden_leak_rate)} | {_pct(t.forbidden_leak_rate)} | {_pp(t.forbidden_leak_rate - b.forbidden_leak_rate)} |",
+            f"| 数字幻觉率 | {_pct(b.number_hallucination_rate)} | {_pct(t.number_hallucination_rate)} | {_pp(t.number_hallucination_rate - b.number_hallucination_rate)} |",
+            f"| 合规违规率(C-1) | {_pct(b.c1_violation_rate)} | {_pct(t.c1_violation_rate)} | {_pp(t.c1_violation_rate - b.c1_violation_rate)} |",
+            f"| 合规违规率(C-2) | {_pct(b.c2_violation_rate)} | {_pct(t.c2_violation_rate)} | {_pp(t.c2_violation_rate - b.c2_violation_rate)} |",
+            f"| 平均轮次 | {b.mean_rounds:.1f} | {t.mean_rounds:.1f} | {t.mean_rounds - b.mean_rounds:+.1f} |",
+            f"| 平均 token | {b.mean_tokens} | {t.mean_tokens} | {_token_pct(b.mean_tokens, t.mean_tokens)} |",
+        ]
+    lines += [
         "",
         "## 模式归因",
         "",
@@ -508,21 +647,47 @@ def render_markdown(report: ABReport) -> str:
         f"| Guardrail G3（权限） | 越权泄漏 {_pct(b.forbidden_leak_rate)}→{_pct(t.forbidden_leak_rate)} |",
         f"| Output Guardrail | 数字幻觉 {_pct(b.number_hallucination_rate)}→{_pct(t.number_hallucination_rate)} + C-1 {_pct(b.c1_violation_rate)}→{_pct(t.c1_violation_rate)} + C-2 {_pct(b.c2_violation_rate)}→{_pct(t.c2_violation_rate)} |",
         f"| Selective Loading + Fast-Path | 轮次 {b.mean_rounds:.1f}→{t.mean_rounds:.1f} + token {_token_pct(b.mean_tokens, t.mean_tokens)} |",
+    ]
+    if has_react:
+        lines += [
+            "",
+            "### LangGraph 官方 ReAct 参照",
+            "",
+            f"- 框架默认形态 vs 裸 tool calling：工具选择 {_pct(b.tool_selection_rate)} → {_pct(r.tool_selection_rate)}，"
+            f"幻觉工具 {_pct(b.hallucination_rate)} → {_pct(r.hallucination_rate)}，"
+            f"数字幻觉 {_pct(b.number_hallucination_rate)} → {_pct(r.number_hallucination_rate)}，"
+            f"平均 token {b.mean_tokens} → {r.mean_tokens}",
+        ]
+    lines += [
         "",
         "## 分场景",
         "",
-        "| 题号 | 场景 | Baseline 准确 | Treatment 准确 | Baseline 幻觉 | Treatment 幻觉 |",
-        "|---|---|---:|---:|---:|---:|",
     ]
+    if has_react:
+        lines += [
+            "| 题号 | 场景 | 裸调用准确 | 官方ReAct准确 | 完整模式准确 | 裸调用幻觉 | 完整模式幻觉 |",
+            "|---|---|---:|---:|---:|---:|---:|",
+        ]
+    else:
+        lines += [
+            "| 题号 | 场景 | 裸调用准确 | 完整模式准确 | 裸调用幻觉 | 完整模式幻觉 |",
+            "|---|---|---:|---:|---:|---:|",
+        ]
     for cr in report.cases:
-        b_correct = sum(1 for r in cr.baseline_runs if r.tool_correct)
-        t_correct = sum(1 for r in cr.treatment_runs if r.tool_correct)
-        b_hall = sum(1 for r in cr.baseline_runs if r.hallucinated_tools or r.forbidden_leak)
-        t_hall = sum(1 for r in cr.treatment_runs if r.hallucinated_tools or r.forbidden_leak)
+        b_correct = sum(1 for j in cr.baseline_runs if j.tool_correct)
+        t_correct = sum(1 for j in cr.treatment_runs if j.tool_correct)
+        b_hall = sum(1 for j in cr.baseline_runs if j.hallucinated_tools or j.forbidden_leak)
+        t_hall = sum(1 for j in cr.treatment_runs if j.hallucinated_tools or j.forbidden_leak)
         n = len(cr.baseline_runs)
-        lines.append(
-            f"| {cr.case_id} | {cr.category} | {b_correct}/{n} | {t_correct}/{n} | {b_hall}/{n} | {t_hall}/{n} |"
-        )
+        if has_react:
+            r_correct = sum(1 for j in cr.react_runs if j.tool_correct)
+            lines.append(
+                f"| {cr.case_id} | {cr.category} | {b_correct}/{n} | {r_correct}/{n} | {t_correct}/{n} | {b_hall}/{n} | {t_hall}/{n} |"
+            )
+        else:
+            lines.append(
+                f"| {cr.case_id} | {cr.category} | {b_correct}/{n} | {t_correct}/{n} | {b_hall}/{n} | {t_hall}/{n} |"
+            )
 
     # 失败样例
     lines.extend(["", "## 失败样例", ""])
@@ -561,28 +726,91 @@ def render_markdown(report: ABReport) -> str:
             "- token：prompt_tokens + completion_tokens（从 API response 累计）",
         ]
     )
+    if has_react:
+        lines.extend(
+            [
+                "- LangGraph 官方 ReAct 组的工具判定取「模型实际发起的 tool_calls」：ToolNode 拦截的非法名计入幻觉工具，不丢失；越权泄漏仍按实际执行计",
+                "- LangGraph 官方 ReAct 组 recursion_limit=50（宽于裸调用组的 10 轮 LLM 上限，排除框架步数口径差异）；步数耗尽记为一次运行而非错误",
+            ]
+        )
     return "\n".join(lines)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────
 
 
+def _agg_runs(runs: list[RunJudgment]) -> dict[str, int]:
+    return {
+        "correct": sum(1 for r in runs if r.tool_correct),
+        "hallucinated": sum(1 for r in runs if r.hallucinated_tools or r.forbidden_leak),
+        "total": len(runs),
+    }
+
+
+def _report_payload(report: ABReport) -> dict[str, Any]:
+    """机器可读结果：console 评测结果页（/docs/results）消费 report.json。"""
+    has_react = report.react is not None
+    cases: list[dict[str, Any]] = []
+    for cr in report.cases:
+        item: dict[str, Any] = {
+            "id": cr.case_id,
+            "category": cr.category,
+            "message": cr.message,
+            "baseline": _agg_runs(cr.baseline_runs),
+            "treatment": _agg_runs(cr.treatment_runs),
+        }
+        if has_react:
+            item["react"] = _agg_runs(cr.react_runs)
+        cases.append(item)
+    groups: dict[str, Any] = {
+        "baseline": asdict(report.baseline),
+        "treatment": asdict(report.treatment),
+    }
+    if has_react:
+        groups["react"] = asdict(report.react)
+    return {
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "model": report.model,
+        "runs_per_case": report.runs_per_case,
+        "case_count": report.case_count,
+        "groups": groups,
+        "cases": cases,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="A/B eval: baseline vs treatment")
     parser.add_argument("--runs", type=int, default=5, help="每个 case 跑几次（默认 5）")
+    parser.add_argument("--model", type=str, default="glm-4.7-flash", help="模型名（默认 glm-4.7-flash）")
     parser.add_argument("--no-write-report", action="store_true")
+    parser.add_argument(
+        "--no-with-react", dest="with_react", action="store_false", help="跳过 LangGraph 官方 ReAct 对照组（默认运行）"
+    )
     args = parser.parse_args(argv)
 
-    report = asyncio.run(run_ab_eval(runs_per_case=args.runs))
+    report = asyncio.run(run_ab_eval(runs_per_case=args.runs, model=args.model, with_react=args.with_react))
     md = render_markdown(report)
-    print(md)
 
+    # Write file first (before printing, to avoid console encoding crash losing the report)
+    out = None
     if not args.no_write_report:
         out = _REPO_ROOT / "docs" / "eval" / f"{date.today().strftime('%Y%m%d')}_设计模式有效性对照.md"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(md, encoding="utf-8")
-        print(f"\nreport written to {out}")
+        # 机器可读结果（最近一次，覆盖写）：console /docs/results 页运行时读取
+        console_json = _REPO_ROOT / "sentinel-console" / "public" / "docs" / "report.json"
+        console_json.write_text(
+            json.dumps(_report_payload(report), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
+    # Print (fallback to UTF-8 bytes for GBK consoles)
+    try:
+        print(md)
+    except UnicodeEncodeError:
+        sys.stdout.buffer.write(md.encode("utf-8"))
+
+    if out is not None:
+        print(f"\nreport written to {out}")
     return 0
 
 
