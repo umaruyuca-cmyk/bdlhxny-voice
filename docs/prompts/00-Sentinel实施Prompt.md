@@ -52,6 +52,9 @@
 | WO-T4-1 | 一键演示 compose | `完成` |
 | WO-T4-2 | 文档终稿同步 | `完成` |
 | WO-T4-3 | 演示彩排与录屏 | `完成` |
+| WO-T5-1 | 文档站重构与公开入口收敛 | `完成` |
+| WO-T5-2 | 彩排脚本与演示剧本对齐（六步版） | `未完成` |
+| WO-T5-3 | 子文档口径同步 | `未完成` |
 
 ---
 
@@ -775,7 +778,73 @@
 
 ---
 
-## 6. 变更记录
+## 6. 阶段 T5：入口收敛与展示面重构
+
+> 阶段目标：按设计文档 2026-08-20 修订（产品收敛为「看护 + 固定分析用例 + 证据体系」），**只收敛前端入口与公开展示面，不删除会话业务代码**——会话式循环与流式管线保留为引擎内部能力，分析用例台（lab）复用。公开展示面收敛为 `/docs/` 文档页。
+
+### WO-T5-1 文档站重构与公开入口收敛
+
+- 状态：`完成`
+- 对应设计：§1.1、§7.1（公开展示面）、§10 T5、§11.2
+- 处置清单：
+
+| 文件 | 处置 |
+|---|---|
+| `sentinel-console/public/docs/index.html`、`docs/agents.html`、`docs/skill.html` | 【修改】去对话表述（双通道=看护环+分析用例）；侧边栏重组为「架构 / 对照评测」两组；移除顶栏与正文对 `/dashboard`、`/lab` 的链接 |
+| `sentinel-console/public/docs/comparison.html` | 【新增】三种架构对照：裸 tool calling / LangGraph 官方 ReAct / 完整工程模式；对照指标表（数字以仓库 `docs/eval/` 归档为准，页面不内嵌）；实验设置与复现命令 |
+| `sentinel-console/public/docs/eval.html` | 【新增】评测的三种能力：工具选择 / 幻觉抑制 / 权限与合规拦截；判定口径 + 防线归因 + 无 LLM 判官说明 |
+| `sentinel-console/nginx.conf`、`deploy/nginx/console.compose.conf` | 【修改】`location = /` 改为 `try_files /docs/index.html =404` |
+| `sentinel-console/dev-server.js` | 【修改】`/` 的 target 改为 `/docs/index.html` |
+| `sentinel-console/test/frontend-contract.test.js`、`test/dashboard-contract.test.js` | 【修改】断言锚定新行为（`/` 落文档页；docs 页含 comparison/eval 入口且无演示页链接） |
+
+**验证方式**：`npm test` 全绿；`/` 返回文档索引；docs 页内无 `/dashboard`、`/lab` 链接。
+
+**完成证据**：
+- 三页重写 + 两页新增落地；docs 侧边栏为「架构（架构概览 / Agent 循环 / 工具目录与治理）+ 对照评测（三种架构对照 / 评测的三种能力）」；
+- nginx 两份配置与 dev-server 的 `/` 均改指 `/docs/index.html`；`/agent`、`/workspace` 维持 301 → `/lab`；
+- 契约测试断言同步：`target = "/docs/index.html"`、docs 页含 `/docs/comparison` 与 `/docs/eval`、docs 页不含 `href="/dashboard"` 与 `href="/lab"`；
+- `npm test`：tests 17 / pass 17 / fail 0；
+- 对照页数字口径说明：归档报告（`docs/eval/`）当前两份为框架调试期运行（token 计数为 0、轮次异常），页面不内嵌数字，待一次有效评测（`--runs 5`）后以报告为准。
+- 日期：2026-08-20
+
+### WO-T5-2 彩排脚本与演示剧本对齐（六步版）
+
+- 状态：`未完成`
+- 对应设计：§8（新版六步验收场景）
+- 处置清单：
+
+| 文件 | 处置 |
+|---|---|
+| `scripts/demo-rehearse.ps1` | 【修改】彩排映射对齐六步（#4 运行回放、#5 分析用例、#6 拦截用例），去除追问 / 暂停恢复映射 |
+| `recordings/README.txt` | 【修改】三份录屏约定对齐（demo-main=六步全程；demo-lab=分析用例台预设用例含拦截演示） |
+
+**验证方式**：`.\scripts\demo-rehearse.ps1 -Passes 3` 全绿且步骤名与 §8 一致。
+
+**完成证据**：
+
+-（待执行回填）
+
+### WO-T5-3 子文档口径同步
+
+- 状态：`未完成`
+- 对应设计：§11.3
+- 处置清单：
+
+| 文件 | 处置 |
+|---|---|
+| `sentinel-engine/README.md`、`sentinel-console/README.md` | 【修改】与会话保留决策一致：会话代码为引擎内部能力、lab 复用；公开入口为 `/docs/` |
+| `docs/00-仓库文件管理树.md` | 【修改】docs 新增两页登记；`/` 落文档页的入口说明 |
+| `sentinel-console/CHAT_INTEGRATION.md` | 【修改】口径微调：端点保留、服务对象为分析用例台单次运行（契约本身不变） |
+
+**验证方式**：文档互链可用；与设计文档 §10 T5（入口收敛版）无表述冲突。
+
+**完成证据**：
+
+-（待执行回填）
+
+---
+
+## 7. 变更记录
 
 | 日期 | 变更 |
 |---|---|
@@ -798,3 +867,5 @@
 | 2026-08-19 | WO-T4-1 完成：compose 纳入 console + demo_sentinel seed 任务；编排器透传 BDLH_DEMO_MODE；本机无 Docker CLI，YAML 解析通过 |
 | 2026-08-19 | WO-T4-2 完成：README 实施状态段；设计文档脚注记录实现偏差；文件树对接文档句与 watch/prompts 状态同步 |
 | 2026-08-19 | WO-T4-3 完成：demo-inject/demo-rehearse 参数化彩排脚本；自动化七步映射 3 遍全绿（~4.3s/遍）；本机无全栈故浏览器七步与录屏待现场补档。T4 与 Sentinel 实施 Prompt 全部工单收口 |
+| 2026-08-20 | 新增阶段 T5（WO-T5-1~T5-3）：移除问答对话业务，产品收敛为「看护 + 固定分析用例 + 证据体系」；设计文档 §1–§8、§10 与根 README 已按目标形态改写，本阶段工单负责代码与子文档收敛 |
+| 2026-08-20 | T5 执行口径修正为「入口收敛」：会话业务代码保留为引擎内部能力（lab 复用其流式管线），不执行物理删除；WO-T5-1 完成——docs 三页重写 + comparison/eval 两页新增、`/` 落 `/docs/`（nginx×2 + dev-server）、契约测试断言同步，npm test 17/17 |

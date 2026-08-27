@@ -48,7 +48,19 @@ test("公共入口与 Skill 目录边界完整", async () => {
   ]);
 
   assert.match(index, /href="\/dashboard"/);
+  assert.match(index, /href="\/lab"/);
   assert.match(index, /href="\/docs\/"/);
+  assert.match(index, /title="看护首页"/);
+  assert.match(index, />护</);
+  assert.match(index, /title="固定问题"/);
+  assert.match(index, />问</);
+  assert.match(index, /title="文档"/);
+  assert.match(index, />记</);
+  assert.match(index, /title="收藏"/);
+  assert.match(index, />藏</);
+  assert.doesNotMatch(index, />聊</);
+  assert.doesNotMatch(index, />环</);
+  assert.doesNotMatch(index, />台</);
   assert.match(index, /ただいま|STANDBY|ONLINE/);
   assert.doesNotMatch(index, /href="\/skills\/"/);
   assert.doesNotMatch(index, /WATCH-FIRST|持仓看护 Agent|Finance Domain Runtime|领域分析|打开据点|個人研究拠点/);
@@ -70,26 +82,35 @@ test("公共入口与 Skill 目录边界完整", async () => {
   assert.match(docsPage, /ToolCard|sentinel-engine|双通道/);
   assert.doesNotMatch(docsPage, /Finance Domain Runtime|Domain Dispatcher/);
   assert.match(docsPage, /href="\/docs\/docs\.css"/);
+  assert.match(docsPage, /href="\/docs\/comparison"/);
+  assert.match(docsPage, /href="\/docs\/eval"/);
+  assert.match(docsPage, /href="\/docs\/cases"/);
+  assert.match(docsPage, /href="\/docs\/results"/);
+  assert.match(docsPage, /href="\/docs\/tools"/);
+  assert.doesNotMatch(docsPage, /href="\/dashboard"/);
+  assert.doesNotMatch(docsPage, /href="\/lab"/);
   assert.match(chatHtml, /Sentinel/);
   assert.match(chatHtml, /看护首页/);
   assert.doesNotMatch(chatHtml, /管理插件|viewPlugins|pluginTray/);
   assert.match(server, /\/skills\//);
-  assert.match(server, /target = "\/index\.html"/);
+  assert.match(server, /target = "\/docs\/index\.html"/);
 });
 
 /**
- * 验证 /workspace 已退役为重定向到 /agent，不再作为产品入口。
+ * 验证 /workspace 与 /agent 已退役为重定向到 /lab。
  */
 test("工作站入口重定向到统一助手", async () => {
   const server = await readFile(new URL("../dev-server.js", import.meta.url), "utf8");
   const nginx = await readFile(new URL("../nginx.conf", import.meta.url), "utf8");
 
-  assert.match(server, /requestPath === "\/workspace" \|\| requestPath === "\/workspace\/"/);
-  assert.match(server, /Location: "\/agent"/);
+  assert.match(server, /requestPath === "\/workspace"/);
+  assert.match(server, /Location: "\/lab"/);
   assert.match(server, /writeHead\(301/);
   assert.doesNotMatch(server, /target = "\/workspace\.html"/);
-  assert.match(nginx, /return 301 \/agent;/);
+  assert.doesNotMatch(server, /target = "\/chat\.html"/);
+  assert.match(nginx, /return 301 \/lab;/);
   assert.doesNotMatch(nginx, /try_files \/workspace\.html/);
+  assert.doesNotMatch(nginx, /try_files \/chat\.html =404;/);
 });
 
 /**

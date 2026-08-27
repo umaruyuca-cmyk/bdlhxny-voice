@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>评测结果 · Sentinel</title>
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>架构</h4>
+    <ul>
+      <li>
+        <a href="/docs/">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/#thesis">核心主张</a></li>
+          <li><a href="/docs/#capabilities">三个可量化的能力</a></li>
+          <li><a href="/docs/#carrier">产品载体</a></li>
+          <li><a href="/docs/#modules">业务模块</a></li>
+          <li><a href="/docs/#architecture">整体架构</a></li>
+          <li><a href="/docs/#flow">双通道链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents">Agent 循环</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/agents#channels">双通道</a></li>
+          <li><a href="/docs/agents#loop">Agent 循环</a></li>
+          <li><a href="/docs/agents#loading">scoped / search</a></li>
+          <li><a href="/docs/agents#sse">SSE 输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill">工具目录与治理</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/skill#toolcard">ToolCard</a></li>
+          <li><a href="/docs/skill#governance">G1–G7</a></li>
+          <li><a href="/docs/skill#constraints">C-1 / C-2</a></li>
+          <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/tools">工具清单</a></li>
+    </ul>
+    <h4>对照评测</h4>
+    <ul>
+      <li>
+        <a href="/docs/comparison">三种架构对照</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/comparison#chains">调用链路</a></li>
+          <li><a href="/docs/comparison#selection">工具选择对照</a></li>
+          <li><a href="/docs/comparison#metrics">对照指标</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/eval">评测的三种能力</a></li>
+      <li><a href="/docs/cases">固定题库</a></li>
+      <li><a href="/docs/results" class="active">评测结果</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/docs/">← 文档中心</a>
+    <h1>评测结果</h1>
+    <p class="lead">本页读取最近一次对照评测的机器可读结果（<code>report.json</code>，由评测命令自动写入，覆盖更新）——数字不手贴，跑一次评测页面即刷新。完整归档报告（含实验设置与失败样例原文）在仓库 <code>docs/eval/</code>。</p>
+
+    <div id="meta"></div>
+
+    <h2 id="summary">总表</h2>
+    <div id="summaryWrap"><p class="dim" id="summaryHint">加载中…</p></div>
+
+    <h2 id="cases">分场景明细</h2>
+    <div id="casesWrap"><p class="dim" id="casesHint">加载中…</p></div>
+
+    <div class="note" id="emptyState" style="display:none">
+      <strong>尚未生成评测数据。</strong>在仓库内运行：
+      <code>LLM_API_KEY=xxx uv run python -m tests.eval.ab_eval --runs 5</code>
+      （在 <code>sentinel-engine/</code> 下执行），完成后本页自动展示三组总表与分场景明细。
+    </div>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click", () => {
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+
+  var METRICS = [
+    ["工具选择准确率", "tool_selection_rate", "pct"],
+    ["幻觉工具率", "hallucination_rate", "pct"],
+    ["越权泄漏率", "forbidden_leak_rate", "pct"],
+    ["数字幻觉率", "number_hallucination_rate", "pct"],
+    ["合规违规率(C-1)", "c1_violation_rate", "pct"],
+    ["合规违规率(C-2)", "c2_violation_rate", "pct"],
+    ["平均轮次", "mean_rounds", "num1"],
+    ["平均 token", "mean_tokens", "int"]
+  ];
+  var GROUP_LABELS = { baseline: "裸 tool calling", react: "LangGraph 官方 ReAct", treatment: "完整工程模式" };
+
+  function fmt(value, kind) {
+    if (value == null) return "—";
+    if (kind === "pct") return (Math.round(value * 100)) + "%";
+    if (kind === "num1") return Number(value).toFixed(1);
+    return String(value);
+  }
+  function esc(text) {
+    return String(text == null ? "" : text).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+
+  fetch("/docs/report.json", { cache: "no-store" }).then(function (res) {
+    if (!res.ok) throw new Error("no report");
+    return res.json();
+  }).then(function (data) { render(data); }).catch(function () {
+    document.getElementById("emptyState").style.display = "";
+    document.getElementById("summaryHint").textContent = "暂无数据";
+    document.getElementById("casesHint").textContent = "暂无数据";
+  });
+
+  function render(data) {
+    var groups = data.groups || {};
+    var order = ["baseline", "react", "treatment"].filter(function (key) { return groups[key]; });
+
+    var meta = document.getElementById("meta");
+    meta.innerHTML = "<table><tr><th>生成时间</th><th>模型</th><th>每题运行次数</th><th>题量</th></tr>" +
+      "<tr><td>" + esc(data.generated_at || "—") + "</td><td>" + esc(data.model || "—") + "</td><td>" +
+      esc(data.runs_per_case) + "</td><td>" + esc(data.case_count) + "</td></tr></table>";
+
+    var head = "<tr><th>指标</th>" + order.map(function (key) { return "<th>" + GROUP_LABELS[key] + "</th>"; }).join("") + "</tr>";
+    var rows = METRICS.map(function (metric) {
+      var label = metric[0], field = metric[1], kind = metric[2];
+      return "<tr><td>" + label + "</td>" + order.map(function (key) {
+        return "<td>" + fmt((groups[key] || {})[field], kind) + "</td>";
+      }).join("") + "</tr>";
+    }).join("");
+    document.getElementById("summaryWrap").innerHTML = "<table>" + head + rows + "</table>";
+
+    var caseHead = "<tr><th>题号</th><th>场景</th><th>输入</th>" +
+      order.map(function (key) { return "<th>" + GROUP_LABELS[key] + " 正确 / 幻觉</th>"; }).join("") + "</tr>";
+    var caseRows = (data.cases || []).map(function (item) {
+      return "<tr><td>" + esc(item.id) + "</td><td>" + esc(item.category) + "</td><td>" + esc(item.message) + "</td>" +
+        order.map(function (key) {
+          var agg = item[key];
+          if (!agg) return "<td>—</td>";
+          return "<td>" + agg.correct + " / " + agg.total + (agg.hallucinated ? " <strong>(" + agg.hallucinated + " 幻觉)</strong>" : "") + "</td>";
+        }).join("") + "</tr>";
+    }).join("");
+    document.getElementById("casesWrap").innerHTML = "<table>" + caseHead + caseRows + "</table>";
+  }
+</script>
+</body>
+</html>

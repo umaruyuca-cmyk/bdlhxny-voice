@@ -3,7 +3,7 @@
 独立 Nginx 静态前端，无构建工具链（原生 HTML/CSS/JS + ECharts CDN）。浏览器只访问同源 `/api/`；代理层按领域分发到 Java 数据面与 Python Agent 引擎。
 
 > 产品形态以 [`docs/architecture/00-Sentinel产品设计与架构.md`](../docs/architecture/00-Sentinel产品设计与架构.md) §7 为准：
-> 品牌落地为 `/`；看护首页（P1）为 `/dashboard`；会话入口为实现路径 `/agent`（追问抽屉 iframe 装入同一页）。
+> 品牌落地为 `/`。分析入口为 `/lab`（固定用例 + 真实 LLM）。`/agent` 与 `/workspace` 重定向到 `/lab`。看护首页 `/dashboard` 冻结，不再作为主路径。
 > `/skills/` 为开发遗留试用页，不在产品导航中。与设计稿的偏差见设计文档脚注。
 
 ## 本地前后端联调

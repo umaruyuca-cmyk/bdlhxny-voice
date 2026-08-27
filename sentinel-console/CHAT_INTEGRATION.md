@@ -4,7 +4,7 @@
 
 产品权威描述见 [`docs/architecture/00-Sentinel产品设计与架构.md`](../docs/architecture/00-Sentinel产品设计与架构.md) §6.2 / §7.4 / §7.6 / §7.8。本文档对齐**当前实现**，供联调使用。
 
-正式入口为 `/agent`（设计文档 §7.1 写作 `/chat`）。看护首页追问抽屉以 iframe 装入同一页面（`?sessionId=&followup=&embed=1`）。旧 `/workspace` 永久重定向到 `/agent`。
+正式入口为 `/lab`：固定分析用例 + 真实 LLM，无会话、无自由输入、无 mock。`/agent` 与 `/workspace` 永久重定向到 `/lab`。看护首页追问抽屉 iframe 装入 `/lab?sessionId=&followup=&embed=1`。
 
 ---
 
@@ -12,9 +12,9 @@
 
 | 项 | 值 |
 | --- | --- |
-| 页面地址（联调） | `http://127.0.0.1:8082/agent` |
-| 追问入口 | `/agent?sessionId={id}&followup={事件摘要}`；抽屉内加 `embed=1` |
-| 演示模式 | `http://127.0.0.1:8082/agent?mock=1`（不依赖后端，内置模拟 `tool.step` / `response.final`） |
+| 页面地址（联调） | `http://127.0.0.1:8082/lab` |
+| 追问入口 | `/lab?sessionId={id}&followup={事件摘要}`；抽屉内加 `embed=1`，固定用例 |
+| 真实 LLM | 引擎需配置 `LLM_API_KEY`；`LLM_UNAVAILABLE` 时 lab 标记失败，不用 mock |
 | 静态服务 | `node dev-server.js`，默认端口 `8082`（`PORT` 可覆盖） |
 | API 代理 | 认证 / 持仓 → Java `127.0.0.1:8081`（`BDLH_RUNTIME_BACKEND_URL`）；聊天 / 会话 / 通知 / 运行控制 / ready → Python `127.0.0.1:8090`（`BDLH_RUNTIME_ANALYSIS_URL`） |
 | 前端构建 | 无构建；ECharts CDN **单** script |

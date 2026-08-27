@@ -298,6 +298,9 @@ class CognitiveExecution(BaseModel):
     checkpoint: Any = None
     observations: list[dict[str, Any]] = Field(default_factory=list)
     tool_trace: list[dict[str, Any]] = Field(default_factory=list)
+    entered_loop: bool = False
+    fastpath_name: str | None = None
+    loaded_tools: list[str] = Field(default_factory=list)
 
 
 def is_action_enabled(action_type: CognitiveActionType) -> bool:

@@ -14,7 +14,7 @@
 | --- | --- | --- | --- |
 | 品牌落地 | `/` | `index.html` | Grid Universe 品牌页；CTA「进入看护」 |
 | P1 看护首页 | `/dashboard` | `dashboard.html` | 持仓概览、事件时间线、活跃监视、追问抽屉 |
-| P2 会话 / 追问 | `/chat` | **`/agent` → `chat.html`** | 自由问答；追问经 P1 右滑抽屉 iframe 装入同一页 |
+| P2 固定用例 | `/lab` | **`lab.html`**：固定分析用例 + 真实 LLM；`/agent` `/workspace` → 301 `/lab` | 无会话、无自由输入 |
 | P3 通知中心 | `/notifications` | 未独立成页 | Header 铃铛 + P1 时间线 |
 | P4 监视规则 | `/watch-rules` | 入口链接已挂；规则 CRUD 页未交付 | P1 监视条读 `GET /watch-rules`，404 为空态 |
 | P5 记忆管理 | `/memory` | 未交付 | — |
@@ -23,7 +23,7 @@
 | 开发遗留 | `/skills/` | 保留路由，非产品入口 | 旧 Skill 试用页；调试用 |
 | 开发工具 | `/api-console.html` | 已有 | 仅开发人员 |
 
-兼容：`/workspace` → 301 `/agent`。历史 `?mode=` 双 Agent 分流与「插件启停」UI 已退役；`?q=` 仍可自动发送问题；`?name=stock` 仅从 URL 剥离，不再启停 Skill。产品会话请求固定传 `enabledSkillIds: []`（契约字段保留）。
+兼容：`/workspace` 与 `/agent` → 301 `/lab`。产品回路请求固定传 `enabledSkillIds: []`。
 
 ---
 
@@ -67,7 +67,7 @@
 
 1. 时间线「追问」→ `POST /api/v1/notifications/{id}/followup`
 2. 响应 `event_summary` 写入抽屉顶部 chip
-3. iframe：`/agent?sessionId={session_id}&followup={摘要}&embed=1`
+3. iframe：`/lab?sessionId={session_id}&followup={摘要}&embed=1`
 4. 自由会话无 chip；追问会话顶部展示事件上下文
 
 ---

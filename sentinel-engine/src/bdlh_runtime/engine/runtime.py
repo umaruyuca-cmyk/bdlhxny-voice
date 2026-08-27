@@ -152,6 +152,9 @@ def _execution_from_result(event: InputEvent, result: AgentResult) -> CognitiveE
         checkpoint=None,
         observations=_dump_observations(result.observations),
         tool_trace=_dump_tool_trace(result.audits),
+        entered_loop=result.entered_loop,
+        fastpath_name=result.fastpath_name,
+        loaded_tools=list(result.loaded_tools),
     )
 
 

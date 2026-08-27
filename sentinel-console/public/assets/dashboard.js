@@ -1,7 +1,6 @@
 (function () {
   "use strict";
 
-  var AUTH_TOKEN_KEY = "bdlh_runtime.auth.token.v1";
   var SOUND_KEY = "sentinel.dashboard.sound";
   var POLL_MS = 30000;
   var Badges = window.SentinelBadges || {};
@@ -18,19 +17,8 @@
     return document.getElementById(id);
   }
 
-  function token() {
-    try {
-      return localStorage.getItem(AUTH_TOKEN_KEY);
-    } catch (err) {
-      return null;
-    }
-  }
-
-  function authHeaders() {
-    var headers = { Accept: "application/json" };
-    var value = token();
-    if (value) headers.Authorization = "Bearer " + value;
-    return headers;
+  function jsonHeaders() {
+    return { Accept: "application/json" };
   }
 
   function show(el, on) {
@@ -61,7 +49,7 @@
   }
 
   async function postJSON(url) {
-    var response = await fetch(url, { method: "POST", headers: authHeaders() });
+    var response = await fetch(url, { method: "POST", headers: jsonHeaders() });
     var body = null;
     try {
       body = await response.json();
@@ -77,7 +65,7 @@
   }
 
   async function getJSON(url) {
-    var response = await fetch(url, { headers: authHeaders() });
+    var response = await fetch(url, { headers: jsonHeaders() });
     var body = null;
     try {
       body = await response.json();
@@ -396,7 +384,7 @@
     state.streamAbort = new AbortController();
     try {
       var response = await fetch("/api/v1/notifications/stream", {
-        headers: authHeaders(),
+        headers: jsonHeaders(),
         signal: state.streamAbort.signal
       });
       if (!response.ok || !response.body) throw new Error("sse unavailable");
@@ -446,31 +434,13 @@
       embedParams.set("followup", summary);
     }
     embedParams.set("embed", "1");
-    $("drawerOpenChat").href = openParams.toString() ? "/agent?" + openParams.toString() : "/agent";
+    $("drawerOpenChat").href = openParams.toString() ? "/lab?" + openParams.toString() : "/lab";
     var frame = $("drawerFrame");
     if (frame) {
       frame.hidden = false;
-      frame.src = "/agent?" + embedParams.toString();
+      frame.src = "/lab?" + embedParams.toString();
     }
     $("followupDrawer").classList.add("open");
-  }
-
-  async function initAuthChip() {
-    var chip = $("userChip");
-    var value = token();
-    if (!value) {
-      chip.textContent = "登录";
-      chip.href = "/agent";
-      return;
-    }
-    try {
-    var me = await getJSON("/api/v1/auth/me");
-      chip.textContent = me.username || me.userId || "已登录";
-      chip.href = "/agent";
-    } catch (err) {
-      chip.textContent = "登录";
-      chip.href = "/agent";
-    }
   }
 
   $("soundToggle").onclick = function () {
@@ -511,7 +481,6 @@
     }, 2800);
   });
 
-  initAuthChip();
   loadReady();
   loadOverview();
   loadTimeline();

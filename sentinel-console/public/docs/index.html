@@ -10,26 +10,25 @@
 <body>
 <div class="docs-top">
   <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
-  <div class="docs-top-links">
-    <a href="/dashboard">看护首页</a>
-    <a href="/agent">会话</a>
-  </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
 <div class="docs-layout">
   <nav class="docs-nav" id="docsNav">
-    <h4>文档</h4>
+    <h4>架构</h4>
     <ul>
       <li>
         <a href="/docs/" class="active">架构概览</a>
         <ul class="nav-sub">
+          <li><a href="#thesis">核心主张</a></li>
+          <li><a href="#capabilities">三个可量化的能力</a></li>
+          <li><a href="#carrier">产品载体</a></li>
           <li><a href="#modules">业务模块</a></li>
           <li><a href="#architecture">整体架构</a></li>
           <li><a href="#flow">双通道链路</a></li>
         </ul>
       </li>
       <li>
-        <a href="/docs/agents">Agent 与双通道</a>
+        <a href="/docs/agents">Agent 循环</a>
         <ul class="nav-sub">
           <li><a href="/docs/agents#channels">双通道</a></li>
           <li><a href="/docs/agents#loop">Agent 循环</a></li>
@@ -46,56 +45,100 @@
           <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
         </ul>
       </li>
+      <li><a href="/docs/tools">工具清单</a></li>
+    </ul>
+    <h4>对照评测</h4>
+    <ul>
+      <li>
+        <a href="/docs/comparison">三种架构对照</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/comparison#chains">调用链路</a></li>
+          <li><a href="/docs/comparison#selection">工具选择对照</a></li>
+          <li><a href="/docs/comparison#metrics">对照指标</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/eval">评测的三种能力</a></li>
+      <li><a href="/docs/cases">固定题库</a></li>
+      <li><a href="/docs/results">评测结果</a></li>
     </ul>
   </nav>
   <main class="docs-main">
-    <a class="back-link" href="/">← 返回首页</a>
     <div class="crumb-inline">文档 <span>/</span> 架构概览</div>
     <h1>架构概览</h1>
-    <p class="lead">Sentinel 是主动式持仓看护 Agent：事件驱动主动触达，对话作为追问与自由交互通道。两通道共用同一执行引擎与治理中间件。</p>
+    <p class="lead">这不是一个对话产品。Sentinel 是一个以「可量化可靠性」为主题的 Agent 引擎：把 LLM tool-calling 循环工程化——<strong>模型提议，代码裁决</strong>；效果用同一题库对三种编排形态的机械评测来量化，而不是靠演示印象。</p>
     <div class="page-toc">
+      <a href="#thesis">核心主张</a>
+      <a href="#capabilities">三个可量化的能力</a>
+      <a href="#carrier">产品载体</a>
       <a href="#modules">业务模块</a>
       <a href="#architecture">整体架构</a>
       <a href="#flow">双通道链路</a>
     </div>
 
+    <h2 id="thesis">核心主张：模型提议，代码裁决</h2>
     <div class="doc-grid">
       <div class="doc-card">
-        <span class="mod-tag">GUIDE</span>
-        <h3>Agent 与双通道</h3>
-        <p>看护环 / 会话环、语义快路径、scoped|search、SSE v2。</p>
-        <a href="/docs/agents">阅读 →</a>
+        <span class="mod-tag">模型负责（提议）</span>
+        <h3>语义判断</h3>
+        <p>场景与意图分流（embedding 快路径）；在装载集内选择工具与参数；解读与表达。</p>
       </div>
       <div class="doc-card">
-        <span class="mod-tag">GUIDE</span>
-        <h3>工具目录与治理</h3>
-        <p>ToolCard、G1–G7、C-1/C-2、ResultBlock 投影。</p>
-        <a href="/docs/skill">阅读 →</a>
-      </div>
-      <div class="doc-card">
-        <span class="mod-tag">TRY</span>
-        <h3>看护首页</h3>
-        <p>持仓、时间线、监视条与通知追问抽屉。</p>
-        <a href="/dashboard">去看护 →</a>
+        <span class="mod-tag">代码强制（裁决）</span>
+        <h3>确定性边界</h3>
+        <p>裁剪模型可见的工具集（scoped | search）；G1–G7 治理中间件是唯一执行咽喉；预算与只读红线；输出数字接地与结果块投影。</p>
       </div>
     </div>
+    <div class="note"><strong>不接受概率裁决：</strong>权限、预算、红线这类不可挽回的决策全部由查表和中间件确定执行，不交给模型判断；交易类工具物理上不在工具目录中（红线物理化）。</div>
+
+    <h2 id="capabilities">三个可量化的能力</h2>
+    <div class="doc-grid">
+      <div class="doc-card">
+        <span class="mod-tag">能力一</span>
+        <h3>工具选择</h3>
+        <p>代码先裁「可见集」，模型只在可见集内选；幻觉工具名在 G1 拦截。判定口径：成功执行集 == 期望集。</p>
+        <a href="/docs/eval#selection">如何量化 →</a>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">能力二</span>
+        <h3>幻觉抑制</h3>
+        <p>工具 Observation 是唯一事实源；答案中的非平凡数字必须能接地到某条 Observation，违规由 Output Guardrail 修正。</p>
+        <a href="/docs/eval#grounding">如何量化 →</a>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">能力三</span>
+        <h3>权限与合规拦截</h3>
+        <p>游客 / 机主身份与场景校验（G3）；交易语义（C-1）与适当性结论（C-2）由红线与快路径拒绝。</p>
+        <a href="/docs/eval#permission">如何量化 →</a>
+      </div>
+    </div>
+    <div class="note"><strong>证据方式：</strong>全部指标由代码断言产生，<strong>无 LLM 判官</strong>；对照基线是裸 tool calling 与 LangGraph 官方 ReAct——同一题库、同一模型、同一份数据，见 <a href="/docs/comparison">三种架构对照</a>。</div>
+
+    <h2 id="carrier">产品载体：主动式持仓看护 Agent</h2>
+    <p>引擎的第一个应用是 watch-first 的持仓看护：事件驱动主动解读，推送带证据链与审计码的结构化通知；分析能力以固定分析用例提供（预设台词、单次运行、真实循环）。只读红线：不做交易、不出具投资适当性结论；不提供自由对话入口。</p>
+    <div class="flow">事件源（价格阈值 / 晨报 / 演示注入）
+  → WatchEvent（幂等落库）
+  → 唤醒组装（持仓 + 画像 + 目标记忆）
+  → Agent 引擎（装载 + G1–G7 裁决）
+  → 结构化通知（证据 / 审计码 / 严重度）
+
+固定分析用例 → 快路径或循环 → SSE 流式 + ResultBlock</div>
 
     <h2 id="modules">业务模块</h2>
     <div class="doc-grid">
       <div class="doc-card">
         <span class="mod-tag">FRONTEND</span>
         <h3>sentinel-console</h3>
-        <p>品牌落地 <code>/</code>、看护 <code>/dashboard</code>、会话 <code>/agent</code>。浏览器只访问同源 <code>/api/</code>。</p>
+        <p>文档站 <code>/</code>（即本页）。看护与分析用例演示页不进入公开导航。浏览器只访问同源 <code>/api/</code>。</p>
       </div>
       <div class="doc-card">
         <span class="mod-tag">ENGINE</span>
         <h3>sentinel-engine</h3>
-        <p>看护环（事件源 / 唤醒 / 通知）与会话环（Agent 循环 / SSE）；统一工具目录与治理中间件。</p>
+        <p>看护环（事件源 / 唤醒 / 通知）与固定分析用例（Agent 循环 / SSE）；统一工具目录与治理中间件。</p>
       </div>
       <div class="doc-card">
         <span class="mod-tag">DATA</span>
         <h3>sentinel-data</h3>
-        <p>认证、持仓与画像、会话/运行索引、任务与 Registry；引擎不直连业务库。</p>
+        <p>认证、持仓与画像、运行索引、任务与 Registry；引擎不直连业务库。</p>
       </div>
       <div class="doc-card">
         <span class="mod-tag">MEMORY</span>
@@ -109,25 +152,25 @@
       <tr><th>模块</th><th>负责</th><th>不负责</th></tr>
       <tr><td>Engine</td><td>Agent 循环、治理裁决、SSE、看护唤醒</td><td>直连业务库；交易执行</td></tr>
       <tr><td>Data Plane</td><td>身份、用户事实、持久化、内部 API</td><td>自然语言研判</td></tr>
-      <tr><td>Memory</td><td>L3 候选入库与召回</td><td>会话历史 / 运行索引</td></tr>
-      <tr><td>Console</td><td>P1/P2 UI、Block 渲染、同源代理</td><td>服务端状态</td></tr>
+      <tr><td>Memory</td><td>L3 候选入库与召回</td><td>业务事实真源</td></tr>
+      <tr><td>Console</td><td>文档站、Block 渲染、同源代理</td><td>服务端状态</td></tr>
     </table>
 
     <h2 id="architecture">整体架构</h2>
-    <p>单一执行引擎，双通道驱动：差异仅在输入契约（WatchEvent vs 用户消息）、上下文组装与输出形态（通知 vs 流式会话）。</p>
+    <p>单一执行引擎，双通道驱动：差异仅在输入契约（WatchEvent vs 预设用例）、上下文组装与输出形态（结构化通知 vs 流式分析响应）。</p>
     <div class="flow">Console (Nginx / dev-server)
   → Python Engine（watch / AgentLoop / governance）
   → ToolCard 本地工具 + MCP
   → Observation → ResultBlock / 通知
   → SSE / REST
-  ← Java Data Plane（JWT / 持仓 / 会话投影）
+  ← Java Data Plane（JWT / 持仓 / 运行投影）
   ← Memory Service（L3 recall）</div>
 
     <h3>生产单元</h3>
     <table>
       <tr><th>单元</th><th>角色</th></tr>
       <tr><td>Console :8082</td><td>静态前端 + 同源代理</td></tr>
-      <tr><td>Engine :8090</td><td>看护环 + 会话环</td></tr>
+      <tr><td>Engine :8090</td><td>看护环 + 分析用例运行</td></tr>
       <tr><td>Data :8081</td><td>认证与业务持久化</td></tr>
       <tr><td>Memory :8091</td><td>L3 语义记忆</td></tr>
       <tr><td>PostgreSQL</td><td>runtime / registry / financial / watch / memory schema</td></tr>
@@ -141,23 +184,15 @@
   → 唤醒组装器 + scene_wakeup
   → Agent 解读
   → 通知落库（证据 / 审计码 / 演示水印）
-  → SSE notification → P1 时间线</div>
+  → SSE notification → 时间线</div>
 
-    <h3>会话环（用户发起）</h3>
-    <div class="flow">用户消息 / 追问 followup
+    <h3>分析用例（用户点选）</h3>
+    <div class="flow">预设用例台词
   → 语义快路径或 Agent 循环
   → bind_tools + 治理中间件
   → token / tool.step / response.final
   → ResultBlock + 证据链上屏</div>
-
-    <h3>如何选择入口</h3>
-    <table>
-      <tr><th>你需要</th><th>入口</th></tr>
-      <tr><td>看持仓、时间线、监视</td><td><a href="/dashboard">看护首页</a></td></tr>
-      <tr><td>追问通知或自由问答</td><td><a href="/agent">会话 /agent</a></td></tr>
-      <tr><td>理解 Agent / SSE</td><td><a href="/docs/agents">Agent 与双通道</a></td></tr>
-      <tr><td>工具与红线约束</td><td><a href="/docs/skill">工具目录与治理</a></td></tr>
-    </table>
+    <div class="note"><strong>无对话入口：</strong>会话式流式管线保留为引擎内部能力（分析用例运行复用），前端不提供自由对话页面。</div>
   </main>
 </div>
 <script>

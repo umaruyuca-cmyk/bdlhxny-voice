@@ -295,13 +295,30 @@
         list-style: none;
       }
       .nav-links a {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
         color: var(--text-dim);
-        font-size: 15px;
-        font-weight: 500;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
         transition: color 0.2s;
+        line-height: 1.1;
       }
       .nav-links a:hover {
         color: var(--text);
+      }
+      .nav-links a .nav-kicker {
+        font-size: 9px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        color: var(--text-faint);
+        font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+        text-transform: uppercase;
+      }
+      .nav-links a:hover .nav-kicker {
+        color: var(--text-dim);
       }
       .nav-actions {
         display: flex;
@@ -1839,9 +1856,15 @@
           padding: 12px 24px 20px;
         }
         .nav-links.open a {
-          display: block;
+          display: flex;
+          flex-direction: row;
+          align-items: baseline;
+          gap: 12px;
           padding: 12px 0;
           border-bottom: 1px solid var(--card-border);
+        }
+        .nav-links.open a .nav-kicker {
+          font-size: 11px;
         }
       }
     </style>
@@ -1871,10 +1894,10 @@
           </span>
         </a>
         <ul class="nav-links" id="navLinks">
-          <li><a href="/dashboard">台</a></li>
-          <li><a href="/agent">聊</a></li>
-          <li><a href="/docs/">记</a></li>
-          <li><a href="#gallery">藏</a></li>
+          <li><a href="/dashboard" title="看护首页">护<span class="nav-kicker">WATCH</span></a></li>
+          <li><a href="/lab" title="固定问题">问<span class="nav-kicker">ASK</span></a></li>
+          <li><a href="/docs/" title="文档">记<span class="nav-kicker">DOCS</span></a></li>
+          <li><a href="#gallery" title="收藏">藏<span class="nav-kicker">FILE</span></a></li>
         </ul>
         <div class="nav-actions">
           <a class="icon-btn" href="/dashboard" aria-label="进入" title="进入" style="width:auto;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;gap:6px;display:inline-flex;align-items:center;text-decoration:none;color:var(--text);border:1px solid var(--card-border);background:var(--card)">进入</a>
@@ -2008,9 +2031,9 @@
     <section class="capabilities" id="capabilities">
       <div class="container">
         <nav class="quiet-links reveal" aria-label="入口">
-          <a href="/dashboard">台</a>
-          <a href="/agent">聊</a>
-          <a href="/docs/">记</a>
+          <a href="/dashboard" title="看护首页">护</a>
+          <a href="/lab" title="固定问题">问</a>
+          <a href="/docs/" title="文档">记</a>
         </nav>
       </div>
     </section>
@@ -2146,9 +2169,9 @@
           <div class="footer-col">
             <h4>入口</h4>
             <ul>
-              <li><a href="/dashboard">台</a></li>
-              <li><a href="/agent">聊</a></li>
-              <li><a href="/docs/">记</a></li>
+              <li><a href="/dashboard" title="看护首页">护</a></li>
+              <li><a href="/lab" title="固定问题">问</a></li>
+              <li><a href="/docs/" title="文档">记</a></li>
             </ul>
           </div>
           <div class="footer-col">
@@ -2392,7 +2415,7 @@
           const params = new URLSearchParams();
           if (text) params.set('q', text);
           const qs = params.toString();
-          location.href = '/agent' + (qs ? '?' + qs : '');
+          location.href = '/lab' + (qs ? '?' + qs : '');
         };
         form.addEventListener('submit', (e) => {
           e.preventDefault();

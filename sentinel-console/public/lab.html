@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>固定用例 · 真实分析 · Sentinel</title>
+  <link rel="stylesheet" href="assets/lab.css">
+</head>
+<body>
+  <header class="chrome">
+    <a class="brand" href="/lab">Sentinel <span>固定用例</span></a>
+    <nav>
+      <a href="/docs/agents">回路说明</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <h1>固定测试用例 · 真实 LLM</h1>
+    <p class="lead">没有会话、没有输入框。点一条用例即 <code>POST /api/v1/chat/stream</code>，由真实模型做工具循环分析。未配置 <code>LLM_API_KEY</code> 时标记失败，不用 mock 交差。</p>
+    <p class="hint" id="llmBanner">正在检查引擎就绪…</p>
+    <p class="hint" id="followupHint" hidden></p>
+
+    <div class="auth" id="authBar">
+      <input id="username" placeholder="用户名" autocomplete="username">
+      <input id="password" type="password" placeholder="密码" autocomplete="current-password">
+      <button type="button" id="loginBtn">登录</button>
+      <span id="authState"></span>
+    </div>
+
+    <div class="trial-chips" id="scripts"></div>
+
+    <div class="trial-result">
+      <div class="trial-result-head">
+        <span class="status" id="status">等待选择用例</span>
+        <button type="button" id="stopBtn" hidden>停止</button>
+      </div>
+      <div class="stage">
+        <section>
+          <h2>engine.loop.AgentLoop</h2>
+          <ol class="lc-graph" id="graph">
+            <li data-node="input">InputEvent</li>
+            <li data-node="router">SemanticRouter · G-α</li>
+            <li data-node="fastpath">Fastpath skip loop</li>
+            <li data-node="bind">bind_tools(scoped)</li>
+            <li data-node="aimessage">AIMessage</li>
+            <li data-node="middleware">GovernanceMiddleware</li>
+            <li data-node="toolmessage">ToolMessage(Observation)</li>
+            <li data-node="final">AIMessage · final</li>
+          </ol>
+          <p class="loaded" id="loadedTools" hidden></p>
+        </section>
+        <section>
+          <h2>langchain_core.messages</h2>
+          <pre class="lc-messages" id="messages">点一条固定用例开始。</pre>
+        </section>
+      </div>
+      <div class="trial-result-body placeholder" id="answer">真实模型的流式分析会显示在这里。</div>
+      <div id="blocks"></div>
+      <div class="audits" id="audits"></div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="assets/badges.js"></script>
+  <script src="assets/blocks.js"></script>
+  <script src="assets/lab.js"></script>
+</body>
+</html>

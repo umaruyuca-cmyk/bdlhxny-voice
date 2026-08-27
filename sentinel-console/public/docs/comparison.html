@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>三种架构对照 · Sentinel</title>
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>架构</h4>
+    <ul>
+      <li>
+        <a href="/docs/">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/#modules">业务模块</a></li>
+          <li><a href="/docs/#architecture">整体架构</a></li>
+          <li><a href="/docs/#flow">双通道链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents">Agent 循环</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/agents#channels">双通道</a></li>
+          <li><a href="/docs/agents#loop">Agent 循环</a></li>
+          <li><a href="/docs/agents#loading">scoped / search</a></li>
+          <li><a href="/docs/agents#sse">SSE 输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill">工具目录与治理</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/skill#toolcard">ToolCard</a></li>
+          <li><a href="/docs/skill#governance">G1–G7</a></li>
+          <li><a href="/docs/skill#constraints">C-1 / C-2</a></li>
+          <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/tools">工具清单</a></li>
+    </ul>
+    <h4>对照评测</h4>
+    <ul>
+      <li>
+        <a href="/docs/comparison" class="active">三种架构对照</a>
+        <ul class="nav-sub">
+          <li><a href="#chains">调用链路</a></li>
+          <li><a href="#selection">工具选择对照</a></li>
+          <li><a href="#metrics">对照指标</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/eval">评测的三种能力</a></li>
+      <li><a href="/docs/cases">固定题库</a></li>
+      <li><a href="/docs/results">评测结果</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/docs/">← 文档中心</a>
+    <h1>三种架构对照</h1>
+    <p class="lead">同一题库、同一 LLM、同一份数据，唯一变量是编排形态。本页逐一给出三种形态的完整调用链路与工具选择机制；对照回答一个问题：Agent 工程模式的价值，相对「大家都会写的第一版」和「框架默认形态」到底有多大、来自哪里。</p>
+    <div class="page-toc">
+      <a href="#chains">调用链路</a>
+      <a href="#selection">工具选择对照</a>
+      <a href="#metrics">对照指标</a>
+      <a href="#setup">实验设置</a>
+      <a href="#repro">如何复现</a>
+    </div>
+
+    <div class="doc-grid">
+      <div class="doc-card">
+        <span class="mod-tag">基线</span>
+        <h3>裸 tool calling</h3>
+        <p>LLM 原生 tool calling：全量工具塞入上下文，无治理、无装载策略、无快路径、无输出护栏。多数人跟着教程写出来的第一版。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">对照组</span>
+        <h3>LangGraph 官方 ReAct</h3>
+        <p><code>create_react_agent</code> 框架默认编排：ToolNode 统一执行（非法工具名回错误观察），<code>recursion_limit</code> 控步数。回答「框架默认够不够」。</p>
+      </div>
+      <div class="doc-card">
+        <span class="mod-tag">本系统</span>
+        <h3>完整工程模式</h3>
+        <p>scoped 场景装载 + G1–G7 治理中间件 + 语义快路径 + Output Guardrail。模型提议，代码裁决。</p>
+      </div>
+    </div>
+
+    <h2 id="chains">调用链路</h2>
+
+    <h3>① 裸 tool calling：全量装载 + 无门禁直执行</h3>
+    <div class="flow">系统提示 + 用户消息
+  → llm.bind_tools(全量工具 spec)        ← 目录里所有工具一次性进入模型上下文
+  → LLM 生成
+     ├─ 无 tool_calls → 文本即答案，结束
+     └─ 有 tool_calls → executor(name, args) 直接执行   ← 无任何校验层
+          → 结果 JSON 回填 ToolMessage → 重新调用 LLM
+  → 循环上限 10 轮，耗尽即止</div>
+    <table>
+      <tr><th>环节</th><th>行为</th></tr>
+      <tr><td>工具选择</td><td>模型在全量目录里自由挑选，没有任何缩小选择面的机制</td></tr>
+      <tr><td>执行口</td><td>executor 本身：幻觉工具名、越权调用、参数错误全部直达执行面</td></tr>
+      <tr><td>终止条件</td><td>模型不再发起调用，或轮次耗尽</td></tr>
+      <tr><td>输出防护</td><td>无：模型答案原样返回</td></tr>
+    </table>
+
+    <h3>② LangGraph 官方 ReAct：框架状态图 + ToolNode 统一执行</h3>
+    <div class="flow">系统提示 + 用户消息
+  → create_react_agent(model, tools, prompt)
+     内部为一张状态图：agent 节点 ⇄ tools 节点，条件边判断是否继续
+  → agent 节点（LLM + bind_tools 全量工具）
+     ├─ 无 tool_calls → 条件边 → END，输出答案
+     └─ 有 tool_calls → tools 节点（ToolNode 统一执行口）
+          ├─ 合法工具名 → args_schema 校验 → 执行 → ToolMessage
+          └─ 非法工具名 → 不执行，错误观察回填给模型
+          → 条件边 → 回 agent 节点
+  → recursion_limit 控制总步数（模型步与工具步各计一步；耗尽以固定消息收尾）</div>
+    <table>
+      <tr><th>环节</th><th>行为</th></tr>
+      <tr><td>工具选择</td><td>仍是模型在全量目录里挑——选择面与基线相同，框架不裁剪</td></tr>
+      <tr><td>执行口</td><td>ToolNode：第一个「执行口收拢」，非法工具名在此拦截（回错误观察，而非到达执行面）</td></tr>
+      <tr><td>框架提供</td><td>状态图编排、条件边、步数上限、参数 schema 校验</td></tr>
+      <tr><td>依然没有</td><td>权限、预算、只读红线、审计、装载策略、输出侧数字接地</td></tr>
+    </table>
+
+    <h3>③ 完整工程模式（本系统）：三层闸门 + 唯一执行咽喉</h3>
+    <div class="flow">输入（预设用例台词 / WatchEvent 唤醒包）
+  → G-α 语义快路径（embedding 相似度分流）
+     ├─ 闲聊 → 罐头应答（零 LLM、零工具）
+     ├─ 知识 → 单次 LLM 直答（零工具装载）
+     └─ 禁止语义 → 结构化拒绝 + 审计码（零执行）
+  → 未命中 → AgentLoop 进入循环
+  → 工具装载（代码决策，未装载的工具对模型不可见）
+     ├─ scoped（默认）：场景标签 → 工具包映射表 → 固定子集
+     └─ search：仅装载 search_tools 元工具
+         → 模型发起检索 → 权限过滤先于检索 → embedding top-k 召回 → 命中动态装载
+         → 连续 2 次未命中 → 回退 scoped 宽包
+  → 每轮循环：
+     LLM bind_tools(当轮装载集)
+     ├─ 无 tool_calls（G-β 直答）→ 文本答案，零工具调用
+     └─ 有 tool_calls → 治理中间件（唯一执行咽喉，逐层裁决）
+          G1 可见性：工具名 ∈ 当次装载集？     ← 幻觉工具在此拦截
+          G2 只读：read_only 红线
+          G3 权限：游客 / 机主 + required_scope ← 越权调用在此拦截
+          G4 预算：调用上限 + cost_hint 加权（premium ×3）
+          G5 参数：pydantic schema 校验
+          → 执行（本地实现 或 MCP 代理）
+          G6 Observation 包装：来源 / 数据时间 / 质量标记
+          G7 审计：调用者 / 工具 / 参数摘要 / 耗时 / 状态 / 审计码
+          → Observation 回填 → 下一轮
+  → Output Guardrail（输出侧最后一道）
+     数字接地：答案中非平凡数字必须来自某条 Observation
+     C-1 / C-2 合规复核 → 违规处修正后输出
+  → 结果块（blocks）由 Observation 直接投影，不经 LLM 转述</div>
+    <table>
+      <tr><th>环节</th><th>行为</th></tr>
+      <tr><td>入口</td><td>G-α 快路径：闲聊 / 知识 / 禁止三类不进循环、不装载工具，成本与延迟直接归零</td></tr>
+      <tr><td>工具选择</td><td>两段式：代码先裁「可见集」（scoped 映射或 search 检索），模型只在可见集内选择</td></tr>
+      <tr><td>执行口</td><td>治理中间件唯一咽喉，本地工具与 MCP 工具走同一拦截链</td></tr>
+      <tr><td>终止条件</td><td>模型直答（G-β）或预算耗尽（G-γ）；每次调用都有审计码</td></tr>
+      <tr><td>输出防护</td><td>数字接地 + 合规复核；事实性数字由工具输出投影，模型只产出解读文本</td></tr>
+    </table>
+
+    <h2 id="selection">工具选择机制对照</h2>
+    <p>三种形态下「工具如何被选中、错误选择在哪里被拦下」的逐项对照：</p>
+    <table>
+      <tr><th>维度</th><th>裸 tool calling</th><th>LangGraph 官方 ReAct</th><th>完整工程模式</th></tr>
+      <tr><td>模型可见的候选集</td><td>全量目录</td><td>全量目录</td><td>装载子集（scoped 场景映射 / search 检索）</td></tr>
+      <tr><td>谁缩小选择面</td><td>—</td><td>—</td><td>代码：场景标签 → 映射表；权限过滤先于检索</td></tr>
+      <tr><td>幻觉工具名处置</td><td>直达执行面</td><td>ToolNode 拦截，回错误观察</td><td>G1 拦截 + 审计码，不执行</td></tr>
+      <tr><td>参数校验</td><td>无</td><td>StructuredTool args_schema</td><td>G5 pydantic 校验，拒绝带审计码</td></tr>
+      <tr><td>身份 / 越权</td><td>无</td><td>无</td><td>G3 游客 / 机主 + required_scope</td></tr>
+      <tr><td>调用预算</td><td>轮次上限（10 轮）</td><td>recursion_limit 步数上限</td><td>G4 次数上限 + cost 加权（premium ×3）</td></tr>
+      <tr><td>执行口</td><td>executor 直连</td><td>ToolNode</td><td>治理中间件（本地与 MCP 同链）</td></tr>
+      <tr><td>执行后包装</td><td>原样 JSON</td><td>原样结果</td><td>G6 Observation（来源 / 时间 / 质量）</td></tr>
+      <tr><td>审计</td><td>无</td><td>无</td><td>G7 每次调用一条审计记录</td></tr>
+      <tr><td>输出侧防护</td><td>无</td><td>无</td><td>Output Guardrail：数字接地 + 合规复核</td></tr>
+    </table>
+    <div class="note"><strong>关键差异：</strong>前两种形态里「选对工具」完全依赖模型自觉；完整工程模式把选择面缩小和错误拦截都交给代码——模型仍负责判断「用哪个、传什么参数」，但它看不到不该看的工具，选错的调用到不了执行面。</div>
+
+    <h2 id="metrics">对照指标</h2>
+    <table>
+      <tr><th>指标</th><th>裸 tool calling</th><th>LangGraph 官方 ReAct</th><th>完整工程模式</th></tr>
+      <tr><td>工具选择准确率</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>幻觉工具率</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>越权泄漏率</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>数字幻觉率</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>合规违规率（C-1 / C-2）</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>平均轮次</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>平均 token</td><td>—</td><td>—</td><td>—</td></tr>
+    </table>
+    <div class="note"><strong>数字口径：</strong>具体数字以仓库 <code>docs/eval/</code> 归档报告为准（每次评测自动生成，含实验设置、分场景明细与失败样例）；最近一次运行的机器可读结果展示于 <a href="/docs/results">评测结果</a> 页。</div>
+
+    <h2 id="setup">实验设置</h2>
+    <table>
+      <tr><th>控制项</th><th>做法</th></tr>
+      <tr><td>题库</td><td>18 道固定题：闲聊 / 知识 / 注入防御 / 越权 / 多轮指代 / 金融研究 / 组合 / 适合度 / 记忆 / 估值链</td></tr>
+      <tr><td>模型</td><td>三组使用同一 LLM 与温度，排除模型差异</td></tr>
+      <tr><td>工具执行</td><td>三组共用同一份 canned 执行器，隔离执行质量差异</td></tr>
+      <tr><td>路由</td><td>金标快路径（GoldRouter），隔离路由误差</td></tr>
+      <tr><td>判官</td><td>全部机械断言（集合相等 / 数字接地 / 审计码），无 LLM 判官</td></tr>
+    </table>
+
+    <h2 id="repro">如何复现</h2>
+    <div class="flow">cd sentinel-engine
+  LLM_API_KEY=xxx uv run python -m tests.eval.ab_eval --runs 5
+  → 报告自动写入 docs/eval/（含三组总表、模式归因、分场景、失败样例）</div>
+    <p>能力维度的判定口径见 <a href="/docs/eval">评测的三种能力</a>。</p>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click", () => {
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+</script>
+</body>
+</html>

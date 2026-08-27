@@ -362,6 +362,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                         response,
                         observations=getattr(execution, "observations", None),
                         tool_trace=getattr(execution, "tool_trace", None),
+                        **_loop_fields(execution),
                     ),
                 )
                 yield encode_event(
@@ -471,6 +472,7 @@ def register(router: APIRouter, ctx: ApiContext) -> None:
                     response,
                     observations=getattr(execution, "observations", None),
                     tool_trace=getattr(execution, "tool_trace", None),
+                    **_loop_fields(execution),
                 ),
             )
             yield encode_event(
@@ -536,6 +538,16 @@ async def _ask_which_stream(
             "resumable": True,
         },
     )
+
+
+def _loop_fields(execution: Any) -> dict[str, Any]:
+    """把 AgentLoop 元数据透传到终帧，供回路页按 LangChain 形式渲染。"""
+
+    return {
+        "entered_loop": bool(getattr(execution, "entered_loop", False)),
+        "fastpath_name": getattr(execution, "fastpath_name", None),
+        "loaded_tools": list(getattr(execution, "loaded_tools", ()) or ()),
+    }
 
 
 def _clarification_options(next_steps: list[str] | None) -> list[dict[str, str]]:

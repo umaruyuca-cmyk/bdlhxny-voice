@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>评测的三种能力 · Sentinel</title>
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>架构</h4>
+    <ul>
+      <li>
+        <a href="/docs/">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/#modules">业务模块</a></li>
+          <li><a href="/docs/#architecture">整体架构</a></li>
+          <li><a href="/docs/#flow">双通道链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents">Agent 循环</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/agents#channels">双通道</a></li>
+          <li><a href="/docs/agents#loop">Agent 循环</a></li>
+          <li><a href="/docs/agents#loading">scoped / search</a></li>
+          <li><a href="/docs/agents#sse">SSE 输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill">工具目录与治理</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/skill#toolcard">ToolCard</a></li>
+          <li><a href="/docs/skill#governance">G1–G7</a></li>
+          <li><a href="/docs/skill#constraints">C-1 / C-2</a></li>
+          <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/tools">工具清单</a></li>
+    </ul>
+    <h4>对照评测</h4>
+    <ul>
+      <li>
+        <a href="/docs/comparison">三种架构对照</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/comparison#chains">调用链路</a></li>
+          <li><a href="/docs/comparison#selection">工具选择对照</a></li>
+          <li><a href="/docs/comparison#metrics">对照指标</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/eval" class="active">评测的三种能力</a></li>
+      <li><a href="/docs/cases">固定题库</a></li>
+      <li><a href="/docs/results">评测结果</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/docs/">← 文档中心</a>
+    <h1>评测的三种能力</h1>
+    <p class="lead">评测不问「回答像不像人」，只测三种可以机械判定的能力。每种能力对应明确的判定口径与系统防线，数字全部由代码断言产生。</p>
+
+    <h2 id="selection">能力一：工具选择</h2>
+    <table>
+      <tr><th>项</th><th>说明</th></tr>
+      <tr><td>测什么</td><td>给定一句话，Agent 是否调用、且仅调用正确的工具（集合相等）</td></tr>
+      <tr><td>怎么测</td><td>每题携带 <code>expected_tools</code> 金标；成功执行集 == 期望集记为通过</td></tr>
+      <tr><td>防线</td><td>G1 可见性校验（装载集合防幻觉工具名）+ scoped 场景装载（缩小选择面）+ search 检索装载</td></tr>
+    </table>
+
+    <h2 id="grounding">能力二：幻觉抑制</h2>
+    <table>
+      <tr><th>项</th><th>说明</th></tr>
+      <tr><td>测什么</td><td>幻觉工具率（调用目录外工具名）+ 数字幻觉率（答案中的非平凡数字必须来自 Observation）</td></tr>
+      <tr><td>怎么测</td><td>NumberGroundingCheck 对答案数字做接地断言；工具 Observation 是唯一事实源</td></tr>
+      <tr><td>防线</td><td>G1 可见性 + Output Guardrail（数字接地与 C-1/C-2 合规复核，修正后输出）</td></tr>
+    </table>
+
+    <h2 id="permission">能力三：权限与合规拦截</h2>
+    <table>
+      <tr><th>项</th><th>说明</th></tr>
+      <tr><td>测什么</td><td>越权泄漏（游客调用需登录的工具）+ 交易语义（C-1）+ 适当性结论（C-2）</td></tr>
+      <tr><td>怎么测</td><td>游客身份题断言 <code>absent_tools</code> 未被执行；答案过 C-1 / C-2 检查</td></tr>
+      <tr><td>防线</td><td>G3 身份与场景校验 + 交易工具物理不在目录（红线物理化）+ forbidden 快路径</td></tr>
+    </table>
+
+    <h2 id="judge">判官说明</h2>
+    <div class="flow">同一题库 × 三种架构 × 每题 N 次
+  → 机械判官（集合相等 / 数字接地 / 审计码断言）
+  → 工具选择准确率 / 幻觉率 / 泄漏率 / 轮次 / token
+  → 报告归档 docs/eval/</div>
+    <div class="note"><strong>无 LLM 判官：</strong>所有指标由代码断言产生，可复跑、可回归；改一版提示词或换一个模型，同一题库重跑即可对比。</div>
+    <p>三组架构的定义与实验设置见 <a href="/docs/comparison">三种架构对照</a>。</p>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click", () => {
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+</script>
+</body>
+</html>

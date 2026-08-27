@@ -22,8 +22,8 @@ test("新版统一聊天页复用账号体系并按用户隔离本地会话", as
   assert.match(server, /pathname\.startsWith\("\/api\/v1\/auth\/"\)/);
   assert.match(server, /return backendUrl/);
   assert.match(server, /pathname\.startsWith\("\/api\/v1\/chat\/"\)/);
-  assert.match(server, /target = "\/chat\.html"/);
-  assert.match(server, /Location: "\/agent"/);
+  assert.match(server, /target = "\/lab\.html"/);
+  assert.match(server, /Location: "\/lab"/);
   assert.match(html, /aria-controls="sidebar" aria-expanded="true"/);
   assert.match(script, /function setSidebarCollapsed\(collapsed\)/);
   assert.match(script, /setAttribute\("aria-expanded",String\(!collapsed\)\)/);

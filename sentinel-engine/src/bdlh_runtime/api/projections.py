@@ -112,12 +112,17 @@ def chat_final_payload(
     *,
     observations: Sequence[Any] | None = None,
     tool_trace: Sequence[dict[str, Any]] | None = None,
+    entered_loop: bool | None = None,
+    fastpath_name: str | None = None,
+    loaded_tools: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """把公开回复投影为 SSE ``response.final``（ChatResult v2）。
 
     ``answer`` 来自模型解读文本；``blocks`` 由 Observation 的 ``result_type`` +
     ``payload`` 直接投影，数字不经 LLM 转述。``disclosures`` 对应契约字段
     ``risk_disclosures``。为兼容既有终帧断言，保留 ``response_kind`` 等附加字段。
+    循环元数据（``entered_loop`` / ``fastpath_name`` / ``loaded_tools``）供回路页
+    按 LangChain 消息链外显，不进入 ChatResult v2 模型字段。
     """
 
     result = ChatResultV2(
@@ -137,6 +142,9 @@ def chat_final_payload(
             "response_structure": response.response_structure,
             "data_times": list(response.data_times),
             "limitations": list(response.limitations),
+            "entered_loop": bool(entered_loop),
+            "fastpath_name": fastpath_name,
+            "loaded_tools": list(loaded_tools or ()),
         }
     )
     return payload

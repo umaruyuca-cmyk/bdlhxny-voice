@@ -23,6 +23,8 @@ test("看护首页四区、骨架屏、空态与 ECharts 单脚本", async () =>
   assert.match(html, /id="drawerFrame"/);
   assert.match(html, /id="eventChip"/);
   assert.match(html, /演示数据/);
+  assert.doesNotMatch(html, /id="userChip"/);
+  assert.doesNotMatch(html, />登录</);
   assert.match(html, /assets\/badges\.js/);
   assert.match(html, /assets\/dashboard\.js/);
   assert.equal(echarts.filter((src) => src.includes("echarts")).length, 1);
@@ -62,23 +64,26 @@ test("dashboard 绑定持仓 / 通知 / 监视 / ready，SSE 优先并 30s 轮�
   assert.match(js, /eventChip/);
   assert.match(js, /drawerFrame/);
   assert.doesNotMatch(js, /new EventSource\(/);
+  assert.doesNotMatch(js, /\/api\/v1\/auth\//);
+  assert.doesNotMatch(js, /Authorization/);
 });
 
-test("品牌落地与看护首页路由分离", async () => {
+test("公开入口收敛为文档页，看护与用例台保留直连", async () => {
   const [nginx, server, index, dash] = await Promise.all([
     readFile(new URL("../nginx.conf", import.meta.url), "utf8"),
     readFile(new URL("../dev-server.js", import.meta.url), "utf8"),
     readPublic("index.html"),
     readPublic("dashboard.html"),
   ]);
-  assert.match(nginx, /try_files \/index\.html =404;/);
+  assert.match(nginx, /try_files \/docs\/index\.html =404;/);
   assert.match(nginx, /location = \/dashboard/);
   assert.match(nginx, /try_files \/dashboard\.html =404;/);
   assert.match(nginx, /location \^~ \/api\/v1\/notifications/);
   assert.match(nginx, /location \^~ \/api\/v1\/watch-rules/);
   assert.match(server, /requestPath === "\/"/);
-  assert.match(server, /target = "\/index\.html"/);
+  assert.match(server, /target = "\/docs\/index\.html"/);
   assert.match(server, /target = "\/dashboard\.html"/);
+  assert.match(server, /target = "\/lab\.html"/);
   assert.match(server, /pathname.startsWith\("\/api\/v1\/notifications"\)/);
   assert.match(index, /href="\/dashboard"/);
   assert.match(index, />进入<|>台</);

@@ -109,7 +109,7 @@ function apiTarget(pathname) {
 }
 
 /**
- * 从 public 目录提供静态资源；/agent 是唯一助手入口，/workspace 重定向到 /agent。
+ * 从 public 目录提供静态资源；固定用例入口为 /lab。/agent 与 /workspace 重定向到 /lab。
  */
 async function serveStatic(requestPath, request, response, rootDirectory) {
   // 1. 保持文档目录有尾部斜杠，确保相对 CSS/图片资源在开发服务器中正确解析。
@@ -123,17 +123,22 @@ async function serveStatic(requestPath, request, response, rootDirectory) {
     response.end();
     return;
   }
-  if (requestPath === "/workspace" || requestPath === "/workspace/") {
-    response.writeHead(301, { Location: "/agent" });
+  if (
+    requestPath === "/workspace"
+    || requestPath === "/workspace/"
+    || requestPath === "/agent"
+    || requestPath === "/agent/"
+    || requestPath.startsWith("/agent/")
+  ) {
+    response.writeHead(301, { Location: "/lab" });
     response.end();
     return;
   }
   let target = requestPath;
-  if (requestPath === "/") target = "/index.html";
-  else if (requestPath === "/dashboard" || requestPath === "/dashboard/") target = "/dashboard.html";
-  else if (requestPath === "/agent" || requestPath === "/agent/") target = "/chat.html";
-  else if (requestPath.startsWith("/agent/")) target = "/chat.html";
-  else if (requestPath === "/docs" || requestPath === "/docs/") target = "/docs/index.html";
+    if (requestPath === "/") target = "/docs/index.html";
+    else if (requestPath === "/dashboard" || requestPath === "/dashboard/") target = "/dashboard.html";
+    else if (requestPath === "/lab" || requestPath === "/lab/") target = "/lab.html";
+    else if (requestPath === "/docs" || requestPath === "/docs/") target = "/docs/index.html";
   else if (requestPath.startsWith("/docs/")) {
     const docPath = requestPath.slice("/docs/".length);
     target = "/docs/" + (docPath.endsWith(".html") || docPath.includes(".") ? docPath : docPath + ".html");

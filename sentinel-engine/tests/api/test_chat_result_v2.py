@@ -158,8 +158,14 @@ def test_chat_final_payload_is_chat_result_v2() -> None:
         response,
         observations=[_obs("ScoreCard", _SCORE_PAYLOAD)],
         tool_trace=[{"tool": "analysis.run_analysis", "status": "SUCCESS", "elapsedMs": 12}],
+        entered_loop=True,
+        fastpath_name=None,
+        loaded_tools=["analysis.run_analysis"],
     )
     assert payload["type"] == "response.final"
+    assert payload["entered_loop"] is True
+    assert payload["fastpath_name"] is None
+    assert payload["loaded_tools"] == ["analysis.run_analysis"]
     assert payload["answer"] == "宁德时代综合评分中性偏强。"
     assert payload["blocks"][0]["type"] == "ScoreCard"
     assert payload["blocks"][0]["payload"]["overall"] == 72

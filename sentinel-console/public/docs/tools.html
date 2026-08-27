@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>工具清单 · Sentinel</title>
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<div class="docs-top">
+  <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
+  <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
+</div>
+<div class="docs-layout">
+  <nav class="docs-nav" id="docsNav">
+    <h4>架构</h4>
+    <ul>
+      <li>
+        <a href="/docs/">架构概览</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/#thesis">核心主张</a></li>
+          <li><a href="/docs/#capabilities">三个可量化的能力</a></li>
+          <li><a href="/docs/#carrier">产品载体</a></li>
+          <li><a href="/docs/#modules">业务模块</a></li>
+          <li><a href="/docs/#architecture">整体架构</a></li>
+          <li><a href="/docs/#flow">双通道链路</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/agents">Agent 循环</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/agents#channels">双通道</a></li>
+          <li><a href="/docs/agents#loop">Agent 循环</a></li>
+          <li><a href="/docs/agents#loading">scoped / search</a></li>
+          <li><a href="/docs/agents#sse">SSE 输出</a></li>
+        </ul>
+      </li>
+      <li>
+        <a href="/docs/skill">工具目录与治理</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/skill#toolcard">ToolCard</a></li>
+          <li><a href="/docs/skill#governance">G1–G7</a></li>
+          <li><a href="/docs/skill#constraints">C-1 / C-2</a></li>
+          <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/tools" class="active">工具清单</a></li>
+    </ul>
+    <h4>对照评测</h4>
+    <ul>
+      <li>
+        <a href="/docs/comparison">三种架构对照</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/comparison#chains">调用链路</a></li>
+          <li><a href="/docs/comparison#selection">工具选择对照</a></li>
+          <li><a href="/docs/comparison#metrics">对照指标</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/eval">评测的三种能力</a></li>
+      <li><a href="/docs/cases">固定题库</a></li>
+      <li><a href="/docs/results">评测结果</a></li>
+    </ul>
+  </nav>
+  <main class="docs-main">
+    <a class="back-link" href="/docs/">← 文档中心</a>
+    <h1>工具清单</h1>
+    <p class="lead">统一工具目录（ToolCard）当前登记 <strong>18 个工具</strong>，按工具族分组管理。真源是引擎启动时从数据库 Registry 加载的目录（<code>catalog_from_snapshot</code>），本页由同步测试守卫——目录增删工具而页面未跟上即测试失败。所有工具只读（C-1 红线：交易语义工具物理不注册）；本地与 MCP 工具走同一治理拦截链。</p>
+
+    <h2 id="market">行情与基本面（MCP）</h2>
+    <table>
+      <tr><th>工具</th><th>用途</th><th>数据来源</th><th>origin</th><th>cost</th><th>场景可见性</th></tr>
+      <tr><td>market.resolve_instrument</td><td>标的解析（名称 ↔ 代码）</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>market_read</td></tr>
+      <tr><td>market.get_realtime_quote</td><td>实时行情快照</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>market_read</td></tr>
+      <tr><td>market.get_historical_prices</td><td>历史 K 线</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>market_read</td></tr>
+      <tr><td>market.get_valuation</td><td>估值指标与历史分位</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>fundamental_read</td></tr>
+      <tr><td>market.get_financial_statements</td><td>财务指标</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>fundamental_read</td></tr>
+      <tr><td>market.get_industry_context</td><td>行业地位与对比</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>fundamental_read</td></tr>
+      <tr><td>market.get_money_flow</td><td>资金流向</td><td>MCP 行情服务</td><td>mcp</td><td>normal</td><td>market_read</td></tr>
+      <tr><td>market.get_news</td><td>标的资讯</td><td>MCP 资讯服务</td><td>mcp</td><td>normal</td><td>news_read</td></tr>
+    </table>
+
+    <h2 id="personal">个人数据（经 Java 数据面）</h2>
+    <table>
+      <tr><th>工具</th><th>用途</th><th>数据来源</th><th>origin</th><th>cost</th><th>场景可见性</th></tr>
+      <tr><td>portfolio.get_current_positions</td><td>当前持仓</td><td>PostgreSQL 个人业务表（MySQL 身份鉴权）</td><td>local</td><td>normal</td><td>portfolio_read + 登录</td></tr>
+      <tr><td>portfolio.get_account_snapshot</td><td>账户概览（现金等）</td><td>PostgreSQL 个人业务表（MySQL 身份鉴权）</td><td>local</td><td>normal</td><td>portfolio_read + 登录</td></tr>
+      <tr><td>portfolio.get_transaction_history</td><td>历史交易记录（只读豁免 C-1）</td><td>PostgreSQL 个人业务表（MySQL 身份鉴权）</td><td>local</td><td>normal</td><td>portfolio_read + 登录</td></tr>
+      <tr><td>user.get_risk_profile</td><td>风险画像</td><td>PostgreSQL 画像表（MySQL 身份鉴权）</td><td>local</td><td>normal</td><td>financial_profile_read + 登录</td></tr>
+    </table>
+
+    <h2 id="memory">记忆（Mem0 + pgvector）</h2>
+    <table>
+      <tr><th>工具</th><th>用途</th><th>数据来源</th><th>origin</th><th>cost</th><th>场景可见性</th></tr>
+      <tr><td>memory.recall</td><td>L3 目标记忆召回（如「两年内换房」）</td><td>sentinel-memory 独立服务 → memory schema pgvector 向量库</td><td>local</td><td>free</td><td>登录</td></tr>
+    </table>
+
+    <h2 id="compute">本地确定性引擎</h2>
+    <table>
+      <tr><th>工具</th><th>用途</th><th>数据来源</th><th>origin</th><th>cost</th><th>场景可见性</th></tr>
+      <tr><td>portfolio.build_current_valuation</td><td>组合估值快照（quantity × price 重算市值/权重，sha256 内容寻址，fail-closed）</td><td>本地计算（输入来自持仓 + 行情工具）</td><td>local</td><td>normal</td><td>portfolio_read + 登录</td></tr>
+      <tr><td>analysis.run_analysis</td><td>多维分析（技术面 / 基本面等确定性评分）</td><td>本地计算</td><td>local</td><td>normal</td><td>planning_compute</td></tr>
+    </table>
+
+    <h2 id="research">研究与检索</h2>
+    <table>
+      <tr><th>工具</th><th>用途</th><th>数据来源</th><th>origin</th><th>cost</th><th>场景可见性</th></tr>
+      <tr><td>research.web_search</td><td>公开资料检索</td><td>受控 Web 检索（sentinel-search）</td><td>local</td><td>normal</td><td>news_read</td></tr>
+      <tr><td>research.deep_search</td><td>深度研究（付费开关）</td><td>受控 Web 检索（sentinel-search）</td><td>local</td><td>premium</td><td>news_read</td></tr>
+    </table>
+
+    <h2 id="meta">元工具</h2>
+    <table>
+      <tr><th>工具</th><th>用途</th><th>数据来源</th><th>origin</th><th>cost</th><th>场景可见性</th></tr>
+      <tr><td>search_tools</td><td>tool search 装载模式的检索入口（embedding 相似度召回工具卡片）</td><td>本地索引</td><td>local</td><td>normal</td><td>仅 search 装载模式</td></tr>
+    </table>
+
+    <div class="note"><strong>治理属性：</strong>全部工具 <code>read_only=true</code>；<code>premium</code> 工具在预算中按 3 倍权重扣减（G4）；「场景可见性」即 scoped 装载与 G3 权限校验共用的 scope 标签。工具目录契约与 G1–G7 拦截链详见 <a href="/docs/skill">工具目录与治理</a>。</div>
+  </main>
+</div>
+<script>
+  document.getElementById("menuBtn").addEventListener("click", () => {
+    document.getElementById("docsNav").classList.toggle("open");
+  });
+</script>
+</body>
+</html>

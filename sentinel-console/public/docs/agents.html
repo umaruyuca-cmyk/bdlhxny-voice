@@ -4,21 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Agent 与双通道 · Sentinel</title>
+<title>Agent 循环与装载 · Sentinel</title>
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <div class="docs-top">
   <a class="brand" href="/"><em>グリッドユニバース研究所</em> · Sentinel 文档</a>
-  <div class="docs-top-links">
-    <a href="/dashboard">看护首页</a>
-    <a href="/agent">会话</a>
-  </div>
   <button class="docs-menu-btn" id="menuBtn" type="button">目录</button>
 </div>
 <div class="docs-layout">
   <nav class="docs-nav" id="docsNav">
-    <h4>文档</h4>
+    <h4>架构</h4>
     <ul>
       <li>
         <a href="/docs/">架构概览</a>
@@ -29,7 +25,7 @@
         </ul>
       </li>
       <li>
-        <a href="/docs/agents" class="active">Agent 与双通道</a>
+        <a href="/docs/agents" class="active">Agent 循环</a>
         <ul class="nav-sub">
           <li><a href="#channels">双通道</a></li>
           <li><a href="#loop">Agent 循环</a></li>
@@ -46,20 +42,35 @@
           <li><a href="/docs/skill#mcp">本地工具 + MCP</a></li>
         </ul>
       </li>
+      <li><a href="/docs/tools">工具清单</a></li>
+    </ul>
+    <h4>对照评测</h4>
+    <ul>
+      <li>
+        <a href="/docs/comparison">三种架构对照</a>
+        <ul class="nav-sub">
+          <li><a href="/docs/comparison#chains">调用链路</a></li>
+          <li><a href="/docs/comparison#selection">工具选择对照</a></li>
+          <li><a href="/docs/comparison#metrics">对照指标</a></li>
+        </ul>
+      </li>
+      <li><a href="/docs/eval">评测的三种能力</a></li>
+      <li><a href="/docs/cases">固定题库</a></li>
+      <li><a href="/docs/results">评测结果</a></li>
     </ul>
   </nav>
   <main class="docs-main">
     <a class="back-link" href="/docs/">← 文档中心</a>
-    <h1>Agent 循环与双通道</h1>
-    <p class="lead">看护环与会话环共用同一 Agent 循环；差异在输入、上下文组装与输出形态。模型提议，代码裁决。</p>
+    <h1>Agent 循环与装载</h1>
+    <p class="lead">看护解读与固定分析用例共用同一 Agent 循环；差异在输入、上下文组装与输出形态。模型提议，代码裁决。</p>
 
     <h2 id="channels">双通道</h2>
     <table>
       <tr><th>通道</th><th>输入</th><th>上下文</th><th>输出</th></tr>
       <tr><td>看护环</td><td>WatchEvent</td><td>唤醒包 + scene_wakeup</td><td>结构化通知（证据 / 审计码 / 严重度）</td></tr>
-      <tr><td>会话环</td><td>用户消息 / followup</td><td>会话 N 轮 + L3 记忆</td><td>SSE 流式 + ResultBlock</td></tr>
+      <tr><td>分析用例</td><td>预设台词（单次运行）</td><td>系统提示 + L3 记忆</td><td>SSE 流式 + ResultBlock</td></tr>
     </table>
-    <div class="note"><strong>产品叙事：</strong>watch-first, chat-second。对话能力架构上通用，产品聚焦金融看护追问。</div>
+    <div class="note"><strong>产品叙事：</strong>watch-first。事件解读主动触达；分析能力以固定用例提供，不提供自由对话入口。</div>
 
     <h2 id="loop">Agent 循环</h2>
     <ol>
@@ -67,7 +78,7 @@
       <li>否则 <code>bind_tools</code> 原生 tool calling：模型输出 <code>tool_calls</code> → 治理中间件 → Observation 回填 → 直至最终回答或预算耗尽。</li>
       <li>无 LLM 时服务不启动；依赖缺失经 <code>/ready</code> 显性 degraded。</li>
     </ol>
-    <div class="flow">消息 / 唤醒包
+    <div class="flow">用例台词 / 唤醒包
   → 快路径？ → 直接应答
   → AgentLoop + ToolCard
   → G1–G7 裁决
@@ -81,6 +92,7 @@
       <tr><td>search</td><td>元工具 <code>search_tools</code> 检索后装载；权限先于检索；未命中可回退 scoped</td></tr>
     </table>
     <p>search 模式下 UI 对 <code>search_tools</code> 节点特殊渲染（检索词 + 命中数）。</p>
+    <p>三种编排形态（裸 tool calling / LangGraph 官方 ReAct / 完整工程模式）的逐环节调用链路与工具选择对照，见 <a href="/docs/comparison#chains">三种架构对照 · 调用链路</a>。</p>
 
     <h2 id="sse">SSE 输出（契约 v2）</h2>
     <table>
@@ -89,10 +101,10 @@
       <tr><td><code>tool.step</code></td><td>工具轨迹节点（含 search_tools）</td></tr>
       <tr><td><code>token</code></td><td>正文真流式增量</td></tr>
       <tr><td><code>response.final</code></td><td>answer / blocks / tool_trace / 证据与披露</td></tr>
-      <tr><td><code>done</code></td><td>收尾；澄清 / 失败态</td></tr>
-      <tr><td><code>notification</code></td><td>P1 时间线 prepend + 未读</td></tr>
+      <tr><td><code>done</code></td><td>收尾；失败态（含审计码）</td></tr>
+      <tr><td><code>notification</code></td><td>看护时间线 prepend + 未读</td></tr>
     </table>
-    <p>暂停后恢复：沿用 Turn Router 发送「继续」，避免重复输出。会话入口为实现路径 <code>/agent</code>（设计稿曾写 <code>/chat</code>）。</p>
+    <p>分析用例台（<code>/lab</code>，演示自用入口，不进入公开导航）：预设台词走真实 LLM tool-calling，单次运行、无会话、无 mock。</p>
 
     <h3>ResultBlock</h3>
     <p>五类 Block（ScoreCard / AnalysisReport / SuitabilityDraft / PortfolioHealth / QuoteTable）由 Observation 直接投影，不经 LLM 改写数字。SuitabilityDraft 固定披露，禁止「适合买入」话术。</p>
