@@ -84,15 +84,15 @@ class StreamableHttpMcpClient:
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         import asyncio
 
-        import httpx2
+        import httpx
         from mcp.client.session import ClientSession
         from mcp.client.streamable_http import streamable_http_client
 
         # 注意：streamable_http_client 返回 2 元组 (read, write)，不是 3 元组
-        # 鉴权 headers 必须经自定义 httpx2.AsyncClient 注入（SDK 不直接收 headers）
-        timeout = httpx2.Timeout(self._timeout)
+        # 鉴权 headers 必须经自定义 httpx.AsyncClient 注入（SDK 不直接收 headers）
+        timeout = httpx.Timeout(self._timeout)
         async with (
-            httpx2.AsyncClient(headers=self._headers or None, timeout=timeout) as http_client,
+            httpx.AsyncClient(headers=self._headers or None, timeout=timeout) as http_client,
             streamable_http_client(url=self._endpoint, http_client=http_client) as (read, write),
             ClientSession(read, write) as session,
         ):
