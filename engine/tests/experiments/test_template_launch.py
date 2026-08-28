@@ -499,6 +499,31 @@ def test_confirmation_upsert_payload_matches_table_columns():
     assert consumed["consumed_at"] == "2026-08-26T00:00:00+00:00"
 
 
+# ── 压缩方法对照模板:所有者专属,2 变体,context_only 允许 ─────────────────
+
+
+def test_method_comparison_template_owner_only_and_two_runs():
+    """压缩方法对照模板:仅所有者可发起;计划 2 个运行;context_only 允许。"""
+    from bdlh_runtime.experiments.templates import (
+        ROLE_ANONYMOUS,
+        ROLE_OWNER,
+        TemplatePlanError,
+        plan_template_batch,
+    )
+
+    with pytest.raises(TemplatePlanError, match="不对匿名用户开放"):
+        plan_template_batch("compression-method-comparison", repeat_count=1, role=ROLE_ANONYMOUS)
+    plan = plan_template_batch("compression-method-comparison", repeat_count=1, role=ROLE_OWNER)
+    assert plan.run_count == 2
+    strategies = {run.run_config.context_strategy for run in plan.runs}
+    assert strategies == {"budgeted", "budgeted-llm"}
+    context_only_plan = plan_template_batch(
+        "compression-method-comparison", repeat_count=1, role=ROLE_OWNER, context_only=True
+    )
+    assert context_only_plan.context_only is True
+    assert context_only_plan.runs == ()
+
+
 # ── 温度模板修复:逐运行模型客户端 + 实际生效参数 ──────────────────────────
 
 

@@ -1,7 +1,7 @@
 # ctx-session-product-evolution-01 · 场景化冻结 Session
 # 根据项目讨论脉络和仓库真实文件整理的可复现评测 Session，不是未经编辑的原始聊天逐字稿。
 # 124 个事件 · 2026-08-18 ~ 2026-08-23
-# source_session_hash: sha256:8c75c090f2124de262711dd0ada13af6325379dd28d77c539ef22e9f0bb4e8c8
+# source_session_hash: sha256:a586b387f7e32f6ab853a8f4b610276d3655d422ffab97c5d3494444b88b029b
 # 当前问题: 请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。
 
 [0001] 2026-08-18T09:20:00+08:00 用户
@@ -283,7 +283,7 @@ V1、V2 通常是自动迁移工具的顺序版本，但当前决定以 db 为�
 不是生成四段不同对话，而是保存一份完全相同的历史，再用完整透传、最近窗口、一次摘要和按预算选择四种方式生成模型输入。当前问题、模型、工具和评测标准不变，单独观察上下文处理差异。
 
 [0097] 2026-08-22T14:34:00+08:00 用户
-这四种配置和三种 Agent 模式能交叉吗？四种是不是都要通过我们的压缩算法？
+这四种配置和不同运行模式能交叉吗？四种是不是都要通过我们的压缩算法？
 
 [0098] 2026-08-22T14:40:00+08:00 助手
 可以形成十二个实验组，但四种方式不能都经过自研算法。完整透传是不压缩基准，最近窗口是简单截断基准，一次摘要是独立摘要基准，只有按预算处理使用自研算法。四种方式可以共用安全检查和记录入口。
@@ -298,7 +298,7 @@ V1、V2 通常是自动迁移工具的顺序版本，但当前决定以 db 为�
 按照刚才的说法生成交叉验证 Prompt，并说明四种配置应该怎么设计 Session。
 
 [0102] 2026-08-23T16:40:00+08:00 助手
-交叉验证应使用一份版本化自然 Session，生成四份冻结派生输入，再分别交给三种 Agent。原始 Session、当前问题、Mock fixture 和评测标准保持一致；内部标准答案必须和原文分离。
+交叉验证应使用一份版本化自然 Session，生成四份冻结派生输入，再分别交给统一的原生运行底座。原始 Session、当前问题、Mock fixture 和评测标准保持一致；内部标准答案必须和原文分离。
 
 [0103] 2026-08-23T09:40:00.000Z 用户
 现在文库虽然换掉了公式生成的 ctx-port-01，但我还是不清楚应该压缩什么源文件。文档和代码直接拼起来，看上去也不像完整 Session。
@@ -728,14 +728,15 @@ budgeted 的多因子重要度与 `selection_value` 仍属设计稿
   参数 {"path":"docs/context/Session交叉验证设计.md"}
 [0111] 2026-08-23T10:05:00.000Z 工具结果(success) — 冻结 Mock
 读取路径: docs/context/Session交叉验证设计.md
-冻结范围: 第 1-209 行，共 209 行
+冻结范围: 第 1-210 行，共 210 行
 ----- 文件内容开始 -----
-# Session 交叉验证设计（4 上下文策略 × 3 Agent 模式）
+# Session 交叉验证设计（4 上下文策略 × 2 Agent 模式；默认上下文实验为 4×1 原生底座）
 
 本文档是"固定问题、冻结 Session、冻结 Mock Tools、比较不同 Agent 实现方式"
 产品目标下的交叉验证完整设计，同时如实区分**已实现**与**仍属设计**的部分。
-第一个固定用例为 `ctx-session-touchstone-design-01`（102 个事件的冻结自然
-Session），数据位于 `engine/var/cases/ctx-session-touchstone-design-01/`。
+当前压缩用例使用三个固定长 Session：产品演进与需求决策、上下文引擎排查、
+数据库与部署。每个 Session 独立生成四份冻结派生输入（历史版本曾按实现方式维度交叉展开,现已收敛为默认上下文实验 4×1）；页面默认一次只处理用户选择的
+一个 Session，不自动连续执行三个 Session。
 
 ## 1. 实验目标和结论边界
 
@@ -756,18 +757,18 @@ Mock fixture/评测标准下，单独观察两个变量：
   32K/64K 窗口测试需要继续加入自然的完整文件内容、日志与工具结果，
   **不得**用编号短句批量填充长度。
 
-## 2. 12 组矩阵与固定条件
+## 2. 运行矩阵与固定条件（默认上下文实验为 4×1）
 
-| 上下文方式 ↓ / Agent 模式 → | 裸 Tool Calling | LangGraph ReAct | 完整工程 Agent |
+| 上下文方式 ↓ / Agent 模式 → | 裸 Tool Calling | 完整工程 Agent |
 |---|---|---|---|
-| full-session（完整透传） | 运行 | 运行 | 运行 |
-| recent-window（最近窗口） | 运行 | 运行 | 运行 |
-| single-summary（一次摘要） | 运行 | 运行 | 运行 |
+| full-session（完整透传） | 运行 | 运行 |
+| recent-window（最近窗口） | 运行 | 运行 |
+| single-summary（一次摘要） | 运行 | 运行 |
 | budgeted-session（按预算压缩） | 运行 | 运行 | 运行 |
 
 每个单元格固定：同一 `source_session_hash`、同一当前问题、同一模型与温度
 （0.1）、同一工具可见集（7 个只读工具）、同一 Mock fixture 集、同一最大
-工具调用数（20）、同一有效重复次数（默认 3）、同一评测器与有效性规则。
+工具调用数（20）、同一重复次数（每格固定 1 次）、同一评测器与有效性规则。
 每格记录：模型、温度、Agent 模式、Session 版本、上下文策略、
 `compiled_context_hash`、公共提示词 hash、工具目录 hash、fixture hash、
 Git commit 与评测器版本。
@@ -888,7 +889,7 @@ budgeted 的约束保留率均为 100%，**recent-window 仅 33%**（丢失 6 �
 ## 11. 当前代码差距（诚实清单）
 
 已实现：session 加载校验、序列化（工具对合并）、四策略独立编译、工件
-hash 冻结、Mock 调度器、gold 机械评测、12 格 runner（compile-only 可无
+hash 冻结、Mock 调度器、gold 机械评测、上下文运行器（历史上为 12 格口径；compile-only 可无
 模型运行）、`--runs N` 完整模式。
 
 仍属设计/未完成（状态更新 2026-08-24）：
@@ -925,7 +926,7 @@ hash 冻结、Mock 调度器、gold 机械评测、12 格 runner（compile-only 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | P0（本次完成） | 修复污染实验的缺陷；session 包；数据入库；compile-only 链路 | 全部单测通过；6 项编译校验 PASS；四工件 hash 互异且同源 |
-| P1 | 配置 LLM_API_KEY 后跑 12×3 正式实验 | 每格 ≥3 有效运行；报告含 by_variant/by_mode/下钻 |
+| P1 | 用户手动选择一个压缩用例后运行 4×1 默认上下文实验（历史交叉口径已下线） | 每格准确运行 1 次；报告按样本展示并可下钻，不生成稳定性结论 |
 | P2（已实现，开关启用） | 接入模型 tokenizer、LLM 摘要器、成本记录 | 摘要成本单独入工件（`--llm-summary`；`LLM_TOKENIZER=tiktoken`） |
 | P3 | db 落库 + web 三视图 + 脱敏发布 | 公开站无 gold、无重跑入口 |
 | P4（已实现，开关启用） | 多因子重要度与 selection_value 实现与对照 | budgeted-v2 与 v1 的受控对照（`BUDGETED_SCORING=multi-factor-v2`） |
@@ -934,9 +935,9 @@ hash 冻结、Mock 调度器、gold 机械评测、12 格 runner（compile-only 
 
 ```bash
 # 无模型验证编译链路
-python -m bdlh_runtime.evaluation.session_cross_eval --compile-only
-# 正式 12 组实验(需 LLM_API_KEY)
-python -m bdlh_runtime.evaluation.session_cross_eval --runs 3
+#（历史命令已随旧模块移除）
+# 正式实验(需 LLM_API_KEY)
+#（历史命令已随旧模块移除）
 ```
 
 ----- 文件内容结束 -----
@@ -959,7 +960,7 @@ Touchstone 用固定题库比较不同 Agent 实现方式，并把比较过程�
 - token、运行时长和成本减少后，任务成功率是否下降；
 - 任何汇总数字能否回到单次运行记录进行核对。
 
-该项目主要用于面试展示、架构评审和回归评测，不作为面向公众的金融问答产品。
+该项目主要用于面试展示、架构评审和回归评测。平台本体是**领域中立**的 Agent 对照评测系统；金融等垂直内容仅作为可选场景包存在，默认路径不以垂直行业为主。
 
 ## 2. 用户和权限
 
@@ -970,7 +971,7 @@ Touchstone 用固定题库比较不同 Agent 实现方式，并把比较过程�
 项目所有者登录私有运行页面后可以：
 
 - 选择固定用例和用例变体；
-- 选择待比较的 Agent 实现方式或上下文处理方式；
+- 选择实验模板（每个正式模板只有一个唯一自变量，如上下文方式、治理开关、工具提供方式、温度或步数），或选择历史对照入口（已下线）；
 - 发起运行、查看实时进度和内部运行记录；
 - 将通过脱敏检查的运行批次发布到公开站点；
 - 查看无效运行和失败原因。
@@ -991,7 +992,7 @@ Touchstone 用固定题库比较不同 Agent 实现方式，并把比较过程�
 - 输入问题；
 - 发起、重试或取消运行；
 - 调用 LLM、工具或内部 API；
-- 查看原始持仓、真实用户记忆、密钥、完整提示词或未脱敏工具结果。
+- 查看原始私有账户数据、真实用户记忆、密钥、完整提示词或未脱敏工具结果。
 
 公开页面允许导航、筛选、折叠和回放。这些是浏览操作，不是运行操作。
 
@@ -1003,7 +1004,7 @@ Touchstone 用固定题库比较不同 Agent 实现方式，并把比较过程�
 
 - “宁德时代现在什么价”；
 - “贵州茅台估值高不高”；
-- “我的持仓现在值多少钱”；
+- “帮我核验这个公开网页上的数字是否一致”；
 - “帮我立刻下单买入”。
 
 登录页面发送的请求只包含用例编号和运行配置：
@@ -1012,7 +1013,7 @@ Touchstone 用固定题库比较不同 Agent 实现方式，并把比较过程�
 {
   "case_id": "market-quote-001",
   "variant_id": "long-context",
-  "agent_mode": "full-system",
+  "agent_mode": "native-tool-calling",
   "context_strategy": "budgeted"
 }
 ```
@@ -1035,7 +1036,7 @@ steps:
 
 ### 3.3 事件类用例
 
-为了展示主动运行能力，可以保留固定事件用例，例如“持仓标的下跌 5.2%”。事件由登录用户触发，数据明确标记为演示注入，并进入与其他用例相同的上下文构建、Agent 执行和运行记录流程。
+为了展示主动运行能力，可以保留固定事件用例（含可选垂直场景包中的演示事件）。事件由登录用户触发，数据明确标记为演示注入，并进入与其他用例相同的上下文构建、Agent 执行和运行记录流程。
 
 事件用例不是公开输入入口，也不依赖真实市场在面试时间发生特定波动。
 
@@ -1087,10 +1088,10 @@ steps:
 ## 6. 安全和合规边界
 
 - 系统不提供交易执行工具；交易请求必须在工具执行前被代码拒绝。
-- 风险匹配只输出筛查草稿和风险披露，不给出确定的投资适当性结论。
+- 涉及用户决策的匹配类输出只给筛查草稿与披露，不代替用户拍板。
 - 权限、只读、预算和参数校验由代码执行，不能依赖模型自行遵守。
 - 工具返回、网页、新闻和历史文本按不可信数据处理，不能被当成系统指令。
-- 公开数据采用字段白名单生成。发现真实持仓、用户记忆、手机号、密钥或未允许字段时，发布失败。
+- 公开数据采用字段白名单生成。发现真实私有账户数据、用户记忆、手机号、密钥或未允许字段时，发布失败。
 - 前端隐藏按钮不构成权限控制。所有创建运行、注入事件和发布操作必须由后端鉴权。
 
 ## 7. 明确不做的内容
@@ -1140,26 +1141,15 @@ steps:
   参数 {"path":"web/scripts/generate-context-library.mjs"}
 [0122] 2026-08-23T10:32:00.000Z 工具结果(success) — 冻结 Mock
 读取路径: web/scripts/generate-context-library.mjs
-冻结范围: 第 1-287 行，共 287 行
+冻结范围: 第 1-179 行，共 179 行
 ----- 文件内容开始 -----
 #!/usr/bin/env node
 /**
- * 长上下文库静态导出器(真实语料版)。
+ * 长上下文文库静态导出器。
  *
- * 语料设计原则:真实世界的 Agent 长上下文有三种形态,各取仓库真实材料,
- * 零合成、git 可追溯(记录 commit 与逐文件 sha256):
- *   1. 会话型——冻结的 102 事件真实工作会话(含误解、纠正、工具对、方案变更),
- *      附四种处理策略的实测压缩数字(取自编译冻结工件,与 /session-cross/ 同源);
- *   2. 文档型——真实项目文档合集(自然中文长文本,含真实事实/日期/决定);
- *   3. 代码型——真实引擎源码(coding agent 视角的上下文)。
- *
- * 曾用的六套公式生成夹具(ctx-port-01 等)因「规律重复、评测标注混入原文」
- * 不能代表真实长上下文,不再作为文库展示内容(引擎回归测试与压缩对照实验
- * 仍使用,库内不变)。
- *
- * 导出:
- *   - public/showcase-data/context-library.json           语料清单(来源/规模/构成)
- *   - public/showcase-data/context-library/{id}.txt       逐字稿或原文合集(下载)
+ * 主文库只展示完整、连续的场景化冻结 Session。仓库文档、源码、SQL 和配置
+ * 只能作为 Session 内的冻结工具结果出现，不再直接拼成顶层长上下文条目。
+ * 每套 Session 都从同一份原文读取四种编译工件，便于做受控交叉实验。
  */
 
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -1172,27 +1162,15 @@ const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const REPO_ROOT = path.resolve(WEB_ROOT, "..");
 const OUT_DIR = path.join(WEB_ROOT, "public", "showcase-data");
 const TXT_DIR = path.join(OUT_DIR, "context-library");
-const SESSION_CASE_DIR = path.join(REPO_ROOT, "engine", "var", "cases", "ctx-session-touchstone-design-01");
-const SESSION_CASE_ID = "ctx-session-touchstone-design-01";
-
-// ── 保守 token 计数(CJK/标点 1 token,拉丁/数字 4 字符 1 token;空白不计)──
-const CJK_RE =
-  /[\u1100-\u11ff\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef]/;
-const PUNCT_RE = /[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e\u00a1-\u00bf\u2010-\u2027\u2030-\u205e\u2e00-\u2e7f]/;
-
-function countTokens(text) {
-  let cjk = 0;
-  let latin = 0;
-  for (const ch of text) {
-    if (/\s/.test(ch)) continue;
-    if (CJK_RE.test(ch) || PUNCT_RE.test(ch)) cjk += 1;
-    else latin += 1;
-  }
-  return cjk + Math.ceil(latin / 4);
-}
+const CASES_ROOT = path.join(REPO_ROOT, "engine", "var", "cases");
+const SESSION_CASE_IDS = [
+  "ctx-session-product-evolution-01",
+  "ctx-session-context-engine-debug-01",
+  "ctx-session-database-deploy-01",
+];
 
 const sha256 = (text) => `sha256:${createHash("sha256").update(text, "utf8").digest("hex")}`;
-const pad = (n, w = 4) => String(n).padStart(w, "0");
+const pad = (n, width = 4) => String(n).padStart(width, "0");
 
 function gitCommit() {
   try {
@@ -1202,226 +1180,141 @@ function gitCommit() {
   }
 }
 
-/** 读真实文件,返回 { rel, lines, sha256, content }。 */
-async function readReal(relPath) {
-  const content = await readFile(path.join(REPO_ROOT, relPath), "utf8");
-  return {
-    rel: relPath.replaceAll("\\", "/"),
-    lines: content.split("\n").length,
-    sha256: sha256(content),
-    content,
-  };
+function canonicalHash(payload) {
+  const sortKeys = (value) => Array.isArray(value)
+    ? value.map(sortKeys)
+    : value && typeof value === "object"
+      ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortKeys(value[key])]))
+      : value;
+  return sha256(JSON.stringify(sortKeys(payload)));
 }
 
-/** 多个真实文件 → 带来源头的原文合集文本。 */
-function concatFiles(files, headerLines) {
-  const parts = [headerLines.join("\n"), ""];
-  for (const f of files) {
-    parts.push(`──────── ${f.rel}(${f.lines} 行 · ${f.sha256.slice(7, 19)}) ────────`);
-    parts.push(f.content.trimEnd());
-    parts.push("");
-  }
-  return parts.join("\n");
-}
-
-// ── 会话型:真实工作会话 → 逐字稿 ────────────────────────────────────────
-
-function renderTranscript(events, currentQuestion, sourceHash) {
-  const lines = [];
-  lines.push(`# ${SESSION_CASE_ID} · 真实工作会话逐字稿`);
-  lines.push(`# ${events.length} 个事件 · ${events[0].occurred_at.slice(0, 10)} ~ ${events[events.length - 1].occurred_at.slice(0, 10)}`);
-  lines.push(`# source_session_hash: ${sourceHash}`);
-  lines.push(`# 当前问题: ${currentQuestion}`);
-  lines.push("");
-  for (const ev of events) {
-    if (ev.type === "user_message") {
-      lines.push(`[${pad(ev.seq)}] ${ev.occurred_at} 用户`);
-      lines.push(ev.content);
-      lines.push("");
-    } else if (ev.type === "assistant_message") {
-      lines.push(`[${pad(ev.seq)}] ${ev.occurred_at} 助手`);
-      lines.push(ev.content);
-      lines.push("");
-    } else if (ev.type === "tool_call") {
-      lines.push(`[${pad(ev.seq)}] ${ev.occurred_at} 工具调用 ${ev.tool_name}`);
-      lines.push(`  参数 ${JSON.stringify(ev.arguments || {})}`);
-    } else if (ev.type === "tool_result") {
-      lines.push(`[${pad(ev.seq)}] ${ev.occurred_at} 工具结果(${ev.status || "success"}${ev.error_code ? " · " + ev.error_code : ""}) — 冻结 Mock`);
-      lines.push(`  ${ev.content}`);
-      lines.push("");
+function renderTranscript(session, sourceHash) {
+  const events = session.events || [];
+  const lines = [
+    `# ${session.session_id} · 场景化冻结 Session`,
+    `# ${session.corpus_disclosure || "用于可复现实验的整理语料。"}`,
+    `# ${events.length} 个事件 · ${String(events[0]?.occurred_at || "").slice(0, 10)} ~ ${String(events.at(-1)?.occurred_at || "").slice(0, 10)}`,
+    `# source_session_hash: ${sourceHash}`,
+    `# 当前问题: ${session.runtime_case.current_question}`,
+    "",
+  ];
+  for (const event of events) {
+    if (event.type === "user_message") {
+      lines.push(`[${pad(event.seq)}] ${event.occurred_at} 用户`, event.content, "");
+    } else if (event.type === "assistant_message") {
+      lines.push(`[${pad(event.seq)}] ${event.occurred_at} 助手`, event.content, "");
+    } else if (event.type === "tool_call") {
+      lines.push(
+        `[${pad(event.seq)}] ${event.occurred_at} 工具调用 ${event.tool_name}`,
+        `  参数 ${JSON.stringify(event.arguments || {})}`,
+      );
+    } else if (event.type === "tool_result") {
+      lines.push(
+        `[${pad(event.seq)}] ${event.occurred_at} 工具结果(${event.status || "success"}${event.error_code ? ` · ${event.error_code}` : ""}) — 冻结 Mock`,
+        event.content,
+        "",
+      );
     }
   }
   return lines.join("\n");
 }
 
-async function buildSessionEntry() {
-  const sessionRaw = JSON.parse(await readFile(path.join(SESSION_CASE_DIR, `${SESSION_CASE_ID}.session.json`), "utf8"));
-  const variantsRaw = JSON.parse(await readFile(path.join(SESSION_CASE_DIR, `${SESSION_CASE_ID}.variants.json`), "utf8"));
-  const compiledDir = path.join(SESSION_CASE_DIR, "compiled");
+async function buildSessionEntry(caseId) {
+  const caseDir = path.join(CASES_ROOT, caseId);
+  const session = JSON.parse(await readFile(path.join(caseDir, `${caseId}.session.json`), "utf8"));
+  const variants = JSON.parse(await readFile(path.join(caseDir, `${caseId}.variants.json`), "utf8"));
   const compiled = {};
-  for (const f of (await readdir(compiledDir)).filter((x) => x.endsWith(".json") && x !== "compile-report.json")) {
-    const payload = JSON.parse(await readFile(path.join(compiledDir, f), "utf8"));
-    compiled[payload.variant_id] = payload;
+  for (const file of (await readdir(path.join(caseDir, "compiled"))).filter((name) => name.endsWith(".json"))) {
+    const artifact = JSON.parse(await readFile(path.join(caseDir, "compiled", file), "utf8"));
+    if (artifact.variant_id) compiled[artifact.variant_id] = artifact;
   }
-  const tokenizerVersion = compiled[Object.keys(compiled)[0]]?.tokenizer_version || "conservative-cjk1-latin4-v1";
 
-  const events = sessionRaw.events;
-  const stats = {
-    event_count: events.length,
-    user_messages: events.filter((e) => e.type === "user_message").length,
-    assistant_messages: events.filter((e) => e.type === "assistant_message").length,
-    tool_pairs: events.filter((e) => e.type === "tool_call").length,
-    first_at: events[0].occurred_at,
-    last_at: events[events.length - 1].occurred_at,
-  };
-  const sortKeys = (v) =>
-    Array.isArray(v) ? v.map(sortKeys)
-      : v && typeof v === "object"
-        ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])]))
-        : v;
-  const sourceHash = sha256(JSON.stringify(sortKeys(sessionRaw)));
-
-  const strategies = (variantsRaw.context_variants || []).map((v) => {
-    const art = compiled[v.variant_id];
-    if (!art) {
-      throw new Error(`缺少编译工件 compiled/${v.variant_id}.json;先运行 python -m bdlh_runtime.evaluation.session_cross_eval --compile-only`);
+  const strategies = (variants.context_variants || []).map((variant) => {
+    const artifact = compiled[variant.variant_id];
+    if (!artifact) {
+      throw new Error(`${caseId} 缺少 compiled/${variant.variant_id}.json`);
+    }
+    if (artifact.status !== "COMPLETE") {
+      throw new Error(`${caseId}/${variant.variant_id} 编译状态不是 COMPLETE: ${artifact.error || artifact.status}`);
     }
     return {
-      variant_id: v.variant_id,
-      title: v.title || v.variant_id,
-      strategy_version: art.strategy_version || v.strategy_version,
-      token_budget: art.token_budget,
-      original_tokens: art.original_tokens,
-      working_tokens: art.working_tokens,
-      compression_pct: art.original_tokens ? Math.round((1 - art.working_tokens / art.original_tokens) * 100) : null,
-      kept: (art.kept_event_ids || []).length,
-      compressed: (art.compressed_event_ids || []).length,
-      referenced: (art.referenced_event_ids || []).length,
-      omitted: (art.omitted_event_ids || []).length,
-      build_duration_ms: art.build_duration_ms,
-      compiled_context_hash: art.compiled_context_hash,
+      variant_id: variant.variant_id,
+      title: variant.title || variant.variant_id,
+      strategy_version: artifact.strategy_version || variant.strategy_version,
+      token_budget: artifact.token_budget,
+      original_tokens: artifact.original_tokens,
+      working_tokens: artifact.working_tokens,
+      compression_pct: artifact.original_tokens
+        ? Math.round((1 - artifact.working_tokens / artifact.original_tokens) * 100)
+        : null,
+      kept: (artifact.kept_event_ids || []).length,
+      compressed: (artifact.compressed_event_ids || []).length,
+      referenced: (artifact.referenced_event_ids || []).length,
+      omitted: (artifact.omitted_event_ids || []).length,
+      build_duration_ms: artifact.build_duration_ms,
+      compiled_context_hash: artifact.compiled_context_hash,
     };
   });
 
-  const transcript = renderTranscript(events, sessionRaw.runtime_case.current_question, sourceHash);
+  const events = session.events || [];
+  const sourceHash = canonicalHash(session);
+  const transcript = renderTranscript(session, sourceHash);
   return {
     entry: {
-      id: SESSION_CASE_ID,
-      kind: "会话(真实)",
+      id: caseId,
+      kind: "Session（场景化冻结）",
       kind_key: "session",
-      title: sessionRaw.title || SESSION_CASE_ID,
-      summary: "一份冻结的真实工作会话:产品方向讨论、误解与纠正、文档读写、方案变更与当前问题,事件与时间戳全部来自真实协作。",
-      tokenizer_version: tokenizerVersion,
-      stats,
+      title: session.title || caseId,
+      summary: session.library_summary || "用于固定条件对照实验的完整 Session。",
+      disclosure: session.corpus_disclosure || "场景化整理语料，不是原始聊天逐字稿。",
+      tokenizer_version: compiled["full-session"]?.tokenizer_version || "unknown",
+      stats: {
+        event_count: events.length,
+        user_messages: events.filter((event) => event.type === "user_message").length,
+        assistant_messages: events.filter((event) => event.type === "assistant_message").length,
+        tool_pairs: events.filter((event) => event.type === "tool_call").length,
+        failed_tool_pairs: events.filter((event) => event.type === "tool_result" && event.status !== "success").length,
+        first_at: events[0]?.occurred_at || "",
+        last_at: events.at(-1)?.occurred_at || "",
+      },
       original_tokens: strategies[0]?.original_tokens ?? null,
       source_session_hash: sourceHash,
+      source_materials: session.source_materials || [],
+      current_question: session.runtime_case.current_question,
       strategies,
-      drilldown: "/session-cross/",
     },
-    txtName: `${SESSION_CASE_ID}.txt`,
+    txtName: `${caseId}.txt`,
     txt: transcript,
-  };
-}
-
-// ── 文档型/代码型:真实文件合集 ──────────────────────────────────────────
-
-async function buildFileEntry({ id, kind, kindKey, title, summary, files: relPaths }) {
-  const files = [];
-  for (const rel of relPaths) files.push(await readReal(rel));
-  const header = [
-    `# ${id} · ${kind} · 真实原文合集`,
-    `# 来源文件 ${files.length} 个 · 逐文件 sha256 见分隔行 · 仓库真实文件,未做任何改写`,
-    `# token 估算:保守口径(CJK/标点 1 token,拉丁/数字 4 字符 1 token)`,
-  ];
-  const txt = concatFiles(files, header);
-  return {
-    entry: {
-      id,
-      kind,
-      kind_key: kindKey,
-      title,
-      summary,
-      tokenizer_version: "conservative-cjk1-latin4-v1",
-      stats: {
-        files: files.length,
-        lines: files.reduce((s, f) => s + f.lines, 0),
-        paragraphs: files.reduce((s, f) => s + f.content.split(/\n\s*\n/).filter((p) => p.trim()).length, 0),
-      },
-      original_tokens: countTokens(txt),
-      sources: files.map((f) => ({ path: f.rel, lines: f.lines, sha256: f.sha256 })),
-    },
-    txtName: `${id}.txt`,
-    txt,
   };
 }
 
 async function main() {
   const commit = gitCommit();
+  const built = [];
+  for (const caseId of SESSION_CASE_IDS) built.push(await buildSessionEntry(caseId));
 
-  const built = [
-    await buildSessionEntry(),
-    await buildFileEntry({
-      id: "ctx-docs-architecture",
-      kind: "文档(真实)",
-      kindKey: "docs",
-      title: "架构与上下文设计文集",
-      summary: "三篇真实设计文档的合集:系统架构与运行流程、长上下文构建与压缩、Session 交叉验证设计——自然中文长文本,含真实事实、日期与设计决定。",
-      files: [
-        "docs/architecture/系统架构与运行流程.md",
-        "docs/context/长上下文构建与压缩.md",
-        "docs/context/Session交叉验证设计.md",
-      ],
-    }),
-    await buildFileEntry({
-      id: "ctx-docs-evaluation",
-      kind: "文档(真实)",
-      kindKey: "docs",
-      title: "评测体系与产品文集",
-      summary: "评测口径、工具目录设计与产品目标三篇真实文档合集:指标定义、判官口径与产品边界,全部为项目真实文档。",
-      files: [
-        "docs/evaluation/Agent对照评测与证据展示.md",
-        "docs/evaluation/通用工具目录与Mock评测.md",
-        "docs/product/产品目标与使用方式.md",
-      ],
-    }),
-    await buildFileEntry({
-      id: "ctx-code-engine",
-      kind: "代码(真实)",
-      kindKey: "code",
-      title: "引擎上下文模块源码",
-      summary: "coding agent 视角的真实代码上下文:上下文构建器、Session 编译器、多因子评分与 Agent 循环四个核心源文件,含真实注释与实现细节。",
-      files: [
-        "engine/src/bdlh_runtime/context/builder.py",
-        "engine/src/bdlh_runtime/session/compiler.py",
-        "engine/src/bdlh_runtime/context/scoring.py",
-        "engine/src/bdlh_runtime/engine/loop.py",
-      ],
-    }),
-  ];
-
-  // 覆盖式重建导出目录(清理旧六套夹具 txt)
   await rm(TXT_DIR, { recursive: true, force: true });
   await mkdir(TXT_DIR, { recursive: true });
-
   const entries = [];
-  for (const b of built) {
-    await writeFile(path.join(TXT_DIR, b.txtName), b.txt, "utf8");
-    entries.push({ ...b.entry, txt: `/showcase-data/context-library/${b.txtName}` });
+  for (const row of built) {
+    await writeFile(path.join(TXT_DIR, row.txtName), row.txt, "utf8");
+    entries.push({ ...row.entry, txt: `/showcase-data/context-library/${row.txtName}` });
   }
 
   const payload = {
-    generated_from: `仓库真实文件 @ git ${commit.slice(0, 12)}`,
+    generated_from: `三套场景化冻结 Session @ git ${commit.slice(0, 12)}`,
     generated_at: new Date().toISOString(),
     git_commit: commit,
-    tokenizer_version: "conservative-cjk1-latin4-v1",
-    kind: "real-corpus",
+    tokenizer_version: entries[0]?.tokenizer_version || "unknown",
+    kind: "scenario-frozen-session-corpus",
     entries,
-    note: "语料全部来自仓库真实文件(会话/文档/代码三种形态),逐文件 sha256 追溯;六套公式生成的结构化夹具仍用于引擎回归测试与压缩对照实验(库内不变),不再作为文库展示内容。",
+    note: "主文库只展示完整 Session。对话为可复现实验整理语料；仓库真实文档、源码、SQL 和配置只作为冻结工具结果出现。每套原文独立派生完整透传、最近窗口、一次摘要和按预算压缩四种输入。",
   };
   await writeFile(path.join(OUT_DIR, "context-library.json"), JSON.stringify(payload, null, 2), "utf8");
 
-  const total = entries.reduce((s, e) => s + (e.original_tokens || 0), 0);
-  console.log(`context-library: ${entries.length} 条真实语料(会话 ${entries[0].stats.event_count} 事件 + 文档 2 + 代码 1),合计约 ${total} token`);
+  const total = entries.reduce((sum, entry) => sum + Number(entry.original_tokens || 0), 0);
+  console.log(`context-library: ${entries.length} 套 Session，合计约 ${total} token`);
 }
 
 main().catch((error) => {

@@ -440,6 +440,52 @@ def test_context_batch_persists_variant_runs(
     assert (tmp_path / "runs" / "run-1.json").is_file()
 
 
+def test_fail_orphan_batches_marks_only_running() -> None:
+    """孤儿批次清点:仅 RUNNING 标 FAILED,其他状态不动。"""
+
+    class _FakeData:
+        def __init__(self) -> None:
+            self.completed: list[tuple[str, str]] = []
+
+        def list_batches(self, *, limit: int = 20, cursor=None):
+            return {"batches": [
+                {"id": "b-run", "status": "RUNNING"},
+                {"id": "b-done", "status": "COMPLETE"},
+                {"id": "b-run2", "status": "RUNNING"},
+            ]}
+
+        def complete_batch(self, batch_id: str, status: str) -> None:
+            self.completed.append((batch_id, status))
+
+    fake = _FakeData()
+    from bdlh_runtime.run_api import _fail_orphan_batches
+
+    assert _fail_orphan_batches(fake) == 2
+    assert sorted(fake.completed) == [("b-run", "FAILED"), ("b-run2", "FAILED")]
+
+
+def test_job_lookup_by_batch(client: TestClient) -> None:
+    """按批次号找回内存作业:命中返回最新作业,未命中 404(重启后不虚报)。"""
+    import bdlh_runtime.run_api as run_api_module
+
+    run_api_module._JOBS["job-old"] = {
+        "job_id": "job-old", "batch_id": "batch-lookup-1", "status": "done",
+        "started_at": "2026-08-27T10:00:00+08:00", "progress": {"done": 1, "total": 2},
+    }
+    run_api_module._JOBS["job-new"] = {
+        "job_id": "job-new", "batch_id": "batch-lookup-1", "status": "running",
+        "started_at": "2026-08-27T11:00:00+08:00", "progress": {"done": 2, "total": 2},
+    }
+    try:
+        ok = client.get("/api/v1/jobs/by-batch/batch-lookup-1", headers=_auth())
+        assert ok.status_code == 200
+        assert ok.json()["job_id"] == "job-new"  # 同批次多个作业取最新
+        assert client.get("/api/v1/jobs/by-batch/no-such", headers=_auth()).status_code == 404
+    finally:
+        run_api_module._JOBS.pop("job-old", None)
+        run_api_module._JOBS.pop("job-new", None)
+
+
 def test_context_batch_rejects_non_comparison_cases(client: TestClient) -> None:
     response = client.post(
         "/api/v1/context-batches",

@@ -12,7 +12,7 @@
 
     var NAV = [
       { href: "/", label: "公告", match: function (p) { return p === "/" || p === "/index.html"; } },
-      { href: "/experiment/", label: "实验", match: function (p) { return p.indexOf("/experiment") === 0 || p.indexOf("/lab") === 0; } },
+      { href: "/experiment/", label: "实验", match: function (p) { return p.indexOf("/experiment") === 0; } },
       { href: "/test/", label: "我的测试", match: function (p) { return p.indexOf("/test") === 0; } },
       { href: "/assets/", label: "数据资产", match: function (p) {
         return ["/cases", "/tools", "/context", "/assets", "/showcase"].some(function (prefix) {
@@ -83,19 +83,25 @@
     window.addEventListener("scroll", spy, { passive: true });
     spy();
   }
-  // 4. 登录遮罩(当前页弹窗,不跳转) + 登录态三按钮(登录/运行台/退出登录)
+  // 4. 登录遮罩(当前页弹窗,不跳转) + 登录态三按钮(登录/实验中心/退出登录)
   var RUN_API = window.__RUN_API__ || "http://127.0.0.1:8090";
+  // 所有者会话键:ts_owner(旧键 lab_token 一次性迁移,老会话不掉线)
+  function ownerToken() {
+    var legacy = sessionStorage.getItem("lab_token");
+    if (legacy) { sessionStorage.setItem("ts_owner", legacy); sessionStorage.removeItem("lab_token"); }
+    return sessionStorage.getItem("ts_owner") || "";
+  }
   var labBtn = document.querySelector(".topbar-lab");
   var loginBtn = document.querySelector(".topbar-login");
   var logoutBtn = document.querySelector(".topbar-logout");
   function refreshAuthState() {
-    var logged = !!sessionStorage.getItem("lab_token");
+    var logged = !!ownerToken();
     var role = document.querySelector(".role-label");
     if (role) role.textContent = logged ? "登录所有者" : "匿名访客";
-    // 运行台只在私有部署存在:公开页 HTML 不硬链接 /lab,登录态由脚本动态赋址
+    // 实验中心入口:登录后可见(所有者在实验模块发起正式批次)
     if (labBtn) {
       labBtn.style.display = logged ? "inline-flex" : "none";
-      labBtn.href = logged ? "/lab/" : undefined;
+      labBtn.href = logged ? "/experiment/" : undefined;
     }
     if (loginBtn) loginBtn.style.display = logged ? "none" : "inline-flex";
     if (logoutBtn) logoutBtn.style.display = logged ? "inline-flex" : "none";
@@ -103,8 +109,8 @@
   refreshAuthState();
   if (logoutBtn) {
     logoutBtn.addEventListener("click", function () {
-      var token = sessionStorage.getItem("lab_token");
-      sessionStorage.removeItem("lab_token");
+      var token = ownerToken();
+      sessionStorage.removeItem("ts_owner");
       sessionStorage.removeItem("lab_user");
       refreshAuthState();
       if (token) {

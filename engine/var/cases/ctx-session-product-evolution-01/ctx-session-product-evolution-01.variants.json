@@ -68,7 +68,7 @@
       "preserve_recent_tool_call_result_pairs": true,
       "uses_custom_budgeted_algorithm": false,
       "uses_summary_model": true,
-      "notes": "摘要成本单独记录，三个 Agent 使用同一份冻结摘要。"
+      "notes": "摘要成本单独记录，所有实验变体使用同一份冻结摘要。"
     },
     {
       "variant_id": "budgeted-session",

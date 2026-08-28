@@ -21,10 +21,10 @@ from bdlh_runtime.session import (
     serialize_session,
 )
 
-_CASE_DIR = Path(__file__).resolve().parents[2] / "var" / "cases" / "ctx-session-touchstone-design-01"
-_SESSION_PATH = _CASE_DIR / "ctx-session-touchstone-design-01.session.json"
-_VARIANTS_PATH = _CASE_DIR / "ctx-session-touchstone-design-01.variants.json"
-_GOLD_PATH = _CASE_DIR / "gold" / "ctx-session-touchstone-design-01.gold.json"
+_CASE_DIR = Path(__file__).resolve().parents[2] / "var" / "cases" / "ctx-session-context-engine-debug-01"
+_SESSION_PATH = _CASE_DIR / "ctx-session-context-engine-debug-01.session.json"
+_VARIANTS_PATH = _CASE_DIR / "ctx-session-context-engine-debug-01.variants.json"
+_GOLD_PATH = _CASE_DIR / "gold" / "ctx-session-context-engine-debug-01.gold.json"
 
 _COMMON_RULES = "你是评审助手。只使用允许的只读工具。"
 
@@ -34,10 +34,10 @@ _COMMON_RULES = "你是评审助手。只使用允许的只读工具。"
 
 def test_load_real_session_validates_and_hashes() -> None:
     session = load_session(_SESSION_PATH)
-    assert session.session_id == "ctx-session-touchstone-design-01"
-    assert len(session.events) == 102
+    assert session.session_id == "ctx-session-context-engine-debug-01"
+    assert len(session.events) == 26
     assert session.source_hash.startswith("sha256:")
-    assert session.current_question.startswith("请根据这次完整讨论")
+    assert session.current_question.startswith("请使用只读工具复核")
     assert "file.read" in session.visible_tools
 
 
@@ -106,10 +106,10 @@ def _minimal_session() -> dict:
 def test_serialize_pairs_tool_call_with_result_as_untrusted() -> None:
     session = load_session(_SESSION_PATH)
     serialized = serialize_session(session)
-    assert len(serialized) < len(session.events)  # 10 个工具对各自合并
-    pair = next(entry for entry in serialized if entry.item.item_id == "evt-0010")
-    assert pair.event_ids == ("evt-0010", "evt-0011")
-    assert "tool_call file.read" in pair.item.content
+    assert len(serialized) < len(session.events)  # 7 个工具对各自合并
+    pair = next(entry for entry in serialized if entry.item.item_id == "evt-0003")
+    assert pair.event_ids == ("evt-0003", "evt-0004")
+    assert "tool_call code.read" in pair.item.content
     assert pair.item.trusted is False
     message = next(entry for entry in serialized if entry.item.item_id == "evt-0001")
     assert message.item.conversation is True
@@ -198,21 +198,27 @@ async def test_dispatcher_matches_fixtures_and_never_leaks_correct_answer() -> N
     gold = json.loads(_GOLD_PATH.read_text(encoding="utf-8"))
     dispatcher = dispatcher_from_gold(gold)
 
-    result = await dispatcher("file.read", {"path": "D:\\bdlh-agent\\bdlhxny-agent\\docs\\product\\产品目标与使用方式.md"})
+    result = await dispatcher("code.read", {"path": "engine/src/bdlh_runtime/session/compiler.py"})
     assert result["status"] == "success"
     assert result["simulated"] is True
-    assert "Touchstone" in result["content_excerpt"]
+    # 返回的是 gold 冻结的真实语料摘要(带路径与行段),不是占位文本
+    expected = next(
+        f["result"]["content_excerpt"]
+        for f in gold["runtime_mock_fixtures"]
+        if (f.get("match_arguments") or {}).get("path", "").endswith("session/compiler.py")
+    )
+    assert result["content_excerpt"] == expected and len(expected) >= 40
 
     # 错误路径不兜底正确内容
-    wrong = await dispatcher("file.read", {"path": "D:\\not-exist.md"})
+    wrong = await dispatcher("code.read", {"path": "engine/src/not-exist.py"})
     assert wrong["status"] == "error"
-    assert wrong["error_code"] == "FILE_NOT_IN_FIXTURE"
-    assert "Touchstone" not in json.dumps(wrong, ensure_ascii=False)
+    assert wrong["error_code"] == "TOOL_NOT_IN_FIXTURE"  # code.read 无冻结行:工具级未命中
+    assert expected not in json.dumps(wrong, ensure_ascii=False)
 
     unknown = await dispatcher("session.compress_all", {})
     assert unknown["error_code"] == "TOOL_NOT_IN_FIXTURE"
 
-    assert [record.tool_name for record in dispatcher.call_log] == ["file.read", "file.read", "session.compress_all"]
+    assert [record.tool_name for record in dispatcher.call_log] == ["code.read", "code.read", "session.compress_all"]
 
 
 # ── gold 评测器 ────────────────────────────────────────────────────────────
@@ -226,9 +232,9 @@ def _plan() -> dict:
 def test_grade_tool_calls_full_plan_hit() -> None:
     gold = _plan()
     calls = [
-        ("file.read", {"path": "D:\\bdlh-agent\\bdlhxny-agent\\docs\\product\\产品目标与使用方式.md"}),
-        ("code.read", {"path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\context\\builder.py"}),
-        ("code.read", {"path": "D:\\bdlh-agent\\bdlhxny-agent\\engine\\src\\bdlh_runtime\\engine\\loop.py"}),
+        ("code.read", {"path": "engine/src/bdlh_runtime/session/compiler.py"}),
+        ("code.read", {"path": "engine/src/bdlh_runtime/context/builder.py"}),
+        ("code.read", {"path": "engine/src/bdlh_runtime/engine/loop.py"}),
     ]
     judgment = grade_tool_calls(calls, gold["expected_tool_plan"], gold_visible := _visible(gold))
     assert judgment.required_total == 3
@@ -243,23 +249,22 @@ def test_grade_tool_calls_full_plan_hit() -> None:
 
 def test_grade_tool_counts_missing_extra_forbidden_nonexistent_repeated() -> None:
     gold = _plan()
-    right = {"path": "D:\\bdlh-agent\\bdlhxny-agent\\docs\\product\\产品目标与使用方式.md"}
     calls = [
-        ("file.read", {"path": "错误路径.md"}),  # 参数错误
+        ("code.read", {"path": "错误路径.py"}),  # 名称命中但参数错误
         ("document.summarize", {"doc": "x"}),  # 不必要调用
-        ("code.execute", {"cmd": "ls"}),  # 禁止调用
+        ("file.write", {"path": "x.md"}),  # 禁止调用
         ("github.modify_branch", {"branch": "main"}),  # 不存在工具
-        ("code.search", {"query": "builder"}),  # 允许的可选调用
-        ("code.search", {"query": "builder"}),  # 重复调用
+        ("file.search", {"query": "builder"}),  # 允许的可选调用
+        ("file.search", {"query": "builder"}),  # 重复调用
     ]
     judgment = grade_tool_calls(calls, gold["expected_tool_plan"], _visible(gold))
     assert judgment.required_hit == 0
-    assert judgment.missing_calls == ["code.read", "code.read"]  # 名称从未出现才算漏调用
-    assert judgment.argument_mismatch == ["file.read"]  # 名称命中但参数错误
+    assert judgment.missing_calls == []  # code.read 名称出现过(参数错误)不算漏调用
+    assert judgment.argument_mismatch == ["code.read"] * 3  # 三条 required 同名,参数全部未中
     assert "document.summarize" in judgment.unnecessary_calls
-    assert judgment.forbidden_calls == ["code.execute"]
+    assert judgment.forbidden_calls == ["file.write"]
     assert "github.modify_branch" in judgment.nonexistent_tools
-    assert any(item.startswith("code.searchx") for item in judgment.repeated_calls)
+    assert any(item.startswith("file.searchx") for item in judgment.repeated_calls)
 
 
 def _visible(gold: dict) -> list[str]:
@@ -278,14 +283,15 @@ def test_judge_session_run_constraint_and_superseded_checks() -> None:
         compiled=compiled,
         gold=gold,
         tool_calls=[],
-        answer="结论:公开访问者可以通过固定入口选择并运行问题。",
+        answer="结论:四种策略都使用自研压缩算法。",
         visible_tools=session.visible_tools,
     )
-    # recent-window 丢早期约束 → 保留率 < 1
-    assert judgment.constraint_retention < 1.0
-    assert judgment.missing_constraints
-    # 答案复用废弃决定旧说法 → 误用
-    assert judgment.superseded_misuse == ["superseded-public-interaction"]
+    # 本 Session 的约束都在近期窗口内 → 保留率满格(与丢弃场景相对的边界)
+    assert judgment.constraint_retention == 1.0
+    assert judgment.missing_constraints == []
+    # 答案使用禁用说法(gold.forbidden_claims)→ 如实检出;无废弃决定 → 无误用
+    assert judgment.forbidden_claims_in_answer == ["四种策略都使用自研压缩算法"]
+    assert judgment.superseded_misuse == []
     assert judgment.states_no_file_changes is False
 
 

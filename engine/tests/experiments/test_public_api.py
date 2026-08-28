@@ -213,7 +213,7 @@ def test_unknown_session_rejected(client):
         "/api/v1/public/test-jobs",
         json={
             "test_type": "COMPRESSION_CASE",
-            "session_id": "ctx-session-touchstone-design-01",
+            "session_id": "ctx-showcase-01",
             "execution_scope": "context-only",
         },
     )
@@ -229,3 +229,31 @@ def test_results_response_hides_internal_fields(client):
     detail = client.get(f"/api/v1/public/test-jobs/{created['job_id']}").json()
     assert "quota_snapshot" not in detail  # 公开视图不暴露内部快照
     assert detail["anonymous_id_hash"] == sha256_hex(client.cookies.get("ts_anon"))
+
+
+def test_context_artifact_download_scoped_to_owner(client, tmp_path, monkeypatch):
+    """上下文工件下载:本人可取,变体白名单外与陌生身份一律 404。"""
+    from bdlh_runtime.experiments import compression as compression_module
+
+    compiled_dir = tmp_path / "ctx-session-context-engine-debug-01" / "compiled"
+    compiled_dir.mkdir(parents=True)
+    (compiled_dir / "budgeted-session.json").write_text('{"variant_id": "budgeted-session"}', encoding="utf-8")
+    monkeypatch.setattr(compression_module, "CASES_ROOT", tmp_path)
+
+    created = client.post(
+        "/api/v1/public/test-jobs",
+        json={"test_type": "COMPRESSION_CASE", "template_id": "context-strategy-comparison",
+              "session_id": "ctx-session-context-engine-debug-01", "execution_scope": "context-only",
+              "repeat_count": 1},
+    )
+    assert created.status_code == 200
+    job_id = created.json()["job_id"]
+
+    ok = client.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/budgeted-session")
+    assert ok.status_code == 200
+    assert ok.json()["variant_id"] == "budgeted-session"
+    # 变体白名单外按不存在处理
+    assert client.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/no-such").status_code == 404
+    # 陌生匿名身份(无同一 Cookie)不可下载
+    stranger = TestClient(run_api.app)
+    assert stranger.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/budgeted-session").status_code == 404

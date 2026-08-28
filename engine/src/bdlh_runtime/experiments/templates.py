@@ -353,6 +353,31 @@ _register(
         notes="max_agent_steps 与批次 repeat_count 始终分开;观察完成、截断、Token 和时长",
     )
 )
+_register(
+    ExperimentTemplate(
+        template_id="compression-method-comparison",
+        version=1,
+        purpose="同一 Session、同一预算下对比抽取式与 LLM 生成式压缩(仅私有台;LLM 摘要按需真实调用)",
+        independent_variable=("context_strategy",),
+        independent_variable_label="compression_method",
+        variants=(
+            VariantSpec("budgeted", (("context_strategy", "budgeted"),)),
+            VariantSpec("budgeted-llm", (("context_strategy", "budgeted-llm"),)),
+        ),
+        base_config=_NATIVE_BASE,
+        allowed_test_types=("COMPRESSION_CASE",),
+        anonymous_allowed=False,
+        owner_allowed=True,
+        repeat_count_range=(1, 1),
+        max_runs_per_batch=2,
+        result_metrics=("original_tokens", "working_tokens", "required_retained", "summary_model_calls",
+                        "task_success", "tool_correct"),
+        allow_context_only=True,
+        classification=CLASSIFICATION_FORMAL,
+        notes="唯一自变量是压缩方法:共用 budgeted 预算与分类,仅摘要器不同;LLM 失败回退抽取式并如实标注",
+    )
+)
+
 def get_template(template_id: str) -> ExperimentTemplate:
     try:
         return TEMPLATES[template_id]

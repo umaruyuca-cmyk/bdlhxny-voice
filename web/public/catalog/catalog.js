@@ -152,7 +152,7 @@
                 '<td><span class="cat-badge kind-' + c.kind + '">' + esc(c.kind_label) + "</span></td>" +
                 "<td>" + esc(c.scene) + "</td>" +
                 "<td>" + (c.tool_count || 0) + "</td>" +
-                '<td><a href="/experiment/comparison?case_id=' + encodeURIComponent(c.id) + '">进入实验</a></td>' +
+                '<td><a href="/experiment/?case=' + encodeURIComponent(c.id) + '">选择实验模板</a></td>' +
                 "</tr>";
             }).join("");
           }
@@ -261,8 +261,8 @@
         }
 
         h += '<h3 style="margin-top:24px">进入实验</h3>';
-        h += '<p><a class="btn" href="/experiment/comparison?case_id=' + encodeURIComponent(c.id) + '">用三种 Agent 对比运行该用例</a></p>';
-        h += '<p style="font-size:12.5px;color:var(--doc-faint)">重复次数只允许 3 或 5(9 或 15 个运行);评判配置、Mock 返回与内部 gold 不进入公开页面与模型输入。</p>';
+        h += '<p><a class="btn" href="/experiment/?case=' + encodeURIComponent(c.id) + '">为该用例选择实验模板</a></p>';
+        h += '<p style="font-size:12.5px;color:var(--doc-faint)">运行数量由所选模板的变体数与重复次数共同决定；评判配置、Mock 返回与内部 gold 不进入公开页面与模型输入。</p>';
 
         h += "</div>";
         h += '<p><a href="/cases/">← 返回用例列表</a></p>';

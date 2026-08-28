@@ -14,7 +14,7 @@
     <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
     <div class="topbar-actions">
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
-    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
+    <a class="topbar-lab" title="进入实验中心发起批次"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>实验中心</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
     <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
     </div>
@@ -50,6 +50,7 @@
 <script>
 (function () {
   "use strict";
+  console.log("[batch] 页面版本 20260827-5(压缩明细双形态渲染)"); // 缓存自查:console 应出现此行
   var E = window.EXP;
   var params = new URLSearchParams(location.search);
   var pathId = decodeURIComponent(location.pathname.replace(/^\/experiment\/batch\/?/, "").replace(/\/+$/, ""));
@@ -111,19 +112,24 @@
     return '<table class="exp-table"><tr><th>参数</th><th>请求值</th><th>生效值</th><th>说明</th></tr>' + rows + "</table>";
   }
 
-  /* 进度区(所有者作业或匿名任务,轮询 + 协作取消) */
-  function renderProgress(getFn, cancelFn, isActive) {
+  /* 进度区(所有者作业或匿名任务,轮询 + 协作取消;onDone 在运行态结束时触发一次) */
+  function renderProgress(getFn, cancelFn, isActive, onDone) {
     var box = document.getElementById("jobBox");
+    var wasActive = null;
     function draw(data) {
       var done = data.completed_units != null ? data.completed_units
         : ((data.progress && data.progress.done != null) ? data.progress.done : "—");
-      var total = data.total_units != null ? data.total_units : ((data.progress && data.progress.total) || "—");
+      var total = data.total_units != null ? data.total_units : ((data.progress && data.progress.total) || 0);
       var current = (data.progress && data.progress.current) || "";
-      var pct = (typeof done === "number" && typeof total === "number" && total > 0) ? Math.round(done * 100 / total) : 0;
-      var status = (data.status === "running") ? "进行中" : E.jobStatusLabel(data.status);
+      var zeroTotal = !(total > 0); // 生成类作业(0 个 Agent 运行):无总量可计
+      var scaleText = zeroTotal
+        ? (isActive(data) ? "上下文生成中…" : "已完成 · 上下文生成(0 个 Agent 运行)")
+        : done + "/" + total + (current ? " · 当前:" + E.esc(current) : "");
+      var pct = zeroTotal ? (isActive(data) ? 8 : 100) : ((typeof done === "number" && total > 0) ? Math.round(done * 100 / total) : 0);
+      var status = E.jobStatusLabel(data.status);
       var cancelBtn = isActive(data) ? ' <button type="button" class="btn-ghost" id="cancelRun">取消(仅阻止未开始的运行)</button>' : "";
       box.style.display = "block";
-      box.innerHTML = "<div><b>" + status + "</b> · " + done + "/" + total + (current ? " · 当前:" + E.esc(current) : "") + cancelBtn + "</div>" +
+      box.innerHTML = "<div><b>" + status + "</b> · " + scaleText + cancelBtn + "</div>" +
         '<div class="prog" style="margin-top:8px"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
         (data.error ? '<div class="lab-note" style="color:#b91c1c">错误:' + E.esc(data.error) + "</div>" : "");
       var btn = document.getElementById("cancelRun");
@@ -132,6 +138,8 @@
           cancelFn().then(function () { getFn().then(draw).catch(function () {}); }).catch(function () {});
         });
       }
+      if (wasActive === true && !isActive(data) && onDone) onDone(data);
+      wasActive = isActive(data);
     }
     E.poll(getFn, draw, isActive, 5000);
   }
@@ -221,15 +229,68 @@
     }
     if (job.execution_scope === "context-only") {
       var stats = result.stats || {};
+      var details = result.compression_details || {};
+      var variantNames = { "full-session": "完整上下文", "recent-window": "最近窗口", "single-summary": "单轮摘要", "budgeted-session": "预算化裁剪" };
       var variants = ["full-session", "recent-window", "single-summary", "budgeted-session"];
-      box.innerHTML = '<table class="exp-table"><tr><th>上下文方式</th><th>压缩前 Token</th><th>压缩后 Token</th></tr>' +
-        variants.map(function (v) {
-          var original = (stats.original_tokens || {})[v];
-          var working = (stats.working_tokens || {})[v];
-          return "<tr><td>" + E.esc(v) + "</td><td class=\"mono\">" + E.esc(original != null ? original : "—") +
-            '</td><td class="mono">' + E.esc(working != null ? working : "—") + "</td></tr>";
-        }).join("") + "</table>" +
-        '<p class="note-line">本任务 0 个 Agent 运行(只生成四份上下文工件);完整压缩前后对照见<a href="/context/library">长上下文库</a>。</p>';
+      var jobIdEnc = encodeURIComponent(job.job_id);
+
+      function decisionList(label, items) {
+        if (!items || !items.length) return '<p class="note-line">' + E.esc(label) + ":无</p>";
+        return '<p class="note-line"><b>' + E.esc(label) + "(" + items.length + ")</b>:" +
+          items.map(function (it) {
+            return '<span class="mono">' + E.esc(it.id) + "</span> " + E.esc(it.excerpt || "");
+          }).join("；") + "</p>";
+      }
+
+      var rows = variants.map(function (v) {
+        var d = details[v] || {};
+        var c = d.counts || {};
+        var orig = (stats.original_tokens || {})[v];
+        var work = (stats.working_tokens || {})[v];
+        var detailRows = "";
+        if ((d.compressed_items || []).length || (d.omitted_items || []).length) {
+          detailRows = '<tr><td colspan="5" style="text-align:left;background:#fafbfc">' +
+            '<details class="metric-def"><summary>压缩决策明细(' + E.esc(variantNames[v]) + ')</summary>' +
+            decisionList("被压缩", d.compressed_items) + decisionList("被丢弃", d.omitted_items) +
+            ((d.warnings || []).length ? '<p class="note-line">警告:' + E.esc(d.warnings.join("；")) + "</p>" : "") +
+            "</details></td></tr>";
+        }
+        return "<tr><td>" + E.esc(variantNames[v]) + "</td>" +
+          '<td class="mono">' + E.esc(orig != null ? orig : "—") + " → " + E.esc(work != null ? work : "—") + "</td>" +
+          '<td class="mono">' + E.esc(c.kept != null ? c.kept : "—") + " / " + E.esc(c.compressed || 0) + " / " +
+          E.esc(c.referenced || 0) + " / " + E.esc(c.omitted || 0) + "</td>" +
+          "<td>" + (d.required_retained === false ? '<span class="null-cell">否</span>' : '<span class="cell-ok">是</span>') + "</td>" +
+          '<td><button type="button" class="btn ghost" style="padding:2px 10px;font-size:12px" data-art="' + v + '">下载工件</button></td></tr>' +
+          detailRows;
+      }).join("");
+
+      box.innerHTML = '<table class="exp-table"><tr><th>上下文方式</th><th>Token 压缩前 → 后</th><th>保留/压缩/引用/丢弃</th><th>强制项保留</th><th>工件</th></tr>' +
+        rows + "</table>" +
+        '<p class="note-line">压缩为确定性代码构建(规则分类 + 预算选择 + 抽取式摘要),不调用模型;本任务 0 个 Agent 运行。完整对照见<a href="/context/library">长上下文库</a>;工件含实际喂给模型的完整消息序列。</p>';
+
+      Array.prototype.forEach.call(box.querySelectorAll("button[data-art]"), function (btn) {
+        btn.addEventListener("click", function () {
+          btn.disabled = true;
+          fetch("/api/v1/public/test-jobs/" + jobIdEnc + "/context-artifacts/" + btn.getAttribute("data-art"))
+            .then(function (res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
+              return res.blob();
+            })
+            .then(function (blob) {
+              var a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = btn.getAttribute("data-art") + ".json";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              btn.disabled = false;
+            })
+            .catch(function () {
+              btn.disabled = false;
+              btn.textContent = "下载失败";
+            });
+        });
+      });
       return;
     }
     var units = job.units || [];
@@ -278,21 +339,46 @@
         " · 目录 " + E.esc(tools.catalog_version || "—") +
         " · Schema 哈希 " + E.hashChip(mc.toolSchemaHash || "") +
         " · 合格目录哈希 " + E.hashChip(mc.eligibleCatalogHash || "") + "</span></li>";
-      document.getElementById("paramBox").innerHTML = (batch.runs || []).length
-        ? paramTable(perRun.model || {})
-        : '<div class="placeholder-block">批次进行中:参数对照将在运行落库后展示。</div>';
+      document.getElementById("paramBox").innerHTML = (function () {
+        // 参数对照:优先逐运行快照(perRunConfig),无运行(context-only)回退批次冻结配置;
+        // 生效值优先读逐运行实例回读(appliedModelParams),未确认时如实显示 null 与原因
+        var appliedParams = mc.appliedModelParams || {};
+        var frozenModel = (fc.frozen_run_config || {}).model || {};
+        var modelForTable = perRun.model || frozenModel;
+        if (!modelForTable || Object.keys(modelForTable).length === 0) {
+          return '<div class="placeholder-block">批次进行中:参数对照将在运行落库后展示。</div>';
+        }
+        return paramTable(modelForTable, appliedParams);
+      })();
     });
 
     document.getElementById("mainPanels").style.display = "block";
     renderOwnerResult(batch);
 
+    var refreshAfterDone = function () {
+      E.get("/api/v1/batches/" + encodeURIComponent(batch.id)).then(renderOwnerResult).catch(function () {});
+      E.get("/api/v1/jobs/by-batch/" + encodeURIComponent(batch.id)).then(function (job) {
+        if (!batch.runs || !batch.runs.length) renderOwnerReport(job.report);
+      }).catch(function () {});
+    };
     if (ownerJobId) {
       renderProgress(function () { return E.get("/api/v1/jobs/" + encodeURIComponent(ownerJobId)); },
         function () { return E.post("/api/v1/jobs/" + encodeURIComponent(ownerJobId) + "/cancel"); },
-        function (data) { return data.status === "running"; });
-    } else if (batch.status === "RUNNING") {
-      E.poll(function () { return E.get("/api/v1/batches/" + encodeURIComponent(batch.id)); },
-        renderOwnerResult, function (data) { return data.status === "RUNNING"; }, 5000);
+        function (data) { return data.status === "running"; },
+        refreshAfterDone);
+    } else {
+      // 从批次列表进入(无作业参数):按批次号找回内存作业;找回则显示进度条,否则仅轮询批次状态
+      E.get("/api/v1/jobs/by-batch/" + encodeURIComponent(batch.id)).then(function (job) {
+        renderProgress(function () { return E.get("/api/v1/jobs/by-batch/" + encodeURIComponent(batch.id)); },
+          function () { return E.post("/api/v1/jobs/" + encodeURIComponent(job.job_id) + "/cancel"); },
+          function (data) { return data.status === "running"; },
+          refreshAfterDone);
+      }).catch(function () {
+        if (batch.status === "RUNNING") {
+          E.poll(function () { return E.get("/api/v1/batches/" + encodeURIComponent(batch.id)); },
+            renderOwnerResult, function (data) { return data.status === "RUNNING"; }, 5000);
+        }
+      });
     }
   }
 
@@ -308,14 +394,80 @@
     return parts.join(" · ");
   }
 
+  /* 所有者批次作业报告(压缩明细)渲染:context-only 批次的结果主体 */
+  function renderOwnerReport(report) {
+    var box = document.getElementById("resultBox");
+    if (!report) {
+      document.getElementById("resultTitle").textContent = "结果 · 压缩明细";
+      box.innerHTML = '<div class="placeholder-block">作业报告已不在服务内存(服务重启后清除);本批次为上下文生成(0 个 Agent 运行),完整工件见批次工件目录。</div>';
+      return;
+    }
+    var html = "";
+    var bv = report.by_variant || {};
+    if (Object.keys(bv).length) {
+      // 两种形态:运行阶段(by_variant 带 total_runs)/生成阶段(context-only,带 token 对照)
+      var isRunShape = Object.keys(bv).some(function (k) { return bv[k] && bv[k].total_runs != null; });
+      var rows = Object.keys(bv).map(function (label) {
+        var v = bv[label] || {};
+        if (!isRunShape) {
+          return "<tr><td>" + E.esc(label) + "</td>" +
+            '<td class="mono">' + E.esc(v.original_tokens != null ? v.original_tokens : "—") + "</td>" +
+            '<td class="mono">' + E.esc(v.working_tokens != null ? v.working_tokens : "—") + "</td>" +
+            "<td>" + (v.required_retained === false ? '<span class="null-cell">否</span>' : '<span class="cell-ok">是</span>') + "</td>" +
+            "<td>" + (v.warnings || []).length + "</td></tr>";
+        }
+        return "<tr><td>" + E.esc(label) + "</td><td>" + (v.total_runs != null ? v.total_runs : "—") + "</td><td>" +
+          (v.valid_runs != null ? v.valid_runs : "—") + "</td><td>" + (v.invalid_runs != null ? v.invalid_runs : "—") + "</td>" +
+          "<td>" + E.esc((v.stop_reasons || []).join("、") || "—") + "</td></tr>";
+      }).join("");
+      html += isRunShape
+        ? '<table class="exp-table"><tr><th>变体</th><th>运行数</th><th>有效</th><th>无效</th><th>停止原因</th></tr>' + rows + "</table>"
+        : '<table class="exp-table"><tr><th>变体</th><th>压缩前 Token</th><th>压缩后 Token</th><th>强制项保留</th><th>警告</th></tr>' + rows + "</table>";
+    }
+    var details = report.compression_details || {};
+    var names = { budgeted: "抽取式(代码)", "budgeted-llm": "生成式(LLM 摘要)" };
+    Object.keys(details).forEach(function (method) {
+      var d = details[method];
+      var name = names[method] || method;
+      var items = function (label, list) {
+        if (!list || !list.length) return '<p class="note-line">' + E.esc(label) + ":无</p>";
+        return '<p class="note-line"><b>' + E.esc(label) + "(" + list.length + ")</b>:" +
+          list.map(function (it) { return '<span class="mono">' + E.esc(it.id) + "</span> " + E.esc(it.excerpt || ""); }).join("；") + "</p>";
+      };
+      html += '<details class="metric-def"><summary>压缩决策明细(' + E.esc(name) + ") · Token " +
+        E.esc(d.original_tokens != null ? d.original_tokens : "—") + " → " + E.esc(d.working_tokens != null ? d.working_tokens : "—") + "</summary>" +
+        items("被压缩", d.compressed_items) + items("被丢弃", d.omitted_items) +
+        ((d.warnings || []).length
+          ? '<p class="note-line">警告(' + d.warnings.length + "):" + E.esc(d.warnings.slice(0, 5).join("；")) + (d.warnings.length > 5 ? "…" : "") + "</p>"
+          : "") +
+        "</details>";
+    });
+    if (html) {
+      document.getElementById("resultTitle").textContent = "结果 · 压缩明细(0 个 Agent 运行)";
+      box.innerHTML = html + '<p class="note-line">完整工件(实际喂给模型的消息序列)经发起页「下载工件」或批次工件目录获取。</p>';
+    }
+  }
+
   function renderOwnerResult(batch) {
     var box = document.getElementById("resultBox");
+    var fc = batch.fixedConditions || {};
     var runs = batch.runs || [];
     if (batch.status === "FAILED") {
       box.innerHTML = '<div class="placeholder-block">批次执行失败:固定条件校验或执行前检查未通过,不生成结果矩阵;失败原因见作业记录与批次状态。</div>';
       return;
     }
     if (!runs.length) {
+      if (fc.context_only || batch.status === "COMPLETE") {
+        // context-only 批次:0 个 Agent 运行,结果主体是作业报告里的压缩明细
+        box.innerHTML = '<div class="placeholder-block">本批次无 Agent 运行(上下文生成);压缩明细见下方。</div>';
+        var fetchReport = ownerJobId
+          ? E.get("/api/v1/jobs/" + encodeURIComponent(ownerJobId))
+          : E.get("/api/v1/jobs/by-batch/" + encodeURIComponent(batch.id));
+        fetchReport.then(function (job) { renderOwnerReport(job.report); }).catch(function () {
+          renderOwnerReport(null);
+        });
+        return;
+      }
       box.innerHTML = '<div class="placeholder-block">批次进行中:运行明细在完成后逐次落库;断开页面不影响后台执行。</div>';
       return;
     }

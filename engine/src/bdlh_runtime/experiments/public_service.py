@@ -128,17 +128,34 @@ class AnonymousJobService:
     def _create_template_job(self, request: dict[str, Any], *, job_id: str) -> JobRecord:
         """模板化匿名任务:正式单变量模板 → 精确运行单元(混合路线阻断1)。
 
-        - 只允许「允许匿名」且支持 COMPARISON_CASE 的模板;
-        - 计划全部在创建时经 plan_template_batch 校验(权限/区间/上限/预设);
-        - 单元 = 计划内的每次运行(unit_id 即模板 run_id),执行走统一原生底座。
+        - 上下文模板(COMPRESSION_CASE):委托压缩用例创建链(session/scope 校验、
+          context-only 零单元或原生 4×1),任务记录保留模板口径;
+        - 对比模板(COMPARISON_CASE):只允许「允许匿名」的模板,计划全部在创建时
+          经 plan_template_batch 校验(权限/区间/上限/预设),单元 = 计划内的
+          每次运行(unit_id 即模板 run_id),执行走统一原生底座。
         """
         from bdlh_runtime.experiments.templates import (
             ROLE_ANONYMOUS,
             TemplatePlanError,
+            get_template,
             plan_template_batch,
         )
 
         template_id = str(request.get("template_id") or "")
+        try:
+            template = get_template(template_id)
+        except TemplatePlanError as exc:
+            raise PublicTestError(str(exc)) from None
+        if not template.anonymous_allowed:
+            raise PublicTestError("该模板不对匿名用户开放;请登录后从运行台发起")
+        if "COMPRESSION_CASE" in template.allowed_test_types:
+            # 长上下文模板(匿名可用):session/scope 语义,走压缩用例链(执行器同为压缩执行器)。
+            # 压缩方法对照(compression-method-comparison)为 owner-only,不经匿名服务。
+            compression_request = {key: value for key, value in request.items() if key != "template_id"}
+            job = self._create_compression_job(compression_request, job_id=job_id)
+            job.template_id = template.template_id
+            job.template_version = template.version
+            return job
         case_id = str(request.get("case_id") or "")
         if not case_id:
             raise PublicTestError("模板任务必须提供 case_id(模板作用于固定用例)")
@@ -282,7 +299,8 @@ class AnonymousJobService:
             else self.quota.max_job_duration_s
         )
         try:
-            if job.template_id:
+            if job.template_id and job.test_type == TestType.COMPARISON_CASE.value:
+                # 对比模板任务:统一原生底座执行器;上下文模板任务走压缩执行链
                 result = self._template_executor(
                     job,
                     should_stop=lambda: job.cancel_requested or time.monotonic() > deadline,
@@ -335,6 +353,8 @@ class AnonymousJobService:
                        "by_agent", "invalid_runs", "custom_conditions", "selected_tool_ids",
                        "fixture_set_id", "execution_order", "frozen_artifact_hashes",
                        "skipped_unit_ids", "stats", "fingerprint",
+                       # 压缩决策摘要(context-only 公开口径;不含正文)
+                       "compression_details",
                        # 运行配置快照(阶段A3):配置体不含 gold,可进公开摘要
                        "run_configs", "fixed_conditions", "fixed_conditions_hash",
                        # 模板批次摘要(混合路线):模板标识/分类/自变量/按变体聚合
@@ -447,12 +467,17 @@ def _default_compression_executor(job: JobRecord, *, should_stop: Callable[[], b
     steps = job.max_agent_steps or default_max_agent_steps()
     if job.execution_scope == COMPRESSION_SCOPE_CONTEXT_ONLY:
         result = compression_module.generate_contexts(job.session_id)
+        session, _variants, _path = compression_module._load_session_bundle(job.session_id)
         return {
             "test_type": job.test_type,
             "session_id": result.session_id,
             "session_version": result.session_version,
             "fingerprint": result.fingerprint,
             "stats": result.stats,
+            # 决策摘要(公开口径):逐方式动作计数 + 被压缩/丢弃条目摘要(不含正文)
+            "compression_details": compression_module.build_compression_details(
+                result.artifacts, events=session.events
+            ),
             "cells": [],  # 上下文生成阶段:0 个 Agent 运行
         }
     if job.execution_scope == COMPRESSION_SCOPE_CURRENT_COMBO:

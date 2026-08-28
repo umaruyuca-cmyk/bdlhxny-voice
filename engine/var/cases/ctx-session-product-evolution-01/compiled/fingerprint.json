@@ -2,7 +2,7 @@
   "fingerprint_version": "compression-fingerprint-v1",
   "session_id": "ctx-session-product-evolution-01",
   "session_version": 1,
-  "source_session_hash": "sha256:8c75c090f2124de262711dd0ada13af6325379dd28d77c539ef22e9f0bb4e8c8",
+  "source_session_hash": "sha256:a586b387f7e32f6ab853a8f4b610276d3655d422ffab97c5d3494444b88b029b",
   "current_event_id": "evt-0124",
   "current_message": "可以，先不要跑任何测试用例，把用例库的长上下文用例替换。",
   "current_message_hash": "sha256:4ffde94acde98608537b841009a8f555e944968ac13dbdb1aa45731296384001",

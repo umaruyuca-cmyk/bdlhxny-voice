@@ -1,8 +1,8 @@
 """四种上下文策略的 Session 派生输入编译器。
 
 一份冻结 Session → 四份派生输入(full-session / recent-window /
-single-summary / budgeted-session),每份生成后计算 hash 并冻结成工件;
-三个 Agent 模式必须读取同一份工件,不得各自重新生成。
+single-summary / budgeted-session),每份生成后计算 hash 并冻结成工件；
+统一原生 Tool Calling 执行底座复用这些工件，不在运行时重新生成。
 
 编译器输入只有 session + variant 配置 + 公共系统规则——结构上无法读取
 gold,答案泄漏在接口层面被阻断。
@@ -151,6 +151,11 @@ class SessionCompiler:
     - ``LLM_TOKENIZER=tiktoken`` → tiktoken 精确计数,其余保守口径;
     - ``BUDGETED_SCORING=multi-factor-v2`` → budgeted 变体走公式五/六(v2);
     - summarizer/scorer 也可显式注入(单测用),注入优先于环境变量。
+
+    注入(或经 ``from_env(llm_summary=True)`` 启用)LLM 摘要器时,**budgeted
+    的压缩步骤同样切换为生成式**(SummarizerCompressor:被压缩条目的替代
+    文本由摘要器生成,失败回退结构化抽取)——single-summary 的摘要语义不变;
+    这是压缩方法对照实验(compression-method-comparison)的自变量开关。
     """
 
     def __init__(
@@ -168,11 +173,20 @@ class SessionCompiler:
             tokenizer_version = tokenizer_version or env_version
         self._counter: TokenCounter = counter
         self.tokenizer_version: str = tokenizer_version
-        self._builder = builder or ContextBuilder(
-            counter=self._counter,
-            summarizer=summarizer,
-            scorer=scorer,
-        )
+        if builder is not None:
+            self._builder = builder
+        elif summarizer is not None:
+            # LLM 摘要启用:budgeted 压缩走生成式(同一摘要器实例,用量与降级统一回流)
+            from bdlh_runtime.context.compression import SummarizerCompressor
+
+            self._builder = ContextBuilder(
+                counter=self._counter,
+                compressor=SummarizerCompressor(summarizer),
+                summarizer=summarizer,
+                scorer=scorer,
+            )
+        else:
+            self._builder = ContextBuilder(counter=self._counter, scorer=scorer)
 
     @classmethod
     def from_env(cls, *, llm_summary: bool = False) -> "SessionCompiler":

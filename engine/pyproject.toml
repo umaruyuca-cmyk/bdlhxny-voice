@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "engine"
 version = "0.1.0"
-description = "Touchstone: Agent 编排模式对照实证平台（被测内核 + 对照 runner）"
+description = "Touchstone: 基于统一原生 Tool Calling 底座的受控 Agent 实验平台"
 requires-python = ">=3.11"
 dependencies = [
   "langchain-core>=0.3.0",

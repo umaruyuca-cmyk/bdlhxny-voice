@@ -36,7 +36,7 @@ const EXPERIMENT_PAGES = [
   "/experiment/run.html", "/experiment/batches.html", "/experiment/batch.html",
   "/test/index.html",
 ];
-const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|experiment-templates|template-batches|batches|jobs|runs)(\/|\?|["'`]|$))/;
+const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|batches|jobs|runs)(\/|\?|["'`]|$))/;
 
 async function readPage(page) {
   return readFile(new URL(`../public${page}`, import.meta.url), "utf8");
@@ -222,8 +222,7 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(index, /唯一自变量|仅改变一个受控变量/, "模板中心写明单变量口径");
   assert.match(index, /loadTemplates|test-options|experiment-templates/, "模板中心从模板注册表读数据");
   assert.match(index, /\/experiment\/run\?template=/, "模板卡片进入统一发起页");
-  // 对比用例旧入口已删除,由统一发起页取代
-  await assert.rejects(() => readPage("/experiment/comparison.html"), "对比用例入口页应已删除(由 /experiment/run 取代)");
+  assert.match(index, /selectedCase/, "从用例库进入模板中心时保留已选题号");
 
   // 模板卡片:标题/受控变量用规范中文,技术口径行保留原变量名(IA §二.7 文案分层)
   const experimentJs = await readFile(new URL("../public/docs/experiment.js", import.meta.url), "utf8");

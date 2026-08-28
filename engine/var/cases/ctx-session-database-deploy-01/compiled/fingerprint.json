@@ -2,7 +2,7 @@
   "fingerprint_version": "compression-fingerprint-v1",
   "session_id": "ctx-session-database-deploy-01",
   "session_version": 1,
-  "source_session_hash": "sha256:ddda2fdc34cd98924b574de43605dac0a7a03cda4db0c0705e6be570c30a223a",
+  "source_session_hash": "sha256:61a38dd06d2e04baafb3323338a786e3e7df6a22701fde9710b71e72190008bb",
   "current_event_id": "evt-0031",
   "current_message": "最终让 Agent 只做一致性审计，不能执行 SQL、不能启动数据库、也不要测试连接。",
   "current_message_hash": "sha256:2c5df8db36973f21ccb5f35c02f967f0a497cf697aedcb74ab59b18775822842",

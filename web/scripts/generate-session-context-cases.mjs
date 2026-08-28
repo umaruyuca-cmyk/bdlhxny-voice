@@ -14,8 +14,6 @@ import { fileURLToPath } from "node:url";
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(WEB_ROOT, "..");
 const CASES_ROOT = path.join(REPO_ROOT, "engine", "var", "cases");
-const BASE_CASE_ID = "ctx-session-touchstone-design-01";
-const BASE_CASE_DIR = path.join(CASES_ROOT, BASE_CASE_ID);
 const VISIBLE_TOOLS = [
   "file.read",
   "file.search",
@@ -148,7 +146,7 @@ function variantsFor(caseId) {
       preserve_recent_tool_call_result_pairs: true,
       uses_custom_budgeted_algorithm: false,
       uses_summary_model: true,
-      notes: "摘要成本单独记录，三个 Agent 使用同一份冻结摘要。",
+      notes: "摘要成本单独记录，所有实验变体使用同一份冻结摘要。",
     },
     {
       variant_id: "budgeted-session",
@@ -268,16 +266,14 @@ function goldPayload(id, requiredCalls, activeConstraints, forbiddenClaims) {
 }
 
 async function productSession() {
-  const base = JSON.parse(await readFile(path.join(BASE_CASE_DIR, `${BASE_CASE_ID}.session.json`), "utf8"));
-  const log = new SessionEvents(base.events);
+  const log = new SessionEvents([], "2026-08-20T09:00:00+08:00");
   log.user("现在文库虽然换掉了公式生成的 ctx-port-01，但我还是不清楚应该压缩什么源文件。文档和代码直接拼起来，看上去也不像完整 Session。", 60);
   log.assistant("我先核对当前长上下文设计和文库生成入口。这里要区分两件事：工具结果可以来自真实文档或代码，但文库的顶层原文应该是有先后关系的 Session，而不是若干文件的无序合集。", 4);
-  log.tool("file.read", { path: "docs/context/长上下文构建与压缩.md" }, await source("docs/context/长上下文构建与压缩.md"));
+  log.tool("file.read", { path: "README.md" }, await source("README.md"));
   log.assistant("设计文档已经把 Session 事件、当前问题、工具配对和四种策略写清楚，但文库层面仍需要一个更具体的语料规则：历史讨论和工具结果都属于 Session；评测标签与标准答案不属于 Session。", 5);
   log.user("我想得更简单一点：把用例库里的长上下文换成合理的 Session，token 稍微长一点。不要继续抽象成很多新概念。", 6);
   log.assistant("按这个范围处理即可。主文库只放三套完整 Session，分别覆盖产品设计、代码排查、数据库与部署。每套都包含自然对话、工具调用、失败和纠正，并从同一原文生成四种上下文输入。", 4);
-  log.tool("file.read", { path: "docs/context/Session交叉验证设计.md" }, await source("docs/context/Session交叉验证设计.md"));
-  log.tool("file.read", { path: "docs/product/产品目标与使用方式.md" }, await source("docs/product/产品目标与使用方式.md"));
+  log.tool("file.read", { path: "docs/README.md" }, await source("docs/README.md"));
   log.user("不要把整理出来的 Session 写成真实逐字稿。我们可以说明它使用了仓库真实材料，但对话本身是为了评测整理的。", 8);
   log.assistant("会明确标注为“场景化冻结 Session”：文件内容来自当前仓库快照，对话按真实开发流程整理，用来稳定复现长上下文实验，不声称是未经编辑的历史聊天日志。", 4);
   log.tool("file.read", { path: "web/scripts/build-context-library.mjs" }, "路径不存在：web/scripts/build-context-library.mjs", { status: "error", errorCode: "FILE_NOT_FOUND" });
@@ -288,20 +284,19 @@ async function productSession() {
   log.user("可以，先不要跑任何测试用例，把用例库的长上下文用例替换。", 5);
 
   const id = "ctx-session-product-evolution-01";
-  const question = "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。";
+  const question = "请使用只读工具检查 README.md、docs/README.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。";
   return sessionPayload({
     id,
     title: "产品边界与长上下文文库演进 Session",
     scene: "product_and_context_design",
     summary: "从公开只读实验平台、Mock Tools、数据库边界一路讨论到长上下文文库替换，包含多次误解纠正、真实文件读取和最终范围收敛。",
     disclosure: "根据项目讨论脉络和仓库真实文件整理的可复现评测 Session，不是未经编辑的原始聊天逐字稿。",
-    startedAt: base.started_at,
+    startedAt: "2026-08-20T09:00:00+08:00",
     events: log.events,
     question,
     sources: [
-      "docs/context/长上下文构建与压缩.md",
-      "docs/context/Session交叉验证设计.md",
-      "docs/product/产品目标与使用方式.md",
+      "README.md",
+      "docs/README.md",
       "web/scripts/generate-context-library.mjs",
     ],
   });
@@ -417,11 +412,11 @@ async function main() {
   const engine = await engineSession();
   const database = await databaseSession();
   await writeCase(product, [
-    { tool_name: "file.read", arguments: { path: "docs/product/产品目标与使用方式.md" } },
-    { tool_name: "file.read", arguments: { path: "docs/context/长上下文构建与压缩.md" } },
+    { tool_name: "file.read", arguments: { path: "README.md" } },
+    { tool_name: "file.read", arguments: { path: "docs/README.md" } },
     { tool_name: "file.read", arguments: { path: "web/scripts/generate-context-library.mjs" } },
   ], [
-    { id: "session-only", statement: "主文库只展示完整 Session，文件内容只能作为 Session 内的工具结果。", evidence_event_ids: ["evt-0103", "evt-0106", "evt-0118"] },
+    { id: "session-only", statement: "主文库只展示完整 Session，文件内容只能作为 Session 内的工具结果。", evidence_event_ids: [product.events[6].event_id] },
     { id: "no-test", statement: "本轮替换不得运行测试用例。", evidence_event_ids: [product.events.at(-1).event_id] },
   ], ["文档或代码直接拼接项仍属于完整 Session", "场景化整理语料是未经编辑的真实聊天逐字稿"]);
   await writeCase(engine, [

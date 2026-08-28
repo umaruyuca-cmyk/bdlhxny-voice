@@ -6,7 +6,12 @@ window.EXP = (function () {
 
   var ANON_RUN_CAP = 8; // 匿名角色运行数上限(plan_template_batch 角色上限)
 
-  function token() { return sessionStorage.getItem("lab_token") || ""; }
+  function token() {
+    // 所有者会话键 ts_owner;兼容一次性迁移旧键 lab_token
+    var legacy = sessionStorage.getItem("lab_token");
+    if (legacy) { sessionStorage.setItem("ts_owner", legacy); sessionStorage.removeItem("lab_token"); }
+    return sessionStorage.getItem("ts_owner") || "";
+  }
   function isOwner() { return !!token(); }
 
   function api(method, path, body) {
@@ -72,6 +77,18 @@ window.EXP = (function () {
       title: "工具可用性降级与诚实性", varLabel: "工具可用性档位",
       variants: { "full-catalog": "完整目录", "remove-preferred": "排除首选", "remove-preferred-and-alternative": "排除首选与替代" },
     },
+    "temperature-stability": {
+      title: "采样温度与输出稳定性", varLabel: "采样温度",
+      variants: { "t0.0": "温度 0.0", "t0.1": "温度 0.1", "t0.3": "温度 0.3", "t0.7": "温度 0.7" },
+    },
+    "compression-method-comparison": {
+      title: "压缩方法对照:抽取式 vs 生成式", varLabel: "压缩方法",
+      variants: { budgeted: "抽取式(代码)", "budgeted-llm": "生成式(LLM 摘要)" },
+    },
+    "max-agent-steps-stability": {
+      title: "单次步数与输出稳定性", varLabel: "单次最大步数",
+      variants: { "steps-3": "3 步", "steps-4": "4 步", "steps-5": "5 步" },
+    },
   };
   function textOf(t) { return TEMPLATE_TEXT[t.template_id] || {}; }
   function title(t) { return textOf(t).title || t.independent_variable_label || t.template_id; }
@@ -95,13 +112,18 @@ window.EXP = (function () {
 
   function fmtTime(value) {
     if (!value) return "—";
-    var text = String(value).replace("T", " ").replace("Z", "");
-    return text.length > 19 ? text.slice(0, 19) : text;
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value).replace("T", " ").slice(0, 19);
+    var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+    return "" + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
+      " " + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
   }
 
   var JOB_STATUS_LABEL = {
     QUEUED: "排队中", RUNNING: "进行中", COMPLETE: "已完成", PARTIAL: "部分完成",
     FAILED: "失败", CANCELLED: "已取消", INTERRUPTED: "已中断",
+    // 所有者运行通道(/api/v1/jobs)的状态词:running/done/error
+    running: "进行中", done: "已完成", error: "失败",
   };
   var BATCH_STATUS_LABEL = {
     RUNNING: "进行中", COMPLETE: "已完成", FAILED: "失败", CANCELLED: "已取消", CREATED: "已创建",

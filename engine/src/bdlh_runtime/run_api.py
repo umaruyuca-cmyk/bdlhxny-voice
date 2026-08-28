@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from bdlh_runtime.data_client import DataClient, DataServiceError
@@ -68,6 +69,12 @@ def recover_jobs_on_startup() -> None:
     interrupted = _job_store.recover_interrupted()
     if interrupted:
         print(f"[run_api] 服务重启:{len(interrupted)} 个未完成任务已标记为 INTERRUPTED,不自动重跑")
+    try:
+        orphans = _fail_orphan_batches(_data())
+        if orphans:
+            print(f"[run_api] 服务重启:{orphans} 个执行中的批次随上一进程中断,已标记为 FAILED(不会自愈,请重新发起)")
+    except Exception as exc:  # noqa: BLE001 —— data 不可达时不阻塞启动
+        print(f"[run_api] 孤儿批次清点跳过:{exc}")
 
 
 from bdlh_runtime.experiments.public_case_repository import get_case_repository
@@ -75,8 +82,8 @@ from bdlh_runtime.experiments.public_case_repository import get_case_repository
 # 生产用例仓库:data 服务映射(对比用例任务创建时读取;测试注入替身时整体替换本服务)
 _public_service = AnonymousJobService(_job_store, case_repository=get_case_repository())
 
-# 私有 CORS：仅 /lab 页面跨端口调用需要。RUN_API_ALLOWED_ORIGINS 为空（默认）时
-# 不挂中间件、不带任何 CORS 头（fail-closed）；公开部署永不配置该变量。
+# 可选 CORS(默认关闭):前端标准形态为同源反代,不需要跨端口调用;
+# RUN_API_ALLOWED_ORIGINS 为空时不挂中间件、不带任何 CORS 头(fail-closed)。
 _allowed_origins = [origin.strip() for origin in os.getenv("RUN_API_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 if _allowed_origins:
     app.add_middleware(
@@ -87,6 +94,16 @@ if _allowed_origins:
     )
 _JOBS: dict[str, dict[str, Any]] = {}
 _BATCH_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_BATCHES", "1"))))
+
+
+def _fail_orphan_batches(data: DataClient, *, limit: int = 50) -> int:
+    """把 data 服务里仍处 RUNNING 的批次标记 FAILED(单实例部署:上一进程
+    执行中的批次随进程死亡,不会自愈;诚实标记而非永远挂起)。返回清理数量。"""
+    rows = (data.list_batches(limit=limit).get("batches") or [])
+    orphans = [row for row in rows if str(row.get("status")) == "RUNNING"]
+    for row in orphans:
+        data.complete_batch(str(row["id"]), "FAILED")
+    return len(orphans)
 
 
 def require_login(authorization: str | None = Header(default=None)) -> dict[str, Any]:
@@ -261,6 +278,16 @@ def get_job(job_id: str, account: Annotated[dict[str, Any], Depends(require_logi
     return job
 
 
+@app.get("/api/v1/jobs/by-batch/{batch_id}")
+def get_job_by_batch(batch_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
+    """按批次号找回内存作业(进度/报告);服务重启后按不存在处理,运行记录走数据服务。"""
+    matches = [job for job in _JOBS.values() if job.get("batch_id") == batch_id]
+    if not matches:
+        raise HTTPException(status_code=404, detail="批次无关联作业(已完成较久或服务已重启)")
+    matches.sort(key=lambda j: str(j.get("started_at") or ""))
+    return matches[-1]
+
+
 @app.post("/api/v1/jobs/{job_id}/cancel")
 def cancel_job(job_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
     """协作取消(任务四):置停止标志,运行循环在发起新运行前检查;已开始的
@@ -409,11 +436,13 @@ def _anon_token(request: Request, response: Response | None = None) -> str:
 
 @app.get("/api/v1/public/test-options")
 def public_test_options(request: Request, response: Response) -> dict[str, Any]:
-    """公开测试选项:固定用例/Session 清单 + 服务端固定条件(只读,不创建任务)。"""
-    from bdlh_runtime.experiments.templates import (
-        ROLE_ANONYMOUS,
-        template_registry_payload,
-    )
+    """公开测试选项:固定用例/Session 清单 + 服务端固定条件(只读,不创建任务)。
+
+    模板清单返回全量注册表(带 anonymous_allowed 标记):匿名可见全部模板,
+    仅登录所有者可发起的模板由前端渲染为灰色锁定卡;能否真正发起仍由
+    plan_template_batch 在创建批次时按角色校验,接口下发不构成权限。
+    """
+    from bdlh_runtime.experiments.templates import template_registry_payload
 
     _anon_token(request, response)
     quota = _public_service.quota
@@ -433,8 +462,8 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
     return {
         "sessions": sessions,
         "comparison_cases": cases,
-        # 实验模板清单(匿名视角):目的、唯一自变量、变体、冻结条件与精确运行数
-        "templates": template_registry_payload(role=ROLE_ANONYMOUS),
+        # 实验模板清单(全量注册表;匿名仅可发起 anonymous_allowed=true 的子集)
+        "templates": template_registry_payload(),
         # 工具排除预设(版本化常量;tool-availability-degradation 模板的档位下拉)
         "tool_exclusion_presets": [
             {
@@ -458,6 +487,25 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
         },
         "quota": quota.as_dict(),
     }
+
+
+@app.get("/api/v1/public/test-jobs/{job_id}/context-artifacts/{variant_id}")
+def download_context_artifact(job_id: str, variant_id: str, request: Request, response: Response) -> FileResponse:
+    """下载本人任务的上下文工件(四方式之一);匿名身份隔离,他人任务按不存在处理。"""
+    from bdlh_runtime.experiments import CONTEXT_MODES
+    from bdlh_runtime.experiments.compression import session_case_dir
+
+    token = _anon_token(request, response)
+    try:
+        job = _public_service.get_job_for(job_id, sha256_hex(token))
+    except PublicTestError:
+        raise HTTPException(status_code=404, detail="任务不存在") from None
+    if variant_id not in CONTEXT_MODES or not job.session_id:
+        raise HTTPException(status_code=404, detail="工件不存在")
+    path = session_case_dir(job.session_id) / "compiled" / f"{variant_id}.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="工件尚未生成:先执行「生成四份上下文」操作")
+    return FileResponse(path, media_type="application/json", filename=f"{job.session_id}-{variant_id}.json")
 
 
 @app.get("/api/v1/experiment-templates")
@@ -484,13 +532,14 @@ class TemplateBatchPlanRequest(BaseModel):
         default=None, max_length=20, description="模板既有变体的子集;不能上传任意变体"
     )
     context_only: bool = Field(default=False, description="只生成输入不运行(仅上下文模板允许)")
+    session_id: str | None = Field(default=None, max_length=100, description="压缩类模板作用于的 Session 编号")
     advanced: dict[str, Any] | None = Field(default=None, description="高级设置;键必须落在模板白名单内")
 
 
 class TemplateBatchRequest(TemplateBatchPlanRequest):
-    """模板批次发起请求:模板作用于固定用例(问题/工具/Mock 来自用例库版本)。"""
+    """模板批次发起请求:对比模板作用于固定用例;压缩类模板作用于 Session。"""
 
-    case_id: str = Field(min_length=1, max_length=100)
+    case_id: str = Field(default="", max_length=100)
 
 
 def _template_model_capability() -> Any:
@@ -604,7 +653,11 @@ def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any
                 "contextStrategy": str((row.get("run_config") or {}).get("context_strategy") or "full"),
                 "model": str(((row.get("run_config") or {}).get("model") or {}).get("model_id") or ""),
                 "gitCommit": os.getenv("GIT_COMMIT", "unknown"),
-                "modelConfig": template_run_model_config(plan, row, fixture_set_id=str(case.fixture_set_id)),
+                "modelConfig": {
+                    **template_run_model_config(plan, row, fixture_set_id=str(case.fixture_set_id)),
+                    # 实际生效参数(逐运行模型实例属性回读;请求值见 perRunConfig.model)
+                    "appliedModelParams": row.get("applied_model_params") or {},
+                },
             }
         )
         data.complete_run(
@@ -629,6 +682,156 @@ def _public_template_case(case_id: str) -> Any:
     return case
 
 
+def _persist_comparison_runs(data: DataClient, batch_id: str, session_id: str, result: dict[str, Any]) -> None:
+    """压缩方法对照逐运行落库:caseId=Session 编号,method 进 variantId 与 contextStrategy。"""
+    run_configs = result.get("run_configs") or {}
+    for row in result.get("cells") or []:
+        unit_id = str(row.get("unit_id") or "")
+        run_id = data.create_run(
+            {
+                "batchId": batch_id,
+                "caseId": session_id,
+                "caseVersion": int(result.get("session_version") or 1),
+                "variantId": str(row.get("context_variant") or ""),
+                "snapshotId": "",
+                "agentMode": str(row.get("agent_mode_id") or "native-tool-calling"),
+                "contextStrategy": str(row.get("context_variant") or ""),
+                "model": os.getenv("LLM_MODEL", ""),
+                "gitCommit": os.getenv("GIT_COMMIT", "unknown"),
+                "modelConfig": {
+                    "unitId": unit_id,
+                    "perRunConfig": run_configs.get(unit_id),
+                    "contextArtifactHash": row.get("context_artifact_hash"),
+                },
+            }
+        )
+        data.complete_run(
+            run_id,
+            {
+                "answer_excerpt": str(row.get("answer") or "")[:200],
+                "stop_reason": row.get("stop_reason"),
+                "actual_agent_steps": row.get("actual_agent_steps"),
+                "config_hash": row.get("config_hash"),
+            },
+            status="COMPLETE" if row.get("validity") == "VALID" else "INVALID",
+            error_category=row.get("error"),
+        )
+
+
+def _start_compression_method_batch(request: TemplateBatchRequest, template: Any) -> dict[str, str]:
+    """压缩方法对照批次(仅私有台):抽取式 vs LLM 生成式,同模型同目标 token。
+
+    - context_only=true:只生成两种压缩上下文(摘要 LLM 按需真实调用,0 个 Agent 运行);
+    - 否则:两种上下文各自运行同一次 Agent(2 个运行),逐运行落库并写批次工件。
+    """
+    import asyncio as _asyncio
+
+    from bdlh_runtime.experiments.compression import (
+        COMPRESSION_SESSIONS,
+        generate_compression_method_contexts,
+        run_compression_method_comparison,
+    )
+    from bdlh_runtime.experiments.templates import (
+        ROLE_OWNER,
+        TemplatePlanError,
+        plan_template_batch,
+    )
+
+    session_id = str(request.session_id or "")
+    known_sessions = [row[0] for row in COMPRESSION_SESSIONS]
+    if session_id not in known_sessions:
+        raise HTTPException(status_code=400, detail=f"未知压缩 Session:{session_id!r};可用:{known_sessions}")
+    try:
+        plan = plan_template_batch(
+            template.template_id, repeat_count=1, role=ROLE_OWNER, context_only=bool(request.context_only)
+        )
+    except TemplatePlanError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    model = os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+    data = _data()
+    if not _BATCH_SLOTS.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="已有评测批次在运行，请等待完成后再发起")
+    run_count = 0 if request.context_only else plan.run_count
+    try:
+        from bdlh_runtime.experiments.run_config import RunConfig
+
+        conditions = {
+            **plan.fixed_conditions,
+            "session_id": session_id,
+            "model": model,
+            "context_only": bool(request.context_only),
+            "template_plan_hash": plan.fixed_conditions_hash,
+            # 冻结配置快照(批次无逐运行落库时,参数对照表的数据来源)
+            "frozen_run_config": RunConfig().to_payload(),
+        }
+        batch_id = data.create_batch(
+            name=f"压缩方法对照 {session_id} {datetime.now().astimezone().isoformat(timespec='seconds')}",
+            experiment_type=f"template:{template.template_id}",
+            fixed_conditions=_with_conditions_hash(conditions),
+        )
+    except DataServiceError as exc:
+        with contextlib.suppress(ValueError):
+            _BATCH_SLOTS.release()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    job_id = uuid4().hex[:12]
+    job: dict[str, Any] = {
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "template_id": template.template_id,
+        "classification": template.classification,
+        "status": "running",
+        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "request": request.model_dump(),
+        "report": None,
+        "error": None,
+        "cancel_requested": False,
+    }
+    _init_job_progress(job, run_count, per_run=False)
+    _JOBS[job_id] = job
+
+    def task() -> None:
+        try:
+            def bump_cell(row: dict[str, Any]) -> None:
+                progress = job.get("progress") or {}
+                progress["done"] = int(progress.get("done") or 0) + 1
+                progress["current"] = f"{row.get('context_variant')} · 第{(row.get('repeat_index') or 0) + 1}次"
+                job["progress"] = progress
+
+            if request.context_only:
+                payload = generate_compression_method_contexts(session_id)
+            else:
+                payload = _asyncio.run(
+                    run_compression_method_comparison(
+                        session_id,
+                        max_agent_steps=_public_service.quota.max_agent_steps,
+                        on_cell_done=bump_cell,
+                    )
+                )
+                _persist_comparison_runs(data, batch_id, session_id, payload)
+            _persist_artifact(batch_id, payload)
+            data.complete_batch(batch_id, "COMPLETE")
+            _finish_job_progress(job)
+            job["status"] = "done"
+            job["report"] = payload
+        except Exception as exc:  # noqa: BLE001 —— 作业失败进入可见状态,不能让服务进程退出
+            with contextlib.suppress(DataServiceError):
+                data.complete_batch(batch_id, "FAILED")
+            job["status"] = "error"
+            job["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            _BATCH_SLOTS.release()
+
+    threading.Thread(target=task, daemon=True).start()
+    return {
+        "job_id": job_id,
+        "batch_id": batch_id,
+        "template_id": template.template_id,
+        "classification": template.classification,
+        "formal": "true",
+    }
+
+
 @app.post("/api/v1/template-batches")
 def start_template_batch(
     request: TemplateBatchRequest,
@@ -650,6 +853,8 @@ def start_template_batch(
             status_code=400,
             detail="该模板分类不支持从模板入口发起;请选择正式单变量模板",
         )
+    if template.template_id == "compression-method-comparison":
+        return _start_compression_method_batch(request, template)
     if "COMPARISON_CASE" not in template.allowed_test_types:
         raise HTTPException(
             status_code=400,

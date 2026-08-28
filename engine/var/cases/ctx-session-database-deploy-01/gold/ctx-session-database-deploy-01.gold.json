@@ -91,13 +91,10 @@
       "status": "success",
       "result": {
         "path": "db/postgresql/setup/init.sql",
-        "content_hash": "sha256:0cf572551db9cb98ce2576385b1bec04bcf07ec34a7b96670bb7c62863817f98",
-        "line_range": "1-25",
-        "start_line": 1,
-        "end_line": 25,
-        "content_excerpt": "-- ══════════════════════════════════════════════════════════════════════\n-- Touchstone 数据库初始化（唯一入口）\n--\n-- 由原 01–08 八份脚本按序合并而成；每段保留独立事务与\n-- touchstone.database_changes 登记，失败即停（ON_ERROR_STOP=1），\n-- 已成功提交的段不会因后续段失败而回滚。\n-- 仅用于尚未建立 Touchstone 表的全新数据库；已初始化的库不要重复执行。\n--\n-- 执行方式：\n--   psql <连接串> -v ON_ERROR_STOP=1 -f init.sql\n-- 成功后 touchstone.database_changes 应有 8 行登记。\n-- 初始所有者账号不在此脚本内，创建步骤见本目录 README。\n-- ══════════════════════════════════════════════════════════════════════\n\n\n-- ═══════════ 原脚本 01-create-base-tables.sql ═══════════\n\nBEGIN;\nSET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '5min';\n\nCREATE SCHEMA IF NOT EXISTS touchstone;\n\nCREATE TABLE touchstone.database_changes (\n    script_name         VARCHAR(200) PRIMARY KEY,",
-        "simulated": true,
-        "content_time": "2026-08-24"
+        "content_excerpt": "读取路径: db/postgresql/setup/init.sql\n冻结范围: 第 1-520 行，共 1155 行\n…",
+        "content_hash": "sha256:bdae06f8a1bf0f73268135f243433c93f51695cb4e78d93bdf36ce1e9261e4d2",
+        "line_range": "1-60",
+        "simulated": true
       }
     },
     {
@@ -109,13 +106,10 @@
       "status": "success",
       "result": {
         "path": "data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java",
-        "content_hash": "sha256:a24116d46c994df5ed4498fab5f304ad8165fe242758e262fffd4fb0759e9db5",
-        "line_range": "1-45",
-        "start_line": 1,
-        "end_line": 45,
-        "content_excerpt": "package com.bdlh.touchstone.data.repository;\n\nimport static com.bdlh.touchstone.data.domain.RunPayloads.*;\n\nimport com.fasterxml.jackson.core.JsonProcessingException;\nimport com.fasterxml.jackson.databind.JsonNode;\nimport com.fasterxml.jackson.databind.ObjectMapper;\nimport java.util.LinkedHashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.UUID;\nimport org.springframework.jdbc.core.JdbcTemplate;\nimport org.springframework.stereotype.Repository;\nimport org.springframework.transaction.annotation.Transactional;\n\n@Repository\npublic class RunRepository {\n    private final JdbcTemplate jdbc;\n    private final ObjectMapper objectMapper;\n\n    public RunRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {\n        this.jdbc = jdbc;\n        this.objectMapper = objectMapper;\n    }\n\n    public UUID createBatch(CreateBatchRequest request) {\n        UUID id = UUID.randomUUID();\n        jdbc.update(\n                \"\"\"\n                INSERT INTO touchstone.run_batches\n                    (id, name, experiment_type, fixed_conditions, status)\n                VALUES (?, ?, ?, ?::jsonb, 'RUNNING')\n                \"\"\",\n                id,\n                request.name(),\n                request.experimentType(),\n                json(request.fixedConditions()));\n        return id;\n    }\n\n    public UUID createRun(CreateRunRequest request) {\n        UUID id = UUID.randomUUID();\n        jdbc.update(\n                \"\"\"\n                INSERT INTO touchstone.agent_runs",
-        "simulated": true,
-        "content_time": "2026-08-24"
+        "content_excerpt": "读取路径: data/src/main/java/com/bdlh/touchstone/data/repository…",
+        "content_hash": "sha256:617b377f3729c4741ca1506a015bc12c2ccb589f45db728039954554ff91d3fb",
+        "line_range": "1-60",
+        "simulated": true
       }
     },
     {
@@ -127,13 +121,10 @@
       "status": "success",
       "result": {
         "path": "deploy/docker-compose.yml",
-        "content_hash": "sha256:547d21789914795923ff11b83b0eefaa248989ecbd5bc5f2ba4462769daf28b3",
-        "line_range": "1-45",
-        "start_line": 1,
-        "end_line": 45,
-        "content_excerpt": "name: touchstone\n\nservices:\n  postgres:\n    image: postgres:16-alpine\n    restart: unless-stopped\n    environment:\n      POSTGRES_DB: ${POSTGRES_DB:-touchstone}\n      POSTGRES_USER: ${POSTGRES_USER:-touchstone}\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}\n    volumes:\n      - touchstone-postgres:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER:-touchstone} -d ${POSTGRES_DB:-touchstone}\"]\n      interval: 5s\n      timeout: 3s\n      retries: 20\n\n  data:\n    build:\n      context: ../data\n    restart: unless-stopped\n    environment:\n      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-touchstone}\n      DATABASE_USER: ${POSTGRES_USER:-touchstone}\n      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}\n      DATA_INTERNAL_TOKEN: ${DATA_INTERNAL_TOKEN:?DATA_INTERNAL_TOKEN is required}\n    depends_on:\n      postgres:\n        condition: service_healthy\n    healthcheck:\n      test: [\"CMD\", \"wget\", \"--quiet\", \"--tries=1\", \"--spider\", \"http://127.0.0.1:8080/actuator/health\"]\n      interval: 10s\n      timeout: 5s\n      retries: 12\n      start_period: 30s\n\n  engine:\n    build:\n      context: ../engine\n    restart: unless-stopped\n    environment:\n      DATA_API_BASE_URL: http://data:8080/internal/v1\n      DATA_INTERNAL_TOKEN: ${DATA_INTERNAL_TOKEN:?DATA_INTERNAL_TOKEN is required}\n      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}",
-        "simulated": true,
-        "content_time": "2026-08-24"
+        "content_excerpt": "读取路径: deploy/docker-compose.yml\n冻结范围: 第 1-81 行，共 81 行\n----- …",
+        "content_hash": "sha256:4856f508a299502c19509f055bebcd02fd72e092f10d7810291b24d86ca6e9bb",
+        "line_range": "1-60",
+        "simulated": true
       }
     },
     {
@@ -145,14 +136,10 @@
       "status": "success",
       "result": {
         "path": "deploy/docker-compose.cloud.yml",
-        "content_hash": "sha256:96fd9e68380b30eaf5560b14dc713acb11e3147428b9823d7ca2e4975a3c3ead",
-        "line_range": "1-40",
-        "start_line": 1,
-        "end_line": 40,
-        "content_excerpt": "name: touchstone-cloud\n\nservices:\n  data:\n    image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/data:${IMAGE_TAG:-latest}\n    restart: unless-stopped\n    environment:\n      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}\n      DATABASE_USER: ${DATABASE_USER:?DATABASE_USER is required}\n      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}\n      DATA_INTERNAL_TOKEN: ${DATA_INTERNAL_TOKEN:?DATA_INTERNAL_TOKEN is required}\n    healthcheck:\n      test: [\"CMD\", \"wget\", \"--quiet\", \"--tries=1\", \"--spider\", \"http://127.0.0.1:8080/actuator/health\"]\n      interval: 10s\n      timeout: 5s\n      retries: 12\n      start_period: 30s\n\n  engine:\n    image: ${IMAGE_REGISTRY:?IMAGE_REGISTRY is required}/engine:${IMAGE_TAG:-latest}\n    restart: unless-stopped\n    environment:\n      DATA_API_BASE_URL: http://data:8080/internal/v1\n      DATA_INTERNAL_TOKEN: ${DATA_INTERNAL_TOKEN:?DATA_INTERNAL_TOKEN is required}\n      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY is required}\n      LLM_BASE_URL: ${LLM_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}\n      LLM_MODEL: ${LLM_MODEL:-glm-4.7-flash}\n      GIT_COMMIT: ${GIT_COMMIT:?GIT_COMMIT is required}\n      ARTIFACTS_DIR: /app/artifacts\n      MAX_CONCURRENT_BATCHES: ${MAX_CONCURRENT_BATCHES:-1}\n      RUN_API_ALLOWED_ORIGINS: ${RUN_API_ALLOWED_ORIGINS:-}\n    depends_on:\n      data:\n        condition: service_healthy\n    ports:\n      - \"127.0.0.1:${ENGINE_PORT:-8090}:8090\"\n    volumes:\n      - touchstone-artifacts:/app/artifacts\n    healthcheck:\n      test: [\"CMD\", \"python\", \"-c\", \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/ready')\"]",
-        "simulated": true,
-        "content_time": "2026-08-21",
-        "note": "云编排不含本地 postgres 服务,与本地 5432 手工库职责不同"
+        "content_excerpt": "读取路径: deploy/docker-compose.cloud.yml\n冻结范围: 第 1-60 行，共 60 行\n…",
+        "content_hash": "sha256:e0b0e1b7208306d0cb329ec6a38e865b8267611ed25158cc8c00b09d77a3d393",
+        "line_range": "1-60",
+        "simulated": true
       }
     }
   ],

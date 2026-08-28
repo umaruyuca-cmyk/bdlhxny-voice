@@ -1,8 +1,7 @@
-# 公开镜像：复制 public/ 时物理排除私有 /lab 目录（登录与内部运行台）。
+# 公开镜像:public/ 已不含私有运行台目录。
 FROM alpine:3.20 AS prune
 WORKDIR /src
 COPY public/ ./public/
-RUN rm -rf public/lab
 
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf

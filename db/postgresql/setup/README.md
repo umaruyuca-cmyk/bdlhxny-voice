@@ -56,8 +56,8 @@ ORDER BY applied_at;
 |---:|---|---|
 | 1 | `01-create-base-tables` | 创建 schema、执行记录表和基础业务表 |
 | 2 | `02-seed-fixed-cases` | 写入首批固定用例、默认变体和数据快照 |
-| 3 | `03-create-agent-comparison-tables` | 创建 Agent 版本、上下文策略、调用、指标和发布表 |
-| 4 | `04-seed-agent-and-context-catalog` | 写入三种 Agent 和四种上下文策略 |
+| 3 | `03-create-experiment-trace-tables` | 创建上下文策略、调用、指标和发布表 |
+| 4 | `04-seed-context-catalog` | 写入四种上下文策略 |
 | 5 | `05-create-execution-detail-tables` | 创建守卫拦截明细和模型输入消息快照表 |
 | 6 | `06-create-accounts-tables` | 创建所有者账号、登录会话和审计表 |
 | 7 | `07-create-tool-catalog-tables` | 创建工具目录表并写入操作证、工具集、能力和技能 |
@@ -79,6 +79,10 @@ ORDER BY applied_at;
 | 3 | `../changes/20260821-long-context-cases.sql` | 6 套 ctx-* 长上下文压缩对照用例 | 需要压缩对照时 |
 | 4 | `../changes/20260822-fixture-negative.sql` | 金融负例集 ab-eval-negative-v1 + 8 道负例 | 需要负例实验时 |
 | 5 | `../changes/20260822-fixture-deep-search.sql` | ab-eval 补 research.deep_search 冻结行 | 幂等，建议执行 |
+| 6 | `../changes/20260825-two-track-experiments.sql` | 模板实验任务、上下文构建与对比用例结构 | 必需 |
+| 7 | `../changes/20260826-run-config-snapshot.sql` | 运行配置快照与模板标识 | 必需，依赖 6 |
+| 8 | `../changes/20260826-fix-comparison-mock-and-deps.sql` | 修正对比用例 Mock 和依赖关系 | 必需，依赖 6 |
+| 9 | `../changes/20260827-remove-legacy-agent-modes.sql` | 删除停用的多实现目录和约束 | 必需，最后执行 |
 
 不执行第 1 项时，题库只有 18 道基础用例、冻结集只有 `ab-eval`，
 `/lab` 的通用工具勾选页与 `gt8-*` 用例均不可用。

@@ -4,7 +4,7 @@
  *
  * 变更要点(2026-08-23):
  * - 公告收敛为独立单页(侧栏无子级);试用指引外的系统说明统一进新模块「系统概览」;
- * - 全站去品牌化:顶栏不再出现项目代号,登录后入口改为「运行台」(/lab);
+ * - 全站去品牌化:顶栏不再出现项目代号,登录后入口改为「实验中心」(/experiment);
  * - 实例展示只保留「用例详情 / 用例调用明细 / Session 交叉验证」三个实例页面;
  * - 上下文压缩新增「长上下文库」页(条目元信息 + txt 下载 + 登录后压缩测试);
  * - 压缩算法页补齐公式口径(token 计数 / 预算分配 / 压缩函数)。
@@ -188,7 +188,7 @@ ${body}`;
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
-    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
+    <a class="topbar-lab" title="进入实验中心发起批次"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>实验中心</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
     <a class="topbar-gh" href="${GITHUB}" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
     </div>
@@ -248,7 +248,7 @@ const ABOUT_SYSTEM = {
 <div class="flow">web(纯静态展示层) ｜ engine(私有运行 API + 统一原生底座与模板执行器) ｜ data(题库/记录/发布登记) ｜ PostgreSQL(唯一数据来源)</div>
 <p>公开部署只含静态站(物理排除 /lab);评测批次由项目所有者在私有侧发起,经发布校验投影为静态产物。</p>
 <h3>一次运行(模板批次;旧实现对照为诊断入口)</h3>
-<div class="flow">登录 → 运行台选模板并预估精确运行数 → 拉取冻结工具数据 → 逐运行独立模型客户端按变体执行(九类事件 + 逐步明细落库 + config_hash) → 九段运行工件 → 发布校验(门槛/敏感扫描/hash 复算) → 公开静态展示</div>
+<div class="flow">登录 → 实验模块选模板并预估精确运行数 → 拉取冻结工具数据 → 逐运行独立模型客户端按变体执行(九类事件 + 逐步明细落库 + config_hash) → 九段运行工件 → 发布校验(门槛/敏感扫描/hash 复算) → 公开静态展示</div>
 <h3>上下文压缩链路</h3>
 <div class="flow">长上下文条目 → 分类(强制/可压缩/仅引用/干扰) → 预算选择与压缩 → 工作上下文 → 同一 Agent 循环 → 同一判官 → 处理报告进工件</div>
 <p><strong>变量隔离</strong>:正式模板批次只动唯一自变量,其余条件冻结进运行配置快照(config_hash 同配置必同哈希),请求参数与实际生效参数分别记录;冻结数据隔离执行质量、金标路由隔离路由误差;压缩对照只变上下文处理策略。</p>`,
@@ -289,14 +289,14 @@ const ABOUT_REPO = {
     {
       id: "repo",
       title: "仓库构成",
-      html: `<p>代码在 <a href="${GITHUB}" target="_blank" rel="noopener">GitHub</a>:<code>engine/</code>(被测内核与对照 runner)、<code>data/</code>(题库与记录服务)、<code>web/</code>(公开展示层与私有运行台)、<code>db/</code>(库结构与种子)。</p>`,
+      html: `<p>代码在 <a href="${GITHUB}" target="_blank" rel="noopener">GitHub</a>:<code>engine/</code>(被测内核与对照 runner)、<code>data/</code>(题库与记录服务)、<code>web/</code>(公开展示层与实验发起入口)、<code>db/</code>(库结构与种子)。</p>`,
     },
     {
       id: "reproduce",
       title: "复现三步",
       html: `<ol>
   <li>本地启动(见 <code>deploy/本地启动说明.md</code>);</li>
-  <li>登录后进入运行台 <code>/lab/</code>:按模板发起正式批次,亦可发起上下文压缩对照;</li>
+  <li>登录后进入实验中心 <code>/experiment/</code>:按模板发起正式批次,亦可发起上下文压缩对照;</li>
   <li><code>npm run publish:showcase -- --git-commit &lt;sha&gt;</code> 投影到公开层。</li>
 </ol>`,
     },
@@ -826,7 +826,7 @@ const CONTEXT_DESIGN = {
     {
       id: "launch",
       title: "如何发起",
-      html: `<p>登录后进入运行台「压缩对照批次」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>`,
+      html: `<p>登录后进入实验模块「压缩对照批次」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>`,
     },
   ],
 };
@@ -1322,7 +1322,7 @@ const CASES_LIST = {
     </table>
     <div class="cat-paginate" data-cat-pager></div>
     <div class="cat-count" data-cat-count></div>
-    <p class="lab-note">用例库只维护对比用例的浏览、筛选与详情;三个长上下文 Session 由<a href="/context/library">长上下文库</a>(上下文压缩模块)维护,不在本库重复登记。运行实验请进入<a href="/experiment/comparison">对比用例实验</a>;本页不发起运行。</p>
+    <p class="lab-note">用例库只维护对比用例的浏览、筛选与详情;三个长上下文 Session 由<a href="/context/library">长上下文库</a>(上下文压缩模块)维护,不在本库重复登记。运行实验请进入<a href="/experiment/">实验模板中心</a>;本页不发起运行。</p>
   `,
   extraScripts: '<script src="/catalog/catalog.js"></script>\n<script>CATALOG.initCasesList();</script>',
 };

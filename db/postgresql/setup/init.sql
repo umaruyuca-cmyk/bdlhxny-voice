@@ -369,41 +369,14 @@ VALUES ('02-seed-fixed-cases.sql', '写入首批固定用例、变体、快照�
 COMMIT;
 
 
--- ═══════════ 原脚本 03-create-agent-comparison-tables.sql ═══════════
+-- ═══════════ 原脚本 03-create-experiment-trace-tables.sql ═══════════
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '5min';
 
 -- 让“固定输入 -> 上下文处理 -> Agent 执行 -> 评测 -> 发布”可以按版本追溯。
--- 基础表中的字符串字段继续保留，已有调用方可以逐步迁移到下面的版本表。
-
-CREATE TABLE touchstone.agent_implementations (
-    id                  VARCHAR(100) PRIMARY KEY,
-    name                VARCHAR(200) NOT NULL,
-    implementation_type VARCHAR(40) NOT NULL,
-    description         TEXT NOT NULL,
-    status              VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT agent_implementation_type_valid CHECK (
-        implementation_type IN ('DIRECT_TOOL_CALLING', 'REACT_FRAMEWORK', 'FULL_SYSTEM')
-    ),
-    CONSTRAINT agent_implementation_status_valid CHECK (status IN ('ACTIVE', 'ARCHIVED'))
-);
-
-CREATE TABLE touchstone.agent_versions (
-    agent_id             VARCHAR(100) NOT NULL
-                         REFERENCES touchstone.agent_implementations(id),
-    version              VARCHAR(100) NOT NULL,
-    entrypoint           VARCHAR(300) NOT NULL,
-    prompt_version       VARCHAR(100) NOT NULL,
-    tool_catalog_version VARCHAR(100) NOT NULL,
-    source_git_commit    VARCHAR(64),
-    runtime_config       JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (agent_id, version)
-);
+-- 执行底座统一为原生 Tool Calling；运行配置快照记录实际版本与参数。
 
 CREATE TABLE touchstone.context_strategy_versions (
     strategy_id          VARCHAR(100) NOT NULL,
@@ -522,30 +495,21 @@ ALTER TABLE touchstone.run_batches
     ADD COLUMN started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ADD CONSTRAINT run_batch_experiment_variable_valid CHECK (
         experiment_variable IS NULL
-        OR experiment_variable IN ('AGENT_IMPLEMENTATION', 'CONTEXT_STRATEGY')
+        OR experiment_variable = 'CONTEXT_STRATEGY'
     ),
     ADD CONSTRAINT run_batch_repetitions_positive CHECK (requested_repetitions > 0),
     ADD CONSTRAINT run_batch_idempotency_unique UNIQUE (idempotency_key);
 
 ALTER TABLE touchstone.agent_runs
-    ADD COLUMN agent_id VARCHAR(100),
-    ADD COLUMN agent_version VARCHAR(100),
     ADD COLUMN context_strategy_id VARCHAR(100),
     ADD COLUMN context_strategy_version VARCHAR(100),
     ADD COLUMN repeat_index INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN random_seed BIGINT,
     ADD COLUMN idempotency_key VARCHAR(200),
     ADD COLUMN started_at TIMESTAMPTZ,
-    ADD CONSTRAINT agent_run_agent_version_fk
-        FOREIGN KEY (agent_id, agent_version)
-        REFERENCES touchstone.agent_versions(agent_id, version),
     ADD CONSTRAINT agent_run_context_strategy_fk
         FOREIGN KEY (context_strategy_id, context_strategy_version)
         REFERENCES touchstone.context_strategy_versions(strategy_id, version),
-    ADD CONSTRAINT agent_run_agent_pair_valid CHECK (
-        (agent_id IS NULL AND agent_version IS NULL)
-        OR (agent_id IS NOT NULL AND agent_version IS NOT NULL)
-    ),
     ADD CONSTRAINT agent_run_context_strategy_pair_valid CHECK (
         (context_strategy_id IS NULL AND context_strategy_version IS NULL)
         OR (context_strategy_id IS NOT NULL AND context_strategy_version IS NOT NULL)
@@ -698,8 +662,6 @@ CREATE TABLE touchstone.publication_runs (
 
 CREATE INDEX idx_agent_runs_comparison
     ON touchstone.agent_runs(batch_id, case_id, case_version, variant_id, repeat_index);
-CREATE INDEX idx_agent_runs_version
-    ON touchstone.agent_runs(agent_id, agent_version);
 CREATE INDEX idx_agent_runs_strategy_version
     ON touchstone.agent_runs(context_strategy_id, context_strategy_version);
 CREATE INDEX idx_model_calls_run_purpose
@@ -716,36 +678,16 @@ CREATE INDEX idx_publications_status
     ON touchstone.publications(status, published_at DESC);
 
 INSERT INTO touchstone.database_changes (script_name, description)
-VALUES ('03-create-agent-comparison-tables.sql', '创建 Agent 对照、调用明细、指标和发布记录表');
+VALUES ('03-create-experiment-trace-tables.sql', '创建实验追溯、调用明细、指标和发布记录表');
 
 COMMIT;
 
 
--- ═══════════ 原脚本 04-seed-agent-and-context-catalog.sql ═══════════
+-- ═══════════ 原脚本 04-seed-context-catalog.sql ═══════════
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '5min';
-
-INSERT INTO touchstone.agent_implementations
-    (id, name, implementation_type, description)
-VALUES
-    ('baseline-tool-calling', '直接 Tool Calling', 'DIRECT_TOOL_CALLING',
-     '只保留模型原生工具调用循环，作为最小实现基线。'),
-    ('langgraph-react', 'LangGraph ReAct', 'REACT_FRAMEWORK',
-     '使用 LangGraph ReAct 执行循环，作为通用 Agent 框架实现。'),
-    ('full-system', '完整工程实现', 'FULL_SYSTEM',
-     '包含工具装载、权限校验、结果标准化、上下文处理和输出检查。');
-
-INSERT INTO touchstone.agent_versions
-    (agent_id, version, entrypoint, prompt_version, tool_catalog_version, runtime_config)
-VALUES
-    ('baseline-tool-calling', 'v1',
-     'bdlh_runtime.evaluation.baseline_agent', 'system-base-v1', 'catalog-v1', '{}'),
-    ('langgraph-react', 'v1',
-     'bdlh_runtime.evaluation.baseline_langgraph', 'system-base-v1', 'catalog-v1', '{}'),
-    ('full-system', 'v1',
-     'bdlh_runtime.engine.runtime', 'system-base-v1', 'catalog-v1', '{}');
 
 INSERT INTO touchstone.context_strategy_versions
     (strategy_id, version, name, strategy_type, algorithm_version, tokenizer_version, config)
@@ -759,7 +701,7 @@ VALUES
      'runtime-selected', '{"compression_ratio":0.35,"minimum_compressed_tokens":32}');
 
 INSERT INTO touchstone.database_changes (script_name, description)
-VALUES ('04-seed-agent-and-context-catalog.sql', '写入三种 Agent 实现和四种上下文策略');
+VALUES ('04-seed-context-catalog.sql', '写入四种上下文策略');
 
 COMMIT;
 

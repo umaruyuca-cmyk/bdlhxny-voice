@@ -140,7 +140,7 @@ def theoretical_max_model_calls(run_count: int, max_agent_steps: int) -> int:
 
 @dataclass(frozen=True)
 class FixedConditions:
-    """一个批次内三种 Agent 与全部重复运行共享的固定条件。"""
+    """一个批次内所有实验变体与重复运行共享的固定条件。"""
 
     model: str
     temperature: float

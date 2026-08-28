@@ -67,3 +67,9 @@ BEGIN/COMMIT，失败整体回滚）。统一规范：执行前备份，执行�
   database_changes 已补 `ON CONFLICT (script_name) DO NOTHING`，可由
   `engine/scripts/generate_cmp_fix_sql.py` 从过渡层数据重新生成后重跑。DDL 锁等待
   已放宽到 60s 以适配 Data 服务在线场景。
+
+## 2026-08-27 旧实现清理
+
+- `20260827-remove-legacy-agent-modes.sql`：删除停用的多 Agent 实现目录、版本外键和
+  旧实验范围，只保留当前统一原生 Tool Calling 底座需要的模板实验数据。执行前备份，
+  建议低峰期运行；脚本完成后按末尾核验 SQL 确认旧目录表不存在。

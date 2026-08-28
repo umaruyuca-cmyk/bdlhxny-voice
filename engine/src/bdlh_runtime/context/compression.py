@@ -5,11 +5,33 @@ import re
 from typing import Protocol
 
 from .models import ContextItem
+from .summary import HistorySummarizer
 from .token_count import TokenCounter
 
 
 class ContextCompressor(Protocol):
     def compress(self, item: ContextItem, max_tokens: int, counter: TokenCounter) -> str: ...
+
+
+class SummarizerCompressor:
+    """budgeted 压缩的生成式变体:被压缩条目的替代文本由摘要器生成。
+
+    - 摘要器(LLMSummarizer)返回非空且不同于原文时采用——即"LLM 生成式压缩";
+    - 返回空或与原文相同时回退内层结构化抽取,不编造、不超出预算语义;
+    - LLM 不可用/调用失败/超预算的降级事件由摘要器记入 usage.warnings,
+      经编译器写入工件 warnings(诚实标注,不冒充生成成功)。
+    """
+
+    def __init__(self, summarizer: HistorySummarizer, inner: ContextCompressor | None = None) -> None:
+        self._summarizer = summarizer
+        self._inner = inner or StructuredTextCompressor()
+
+    def compress(self, item: ContextItem, max_tokens: int, counter: TokenCounter) -> str:
+        summary = self._summarizer.summarize([item.content], max_tokens, counter)
+        text = (summary or "").strip()
+        if text and text != item.content.strip():
+            return text
+        return self._inner.compress(item, max_tokens, counter)
 
 
 class StructuredTextCompressor:

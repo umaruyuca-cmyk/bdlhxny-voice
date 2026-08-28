@@ -2,7 +2,7 @@
   "fingerprint_version": "compression-fingerprint-v1",
   "session_id": "ctx-session-context-engine-debug-01",
   "session_version": 1,
-  "source_session_hash": "sha256:411105407f68f76c1b8fe59cd2881c83e7a537a4ad93d6594e11b18fb8e32cb9",
+  "source_session_hash": "sha256:69e9e18dacca5d883855a2dd6771bb082690fc6013485103c21b20b2ce931f1a",
   "current_event_id": "evt-0026",
   "current_message": "最后的问题不要让 Agent 改代码，要让它在长历史里找出仍有效的约束、已经修正的说法和真实实现差距。",
   "current_message_hash": "sha256:97c1dfbd0dc1e07552de80dd311aae245736da2b490466d8caaabce29e11dd54",

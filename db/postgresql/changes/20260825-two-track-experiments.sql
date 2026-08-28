@@ -74,7 +74,7 @@ ALTER TABLE touchstone.context_builds
     ADD COLUMN IF NOT EXISTS compiled_context_hash VARCHAR(100),
     ADD COLUMN IF NOT EXISTS storage_ref TEXT;
 COMMENT ON COLUMN touchstone.context_builds.compiled_context_hash IS
-    '四种上下文方式派生输入的内容哈希;三种 Agent 必须复用同一哈希的冻结工件';
+    '四种上下文方式派生输入的内容哈希;所有实验运行必须复用同一哈希的冻结工件';
 
 -- ══ A4 实验任务与运行单元(持久化;匿名身份只存哈希) ══
 
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS touchstone.test_jobs (
         test_type IN ('COMPRESSION_CASE', 'COMPARISON_CASE')
     ),
     CONSTRAINT test_job_scope_valid CHECK (
-        execution_scope IN ('comparison-full', 'context-only', 'current-combo', 'full-matrix')
+        execution_scope IN ('context-only', 'current-combo', 'native-matrix', 'template-batch')
     ),
     CONSTRAINT test_job_status_valid CHECK (
         status IN ('QUEUED', 'RUNNING', 'COMPLETE', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'PARTIAL')

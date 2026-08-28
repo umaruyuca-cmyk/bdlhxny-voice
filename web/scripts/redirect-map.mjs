@@ -4,6 +4,12 @@ export const REDIRECTS = new Map([
   ["/announce", "/"],
   ["/announce/", "/"],
   ["/docs/comparison", "/experiment/"],
+  ["/experiment/comparison", "/experiment/"],
+  ["/session-cross", "/context/results"],
+  ["/session-cross/", "/context/results"],
+  ["/session-cross/index", "/context/results"],
+  ["/session-cross/inputs", "/context/library"],
+  ["/session-cross/results", "/context/results"],
   ["/docs/cases", "/cases/"],
   ["/experiment/cases", "/cases/"],
   ["/experiment/cases.html", "/cases/"],
@@ -18,6 +24,9 @@ export const REDIRECTS = new Map([
   ["/home", "/"],
   ["/home/", "/"],
   ["/home/index", "/"],
+  ["/lab", "/experiment/"],
+  ["/lab/", "/experiment/"],
+  ["/lab/index", "/experiment/"],
 ]);
 
 /** 归一化:去掉 .html 后查表(旧链接可能带扩展名)。 */

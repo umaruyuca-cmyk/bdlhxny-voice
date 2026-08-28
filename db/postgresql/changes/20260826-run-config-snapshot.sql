@@ -54,7 +54,7 @@ COMMENT ON COLUMN touchstone.run_batches.template_id IS
 COMMENT ON COLUMN touchstone.run_batches.template_version IS
     '实验模板版本;与 template_id 同为 NULL 或同非 NULL';
 COMMENT ON COLUMN touchstone.run_batches.experiment_definition_version IS
-    '实验定义口径版本(run-config-v2);用于区分旧 agent_mode 对照与新模板单变量实验';
+    '实验定义口径版本(run-config-v2);用于区分不同版本的模板实验';
 COMMENT ON COLUMN touchstone.run_batches.fixed_conditions_hash IS
     '批次固定条件的规范化哈希(键排序+紧凑JSON 的 SHA-256,引擎计算);变体只能改变声明的主自变量';
 
@@ -79,7 +79,7 @@ COMMENT ON COLUMN touchstone.agent_runs.per_run_config IS
 COMMENT ON COLUMN touchstone.agent_runs.template_id IS
     '发起本运行的实验模板标识(冗余筛选列,真源在批次);NULL=历史运行';
 COMMENT ON COLUMN touchstone.agent_runs.experiment_definition_version IS
-    '实验定义口径版本;legacy-implementation-profile-diagnostic 表示旧 baseline/full-system 整体实现诊断';
+    '实验定义口径版本;用于解释本次运行采用的模板和配置快照口径';
 
 -- ══ A3 任务级模板标识 ══
 
@@ -97,7 +97,7 @@ ALTER TABLE touchstone.test_jobs
     DROP CONSTRAINT IF EXISTS test_job_scope_valid;
 ALTER TABLE touchstone.test_jobs
     ADD CONSTRAINT test_job_scope_valid CHECK (
-        execution_scope IN ('comparison-full', 'context-only', 'current-combo', 'full-matrix', 'native-matrix')
+        execution_scope IN ('context-only', 'current-combo', 'native-matrix', 'template-batch')
     );
 
 -- ══ 登记与核验 ══

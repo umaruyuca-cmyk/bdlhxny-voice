@@ -43,7 +43,7 @@ const server = http.createServer(async (request, response) => {
 async function serveStatic(requestPath, request, response) {
   // 开发代理(可选):匿名公共接口 + 实验页所有者通道(登录/模板/plan/批次/作业),
   // 与 nginx.conf 的反代白名单同口径;仅显式配置 RUN_API_PROXY 时启用
-  const ownerApiPattern = /^\/api\/v1\/(login|logout|experiment-templates|template-batches|batches|jobs|runs)(\/|$)/;
+  const ownerApiPattern = /^\/api\/v1\/(login|logout|llm-config\/test|experiment-templates|template-batches|batches|jobs|runs)(\/|$)/;
   if (runApiProxy && (requestPath.startsWith("/api/v1/public/") || ownerApiPattern.test(requestPath))) {
     const target = new URL(runApiProxy + request.url);
     const proxied = http.request(
@@ -76,13 +76,13 @@ async function serveStatic(requestPath, request, response) {
     return;
   }
   // 模块前缀(五模块首页 + 子模块):无尾斜杠 302 到模块首页;{page} 自动补 .html
-  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/lab", "/experiment", "/test", "/context", "/judging", "/engine", "/ops", "/assets", "/docs"];
+  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/experiment", "/test", "/context", "/judging", "/engine", "/ops", "/assets", "/docs"];
   if (MODULE_PREFIXES.includes(requestPath)) {
     response.writeHead(302, { Location: requestPath + "/" });
     response.end();
     return;
   }
-  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/lab/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/", "/assets/", "/docs/"];
+  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/", "/assets/", "/docs/"];
   // 模块子页带尾斜杠(/experiment/compression/)301 去斜杠:子页是 *.html 文件
   // 不是目录;目录索引(如 /experiment/ 自身)除外。与 nginx 的去斜杠 rewrite 同口径。
   if (requestPath !== "/" && requestPath.endsWith("/")) {

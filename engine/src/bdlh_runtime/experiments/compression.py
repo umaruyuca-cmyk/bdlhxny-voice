@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -636,6 +636,208 @@ def _assemble_cell_result(
         error=raw.get("error"),
         config_hash=config_hash,
     )
+
+
+#: 压缩方法对照(私有台):唯一自变量 = 摘要器(抽取式 vs LLM 生成式)。
+#: 两变体共用 budgeted-session 的分类与预算,仅编译期摘要器不同;
+#: LLM 摘要与主模型同源(env 唯一真源),失败回退抽取式并在工件 warnings 标注。
+COMPRESSION_METHODS: tuple[str, ...] = ("budgeted", "budgeted-llm")
+
+
+def _compile_method_artifacts(
+    session: SessionCase,
+    variants: dict[str, Any],
+    *,
+    llm_summarizer: Any | None = None,
+) -> dict[str, CompiledContext]:
+    """同一 budgeted 变体定义编译两次:抽取式 vs LLM 生成式(同模型同目标 token)。
+
+    ``llm_summarizer`` 供测试注入 Fake 摘要器;生产走 from_env(llm_summary=True)。
+    """
+    from bdlh_runtime.engine.loop import load_prompt
+
+    budgeted_def = next(
+        (v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"),
+        None,
+    )
+    if budgeted_def is None:
+        raise CompressionSessionError("Session 变体定义缺少 budgeted-session,不能做压缩方法对照")
+    common_rules = load_prompt("system_base.md", "scene_chat.md")
+    extractive = SessionCompiler.from_env(llm_summary=False).compile(session, budgeted_def, common_rules=common_rules)
+    if llm_summarizer is not None:
+        generative_compiler = SessionCompiler(summarizer=llm_summarizer)
+    else:
+        generative_compiler = SessionCompiler.from_env(llm_summary=True)
+    generative = generative_compiler.compile(session, budgeted_def, common_rules=common_rules)
+    return {"budgeted": extractive, "budgeted-llm": generative}
+
+
+def generate_compression_method_contexts(
+    session_id: str, *, llm_summarizer: Any | None = None
+) -> dict[str, Any]:
+    """生成两种压缩方法的上下文工件(0 个 Agent 运行;LLM 摘要按需真实调用)。"""
+    session, variants, _ = _load_session_bundle(session_id)
+    compiler_probe = SessionCompiler.from_env(llm_summary=False)
+    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer)
+    artifacts = {method: ctx.to_payload() for method, ctx in compiled.items()}
+    return {
+        "test_type": TestType.COMPRESSION_CASE.value,
+        "session_id": session.session_id,
+        "session_version": session.session_version,
+        "fingerprint": compute_fingerprint(session, variants, compiler_probe.tokenizer_version),
+        "stats": {
+            "variant_count": len(artifacts),
+            "complete_count": len(artifacts),
+            "original_tokens": {m: p["original_tokens"] for m, p in artifacts.items()},
+            "working_tokens": {m: p["working_tokens"] for m, p in artifacts.items()},
+        },
+        "compression_details": build_compression_details(artifacts, events=session.events),
+        "by_variant": {
+            method: {
+                "original_tokens": payload["original_tokens"],
+                "working_tokens": payload["working_tokens"],
+                "required_retained": payload.get("required_retained"),
+                "warnings": payload.get("warnings") or [],
+            }
+            for method, payload in artifacts.items()
+        },
+        "cells": [],  # 生成阶段:0 个 Agent 运行
+    }
+
+
+async def run_compression_method_comparison(
+    session_id: str,
+    *,
+    llm: Any = None,
+    max_agent_steps: int | None = None,
+    cell_runner: CellRunner | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    llm_summarizer: Any | None = None,
+    on_cell_done: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """压缩方法对照:两种压缩上下文各自运行同一次 Agent,唯一自变量是压缩方法。"""
+    from bdlh_runtime.experiments import default_max_agent_steps
+
+    steps = max_agent_steps or default_max_agent_steps()
+    session, variants, _ = _load_session_bundle(session_id)
+    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer)
+    runner = cell_runner or _default_cell_runner
+    configs = {
+        method: RunConfig(
+            execution_engine=EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+            tool_delivery=TOOL_DELIVERY_ALL,
+            governance_profile=GOVERNANCE_STANDARD,
+            context_strategy=method,
+            model=ModelParams(model_id="configured-model"),
+            limits=LimitsConfig(max_agent_steps=steps, max_tool_calls=max(0, steps + 2)),
+            tools=ToolsConfig(catalog_version="session-mock-v1"),
+            context=ContextParams(token_budget=int(compiled[method].token_budget or 0)),
+            fixture_version=str(session.fixture_set_id or "session-gold-v1"),
+        )
+        for method in COMPRESSION_METHODS
+    }
+    cells: list[CellRunResult] = []
+    skipped: list[str] = []
+    for method in COMPRESSION_METHODS:
+        unit_id = f"{session_id}:{method}:{NATIVE_AGENT_MODE_ID}"
+        if should_stop is not None and should_stop():
+            skipped.append(unit_id)
+            continue
+        raw = await runner(session, compiled[method], NATIVE_AGENT_MODE_ID, unit_id, steps, llm=llm)
+        cell = _assemble_cell_result(
+            session, compiled[method], method, NATIVE_AGENT_MODE_ID, raw, compiled,
+            config_hash=configs[method].config_hash,
+        )
+        cells.append(cell)
+        if on_cell_done is not None:
+            on_cell_done({"context_variant": method, "repeat_index": 0})
+    fixed_conditions = {
+        "session_id": session.session_id,
+        "session_version": session.session_version,
+        "source_session_hash": session.source_hash,
+        "repeat_count": COMPRESSION_REPEAT_COUNT,
+        "max_agent_steps": steps,
+        "compression_methods": list(COMPRESSION_METHODS),
+        "agent_mode_ids": [NATIVE_AGENT_MODE_ID],
+        "independent_variable": ["compression_method"],
+        "experiment_definition": "compression-method-comparison",
+        "experiment_definition_note": "同一 budgeted 预算与分类,唯一自变量是摘要器(抽取式 vs LLM 生成式,同模型同目标)",
+    }
+    by_variant = {
+        cell.context_variant: {
+            "total_runs": 1,
+            "valid_runs": int(cell.validity == "VALID"),
+            "invalid_runs": int(cell.validity != "VALID"),
+            "task_success": bool(cell.judgment.get("tool_correct")),
+            "stop_reasons": [cell.stop_reason],
+        }
+        for cell in cells
+    }
+    return {
+        "test_type": TestType.COMPRESSION_CASE.value,
+        "session_id": session_id,
+        "session_version": session.session_version,
+        "repeat_count": COMPRESSION_REPEAT_COUNT,
+        "max_agent_steps": steps,
+        "unit_count": len(COMPRESSION_METHODS),
+        "cells": [cell.__dict__ for cell in cells],
+        "skipped_unit_ids": skipped,
+        "frozen_artifact_hashes": {m: c.compiled_context_hash for m, c in compiled.items()},
+        "run_configs": {
+            f"{session_id}:{m}:{NATIVE_AGENT_MODE_ID}": cfg.config_payload_with_hash()
+            for m, cfg in configs.items()
+        },
+        "fixed_conditions": fixed_conditions,
+        "fixed_conditions_hash": hash_of(fixed_conditions),
+        "by_variant": by_variant,
+        "compression_details": build_compression_details(
+            {m: c.to_payload() for m, c in compiled.items()}, events=session.events
+        ),
+    }
+
+
+def build_compression_details(
+    artifacts: dict[str, dict[str, Any]],
+    *,
+    events: Sequence[Any] = (),
+) -> dict[str, Any]:
+    """上下文工件的决策摘要(公开口径):逐方式的动作计数与被压缩/丢弃条目摘要。
+
+    只含条目标识与 60 字以内的原文摘要,不含完整正文;完整数据经工件下载获取。
+    ``events`` 提供 event_id → 原文的映射来源(Session 事件);缺失时摘要为空串。
+    """
+    content_by_id: dict[str, str] = {}
+    for event in events:
+        event_id = str(getattr(event, "event_id", "") or "")
+        if event_id:
+            content_by_id[event_id] = str(getattr(event, "content", "") or "")
+
+    def excerpt(event_id: str) -> str:
+        text = content_by_id.get(event_id, "")
+        return text[:60] + ("…" if len(text) > 60 else "")
+
+    details: dict[str, Any] = {}
+    for variant, payload in artifacts.items():
+        compressed_ids = [str(eid) for eid in payload.get("compressed_event_ids") or []]
+        omitted_ids = [str(eid) for eid in payload.get("omitted_event_ids") or []]
+        details[variant] = {
+            "strategy": str(payload.get("strategy") or ""),
+            "original_tokens": payload.get("original_tokens"),
+            "working_tokens": payload.get("working_tokens"),
+            "token_budget": payload.get("token_budget"),
+            "required_retained": payload.get("required_retained"),
+            "budget_fit": payload.get("budget_fit"),
+            "counts": {
+                "kept": len(payload.get("kept_event_ids") or []),
+                "compressed": len(compressed_ids),
+                "referenced": len(payload.get("referenced_event_ids") or []),
+                "omitted": len(omitted_ids),
+            },
+            "compressed_items": [{"id": eid, "excerpt": excerpt(eid)} for eid in compressed_ids],
+            "omitted_items": [{"id": eid, "excerpt": excerpt(eid)} for eid in omitted_ids],
+            "warnings": [str(w) for w in payload.get("warnings") or []],
+        }
+    return details
 
 
 def public_session_overview() -> list[dict[str, Any]]:

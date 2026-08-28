@@ -356,6 +356,68 @@ class TestAnonymousService:
         # 取消/中断路径中未开始单元不再显示 QUEUED
         assert all(unit.status != UNIT_STATUS_QUEUED for unit in stored.units)
 
+    def test_template_compression_context_only_zero_units(self, tmp_path):
+        """长上下文模板 × context-only:委托压缩链,0 个 Agent 单元,记录模板口径。"""
+        def compression_executor(job, should_stop=lambda: False):
+            return {
+                "cells": [],
+                "stats": {"variant_count": 4},
+                "compression_details": {"budgeted-session": {"counts": {"kept": 9}}},
+                "test_type": job.test_type,
+            }
+
+        service = _service(tmp_path, compression_executor=compression_executor)
+        job = service.create_job(
+            {"test_type": "COMPRESSION_CASE", "template_id": "context-strategy-comparison",
+             "session_id": "ctx-session-context-engine-debug-01", "execution_scope": "context-only",
+             "repeat_count": 1},
+            anonymous_id_hash=ANON_A,
+        )
+        assert job.units == []
+        assert job.template_id == "context-strategy-comparison"
+        stored = service.store.get(job.job_id)  # 同步线程工厂:读落盘终态
+        assert stored.status == JOB_STATUS_COMPLETE
+        assert stored.result.get("stats", {}).get("variant_count") == 4
+        # 决策摘要在公开结果白名单内,匿名详情页可见
+        assert stored.result.get("compression_details") == {"budgeted-session": {"counts": {"kept": 9}}}
+
+    def test_template_compression_native_matrix_four_units(self, tmp_path):
+        """长上下文模板 × native-matrix:委托压缩链(压缩执行器,非模板执行器)。"""
+        seen_executors = []
+
+        def compression_executor(job, should_stop=lambda: False):
+            seen_executors.append("compression")
+            return {
+                "cells": [
+                    {"unit_id": unit.unit_id, "task_success": True, "validity": "VALID",
+                     "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5}
+                    for unit in job.units
+                ],
+                "unit_count": len(job.units),
+                "by_variant": {},
+            }
+
+        service = _service(
+            tmp_path,
+            compression_executor=compression_executor,
+            template_executor=lambda job, should_stop=lambda: False: (_ for _ in ()).throw(
+                AssertionError("压缩模板任务不应走模板执行器")
+            ),
+        )
+        job = service.create_job(
+            {"test_type": "COMPRESSION_CASE", "template_id": "context-strategy-comparison",
+             "session_id": "ctx-session-context-engine-debug-01", "execution_scope": "native-matrix",
+             "repeat_count": 1},
+            anonymous_id_hash=ANON_A,
+        )
+        assert len(job.units) == 4
+        assert {unit.agent_mode_id for unit in job.units} == {"native-tool-calling"}
+        assert job.template_id == "context-strategy-comparison"
+        stored = service.store.get(job.job_id)
+        assert stored.status == JOB_STATUS_COMPLETE
+        assert stored.completed_unit_count() == 4
+        assert seen_executors == ["compression"]
+
     def test_cancel_queued_job_cancels_all_units(self, tmp_path):
         """排队中的任务被取消:全部单元直接取消,不产生任何模型费用。"""
         service = _service(
