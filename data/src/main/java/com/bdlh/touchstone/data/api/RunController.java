@@ -188,4 +188,18 @@ public class RunController {
     public ResponseEntity<Map<String, Object>> failStaleRuns(@PathVariable UUID batchId) {
         return ResponseEntity.ok(Map.of("failedRuns", runs.failStaleRuns(batchId)));
     }
+
+    /** 批次级工具调用检索:Tool/状态/审计码/参数字段(可观测性设计 §10 阶段三)。 */
+    @GetMapping("/batches/{batchId}/tool-calls/search")
+    public ResponseEntity<Map<String, Object>> searchBatchToolCalls(
+            @PathVariable UUID batchId,
+            @RequestParam(required = false) String tool,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String auditCode,
+            @RequestParam(required = false) String argumentKey,
+            @RequestParam(required = false) String argumentValue,
+            @RequestParam(defaultValue = "200") int limit) {
+        return ResponseEntity.ok(runs.searchBatchToolCalls(
+                batchId, tool, status, auditCode, argumentKey, argumentValue, limit));
+    }
 }

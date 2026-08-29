@@ -213,7 +213,8 @@ public final class RunPayloads {
             @Min(0) int cachedPromptTokens,
             @Min(0) int completionTokens,
             @Min(0) int compressionInputTokens,
-            @Min(0) int compressionOutputTokens) {}
+            @Min(0) int compressionOutputTokens,
+            @Min(0) long telemetryBytes) {}
 
     public record SaveArtifactRequest(
             @NotBlank String artifactType,

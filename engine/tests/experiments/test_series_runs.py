@@ -100,6 +100,20 @@ def series_env(tmp_path, monkeypatch, owner_client):
     return owner_client, store, run_api
 
 
+def _post_run(client: Any, series_id: str, body: dict, retries: int = 8) -> Any:
+    """发起运行;前一次运行终态可见后全局槽可能尚未释放(线程调度间隙),
+    429 时短暂退避重试,避免既存测试的时序脆弱点。"""
+    import time as _time
+
+    response = client.post(f"/api/v1/experiment-series/{series_id}/runs", json=body)
+    attempts = 0
+    while response.status_code == 429 and attempts < retries:
+        attempts += 1
+        _time.sleep(0.1)
+        response = client.post(f"/api/v1/experiment-series/{series_id}/runs", json=body)
+    return response
+
+
 def _wait_for_run(client: Any, series_id: str, run_key: str, timeout: float = 10.0) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -285,39 +299,53 @@ def test_failed_run_does_not_auto_start_next(series_env, monkeypatch):
 
 def test_series_statistics_endpoint(series_env, monkeypatch):
     client, _store, run_api = series_env
-    series_id = client.post(
+    created = client.post(
         "/api/v1/experiment-series",
         json={"template_id": "governance-on-off", "case_id": "cmp-series-01"},
-    ).json()["series_id"]
+    )
+    assert created.status_code == 201
+    created_payload = created.json()
+    series_id = created_payload["series_id"]
+    # 创建时冻结每变体预期 config_hash(统计正式口径的配置一致性锚点)
+    assert created_payload["expected_config_hashes"]["off"]
+    assert created_payload["expected_config_hashes"]["standard"]
 
     monkeypatch.setattr(
         run_api,
         "execute_prepared_series_run",
-        lambda prepared, **kwargs: _fake_payload(prepared.planned.variant_label, 1),
+        # 假 payload 携带计划冻结的 config_hash:与预期哈希一致才会被纳入
+        lambda prepared, **kwargs: {
+            **_fake_payload(prepared.planned.variant_label, 1),
+            "config_hash": prepared.planned.config_hash,
+        },
     )
-    first = client.post(
-        f"/api/v1/experiment-series/{series_id}/runs",
-        json={"variant_id": "off"},
-    ).json()
+    first = _post_run(client, series_id, {"variant_id": "off"}).json()
     _wait_for_run(client, series_id, first["run_key"])
 
     def broken_executor(prepared, **kwargs):
         raise RuntimeError("LLM_UNAVAILABLE: 模拟鉴权失败")
 
     monkeypatch.setattr(run_api, "execute_prepared_series_run", broken_executor)
-    failed = client.post(
-        f"/api/v1/experiment-series/{series_id}/runs",
-        json={"variant_id": "standard"},
-    ).json()
+    failed = _post_run(client, series_id, {"variant_id": "standard"}).json()
     _wait_for_run(client, series_id, failed["run_key"])
 
     snapshot = client.get(f"/api/v1/statistics/experiment-series/{series_id}").json()
     assert snapshot["template_id"] == "governance-on-off"
-    assert snapshot["included_run_ids"] == ["fake-off-1"]
+    # 统计输入的 run_id 是登记簿物理身份(series_id:run_key),非计划 run_id
+    assert snapshot["included_run_ids"] == [f"{series_id}:run-001"]
+    # 完成数/纳入数/排除数统一口径:完成 1(off) + 失败 1(standard) = 输入 2
+    assert snapshot["input_run_count"] == 2
+    assert snapshot["included_run_count"] == 1
+    assert snapshot["excluded_run_count"] == 1
+    assert snapshot["by_variant"]["off"]["completed_count"] == 1
+    assert snapshot["by_variant"]["off"]["included_count"] == 1
+    assert snapshot["by_variant"]["standard"]["failed_count"] == 1
+    assert snapshot["by_variant"]["standard"]["exclusion_reasons"] == {"LLM_UNAVAILABLE": 1}
+    assert snapshot["config_hash_mode"] == "expected"
     assert snapshot["by_variant"]["off"]["sample_level"]["level"] == "single-observation"
     assert snapshot["by_variant"]["standard"]["sample_level"]["level"] == "no-data"
     excluded_reasons = {row["run_id"]: row["reason"] for row in snapshot["excluded_runs"]}
-    assert excluded_reasons[failed["run_key"]] == "LLM_UNAVAILABLE"
+    assert excluded_reasons[f"{series_id}:{failed['run_key']}"] == "LLM_UNAVAILABLE"
 
 
 def test_execute_series_run_with_fake_llm(series_env, monkeypatch):
@@ -393,15 +421,13 @@ def test_compression_series_flow_via_api(series_env, monkeypatch):
 
     monkeypatch.setattr(run_api, "execute_series_run", stub_executor)
     for variant in ("budgeted", "budgeted-llm"):
-        entry = client.post(
-            f"/api/v1/experiment-series/{payload['series_id']}/runs",
-            json={"variant_id": variant},
-        )
+        entry = _post_run(client, payload["series_id"], {"variant_id": variant})
         assert entry.status_code == 200
         _wait_for_run(client, payload["series_id"], entry.json()["run_key"])
     snapshot = client.get(f"/api/v1/statistics/experiment-series/{payload['series_id']}").json()
     assert snapshot["by_variant"]["budgeted"]["success_rate"] == 1.0
-    assert snapshot["by_variant"]["budgeted-llm"]["sample_level"]["level"] == "single-observation"
+    # 压缩模板 formal_min_repeat_count=1:1 个有效样本即达正式最小口径(修复方案 §5)
+    assert snapshot["by_variant"]["budgeted-llm"]["sample_level"]["level"] == "formal-minimum"
 
 
 def test_run_single_compression_method_shape():

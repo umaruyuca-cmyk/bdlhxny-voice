@@ -226,6 +226,33 @@ class DataClient:
             return 0
         return int(payload.get("failedRuns") or 0)
 
+    def search_batch_tool_calls(
+        self,
+        batch_id: str,
+        *,
+        tool: str | None = None,
+        status: str | None = None,
+        audit_code: str | None = None,
+        argument_key: str | None = None,
+        argument_value: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """批次级工具调用检索(阶段三):facets/results/storageBytes。"""
+        params: dict[str, Any] = {"limit": limit}
+        for key, value in (
+            ("tool", tool),
+            ("status", status),
+            ("auditCode", audit_code),
+            ("argumentKey", argument_key),
+            ("argumentValue", argument_value),
+        ):
+            if value:
+                params[key] = value
+        payload = self._request("GET", f"/batches/{batch_id}/tool-calls/search", params=params)
+        if not isinstance(payload, dict):
+            raise DataServiceError("data service returned an invalid tool call search payload")
+        return payload
+
     def complete_run(
         self,
         run_id: str,

@@ -146,6 +146,15 @@ class FakeDataClient:
     def get_run_detail(self, run_id: str) -> dict[str, Any]:
         return {"id": run_id, "events": [], "toolCalls": [], "modelCalls": []}
 
+    def search_batch_tool_calls(self, batch_id: str, **kwargs: Any) -> dict[str, Any]:
+        self.search_calls = (batch_id, kwargs)
+        return {
+            "facets": {"tools": ["market.get_realtime_quote"], "auditCodes": [], "argumentKeys": ["symbol"]},
+            "results": [],
+            "storageBytes": 0,
+            "truncated": False,
+        }
+
     def verify_session(self, token: str) -> dict[str, Any] | None:
         if token == "test-token":
             return {"accountId": "owner", "username": "owner"}
@@ -653,3 +662,51 @@ def test_run_events_stream_requires_login() -> None:
 
     client = TestClient(run_api.app)
     assert client.get(f"/api/v1/runs/{uuid4()}/events/stream").status_code == 401
+
+
+# ── 阶段三:遥测体检内嵌 / 审计包导出 / 批次工具调用检索 ────────────────────
+
+
+def test_run_detail_embeds_telemetry_audit(client: TestClient) -> None:
+    response = client.get("/api/v1/runs/run-9/detail", headers=_auth())
+    assert response.status_code == 200
+    audit = response.json()["telemetryAudit"]
+    assert audit["auditVersion"] == 1
+    assert audit["ok"] is True
+    assert isinstance(audit["storage"]["total"], int)  # 空明细时仅含各空列表的序列化字节
+
+
+def test_audit_package_hash_verifiable_and_downloadable(client: TestClient) -> None:
+    from bdlh_runtime.evaluation.run_telemetry import payload_hash
+
+    response = client.get("/api/v1/runs/run-9/audit-package", headers=_auth())
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment")
+    package = response.json()
+    assert package["auditVersion"] == 1
+    assert "telemetryAudit" in package
+    body = {key: value for key, value in package.items() if key != "auditHash"}
+    # 接收方可复算完整性哈希(设计 §10 阶段三)
+    assert package["auditHash"] == payload_hash(body)
+
+
+def test_batch_tool_call_search_proxies_params(
+    client: TestClient, fake_data: FakeDataClient
+) -> None:
+    response = client.get(
+        "/api/v1/batches/batch-1/tool-calls/search",
+        headers=_auth(),
+        params={"tool": "market.get_realtime_quote", "status": "DENIED",
+                "audit_code": "G3-AUTH-001", "argument_key": "symbol", "limit": 50},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["facets"]["tools"] == ["market.get_realtime_quote"]
+    assert body["storageBytes"] == 0
+    batch_id, kwargs = fake_data.search_calls
+    assert batch_id == "batch-1"
+    assert kwargs["tool"] == "market.get_realtime_quote"
+    assert kwargs["status"] == "DENIED"
+    assert kwargs["audit_code"] == "G3-AUTH-001"
+    assert kwargs["argument_key"] == "symbol"
+    assert kwargs["limit"] == 50

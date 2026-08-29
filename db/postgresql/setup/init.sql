@@ -619,6 +619,7 @@ CREATE TABLE touchstone.run_measurements (
     completion_tokens           INTEGER NOT NULL DEFAULT 0,
     compression_input_tokens    INTEGER NOT NULL DEFAULT 0,
     compression_output_tokens   INTEGER NOT NULL DEFAULT 0,
+    telemetry_bytes             BIGINT NOT NULL DEFAULT 0,
     estimated_model_cost        NUMERIC(18, 8),
     estimated_compression_cost  NUMERIC(18, 8),
     currency                    VARCHAR(10),
@@ -631,6 +632,7 @@ CREATE TABLE touchstone.run_measurements (
         AND (first_output_ms IS NULL OR first_output_ms >= 0) AND total_duration_ms >= 0
         AND prompt_tokens >= 0 AND cached_prompt_tokens >= 0 AND completion_tokens >= 0
         AND compression_input_tokens >= 0 AND compression_output_tokens >= 0
+        AND telemetry_bytes >= 0
         AND (estimated_model_cost IS NULL OR estimated_model_cost >= 0)
         AND (estimated_compression_cost IS NULL OR estimated_compression_cost >= 0)
     )

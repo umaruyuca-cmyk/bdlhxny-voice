@@ -221,6 +221,61 @@ class RunControllerTest {
     }
 
     @Test
+    void searchesBatchToolCallsWithFacets() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("facets", Map.of(
+                "tools", java.util.List.of("market.get_realtime_quote"),
+                "auditCodes", java.util.List.of(),
+                "argumentKeys", java.util.List.of("symbol")));
+        payload.put("results", java.util.List.of(Map.of(
+                "run_id", UUID.randomUUID().toString(),
+                "sequence", 1,
+                "tool_name", "market.get_realtime_quote",
+                "status", "DENIED",
+                "arguments", Map.of("symbol", "300750"))));
+        payload.put("storageBytes", 4096L);
+        payload.put("truncated", false);
+        when(repository.searchBatchToolCalls(
+                Mockito.eq(batchId), Mockito.eq("market.get_realtime_quote"), Mockito.eq("DENIED"),
+                Mockito.isNull(), Mockito.eq("symbol"), Mockito.isNull(), Mockito.eq(50)))
+                .thenReturn(payload);
+
+        mvc.perform(get("/internal/v1/batches/{id}/tool-calls/search", batchId)
+                        .param("tool", "market.get_realtime_quote")
+                        .param("status", "DENIED")
+                        .param("argumentKey", "symbol")
+                        .param("limit", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.facets.tools[0]").value("market.get_realtime_quote"))
+                .andExpect(jsonPath("$.results[0].status").value("DENIED"))
+                .andExpect(jsonPath("$.results[0].arguments.symbol").value("300750"))
+                .andExpect(jsonPath("$.storageBytes").value(4096))
+                .andExpect(jsonPath("$.truncated").value(false));
+    }
+
+    @Test
+    void savesMeasurementsWithTelemetryBytes() throws Exception {
+        String runId = UUID.randomUUID().toString();
+        mvc.perform(post("/internal/v1/runs/{id}/measurements", runId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"queueMs":0,"snapshotMs":0,"contextCollectMs":0,"contextCompressMs":0,
+                                 "toolLoadingMs":0,"llmMs":820,"toolMs":12,"guardrailMs":0,"judgmentMs":0,
+                                 "totalDurationMs":900,"promptTokens":100,"cachedPromptTokens":0,
+                                 "completionTokens":30,"compressionInputTokens":0,"compressionOutputTokens":0,
+                                 "telemetryBytes":8192}
+                                """))
+                .andExpect(status().isAccepted());
+
+        ArgumentCaptor<com.bdlh.touchstone.data.domain.RunPayloads.SaveMeasurementsRequest> captor =
+                ArgumentCaptor.forClass(
+                        com.bdlh.touchstone.data.domain.RunPayloads.SaveMeasurementsRequest.class);
+        verify(repository).saveMeasurements(Mockito.eq(UUID.fromString(runId)), captor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(8192, captor.getValue().telemetryBytes());
+    }
+
+    @Test
     void returnsNotFoundForUnknownRunDetail() throws Exception {
         UUID runId = UUID.randomUUID();
         when(repository.getRunDetail(runId))

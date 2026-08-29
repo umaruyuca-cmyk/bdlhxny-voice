@@ -21,6 +21,13 @@
 .json-block { background: #f6f8fb; border: 1px solid #e3e8f0; border-radius: 6px; padding: 8px; font-size: 12px; overflow: auto; max-height: 340px; white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; }
 .detail-tabs { margin: 10px 0 6px; display: flex; gap: 6px; flex-wrap: wrap; }
 .detail-tabs .tab.tab-on { background: #2b3a67; color: #fff; }
+/* 阶段三:diff 输出与检索 */
+.diff-out { font-size: 12.5px; }
+.diff-out table { margin: 4px 0 10px; }
+.diff-out tr.diff-new td:first-child { color: #166534; font-weight: 600; }
+.diff-out tr.diff-bad td:first-child { color: #b91c1c; font-weight: 600; }
+.diff-out tr.diff-chg td:first-child { color: #92400e; font-weight: 600; }
+.exp-select { font: inherit; padding: 2px 6px; }
 </style>
 </head>
 <body>
@@ -592,6 +599,7 @@
     }).join("");
     box.innerHTML = '<table class="exp-table"><tr><th>分组</th><th>运行数</th><th>完成</th><th>无效/失败</th><th>下钻</th></tr>' + rows + "</table>" +
       '<div id="groupDrill"></div>';
+    renderDiagnostics(box, runs);
     Array.prototype.forEach.call(box.querySelectorAll("[data-group]"), function (btn) {
       btn.addEventListener("click", function () { drillGroup(groups[btn.getAttribute("data-group")]); });
     });
@@ -756,7 +764,7 @@
         .concat(toolCalls.map(function (c) { return { type: "tool", toolCall: c }; }))
         .concat(guardrails.map(function (c) { return { type: "guardrail", guardrailCheck: c }; }));
     }
-    var state = { filter: "all" };
+    var state = { filter: "all", diffA: "0", diffB: "1" };
 
     function stepHtml(entry) {
       if (entry.type === "model") return modelStep(entry);
@@ -766,6 +774,7 @@
     }
 
     function draw() {
+      var audit = detail.telemetryAudit || null;
       var steps = timeline.filter(function (entry) {
         if (state.filter === "all") return true;
         if (state.filter === "context") return entry.type === "event" && entry.eventType === "context.completed";
@@ -780,7 +789,9 @@
         '<span class="m"><b>' + E.esc(measurements.total_duration_ms != null ? measurements.total_duration_ms : "—") + "</b>总耗时 ms</span>" +
         '<span class="m"><b>' + E.esc(measurements.prompt_tokens != null ? measurements.prompt_tokens : "—") + "</b>输入 Token</span>" +
         '<span class="m"><b>' + E.esc(measurements.completion_tokens != null ? measurements.completion_tokens : "—") + "</b>输出 Token</span>" +
+        '<span class="m"><b>' + E.esc(fmtBytes(measurements.telemetry_bytes)) + "</b>遥测体积</span>" +
         "</div>" +
+        auditBannerHtml(audit) +
         '<div class="detail-tabs">' + RUN_DETAIL_TABS.map(function (tab) {
           return '<button type="button" class="drill tab' + (state.filter === tab[0] ? " tab-on" : "") +
             '" data-tab="' + tab[0] + '">' + tab[1] + "</button>";
@@ -788,8 +799,11 @@
         '<div class="run-timeline">' +
         (steps.length ? steps.map(stepHtml).join("") : '<div class="placeholder-block">该视角暂无步骤。</div>') +
         "</div>" +
+        (modelCalls.length >= 2 ? modelCallDiffPanelHtml(modelCalls) : "") +
         '<p class="note-line">时间线按 run_events 全局序号交织;事件流 ' + (detail.events || []).length +
-        " 条,工件 " + (detail.artifacts || []).length + " 件。</p>";
+        " 条,工件 " + (detail.artifacts || []).length + " 件。</p>" +
+        '<div style="margin:8px 0"><button type="button" class="drill" id="auditExport">导出审计包(JSON,含完整性哈希)</button> ' +
+        '<span id="auditExportMsg" class="note-line"></span></div>';
       Array.prototype.forEach.call(target.querySelectorAll("[data-tab]"), function (btn) {
         btn.addEventListener("click", function () {
           state.filter = btn.getAttribute("data-tab");
@@ -805,9 +819,272 @@
           setTimeout(function () { btn.textContent = "复制"; }, 1200);
         });
       });
+      var diffPanel = target.querySelector("#modelDiffPanel");
+      if (diffPanel) {
+        var selectA = diffPanel.querySelector("#diffA");
+        var selectB = diffPanel.querySelector("#diffB");
+        selectA.value = state.diffA;
+        selectB.value = state.diffB;
+        selectA.addEventListener("change", function () { state.diffA = selectA.value; });
+        selectB.addEventListener("change", function () { state.diffB = selectB.value; });
+        diffPanel.querySelector("#diffGo").addEventListener("click", function () {
+          var a = modelCalls[parseInt(selectA.value, 10) || 0];
+          var b = modelCalls[parseInt(selectB.value, 10) || 0];
+          diffPanel.querySelector("#diffOut").innerHTML = modelCallDiffHtml(a, b);
+        });
+      }
+      var exportBtn = target.querySelector("#auditExport");
+      if (exportBtn) {
+        exportBtn.addEventListener("click", function () {
+          downloadAuditPackage(run.id, target.querySelector("#auditExportMsg"));
+        });
+      }
     }
 
     draw();
+  }
+
+  // ── 阶段三:诊断与对比(设计 §10)────────────────────────────────────────
+
+  function fmtBytes(value) {
+    var n = Number(value || 0);
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+    if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+    return n + " B";
+  }
+
+  function auditBannerHtml(audit) {
+    if (!audit) return "";
+    var seq = audit.sequenceIssues || [];
+    var cov = audit.coverageIssues || [];
+    if (!seq.length && !cov.length) {
+      return '<p class="note-line">遥测体检通过:事件序号连续、明细引用完整;存储 '
+        + fmtBytes((audit.storage || {}).total) + "。</p>";
+    }
+    var rows = seq.map(function (item) { return "<li>乱序/悬空:" + E.esc(item) + "</li>"; })
+      .concat(cov.map(function (item) { return "<li>覆盖缺口:" + E.esc(item) + "</li>"; }));
+    return '<div class="warn-bar" style="display:block;margin:8px 0">遥测体检发现 '
+      + (seq.length + cov.length) + ' 处问题<ul style="margin:4px 0 0 18px">' + rows.join("") + "</ul></div>";
+  }
+
+  function schemaName(spec) {
+    return (spec && spec.function && spec.function.name) || "?";
+  }
+
+  function modelCallDiffPanelHtml(modelCalls) {
+    var options = modelCalls.map(function (call, index) {
+      var label = "#" + call.sequence + " · " + (call.decision === "call_tool" ? "调用工具" : "最终回答")
+        + " · " + (call.duration_ms != null ? call.duration_ms + "ms" : "—");
+      return '<option value="' + index + '"' + (index === 1 ? " selected" : "") + ">" + E.esc(label) + "</option>";
+    }).join("");
+    return '<details class="run-step" id="modelDiffPanel"><summary>模型调用对比(请求快照 diff)</summary>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap">' +
+      '<label>对比 <select id="diffA" class="exp-select">' + options + "</select> 与 " +
+      '<select id="diffB" class="exp-select">' + options + "</select></label>" +
+      '<button type="button" class="drill" id="diffGo">生成差异</button></div>' +
+      '<div id="diffOut" class="diff-out"><p class="note-line">选择两个模型调用后生成消息/Schema/参数差异。</p></div></details>';
+  }
+
+  function modelCallDiffHtml(callA, callB) {
+    var html = "";
+    var ma = callA.messages || [], mb = callB.messages || [];
+    var maxLen = Math.max(ma.length, mb.length);
+    if (maxLen) {
+      function volume(m) {
+        return m ? ((m.content || "").length + " 字符/" + (m.tokens != null ? m.tokens : "?") + " tok") : "—";
+      }
+      var rows = "";
+      for (var i = 0; i < maxLen; i++) {
+        var x = ma[i], y = mb[i];
+        var cls = "", tag = "相同";
+        if (x && !y) { cls = "diff-bad"; tag = "仅 A"; }
+        else if (!x && y) { cls = "diff-new"; tag = "仅 B"; }
+        else if (x.contentHash !== y.contentHash || x.role !== y.role) { cls = "diff-chg"; tag = "内容变化"; }
+        rows += '<tr class="' + cls + '"><td>' + tag + "</td><td>#" + i + "</td><td>" + E.esc((x || y).role)
+          + "</td><td>" + volume(x) + " → " + volume(y) + "</td></tr>";
+      }
+      html += '<b>消息对齐(A ' + ma.length + " 条 / B " + mb.length + ' 条)</b><table class="exp-table"><tr><th>结论</th><th>#</th><th>角色</th><th>体量(A → B)</th></tr>' + rows + "</table>";
+    }
+    var sa = {}, sb = {};
+    (callA.tool_schemas || []).forEach(function (s) { sa[schemaName(s)] = s; });
+    (callB.tool_schemas || []).forEach(function (s) { sb[schemaName(s)] = s; });
+    var added = Object.keys(sb).filter(function (n) { return !sa[n]; });
+    var removed = Object.keys(sa).filter(function (n) { return !sb[n]; });
+    var changed = Object.keys(sb).filter(function (n) { return sa[n] && JSON.stringify(sa[n]) !== JSON.stringify(sb[n]); });
+    html += "<b>当轮 Tool Schema(A " + Object.keys(sa).length + " 个 / B " + Object.keys(sb).length + ' 个)</b><p class="note-line">'
+      + (added.length ? "B 新增:" + E.esc(added.join(", ")) + "; " : "")
+      + (removed.length ? "B 移除:" + E.esc(removed.join(", ")) + "; " : "")
+      + (changed.length ? "描述/参数变化:" + E.esc(changed.join(", ")) + "; " : "")
+      + (!added.length && !removed.length && !changed.length ? "两轮完全一致" : "") + "</p>";
+    var keys = {};
+    Object.keys(callA.sent_params || {}).forEach(function (k) { keys[k] = 1; });
+    Object.keys(callB.sent_params || {}).forEach(function (k) { keys[k] = 1; });
+    var paramRows = "";
+    Object.keys(keys).forEach(function (key) {
+      var va = (callA.sent_params || {})[key], vb = (callB.sent_params || {})[key];
+      if (JSON.stringify(va) !== JSON.stringify(vb)) {
+        paramRows += '<tr><td class="mono">' + E.esc(key) + "</td><td>" + E.esc(JSON.stringify(va))
+          + "</td><td>" + E.esc(JSON.stringify(vb)) + "</td></tr>";
+      }
+    });
+    html += "<b>发送参数差异</b>" + (paramRows
+      ? '<table class="exp-table"><tr><th>参数</th><th>A sent</th><th>B sent</th></tr>' + paramRows + "</table>"
+      : '<p class="note-line">两轮发送参数一致</p>');
+    return html;
+  }
+
+  function downloadAuditPackage(runId, msgEl) {
+    var headers = {};
+    if (E.token()) headers["Authorization"] = "Bearer " + E.token();
+    if (msgEl) msgEl.textContent = "正在生成…";
+    fetch("/api/v1/runs/" + encodeURIComponent(runId) + "/audit-package", { headers: headers })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url;
+        link.download = "audit-" + runId + ".json";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+        if (msgEl) msgEl.textContent = "已导出 audit-" + String(runId).slice(0, 8) + "….json";
+      })
+      .catch(function (err) {
+        if (msgEl) msgEl.textContent = "导出失败:" + (err.message || "服务不可用");
+      });
+  }
+
+  function renderDiagnostics(box, runs) {
+    if (!runs.length) return;
+    var options = runs.map(function (r, index) {
+      var mc = r.modelConfig || {};
+      return '<option value="' + index + '">' + E.esc((mc.variantLabel || r.variant_id || "—")
+        + " · 第" + ((mc.repeatIndex != null ? mc.repeatIndex : index) + 1) + "次 · " + E.batchStatusLabel(r.status)) + "</option>";
+    }).join("");
+    var card = document.createElement("div");
+    card.innerHTML =
+      '<details class="run-step" id="variantDiffCard" style="margin-top:12px"><summary>变体 Tool Schema 对比</summary>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap">' +
+      '<label>对比 <select id="schemaA" class="exp-select">' + options + "</select> 与 " +
+      '<select id="schemaB" class="exp-select">' + options + "</select></label>" +
+      '<button type="button" class="drill" id="schemaDiffGo">生成差异</button></div>' +
+      '<div id="schemaDiffOut" class="diff-out"><p class="note-line">选择两个运行后逐轮对比当轮 Tool Schema(search 模式的逐轮差异正是看点)。</p></div></details>' +
+      '<details class="run-step" id="toolSearchCard" style="margin-top:8px"><summary>明细检索(按工具/状态/审计码/参数字段)</summary>' +
+      '<div id="toolSearchFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"></div>' +
+      '<div id="toolSearchOut" class="diff-out"><p class="note-line">加载检索选项…</p></div></details>';
+    box.appendChild(card);
+    card.querySelector("#schemaDiffGo").addEventListener("click", function () {
+      var a = runs[parseInt(card.querySelector("#schemaA").value, 10) || 0];
+      var b = runs[parseInt(card.querySelector("#schemaB").value, 10) || 0];
+      var out = card.querySelector("#schemaDiffOut");
+      out.innerHTML = '<p class="note-line">读取两个运行的明细…</p>';
+      Promise.all([
+        E.get("/api/v1/runs/" + encodeURIComponent(a.id) + "/detail"),
+        E.get("/api/v1/runs/" + encodeURIComponent(b.id) + "/detail"),
+      ]).then(function (details) {
+        out.innerHTML = schemaDiffHtml(details[0], details[1]);
+      }).catch(function (err) {
+        out.innerHTML = '<div class="placeholder-block">读取失败:' + E.esc(err.message || "服务不可用") + "</div>";
+      });
+    });
+    renderToolSearchCard(card);
+  }
+
+  function schemaDiffHtml(detailA, detailB) {
+    var rounds = Math.max((detailA.modelCalls || []).length, (detailB.modelCalls || []).length);
+    var html = "";
+    for (var round = 0; round < rounds; round++) {
+      var sa = {}, sb = {};
+      (((detailA.modelCalls || [])[round] || {}).tool_schemas || []).forEach(function (s) { sa[schemaName(s)] = s; });
+      (((detailB.modelCalls || [])[round] || {}).tool_schemas || []).forEach(function (s) { sb[schemaName(s)] = s; });
+      var added = Object.keys(sb).filter(function (n) { return !sa[n]; });
+      var removed = Object.keys(sa).filter(function (n) { return !sb[n]; });
+      var changed = Object.keys(sb).filter(function (n) { return sa[n] && JSON.stringify(sa[n]) !== JSON.stringify(sb[n]); });
+      html += "<b>第 " + (round + 1) + " 轮</b><p class=\"note-line\">A " + Object.keys(sa).length + " 个 / B "
+        + Object.keys(sb).length + " 个 · "
+        + (added.length ? "B 新增:" + E.esc(added.join(", ")) + "; " : "")
+        + (removed.length ? "B 移除:" + E.esc(removed.join(", ")) + "; " : "")
+        + (changed.length ? "描述/参数变化:" + E.esc(changed.join(", ")) + "; " : "")
+        + (!added.length && !removed.length && !changed.length ? "一致" : "") + "</p>";
+    }
+    return html || '<p class="note-line">两个运行均无模型调用。</p>';
+  }
+
+  function renderToolSearchCard(card) {
+    var filtersEl = card.querySelector("#toolSearchFilters");
+    var outEl = card.querySelector("#toolSearchOut");
+    var current = {};
+
+    function facetSelect(key, label, values) {
+      var options = ['<option value="">全部</option>'].concat((values || []).map(function (value) {
+        return '<option value="' + E.esc(value) + '"' + (value === current[key] ? " selected" : "") + ">" + E.esc(value) + "</option>";
+      })).join("");
+      return "<label>" + label + ' <select class="exp-select" data-filter="' + key + '">' + options + "</select></label>";
+    }
+
+    function openRunDetail(runId) {
+      outEl.innerHTML = '<div class="placeholder-block">读取 ' + E.esc(String(runId).slice(0, 8)) + " 明细…</div>";
+      E.get("/api/v1/runs/" + encodeURIComponent(runId) + "/detail").then(function (detail) {
+        outEl.innerHTML = "";
+        var holder = document.createElement("div");
+        outEl.appendChild(holder);
+        renderRunDetail(holder, detail);
+      }).catch(function (err) {
+        outEl.innerHTML = '<div class="placeholder-block">明细读取失败:' + E.esc(err.message || "服务不可用") + "</div>";
+      });
+    }
+
+    function renderSearchResults(payload) {
+      var facets = payload.facets || {};
+      filtersEl.innerHTML =
+        facetSelect("tool", "工具", facets.tools) +
+        facetSelect("status", "状态", ["SUCCESS", "FAILED", "TIMEOUT", "DENIED", "INVALID"]) +
+        facetSelect("auditCode", "审计码", facets.auditCodes) +
+        facetSelect("argumentKey", "参数字段", facets.argumentKeys) +
+        '<button type="button" class="drill" id="toolSearchGo">查询</button>';
+      Array.prototype.forEach.call(filtersEl.querySelectorAll("select"), function (sel) {
+        sel.addEventListener("change", function () { current[sel.getAttribute("data-filter")] = sel.value; });
+      });
+      filtersEl.querySelector("#toolSearchGo").addEventListener("click", fetchSearch);
+      var results = payload.results || [];
+      var rows = results.map(function (row) {
+        return '<tr data-run="' + E.esc(row.run_id) + '"><td>' + E.esc(row.variant_label || row.variant_id || "—")
+          + '</td><td class="mono">' + E.esc(String(row.run_id).slice(0, 8)) + "</td><td>" + E.esc(row.sequence)
+          + '</td><td class="mono">' + E.esc(row.tool_name) + "</td><td>" + E.esc(row.status)
+          + "</td><td>" + E.esc(row.audit_code || "—") + "</td><td>" + (row.fixture_hit ? "命中" : "未命中")
+          + '</td><td class="mono">' + E.esc(row.duration_ms != null ? row.duration_ms : "—") + " ms</td></tr>";
+      }).join("");
+      outEl.innerHTML = '<p class="note-line">批次遥测存储合计:' + fmtBytes(payload.storageBytes)
+        + (payload.truncated ? " · 结果截断至上限" : "") + "</p>"
+        + (results.length
+          ? '<table class="exp-table"><tr><th>变体</th><th>运行</th><th>#</th><th>工具</th><th>状态</th><th>审计码</th><th>冻结</th><th>耗时</th></tr>'
+            + rows + '</table><p class="note-line">点击行查看该运行的完整明细。</p>'
+          : '<div class="placeholder-block">没有匹配的工具调用。</div>');
+      Array.prototype.forEach.call(outEl.querySelectorAll("tr[data-run]"), function (tr) {
+        tr.style.cursor = "pointer";
+        tr.addEventListener("click", function () { openRunDetail(tr.getAttribute("data-run")); });
+      });
+    }
+
+    function fetchSearch() {
+      var params = new URLSearchParams();
+      if (current.tool) params.set("tool", current.tool);
+      if (current.status) params.set("status", current.status);
+      if (current.auditCode) params.set("auditCode", current.auditCode);
+      if (current.argumentKey) params.set("argumentKey", current.argumentKey);
+      params.set("limit", "200");
+      E.get("/api/v1/batches/" + encodeURIComponent(batchId) + "/tool-calls/search?" + params.toString())
+        .then(renderSearchResults)
+        .catch(function (err) {
+          outEl.innerHTML = '<div class="placeholder-block">检索失败:' + E.esc(err.message || "服务不可用") + "</div>";
+        });
+    }
+
+    fetchSearch();
   }
 
   if (!batchId) { fail("缺少批次标识。"); }

@@ -394,6 +394,98 @@ public class RunRepository {
                 batchId);
     }
 
+    /**
+     * 批次级工具调用检索(可观测性设计 §10 阶段三:按 Tool/状态/审计码/参数字段)。
+     * 返回 facets(下拉选项)、results(结构化行)、storageBytes(批次遥测字节合计);
+     * 参数字段检索用 jsonb_exists(键存在)与 arguments->>(键取值),避免与占位符冲突。
+     */
+    public Map<String, Object> searchBatchToolCalls(
+            UUID batchId, String tool, String status, String auditCode,
+            String argumentKey, String argumentValue, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit <= 0 ? 200 : limit, 500));
+        StringBuilder where = new StringBuilder(" ar.batch_id = ? ");
+        List<Object> params = new ArrayList<>();
+        params.add(batchId);
+        if (tool != null && !tool.isBlank()) {
+            where.append(" AND tc.tool_name = ? ");
+            params.add(tool);
+        }
+        if (status != null && !status.isBlank()) {
+            where.append(" AND tc.status = ? ");
+            params.add(status);
+        }
+        if (auditCode != null && !auditCode.isBlank()) {
+            where.append(" AND tc.audit_code = ? ");
+            params.add(auditCode);
+        }
+        if (argumentKey != null && !argumentKey.isBlank()) {
+            where.append(" AND jsonb_exists(tc.arguments, ?) ");
+            params.add(argumentKey);
+            if (argumentValue != null && !argumentValue.isBlank()) {
+                where.append(" AND tc.arguments ->> ? = ? ");
+                params.add(argumentKey);
+                params.add(argumentValue);
+            }
+        }
+
+        List<Map<String, Object>> results = jdbc.queryForList(
+                """
+                SELECT tc.run_id, tc.sequence, tc.tool_name, tc.status, tc.audit_code,
+                       tc.fixture_hit, tc.duration_ms, tc.arguments::text AS arguments,
+                       tc.error_category, ar.variant_id,
+                       COALESCE(ar.model_config ->> 'variantLabel', ar.variant_id) AS variant_label
+                FROM touchstone.tool_calls tc
+                JOIN touchstone.agent_runs ar ON ar.id = tc.run_id
+                WHERE """ + where + """
+                ORDER BY ar.created_at DESC, tc.run_id, tc.sequence
+                LIMIT ?
+                """,
+                params.stream().toArray());
+        results.forEach(row -> jsonbFields(row, "arguments"));
+
+        List<String> tools = jdbc.queryForList(
+                """
+                SELECT DISTINCT tc.tool_name FROM touchstone.tool_calls tc
+                JOIN touchstone.agent_runs ar ON ar.id = tc.run_id
+                WHERE ar.batch_id = ? ORDER BY tc.tool_name
+                """,
+                String.class, batchId);
+        List<String> codes = jdbc.queryForList(
+                """
+                SELECT DISTINCT tc.audit_code FROM touchstone.tool_calls tc
+                JOIN touchstone.agent_runs ar ON ar.id = tc.run_id
+                WHERE ar.batch_id = ? AND tc.audit_code IS NOT NULL ORDER BY tc.audit_code
+                """,
+                String.class, batchId);
+        List<String> argumentKeys = jdbc.queryForList(
+                """
+                SELECT DISTINCT key FROM (
+                    SELECT jsonb_object_keys(tc.arguments) AS key
+                    FROM touchstone.tool_calls tc
+                    JOIN touchstone.agent_runs ar ON ar.id = tc.run_id
+                    WHERE ar.batch_id = ?
+                ) keys ORDER BY key
+                """,
+                String.class, batchId);
+        Long storageBytes = jdbc.queryForObject(
+                """
+                SELECT COALESCE(SUM(m.telemetry_bytes), 0) FROM touchstone.run_measurements m
+                JOIN touchstone.agent_runs ar ON ar.id = m.run_id
+                WHERE ar.batch_id = ?
+                """,
+                Long.class, batchId);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("facets", Map.of(
+                "tools", tools,
+                "auditCodes", codes,
+                "argumentKeys", argumentKeys));
+        payload.put("results", results);
+        payload.put("storageBytes", storageBytes == null ? 0L : storageBytes);
+        payload.put("truncated", results.size() >= safeLimit);
+        return payload;
+    }
+
     @Transactional
     public void saveModelCalls(UUID runId, SaveModelCallsRequest request) {
         for (ModelCallInput call : request.calls()) {
@@ -551,8 +643,9 @@ public class RunRepository {
                     (run_id, queue_ms, snapshot_ms, context_collect_ms, context_compress_ms,
                      tool_loading_ms, llm_ms, tool_ms, guardrail_ms, judgment_ms,
                      first_output_ms, total_duration_ms, prompt_tokens, cached_prompt_tokens,
-                     completion_tokens, compression_input_tokens, compression_output_tokens)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     completion_tokens, compression_input_tokens, compression_output_tokens,
+                     telemetry_bytes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (run_id) DO UPDATE SET
                     queue_ms = EXCLUDED.queue_ms,
                     snapshot_ms = EXCLUDED.snapshot_ms,
@@ -569,12 +662,14 @@ public class RunRepository {
                     cached_prompt_tokens = EXCLUDED.cached_prompt_tokens,
                     completion_tokens = EXCLUDED.completion_tokens,
                     compression_input_tokens = EXCLUDED.compression_input_tokens,
-                    compression_output_tokens = EXCLUDED.compression_output_tokens
+                    compression_output_tokens = EXCLUDED.compression_output_tokens,
+                    telemetry_bytes = EXCLUDED.telemetry_bytes
                 """,
                 runId, m.queueMs(), m.snapshotMs(), m.contextCollectMs(), m.contextCompressMs(),
                 m.toolLoadingMs(), m.llmMs(), m.toolMs(), m.guardrailMs(), m.judgmentMs(),
                 m.firstOutputMs(), m.totalDurationMs(), m.promptTokens(), m.cachedPromptTokens(),
-                m.completionTokens(), m.compressionInputTokens(), m.compressionOutputTokens());
+                m.completionTokens(), m.compressionInputTokens(), m.compressionOutputTokens(),
+                m.telemetryBytes());
     }
 
     public void saveArtifact(UUID runId, SaveArtifactRequest request) {
@@ -729,7 +824,7 @@ public class RunRepository {
                        tool_loading_ms, llm_ms, tool_ms, guardrail_ms, judgment_ms,
                        first_output_ms, total_duration_ms, prompt_tokens,
                        cached_prompt_tokens, completion_tokens,
-                       compression_input_tokens, compression_output_tokens
+                       compression_input_tokens, compression_output_tokens, telemetry_bytes
                 FROM touchstone.run_measurements WHERE run_id = ?
                 """,
                 runId);

@@ -285,6 +285,15 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(series, /E\.streamRunEvents\(/, "实时面板消费共享 SSE 客户端");
   assert.match(series, /run\.completed/, "收到运行结束事件后停流收尾");
   assert.match(series, /至少一次投递/, "至少一次投递由前端按 sequence 去重");
+  // 诊断与对比(阶段三,设计 §10):diff/检索/审计包/遥测体检
+  assert.match(batch, /modelCallDiffPanelHtml/, "运行详情提供模型调用对比面板");
+  assert.match(batch, /modelCallDiffHtml/, "模型调用 diff 覆盖消息/Schema/参数三态");
+  assert.match(batch, /auditBannerHtml/, "详情页内嵌遥测体检结论(缺失/乱序可见)");
+  assert.match(batch, /audit-package/, "单次运行审计包可导出");
+  assert.match(batch, /renderDiagnostics/, "所有者结果区提供诊断与对比卡");
+  assert.match(batch, /variantDiffCard/, "支持不同变体 Tool Schema 逐轮对比");
+  assert.match(batch, /tool-calls\/search/, "批次级明细检索按工具/状态/审计码/参数字段");
+  assert.match(batch, /exp-select/, "检索过滤一律下拉(select),不用文本输入");
   // 进度区真实性:作业 404(服务重启清内存)必须终止轮询并回刷批次终态,不能冻结在「进行中」
   assert.match(batch, /status === "gone"/, "作业 404 映射为清除终态(终止轮询)");
   assert.match(batch, /作业进度记录已随服务重启清除/, "清除态有明确文案");
@@ -292,6 +301,33 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(batch, /ownerMeta\(fresh\)/, "终态回刷同时刷新 meta 状态行");
   assert.match(batch, /最近完成:/, "进度 current 标注为最近完成(不冒充当前)");
   assert.match(batch, /不逐次计数/, "done 未计数时如实说明,不用假百分比");
+});
+
+test("实验组统计展示(统计模块修复方案 §9):有效样本唯一口径来自统计快照", async () => {
+  const series = await readPage("/experiment/series.html");
+  // 样本累计区三数并陈:有效/排除/完成全部读取统计模块输出(P0-2)
+  assert.match(series, /included_count/, "有效样本读取统计 included_count");
+  assert.match(series, /excluded_count/, "排除数读取统计 excluded_count");
+  assert.match(series, /completed_count/, "完成数读取统计 completed_count");
+  assert.match(series, /failed_count/, "失败数读取统计 failed_count");
+  assert.match(series, /included_run_count/, "整体累计纳入读取统计顶层计数");
+  assert.match(series, /excluded_run_count/, "整体累计排除读取统计顶层计数");
+  // 结果等级直接读取快照,前端不按数字重复推导;整体等级读 sample_sufficiency
+  assert.match(series, /sample_sufficiency/, "整体等级读取统计 sample_sufficiency");
+  assert.match(series, /sample_level/, "每变体等级直接读取统计 sample_level");
+  assert.ok(!series.includes("counts_by_variant"), "前端不再消费 done 口径的 counts_by_variant");
+  assert.ok(!series.includes("个有效样本"), "不再把 done 计数写成「N 个有效样本」");
+  assert.ok(!series.includes('"初步趋势"') && !series.includes('"单次观察"'), "前端不再本地推导等级文案");
+  // 数据质量警告与对比区域
+  assert.match(series, /data_quality_warnings/, "重复 run_id 的数据质量警告醒目展示");
+  assert.match(series, /对比不可用/, "comparison.available=false 时展示原因,不渲染空图表");
+  assert.match(series, /formal_available/, "正式对比可用状态同步展示");
+  // 统计不可用时建议按钮停用,不回退 done 口径
+  assert.match(series, /统计暂不可用/, "统计不可用时有明确提示");
+  assert.ok(series.includes("|| !statsReady"), "统计快照未到达前不放开建议按钮");
+  // 排除记录带说明列;定义区展示预期配置哈希
+  assert.match(series, /row\.detail/, "排除记录展示简短说明");
+  assert.match(series, /expected_config_hashes/, "实验定义区展示每变体预期配置哈希");
 });
 
 test("运行记录页(P1-3):三 Tab 统一历史运行,匿名任务走公开接口", async () => {

@@ -14,7 +14,7 @@ import os
 import secrets
 import threading
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -523,24 +523,115 @@ def get_batch_report(batch_id: str, account: Annotated[dict[str, Any], Depends(r
 
 @app.get("/api/v1/statistics/batches/{batch_id}")
 def get_batch_statistics(batch_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
-    """实验组累计统计快照(P0-7):纯代码从原始运行记录重算,不产生任何 LLM 请求。
+    """批次累计统计快照(P0-7):纯代码从原始运行记录重算,不产生任何 LLM 请求。
 
     原始运行记录是事实真源,统计快照是可重建的派生数据;
     每次请求全量重算,展示口径永远与源数据一致。
+    正式样本门槛从报告冻结条件读取(缺省 3);批次口径无预期配置
+    哈希,配置一致性按观察主导值(历史兼容)。
     """
     report = _load_batch_report(batch_id)
     if report is None:
         raise HTTPException(status_code=404, detail="批次报告不存在,无法生成统计快照")
     from bdlh_runtime.statistics import build_snapshot
 
-    return build_snapshot(batch_id, report=report)
+    conditions = report.get("fixed_conditions")
+    formal_min = (
+        conditions.get("formal_min_repeat_count") if isinstance(conditions, dict) else None
+    )
+    return build_snapshot(batch_id, report=report, formal_min_repeat_count=formal_min)
 
 
 @app.get("/api/v1/runs/{run_id}/detail")
 def get_run_detail(run_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
-    """单次运行逐步明细:事件流 + 模型/工具/guardrail 明细 + 测量 + 工件登记。"""
+    """单次运行逐步明细:事件流 + 模型/工具/guardrail 明细 + 测量 + 工件登记。
+
+    响应内嵌 ``telemetryAudit``(阶段三遥测体检:序号连续性/覆盖缺口/存储量,
+    设计 §10),页面免二次请求。
+    """
     try:
-        return _data().get_run_detail(run_id)
+        detail = _data().get_run_detail(run_id)
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    from bdlh_runtime.evaluation.telemetry_audit import audit_run_detail
+
+    detail["telemetryAudit"] = audit_run_detail(detail)
+    return detail
+
+
+def _audit_package(run_id: str, detail: dict[str, Any]) -> dict[str, Any]:
+    """单次运行审计包(阶段三):detail 全量 + provenance + 遥测体检 + 完整性哈希。
+
+    ``audit_hash`` 覆盖除自身外的全部字段(canonical JSON sha256),接收方可复算
+    验证包未被篡改;按需组装不落 run_artifacts,避免写放大(设计 §10 阶段三)。
+    """
+    from bdlh_runtime.evaluation.run_telemetry import REQUEST_SNAPSHOT_VERSION, payload_hash
+    from bdlh_runtime.evaluation.telemetry_audit import AUDIT_VERSION
+
+    package: dict[str, Any] = {
+        "auditVersion": AUDIT_VERSION,
+        "requestSnapshotVersion": REQUEST_SNAPSHOT_VERSION,
+        "exportedAt": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        "run": detail.get("run") or {},
+        "timeline": detail.get("timeline") or [],
+        "events": detail.get("events") or [],
+        "modelCalls": detail.get("modelCalls") or [],
+        "toolCalls": detail.get("toolCalls") or [],
+        "guardrailChecks": detail.get("guardrailChecks") or [],
+        "measurements": detail.get("measurements") or [],
+        "artifacts": detail.get("artifacts") or [],
+        "telemetryAudit": detail.get("telemetryAudit") or {},
+        "provenance": {
+            "gitCommit": os.getenv("GIT_COMMIT", "unknown"),
+            "exportedBy": "touchstone-engine",
+        },
+    }
+    package["auditHash"] = payload_hash({key: value for key, value in package.items() if key != "auditHash"})
+    return package
+
+
+@app.get("/api/v1/runs/{run_id}/audit-package")
+def export_audit_package(run_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> Response:
+    """导出单次运行审计包(所有者专用,JSON 附件下载)。"""
+    try:
+        detail = _data().get_run_detail(run_id)
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    from bdlh_runtime.evaluation.telemetry_audit import audit_run_detail
+
+    detail["telemetryAudit"] = audit_run_detail(detail)
+    package = _audit_package(run_id, detail)
+    content = json.dumps(package, ensure_ascii=False, indent=2, default=str)
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="audit-{run_id}.json"'},
+    )
+
+
+@app.get("/api/v1/batches/{batch_id}/tool-calls/search")
+def search_batch_tool_calls(
+    batch_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+    tool: str | None = None,
+    status: str | None = None,
+    audit_code: str | None = None,
+    argument_key: str | None = None,
+    argument_value: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """批次级工具调用检索(阶段三):按 Tool/状态/审计码/参数字段过滤,
+    返回 facets(下拉选项)、results、storageBytes(批次遥测字节合计)。"""
+    try:
+        return _data().search_batch_tool_calls(
+            batch_id,
+            tool=tool,
+            status=status,
+            audit_code=audit_code,
+            argument_key=argument_key,
+            argument_value=argument_value,
+            limit=limit,
+        )
     except DataServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -893,6 +984,21 @@ def _execute_template_batch(
     )
 
 
+def _telemetry_bytes(row: dict[str, Any]) -> int:
+    """明细四类的 canonical JSON 字节总量(与 telemetry_audit.storage 同口径)。"""
+    from bdlh_runtime.evaluation.run_telemetry import canonical_json
+
+    def size(items: Any) -> int:
+        return len(canonical_json(list(items or [])).encode("utf-8"))
+
+    return (
+        size(row.get("events"))
+        + size(row.get("model_calls"))
+        + size(row.get("tool_calls"))
+        + size(row.get("guardrail_checks"))
+    )
+
+
 def _persist_run_details(data: DataClient, run_id: str, row: dict[str, Any]) -> None:
     """单次运行明细分项落库(模板/实验组路径,可观测性设计 §5.2)。
 
@@ -916,6 +1022,7 @@ def _persist_run_details(data: DataClient, run_id: str, row: dict[str, Any]) -> 
                 "totalDurationMs": int(row.get("duration_ms") or 0),
                 "promptTokens": int(row.get("input_tokens") or 0),
                 "completionTokens": int(row.get("output_tokens") or 0),
+                "telemetryBytes": _telemetry_bytes(row),
             },
         )
     tool_calls = list(row.get("tool_calls") or [])
@@ -1548,6 +1655,15 @@ def create_experiment_series(
     except (TemplatePlanError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     planned_labels = {run.variant_label for run in plan.runs}
+    # 冻结每变体预期 config_hash(统计模块正式口径的配置一致性锚点):
+    # repeat_count=1 时每变体恰好展开一个运行单元。仅对比用例冻结——
+    # 压缩用例的实际运行不经过模板计划链路(压缩 runner 自建 RunConfig),
+    # 计划哈希与运行哈希不可比,保持观察主导值兼容口径。
+    expected_config_hashes = (
+        {}
+        if compression_session
+        else {run.variant_label: run.config_hash for run in plan.runs}
+    )
     record = SeriesRecord(
         series_id=f"series-{uuid4().hex[:12]}",  # DB 版以 create_batch 生成的 batch_id 为准
         template_id=plan.template_id,
@@ -1560,6 +1676,7 @@ def create_experiment_series(
         advanced=request.advanced or {},
         preset_id=request.preset_id,
         formal_min_repeat_count=template.formal_min_repeat_count,
+        expected_config_hashes=expected_config_hashes,
     )
     try:
         record = _SERIES_STORE.create(record)
@@ -1573,6 +1690,7 @@ def create_experiment_series(
         "variant_labels": record.variant_labels,
         "definition_hash": record.fixed_conditions_hash,
         "formal_min_repeat_count": record.formal_min_repeat_count,
+        "expected_config_hashes": record.expected_config_hashes,
         "runs_url": f"/api/v1/experiment-series/{series_id}/runs",
         "statistics_url": f"/api/v1/statistics/experiment-series/{series_id}",
     }
@@ -1682,6 +1800,7 @@ def get_experiment_series(
         "definition_hash": record.fixed_conditions_hash,
         "variant_labels": record.variant_labels,
         "formal_min_repeat_count": record.formal_min_repeat_count,
+        "expected_config_hashes": record.expected_config_hashes,
         "counts_by_variant": record.counts_by_variant(),
         "total_runs": sum(1 for row in record.runs if row.get("status") == "done"),
         "active_run": _series_run_entry_view(active, series_id) if active else None,
@@ -1712,6 +1831,10 @@ def get_series_statistics(
     """实验组累计统计快照(P0-7):纯代码从已完成 Run 全量重算,不产生任何 LLM 请求。
 
     失败运行以无效证据身份进入 excluded_runs,保持排除口径透明。
+    统计输入的 run_id 使用登记簿唯一物理身份(series_id:run_key):
+    运行 payload 内的计划 run_id 同变体恒同值,不满足"每次物理运行
+    全局唯一"的统计输入契约(修复方案 P0-1);登记条目才是物理运行的
+    身份真源。原始记录不做任何修改。
     """
     record = _SERIES_STORE.get(series_id)
     if record is None:
@@ -1720,11 +1843,14 @@ def get_series_statistics(
     for row in record.runs:
         if row.get("status") == "done" and isinstance(row.get("payload"), dict):
             # 报告口径:剥离逐轮消息正文(明细真源在数据服务明细表)
-            runs.append(_report_run_payload(row["payload"]))
+            entry = _report_run_payload(row["payload"])
+            entry["run_id"] = f"{series_id}:{row.get('run_key')}"
+            entry["run_outcome"] = "completed"
+            runs.append(entry)
         elif row.get("status") == "failed":
             runs.append(
                 {
-                    "run_id": row.get("run_key"),
+                    "run_id": f"{series_id}:{row.get('run_key')}",
                     "variant_label": row.get("variant_id"),
                     "repeat_index": row.get("repeat_index"),
                     "config_hash": "",
@@ -1734,6 +1860,7 @@ def get_series_statistics(
                     "duration_ms": 0,
                     "tool_calls": [],
                     "error": row.get("error"),
+                    "run_outcome": "failed",
                 }
             )
     report = {
@@ -1744,7 +1871,13 @@ def get_series_statistics(
     }
     from bdlh_runtime.statistics import build_snapshot
 
-    return build_snapshot(series_id, report=report, planned_variants=record.variant_labels)
+    return build_snapshot(
+        series_id,
+        report=report,
+        planned_variants=record.variant_labels,
+        formal_min_repeat_count=record.formal_min_repeat_count,
+        expected_config_hashes=record.expected_config_hashes or None,
+    )
 
 
 @app.post("/api/v1/public/test-jobs")

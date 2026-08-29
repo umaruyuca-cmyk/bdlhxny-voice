@@ -637,7 +637,14 @@ class RunRecorder:
 
 
 def build_measurements(record: RunRecord, *, judgment_ms: int) -> dict[str, Any]:
-    """分阶段测量(架构文档 §7.1 全链路口径中当前可观察的部分)。"""
+    """分阶段测量(架构文档 §7.1 全链路口径中当前可观察的部分)。
+
+    ``telemetryBytes`` 为明细四类(events/model_calls/tool_calls/guardrail_checks)
+    的 canonical JSON 字节总量,与 telemetry_audit.storage 同口径(设计 §9.3)。
+    """
+
+    def _bytes(items: Any) -> int:
+        return len(canonical_json(list(items)).encode("utf-8"))
 
     build = record.context_build or {}
     return {
@@ -651,6 +658,12 @@ def build_measurements(record: RunRecord, *, judgment_ms: int) -> dict[str, Any]
         "totalDurationMs": record.duration_ms,
         "promptTokens": sum(row.input_tokens for row in record.model_calls),
         "completionTokens": sum(row.output_tokens for row in record.model_calls),
+        "telemetryBytes": (
+            _bytes(record.events)
+            + sum(_bytes([row.to_payload()]) for row in record.model_calls)
+            + sum(_bytes([row.to_payload()]) for row in record.tool_calls)
+            + sum(_bytes([row.to_payload()]) for row in record.guardrail_checks)
+        ),
     }
 
 
