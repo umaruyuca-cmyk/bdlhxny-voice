@@ -169,8 +169,8 @@ def test_single_run_creates_exactly_one_run(series_env, monkeypatch):
 
     monkeypatch.setattr(
         run_api,
-        "execute_series_run",
-        lambda series, variant_id, **kwargs: _fake_payload(variant_id, 1),
+        "execute_prepared_series_run",
+        lambda prepared, **kwargs: _fake_payload(prepared.planned.variant_label, 1),
     )
     response = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
@@ -181,6 +181,8 @@ def test_single_run_creates_exactly_one_run(series_env, monkeypatch):
     row = _wait_for_run(client, series_id, "run-001")
     assert row["status"] == "done"
     assert row["result"]["variant_label"] == "off"
+    # 阶段二:运行启动即回写 agent_runs 行标识(实时订阅键)
+    assert row.get("agent_run_id")
 
     detail = client.get(f"/api/v1/experiment-series/{series_id}").json()
     assert detail["total_runs"] == 1
@@ -195,8 +197,8 @@ def test_idempotency_replay_and_conflict(series_env, monkeypatch):
     ).json()["series_id"]
     monkeypatch.setattr(
         run_api,
-        "execute_series_run",
-        lambda series, variant_id, **kwargs: _fake_payload(variant_id, 1),
+        "execute_prepared_series_run",
+        lambda prepared, **kwargs: _fake_payload(prepared.planned.variant_label, 1),
     )
     first = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
@@ -225,11 +227,11 @@ def test_single_active_run_constraint_and_repeat_allocation(series_env, monkeypa
 
     release = __import__("threading").Event()
 
-    def blocking_executor(series, variant_id, **kwargs):
+    def blocking_executor(prepared, **kwargs):
         release.wait(timeout=10)
         return _fake_payload(variant_id, 1)
 
-    monkeypatch.setattr(run_api, "execute_series_run", blocking_executor)
+    monkeypatch.setattr(run_api, "execute_prepared_series_run", blocking_executor)
     first = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
         json={"variant_id": "off"},
@@ -243,7 +245,7 @@ def test_single_active_run_constraint_and_repeat_allocation(series_env, monkeypa
     _wait_for_run(client, series_id, first["run_key"])
 
     monkeypatch.setattr(
-        run_api, "execute_series_run", lambda series, variant_id, **kwargs: _fake_payload(variant_id, 2)
+        run_api, "execute_prepared_series_run", lambda prepared, **kwargs: _fake_payload("off", 2)
     )
     third = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
@@ -261,10 +263,10 @@ def test_failed_run_does_not_auto_start_next(series_env, monkeypatch):
         json={"template_id": "governance-on-off", "case_id": "cmp-series-01"},
     ).json()["series_id"]
 
-    def broken_executor(series, variant_id, **kwargs):
+    def broken_executor(prepared, **kwargs):
         raise RuntimeError("模拟执行失败")
 
-    monkeypatch.setattr(run_api, "execute_series_run", broken_executor)
+    monkeypatch.setattr(run_api, "execute_prepared_series_run", broken_executor)
     response = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
         json={"variant_id": "off", "idempotency_key": "key-fail-0001"},
@@ -290,8 +292,8 @@ def test_series_statistics_endpoint(series_env, monkeypatch):
 
     monkeypatch.setattr(
         run_api,
-        "execute_series_run",
-        lambda series, variant_id, **kwargs: _fake_payload(variant_id, 1),
+        "execute_prepared_series_run",
+        lambda prepared, **kwargs: _fake_payload(prepared.planned.variant_label, 1),
     )
     first = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
@@ -299,10 +301,10 @@ def test_series_statistics_endpoint(series_env, monkeypatch):
     ).json()
     _wait_for_run(client, series_id, first["run_key"])
 
-    def broken_executor(series, variant_id, **kwargs):
+    def broken_executor(prepared, **kwargs):
         raise RuntimeError("LLM_UNAVAILABLE: 模拟鉴权失败")
 
-    monkeypatch.setattr(run_api, "execute_series_run", broken_executor)
+    monkeypatch.setattr(run_api, "execute_prepared_series_run", broken_executor)
     failed = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
         json={"variant_id": "standard"},
@@ -443,6 +445,7 @@ class _FakeDataClient:
     def __init__(self):
         self.batches: dict[str, dict] = {}
         self.reports: dict[str, dict] = {}
+        self.runs: dict[str, dict] = {}
         self._seq = 0
 
     def create_batch(self, *, name, experiment_type, fixed_conditions):
@@ -458,6 +461,22 @@ class _FakeDataClient:
 
     def get_batch_report(self, batch_id):
         return self.reports.get(batch_id)
+
+    def create_run(self, payload):
+        self._seq += 1
+        run_id = f"run-{self._seq:03d}"
+        self.runs[run_id] = {"status": "CREATED", **payload}
+        return run_id
+
+    def update_model_config(self, run_id, model_config):
+        self.runs[run_id]["model_config"] = model_config
+
+    def save_events(self, run_id, events):
+        self.runs.setdefault(run_id, {}).setdefault("events", []).extend(events)
+
+    def complete_run(self, run_id, output, *, status, error_category=None):
+        self.runs[run_id]["status"] = status
+        self.runs[run_id]["output"] = output
 
 
 def _series_record() -> "SeriesRecord":

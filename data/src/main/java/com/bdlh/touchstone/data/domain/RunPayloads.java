@@ -110,6 +110,9 @@ public final class RunPayloads {
             String errorCategory,
             String errorMessage) {}
 
+    /** 运行配置补全:提前建行后,运行完成回写完整 modelConfig。 */
+    public record UpdateModelConfigRequest(@NotNull JsonNode modelConfig) {}
+
     public record LlmConfigRequest(
             @NotBlank String baseUrl,
             @NotBlank String model,

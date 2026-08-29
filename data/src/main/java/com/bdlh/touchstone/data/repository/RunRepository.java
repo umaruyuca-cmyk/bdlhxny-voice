@@ -346,6 +346,7 @@ public class RunRepository {
                     INSERT INTO touchstone.run_events
                         (id, run_id, sequence, event_type, payload, occurred_at)
                     VALUES (?, ?, ?, ?, ?::jsonb, COALESCE(?::timestamptz, now()))
+                    ON CONFLICT (run_id, sequence) DO NOTHING
                     """,
                     UUID.randomUUID(),
                     runId,
@@ -354,6 +355,43 @@ public class RunRepository {
                     json(event.payload()),
                     event.occurredAt());
         }
+    }
+
+    /** 轻量事件历史(SSE 无发布器时的补发真源;payload 结构化返回)。 */
+    public List<Map<String, Object>> getRunEvents(UUID runId) {
+        List<Map<String, Object>> events = jdbc.queryForList(
+                """
+                SELECT sequence, event_type, payload::text AS payload, occurred_at
+                FROM touchstone.run_events WHERE run_id = ? ORDER BY sequence
+                """,
+                runId);
+        events.forEach(row -> jsonbFields(row, "payload"));
+        return events;
+    }
+
+    /** 运行配置补全(提前建行后,运行完成回写完整 modelConfig)。 */
+    public void updateModelConfig(UUID runId, JsonNode modelConfig) {
+        int updated = jdbc.update(
+                """
+                UPDATE touchstone.agent_runs SET model_config = ?::jsonb WHERE id = ?
+                """,
+                jsonOrEmpty(modelConfig),
+                runId);
+        if (updated == 0) {
+            throw new IllegalArgumentException("unknown run_id: " + runId);
+        }
+    }
+
+    /** 引擎重启后清理本批次的孤儿运行行(执行前建行但未达终态)。 */
+    public int failStaleRuns(UUID batchId) {
+        return jdbc.update(
+                """
+                UPDATE touchstone.agent_runs
+                SET status = 'FAILED', error_category = 'PROCESS_RESTART',
+                    error_message = '引擎重启:运行中断,未达到终态', completed_at = now()
+                WHERE batch_id = ? AND status = 'CREATED'
+                """,
+                batchId);
     }
 
     @Transactional

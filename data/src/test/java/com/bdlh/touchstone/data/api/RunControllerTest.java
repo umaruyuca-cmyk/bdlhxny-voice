@@ -181,6 +181,46 @@ class RunControllerTest {
     }
 
     @Test
+    void returnsRunEventsList() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(repository.getRunEvents(runId)).thenReturn(java.util.List.of(
+                Map.of("sequence", 1, "eventType", "run.started",
+                        "payload", Map.of(),
+                        "occurredAt", "2026-08-29T00:00:00Z")));
+
+        mvc.perform(get("/internal/v1/runs/{id}/events", runId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[0].eventType").value("run.started"))
+                .andExpect(jsonPath("$[0].payload").isMap());
+    }
+
+    @Test
+    void updatesModelConfig() throws Exception {
+        UUID runId = UUID.randomUUID();
+        mvc.perform(post("/internal/v1/runs/{id}/model-config", runId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"modelConfig":{"templateId":"governance-on-off","appliedModelParams":{"temperature":0.3}}}
+                                """))
+                .andExpect(status().isAccepted());
+        ArgumentCaptor<com.fasterxml.jackson.databind.JsonNode> captor =
+                ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
+        verify(repository).updateModelConfig(Mockito.eq(runId), captor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "governance-on-off", captor.getValue().get("templateId").asText());
+    }
+
+    @Test
+    void failsStaleRunsForBatch() throws Exception {
+        UUID batchId = UUID.randomUUID();
+        when(repository.failStaleRuns(batchId)).thenReturn(2);
+        mvc.perform(post("/internal/v1/batches/{id}/fail-stale-runs", batchId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.failedRuns").value(2));
+    }
+
+    @Test
     void returnsNotFoundForUnknownRunDetail() throws Exception {
         UUID runId = UUID.randomUUID();
         when(repository.getRunDetail(runId))

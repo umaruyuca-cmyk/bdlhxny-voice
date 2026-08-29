@@ -549,3 +549,107 @@ def test_owner_context_batch_idempotency(
     )
     assert conflict.status_code == 409
     assert len(calls) == 1
+
+
+# ── 阶段二:运行事件实时流(SSE,设计 §7.2) ─────────────────────────────────
+
+
+def _seed_done_publisher(run_id: str) -> Any:
+    """用真实 recorder+发布器造一段已终态的事件流(run.started 起步)。"""
+    from bdlh_runtime.evaluation.run_event_bus import RunEventPublisher, register_publisher
+    from bdlh_runtime.evaluation.run_telemetry import RunRecorder
+
+    recorder = RunRecorder(
+        run_key="research-01:native-tool-calling:0",
+        case_id="research-01",
+        case_version=1,
+        variant_id="default",
+        snapshot_id="research-01:fixture-v1",
+        snapshot_hash="sha256:snap",
+        agent_mode="native-tool-calling",
+        context_strategy="fixed-case-input",
+        model="glm-4.7-flash",
+        repeat_index=0,
+        message="宁德时代现在什么价",
+        category="金融研究",
+    )
+    publisher = RunEventPublisher(run_id)
+    publisher.attach(recorder)  # 补投 run.started
+    recorder.emit("context.completed", {"strategy": "full"})
+    recorder.emit("run.completed", {"status": "COMPLETE"})
+    publisher.complete()
+    register_publisher(publisher)
+    return publisher
+
+
+def _stream_body(client: TestClient, url: str, headers: dict[str, str]) -> str:
+    lines: list[str] = []
+    with client.stream("GET", url, headers=headers) as response:
+        assert response.status_code == 200
+        for line in response.iter_lines():
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def test_run_events_stream_replays_backlog_and_closes_on_done(client: TestClient) -> None:
+    from uuid import uuid4
+
+    run_id = str(uuid4())
+    _seed_done_publisher(run_id)
+    body = _stream_body(client, f"/api/v1/runs/{run_id}/events/stream", _auth())
+    # 至少一次投递:积压事件全部补发;run.completed 后服务端关流(流正常结束)
+    assert "event: run.started" in body
+    assert "event: context.completed" in body
+    assert "event: run.completed" in body
+    assert "id: 3" in body
+
+
+def test_run_events_stream_resumes_from_last_event_id(client: TestClient) -> None:
+    from uuid import uuid4
+
+    run_id = str(uuid4())
+    _seed_done_publisher(run_id)
+    body = _stream_body(
+        client,
+        f"/api/v1/runs/{run_id}/events/stream",
+        {"Last-Event-ID": "2", **_auth()},
+    )
+    assert "id: 1" not in body and "id: 2" not in body
+    assert "event: run.completed" in body  # 只补发 sequence>2 的部分
+
+
+def test_run_events_stream_falls_back_to_db_history(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from uuid import uuid4
+
+    run_id = str(uuid4())
+
+    class StubData:
+        def verify_session(self, token: str) -> dict[str, Any] | None:
+            return {"username": "owner"} if token == "test-token" else None
+
+        def get_run_detail(self, _run_id: str) -> dict[str, Any]:
+            return {
+                "run": {"status": "COMPLETE"},
+                "events": [
+                    {"sequence": 1, "eventType": "run.started", "payload": {}, "occurredAt": None},
+                    {"sequence": 2, "eventType": "run.completed", "payload": {}, "occurredAt": None},
+                ],
+            }
+
+    monkeypatch.setattr(run_api, "_data", lambda: StubData())
+    body = _stream_body(client, f"/api/v1/runs/{run_id}/events/stream", _auth())
+    assert "event: run.started" in body and "event: run.completed" in body
+
+
+def test_run_events_stream_rejects_invalid_run_id(client: TestClient) -> None:
+    response = client.get("/api/v1/runs/not-a-uuid/events/stream", headers=_auth())
+    assert response.status_code == 400
+
+
+def test_run_events_stream_requires_login() -> None:
+    from uuid import uuid4
+
+    client = TestClient(run_api.app)
+    assert client.get(f"/api/v1/runs/{uuid4()}/events/stream").status_code == 401

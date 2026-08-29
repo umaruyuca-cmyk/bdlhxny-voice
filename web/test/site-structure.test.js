@@ -276,6 +276,15 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(batch, /E\.esc\(JSON\.stringify\(/, "JSON 渲染经 HTML 转义,不可注入");
   assert.match(batch, /step-bad/, "失败/拒绝步骤标记并默认展开");
   assert.match(batch, /未命中冻结数据/, "工具步骤展示 fixture 命中状态");
+
+  // 运行中实时步骤(阶段二,设计 §7.2):SSE 客户端 + 实验组页实时面板
+  assert.match(experimentJs, /streamRunEvents/, "共享脚本提供 SSE 事件流客户端(Bearer 头经 fetch 流式解析)");
+  assert.match(experimentJs, /Last-Event-ID/, "断线重连携带 Last-Event-ID 续传游标");
+  const series = await readPage("/experiment/series.html");
+  assert.match(series, /liveRunPanel/, "实验组页有运行中实时步骤面板");
+  assert.match(series, /E\.streamRunEvents\(/, "实时面板消费共享 SSE 客户端");
+  assert.match(series, /run\.completed/, "收到运行结束事件后停流收尾");
+  assert.match(series, /至少一次投递/, "至少一次投递由前端按 sequence 去重");
   // 进度区真实性:作业 404(服务重启清内存)必须终止轮询并回刷批次终态,不能冻结在「进行中」
   assert.match(batch, /status === "gone"/, "作业 404 映射为清除终态(终止轮询)");
   assert.match(batch, /作业进度记录已随服务重启清除/, "清除态有明确文案");

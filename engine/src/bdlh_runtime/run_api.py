@@ -13,29 +13,45 @@ import json
 import os
 import secrets
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from bdlh_runtime.data_client import DataClient, DataServiceError
 from bdlh_runtime.evaluation.context_eval import COMPARISON_VARIANTS, DEFAULT_INTERLEAVE_SEED
+from bdlh_runtime.evaluation.run_event_bus import (
+    RunEventPublisher,
+    get_publisher as get_run_event_publisher,
+    register_publisher,
+)
 from bdlh_runtime.evaluation.run_telemetry import (
     ARTIFACT_VERSION,
+    EVENT_RUN_COMPLETED,
+    RUN_STATUS_COMPLETE,
+    RUN_STATUS_FAILED,
+    RUN_STATUS_INVALID,
     RunRecord,
     artifact_hash_of,
     build_run_artifact,
+    classify_failure,
     validity_of,
     verify_artifact_hash,
 )
 from bdlh_runtime.experiments.compression import public_session_overview
 from bdlh_runtime.experiments.job_store import JobStore, sha256_hex
-from bdlh_runtime.experiments.series_runner import SeriesRunError, execute_series_run
+from bdlh_runtime.experiments.series_runner import (
+    SeriesRunError,
+    execute_prepared_series_run,
+    execute_series_run,
+    series_run_kind,
+)
 from bdlh_runtime.experiments.series_store import (
     DbSeriesStore,
     SeriesConflictError,
@@ -152,11 +168,19 @@ def _remember_owner_idempotency(account: dict[str, Any], request: BaseModel, res
 
 def _fail_orphan_batches(data: DataClient, *, limit: int = 50) -> int:
     """把 data 服务里仍处 RUNNING 的批次标记 FAILED(单实例部署:上一进程
-    执行中的批次随进程死亡,不会自愈;诚实标记而非永远挂起)。返回清理数量。"""
+    执行中的批次随进程死亡,不会自愈;诚实标记而非永远挂起)。返回清理数量。
+
+    伴生清理:阶段二起对比用例运行在执行前建行(agent_runs 行 status=CREATED),
+    孤儿批次内的未终态运行行一并置 FAILED/PROCESS_RESTART。
+    """
     rows = (data.list_batches(limit=limit).get("batches") or [])
     orphans = [row for row in rows if str(row.get("status")) == "RUNNING"]
     for row in orphans:
         data.complete_batch(str(row["id"]), "FAILED")
+        try:
+            data.fail_stale_runs(str(row["id"]))
+        except Exception as exc:  # noqa: BLE001 —— 单批清理失败不影响其余批次
+            print(f"[run_api] 孤儿运行行清理失败(batch={row['id']}):{type(exc).__name__}: {exc}")
     return len(orphans)
 
 
@@ -519,6 +543,90 @@ def get_run_detail(run_id: str, account: Annotated[dict[str, Any], Depends(requi
         return _data().get_run_detail(run_id)
     except DataServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+#: SSE 心跳间隔(秒):必须显著小于代理 read timeout(nginx 默认 300s)
+_SSE_HEARTBEAT_SECONDS = 15.0
+_TERMINAL_RUN_STATUSES = {"COMPLETE", "FAILED", "INVALID", "CANCELLED"}
+
+
+def _sse_frame(event: dict[str, Any]) -> str:
+    """SSE 帧:id=sequence(断线续传游标)+ event 类型 + data JSON。"""
+    return (
+        f"id: {event.get('sequence')}\n"
+        f"event: {event.get('eventType')}\n"
+        f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    )
+
+
+def _run_event_stream_source(run_id: str, last_sequence: int):
+    """事件源生成器:发布器优先,读库兜底(设计 §7.2 至少一次投递)。
+
+    - 有发布器(运行中):积压补发 → 实时跟随 → run.completed 后关流;
+    - 无发布器(已完成/他进程):读库补发历史,终态即关流,否则退避重查;
+    - 客户端按 (run_id, sequence) 去重,重复投递无害。
+    """
+    last = last_sequence
+    while True:
+        publisher = get_run_event_publisher(run_id)
+        if publisher is not None:
+            for event in publisher.backlog_after(last):
+                yield _sse_frame(event)
+                last = int(event.get("sequence") or 0)
+            if publisher.done and last >= publisher.last_sequence:
+                return
+            publisher.wait(_SSE_HEARTBEAT_SECONDS)
+            if publisher.last_sequence > last or publisher.done:
+                continue
+            yield ": ping\n\n"
+            continue
+        # 无发布器:运行已完成(或属其它进程/重启竞态)——读库补发历史
+        try:
+            detail = _data().get_run_detail(run_id)
+        except DataServiceError as exc:
+            yield f"event: stream.error\ndata: {json.dumps({'message': str(exc)}, ensure_ascii=False)}\n\n"
+            return
+        events = detail.get("events") or []
+        for event in events:
+            if int(event.get("sequence") or 0) > last:
+                yield _sse_frame(event)
+                last = int(event.get("sequence") or 0)
+        run_status = str((detail.get("run") or {}).get("status") or "")
+        has_completed_event = any(e.get("eventType") == EVENT_RUN_COMPLETED for e in events)
+        if run_status in _TERMINAL_RUN_STATUSES or has_completed_event:
+            return
+        time.sleep(_SSE_HEARTBEAT_SECONDS)
+        yield ": ping\n\n"
+
+
+@app.get("/api/v1/runs/{run_id}/events/stream")
+def stream_run_events(
+    run_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+    last_event_id: int = 0,
+    last_event_id_header: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+) -> StreamingResponse:
+    """所有者专用实时事件流(阶段二,设计 §7.2)。
+
+    原生 EventSource 无法携带 Bearer 头,前端经 fetch ReadableStream 消费;
+    断线以 Last-Event-ID(或 ?last_event_id=)续传,至少一次投递。
+    """
+    try:
+        UUID(run_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="run_id 不是合法 UUID") from None
+    start_sequence = last_event_id
+    if last_event_id_header:
+        try:
+            start_sequence = int(last_event_id_header)
+        except ValueError:
+            start_sequence = 0
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
+    return StreamingResponse(
+        _run_event_stream_source(run_id, start_sequence),
+        media_type="text/event-stream",
+        headers=headers,
+    )
 
 
 # ---------------------------------------------------------------------
@@ -928,6 +1036,113 @@ def _persist_series_run(data: DataClient, series: SeriesRecord, payload: dict[st
         status="COMPLETE" if payload.get("validity") == "VALID" else "INVALID",
         error_category=payload.get("error"),
     )
+
+
+def _series_run_model_config(
+    record: SeriesRecord,
+    prepared: Any,
+    entry: dict[str, Any],
+    *,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """实验组运行 modelConfig(提前建行时构建;完成后补 appliedModelParams)。"""
+    from bdlh_runtime.experiments.templates import EXPERIMENT_DEFINITION_VERSION
+
+    planned = prepared.planned
+    model_config = {
+        "templateId": record.template_id,
+        "templateVersion": record.template_version,
+        "experimentDefinitionVersion": EXPERIMENT_DEFINITION_VERSION,
+        "seriesId": record.series_id,
+        "variantLabel": planned.variant_label,
+        "repeatIndex": entry.get("repeat_index"),
+        "configHash": planned.config_hash,
+        "perRunConfig": planned.run_config.to_payload(),
+        "fixtureSetId": str(prepared.case.fixture_set_id),
+    }
+    if payload is not None:
+        model_config["appliedModelParams"] = payload.get("applied_model_params") or {}
+    return model_config
+
+
+def _series_create_run_payload(record: SeriesRecord, prepared: Any, entry: dict[str, Any]) -> dict[str, Any]:
+    """提前建行载荷:运行启动即占位 agent_runs 行(SSE 与增量持久化的键)。"""
+    run_config = prepared.planned.run_config
+    case = prepared.case
+    registered = next(
+        (v for v in (case.conditions.get("case_variants") or []) if v.get("snapshot_id")),
+        None,
+    )
+    return {
+        "batchId": record.series_id,
+        "caseId": case.case_id,
+        "caseVersion": int(case.case_version),
+        "variantId": str(registered["variant_id"]) if registered else "default",
+        "snapshotId": str(registered["snapshot_id"]) if registered else f"{case.case_id}:default:{case.fixture_set_id}",
+        "agentMode": "native-tool-calling",
+        "contextStrategy": str(run_config.context_strategy or "full"),
+        "model": str(run_config.model.model_id or "configured-model"),
+        "gitCommit": os.getenv("GIT_COMMIT", "unknown"),
+        "modelConfig": _series_run_model_config(record, prepared, entry),
+    }
+
+
+def _prepare_live_series_run(record: SeriesRecord, entry: dict[str, Any], variant_id: str) -> dict[str, Any]:
+    """对比用例运行启动:计划展开 → 提前建行 → 注册实时发布器 → 回写 run_id。"""
+    from bdlh_runtime.experiments.series_runner import prepare_series_run
+
+    prepared = prepare_series_run(record, variant_id, model_capability=_template_model_capability())
+    run_id = str(_data().create_run(_series_create_run_payload(record, prepared, entry)))
+    publisher = register_publisher(
+        RunEventPublisher(
+            run_id,
+            flush=lambda events, _run_id=run_id: _data().save_events(_run_id, events),
+        )
+    )
+    _SERIES_STORE.attach_run_id(record.series_id, entry["run_key"], run_id)
+    return {"run_id": run_id, "prepared": prepared, "publisher": publisher, "record": record, "entry": entry}
+
+
+def _finalize_live_series_run(live: dict[str, Any], payload: dict[str, Any] | None, error_text: str | None) -> None:
+    """实时通道收尾(尽力而为,不回滚实验组登记)。
+
+    终态事件 flush → (成功)模型配置补全 + 明细落库 → complete_run;
+    失败运行同样诚实落 FAILED/INVALID 终态行(可观测性设计 §12.2)。
+    """
+    run_id = live["run_id"]
+    try:
+        live["publisher"].complete()  # 最终事件 flush(成功时 run.completed 已触发增量落库)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[run_api] 事件终态落库失败(run={run_id}):{type(exc).__name__}: {exc}")
+    try:
+        data = _data()
+        if payload:
+            data.update_model_config(
+                run_id,
+                _series_run_model_config(live["record"], live["prepared"], live["entry"], payload=payload),
+            )
+            _persist_run_details(data, run_id, payload)
+        if payload:
+            status = RUN_STATUS_COMPLETE if payload.get("validity") == "VALID" else RUN_STATUS_INVALID
+            error_category = payload.get("error")
+        else:
+            status, category = classify_failure(error_text)
+            error_category = category or None
+            if status == RUN_STATUS_COMPLETE:  # 异常路径不应出现 COMPLETE;兜底为 FAILED
+                status = RUN_STATUS_FAILED
+        data.complete_run(
+            run_id,
+            {
+                "answer_excerpt": str((payload or {}).get("answer") or "")[:200],
+                "stop_reason": (payload or {}).get("stop_reason"),
+                "actual_agent_steps": (payload or {}).get("actual_agent_steps"),
+                "config_hash": (payload or {}).get("config_hash") or live["prepared"].planned.config_hash,
+            },
+            status=status,
+            error_category=error_category,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[run_api] 实验组运行落库失败(登记保留):{type(exc).__name__}: {exc}")
 
 
 def _public_template_case(case_id: str) -> Any:
@@ -1398,26 +1613,43 @@ def create_series_run(
     def task() -> None:
         succeeded = False
         payload: dict[str, Any] = {}
+        live: dict[str, Any] | None = None
+        error_text: str | None = None
         try:
             _SERIES_STORE.mark_running(series_id, entry["run_key"])
-            payload = execute_series_run(
-                _SERIES_STORE.get(series_id),
-                request.variant_id,
-                model=model,
-                model_capability=_template_model_capability(),
-                max_agent_steps=_public_service.quota.max_agent_steps,
-            )
+            record = _SERIES_STORE.get(series_id)
+            if record is None:
+                raise RuntimeError(f"实验组状态不可读:{series_id}")
+            if series_run_kind(record) == "comparison":
+                # 阶段二(设计 §10):执行前创建 agent_runs 行并注册实时发布器,
+                # 事件增量落库与 SSE 都以真实 run_id 为键;失败也诚实落 FAILED 行
+                live = _prepare_live_series_run(record, entry, request.variant_id)
+                payload = execute_prepared_series_run(
+                    live["prepared"], event_sink=live["publisher"]
+                )
+            else:
+                payload = execute_series_run(
+                    record,
+                    request.variant_id,
+                    model=model,
+                    model_capability=_template_model_capability(),
+                    max_agent_steps=_public_service.quota.max_agent_steps,
+                )
             payload["repeat_index"] = entry["repeat_index"]  # 登记序号回写,统计与展示一致
             _SERIES_STORE.complete_run(series_id, entry["run_key"], payload)
             succeeded = True
         except Exception as exc:  # noqa: BLE001 —— 失败进入可见状态,不自动启动下一个运行
-            _SERIES_STORE.fail_run(series_id, entry["run_key"], f"{type(exc).__name__}: {exc}")
+            error_text = f"{type(exc).__name__}: {exc}"
+            _SERIES_STORE.fail_run(series_id, entry["run_key"], error_text)
         finally:
             _BATCH_SLOTS.release()
-        if not succeeded:
+            if live is not None:
+                # 槽位已释放:落库是纯簿记,不占用 Agent 并发槽;
+                # 成功补齐明细,失败也保留事件与终态(可观测性设计 §12.2)
+                _finalize_live_series_run(live, payload if succeeded else None, error_text)
+        if not succeeded or live is not None:
             return
-        # 槽位已释放:agent_runs 落库是纯簿记,不占用 Agent 并发槽;
-        # 失败不影响登记(状态文档已有正本)
+        # 压缩路径维持完成后落库(无事件源;登记状态文档已有正本)
         record = _SERIES_STORE.get(series_id)
         if record is None:
             return

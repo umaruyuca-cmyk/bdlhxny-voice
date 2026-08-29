@@ -4,6 +4,7 @@ import static com.bdlh.touchstone.data.domain.RunPayloads.*;
 
 import com.bdlh.touchstone.data.repository.RunRepository;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -165,5 +166,26 @@ public class RunController {
             @Valid @RequestBody CompleteRunRequest request) {
         runs.complete(runId, request);
         return ResponseEntity.accepted().build();
+    }
+
+    /** 轻量事件历史(SSE 无发布器时的补发真源)。 */
+    @GetMapping("/runs/{runId}/events")
+    public ResponseEntity<List<Map<String, Object>>> getRunEvents(@PathVariable UUID runId) {
+        return ResponseEntity.ok(runs.getRunEvents(runId));
+    }
+
+    /** 运行配置补全(提前建行后,运行完成回写完整 modelConfig)。 */
+    @PostMapping("/runs/{runId}/model-config")
+    public ResponseEntity<Void> updateModelConfig(
+            @PathVariable UUID runId,
+            @Valid @RequestBody UpdateModelConfigRequest request) {
+        runs.updateModelConfig(runId, request.modelConfig());
+        return ResponseEntity.accepted().build();
+    }
+
+    /** 引擎重启后清理本批次的孤儿运行行(执行前建行但未达终态)。 */
+    @PostMapping("/batches/{batchId}/fail-stale-runs")
+    public ResponseEntity<Map<String, Object>> failStaleRuns(@PathVariable UUID batchId) {
+        return ResponseEntity.ok(Map.of("failedRuns", runs.failStaleRuns(batchId)));
     }
 }

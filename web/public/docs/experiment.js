@@ -220,6 +220,81 @@ window.EXP = (function () {
     return "";
   }
 
+  /* 运行事件实时流(阶段二,设计 §7.2):fetch ReadableStream 手工解析 SSE——
+     所有者鉴权是 Bearer 头(sessionStorage),原生 EventSource 不可行。
+     断线以 lastEventId 指数退避重连(服务端按 sequence 续传,客户端只接受
+     更大序号去重);收到 run.completed 后回调 onDone 并停止。返回 stop()。 */
+  function streamRunEvents(runId, handlers, opts) {
+    handlers = handlers || {};
+    opts = opts || {};
+    var stopped = false;
+    var controller = new AbortController();
+    var lastEventId = opts.lastEventId || 0;
+    var attempt = 0;
+
+    function parseFrame(frame) {
+      var sequence = 0, eventType = "", data = "";
+      frame.split("\n").forEach(function (line) {
+        if (line.indexOf("id:") === 0) sequence = parseInt(line.slice(3).trim(), 10) || 0;
+        else if (line.indexOf("event:") === 0) eventType = line.slice(6).trim();
+        else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
+        /* ": ping" 心跳注释行忽略 */
+      });
+      if (!eventType || !data) return null;
+      try {
+        var body = JSON.parse(data);
+        return { sequence: body.sequence || sequence, eventType: eventType, payload: body.payload };
+      } catch (e) { return null; }
+    }
+
+    function connect() {
+      if (stopped) return;
+      var url = "/api/v1/runs/" + encodeURIComponent(runId) + "/events/stream";
+      if (lastEventId > 0) url += "?last_event_id=" + lastEventId;
+      var headers = {};
+      if (token()) headers["Authorization"] = "Bearer " + token();
+      if (lastEventId > 0) headers["Last-Event-ID"] = String(lastEventId);
+      fetch(url, { headers: headers, cache: "no-store", signal: controller.signal }).then(function (res) {
+        if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
+        attempt = 0;
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder("utf-8");
+        var buffer = "";
+        function pump() {
+          return reader.read().then(function (chunk) {
+            if (stopped) { try { reader.cancel(); } catch (e) {} return; }
+            buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+            var frames = buffer.split("\n\n");
+            buffer = frames.pop(); // 末段可能是残帧,留在缓冲
+            frames.forEach(function (frame) {
+              var event = parseFrame(frame);
+              if (!event || event.sequence <= lastEventId) return;
+              lastEventId = event.sequence;
+              if (handlers.onEvent) handlers.onEvent(event);
+              if (event.eventType === "run.completed") {
+                stopped = true;
+                if (handlers.onDone) handlers.onDone(event);
+                try { reader.cancel(); } catch (e) {}
+              }
+            });
+            if (chunk.done) throw new Error("服务端关闭了事件流");
+            return pump();
+          });
+        }
+        return pump();
+      }).catch(function (err) {
+        if (stopped || controller.signal.aborted) return;
+        attempt += 1;
+        var delay = Math.min(15000, 1000 * Math.pow(2, attempt - 1));
+        if (handlers.onError) handlers.onError(err, delay);
+        setTimeout(connect, delay);
+      });
+    }
+
+    connect();
+    return function stop() { stopped = true; controller.abort(); };
+  }
+
   return {
     ANON_RUN_CAP: ANON_RUN_CAP,
     token: token,
@@ -241,6 +316,7 @@ window.EXP = (function () {
     jobActive: jobActive,
     statusTag: statusTag,
     poll: poll,
+    streamRunEvents: streamRunEvents,
     loadTemplates: loadTemplates,
     templateCardHtml: templateCardHtml,
     jobProgress: jobProgress,

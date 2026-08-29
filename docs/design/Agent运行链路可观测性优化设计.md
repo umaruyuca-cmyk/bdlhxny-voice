@@ -1,7 +1,7 @@
 # Agent 运行链路可观测性优化设计
 
-> 状态：阶段一（运行完成后可复查）已于 2026-08-29 实施；阶段二（SSE 实时）与阶段三（诊断对比）未实施
-> 实施偏差说明：事件类型未严格收敛到 §6.3 清单——`output.completed`/`judgment.completed` 因 eval 链路依赖而保留，`model.requested`/`model.result_appended` 已增补
+> 状态：阶段一（运行完成后可复查）与阶段二（运行中实时可见，覆盖对比用例实验组运行）已于 2026-08-29 实施；阶段三（诊断对比）未实施
+> 实施偏差说明：事件类型未严格收敛到 §6.3 清单——`output.completed`/`judgment.completed` 因 eval 链路依赖而保留，`model.requested`/`model.result_appended` 已增补；SSE 前端经 fetch ReadableStream 消费（所有者鉴权为 Bearer 头，原生 EventSource 不可行）；压缩用例与匿名任务暂无事件源，维持轮询进度
 > 适用范围：Touchstone 正式模板运行、长上下文 Agent 运行、所有者批次详情
 > 更新日期：2026-08-29
 

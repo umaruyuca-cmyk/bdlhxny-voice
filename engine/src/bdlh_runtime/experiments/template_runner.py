@@ -90,6 +90,8 @@ class NativeRunRecord:
     events: list[dict[str, Any]] = field(default_factory=list)
     #: guardrail 检查明细(含 DENIED 拦截关联)
     guardrail_checks: list[dict[str, Any]] = field(default_factory=list)
+    #: 冻结运行配置快照(落库 modelConfig.perRunConfig 的真源;修复此前缺字段退化)
+    run_config: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -231,6 +233,7 @@ async def run_native_agent(
     repeat_index: int = 0,
     timeout_seconds: float | None = None,
     template_id: str = "",
+    event_sink: Any | None = None,
 ) -> NativeRunRecord:
     """按一份 RunConfig 在统一原生循环上执行一次运行。
 
@@ -240,7 +243,9 @@ async def run_native_agent(
     - 执行器固定 Mock(冻结 fixture);``executor`` 参数仅供测试注入替身;
     - 遥测:per-run ``RunRecorder`` 统一收集 events/model_calls(含逐轮
       消息、当轮 Tool Schema、参数三态)/tool_calls(带调用关联)/
-      guardrail_checks,与 eval 链路同一落库协议(设计 §5.2)。
+      guardrail_checks,与 eval 链路同一落库协议(设计 §5.2);
+    - ``event_sink``(阶段二实时通道):recorder 就绪后接管事件流,
+      供发布器增量落库与 SSE 广播;不影响执行语义。
     """
     run_config.validate()
     # 逐运行模型客户端:llm=None 时按本运行生效参数构建独立实例
@@ -269,6 +274,10 @@ async def run_native_agent(
         template_id=template_id,
     )
     recorder.attach_model_params(**model_param_snapshots(run_config, applied_params))
+    if event_sink is not None:
+        # run.started 在 recorder 构造时已发出:发布器 attach 时会补投既有
+        # 事件,再订阅后续事件(单线程衔接,无重复无遗漏)
+        event_sink.attach(recorder)
     loop_llm = RecordingLLM(per_run_llm, recorder, model_id) if per_run_llm is not None else None
     catalog, ordered_cards = build_template_catalog(visible_tools)
     mock_executor = executor or FrozenFixtureExecutor(fixtures or [], fixture_version=fixture_version)
@@ -391,6 +400,7 @@ async def run_native_agent(
         model_calls=model_call_rows,
         events=list(recorder.record.events),
         guardrail_checks=guardrail_rows,
+        run_config=run_config.to_payload(),
     )
     if category:
         record.error = record.error or category
@@ -428,6 +438,7 @@ async def run_template_batch(
     encoder: Any | None = None,
     should_stop: Any | None = None,
     on_run_done: Any | None = None,
+    event_sink: Any | None = None,
 ) -> dict[str, Any]:
     """按已校验的模板批次计划逐运行执行;返回批次结果(逐次运行+配置快照)。
 
@@ -436,6 +447,7 @@ async def run_template_batch(
     显式传入 llm 仅用于测试注入 Fake(共享实例不影响配置记录口径,
     applied_model_params 会如实反映实例属性)。
     ``on_run_done(record_dict)`` 在每次运行完成后回调(作业进度用)。
+    ``event_sink`` 透传给每次运行的事件发布器(阶段二实时通道)。
     """
     from bdlh_runtime.experiments.budget import JobBudget
 
@@ -465,6 +477,7 @@ async def run_template_batch(
             variant_label=planned.variant_label,
             repeat_index=planned.repeat_index,
             template_id=plan.template_id,
+            event_sink=event_sink,
         )
         budget.record(llm_requests=record.actual_agent_steps)  # 每步至多一次逻辑模型调用
         payload = record.to_payload()

@@ -183,6 +183,10 @@ class SeriesStore:
     def fail_run(self, series_id: str, run_key: str, error: str) -> None:
         self._update_entry(series_id, run_key, status="failed", error=error)
 
+    def attach_run_id(self, series_id: str, run_key: str, run_id: str) -> None:
+        """运行启动即回写 agent_runs 行标识(实时订阅与幂等重放的键)。"""
+        self._update_entry(series_id, run_key, agent_run_id=run_id)
+
     def cancel_run(self, series_id: str, run_key: str) -> None:
         """撤销尚未开始的排队条目(如并发槽位不可用);已开始的条目不动。"""
         with self._lock:
@@ -211,7 +215,11 @@ class SeriesStore:
 
 
 def run_entry_view(entry: dict[str, Any], *, series_id: str) -> dict[str, Any]:
-    """API 展示形态:登记字段 + done 时的运行结果(含逐步证据 payload)。"""
+    """API 展示形态:登记字段 + done 时的运行结果(含逐步证据 payload)。
+
+    ``agent_run_id`` 为 agent_runs 行 UUID,运行启动即回写(实时 SSE 订阅键);
+    ``run_id`` 沿用 payload 内的运行标识(历史口径)。
+    """
     view = {
         "series_id": series_id,
         "run_key": entry.get("run_key"),
@@ -221,6 +229,8 @@ def run_entry_view(entry: dict[str, Any], *, series_id: str) -> dict[str, Any]:
         "created_at": entry.get("created_at"),
         "error": entry.get("error"),
     }
+    if entry.get("agent_run_id"):
+        view["agent_run_id"] = entry.get("agent_run_id")
     payload = entry.get("payload")
     if isinstance(payload, dict):
         view["run_id"] = payload.get("run_id")
@@ -348,6 +358,10 @@ class DbSeriesStore:
 
     def fail_run(self, series_id: str, run_key: str, error: str) -> None:
         self._update_entry(series_id, run_key, status="failed", error=error)
+
+    def attach_run_id(self, series_id: str, run_key: str, run_id: str) -> None:
+        """运行启动即回写 agent_runs 行标识(实时订阅与幂等重放的键)。"""
+        self._update_entry(series_id, run_key, agent_run_id=run_id)
 
     def cancel_run(self, series_id: str, run_key: str) -> None:
         with self._lock:

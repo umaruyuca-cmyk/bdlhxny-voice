@@ -409,6 +409,8 @@ class RunRecorder:
         self._guard_seq = 0
         self._started = time.perf_counter()
         self._judgment_started = 0.0
+        # 事件监听器(阶段二实时通道:发布器订阅 emit,异常不影响执行)
+        self._event_listeners: list[Any] = []
         # 请求参数三态(模型客户端构建完成后 attach;逐模型调用盖章)
         self._model_params: dict[str, dict[str, Any]] = {"requested": {}, "sent": {}, "unsupported": {}}
         # 待配对的模型生成 call_id(按名称 FIFO;工具执行与治理拦截各按序消费)
@@ -464,18 +466,26 @@ class RunRecorder:
 
     # -- 事件 ---------------------------------------------------------------
 
+    def add_event_listener(self, listener: Any) -> None:
+        """订阅事件流(实时发布器用);监听器异常被抑制,绝不影响执行。"""
+        self._event_listeners.append(listener)
+
     def emit(self, event_type: str, payload: dict[str, Any]) -> int:
         if event_type not in RUN_EVENT_TYPES:
             raise ValueError(f"unknown run event type: {event_type}")
         self._event_seq += 1
-        self.record.events.append(
-            {
-                "sequence": self._event_seq,
-                "eventType": event_type,
-                "payload": payload,
-                "occurredAt": _now_iso(),
-            }
-        )
+        event = {
+            "sequence": self._event_seq,
+            "eventType": event_type,
+            "payload": payload,
+            "occurredAt": _now_iso(),
+        }
+        self.record.events.append(event)
+        for listener in tuple(self._event_listeners):
+            try:
+                listener(event)
+            except Exception as exc:  # noqa: BLE001 —— 观测旁路失败不改变执行
+                print(f"[run_telemetry] 事件监听器异常(已忽略):{type(exc).__name__}: {exc}")
         return self._event_seq
 
     # -- 明细行 --------------------------------------------------------------

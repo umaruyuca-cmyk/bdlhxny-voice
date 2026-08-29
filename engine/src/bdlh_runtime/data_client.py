@@ -203,6 +203,29 @@ class DataClient:
             raise DataServiceError("data service returned an invalid run detail")
         return payload
 
+    def get_run_events(self, run_id: str) -> list[dict[str, Any]]:
+        """轻量事件历史(SSE 无发布器时的补发真源;payload 已结构化)。"""
+        payload = self._request("GET", f"/runs/{run_id}/events")
+        if not isinstance(payload, list):
+            raise DataServiceError("data service returned an invalid run event list")
+        return payload
+
+    def update_model_config(self, run_id: str, model_config: dict[str, Any]) -> None:
+        """运行配置补全(提前建行后,运行完成回写完整 modelConfig)。"""
+        self._request(
+            "POST",
+            f"/runs/{run_id}/model-config",
+            json={"modelConfig": model_config},
+            expect_json=False,
+        )
+
+    def fail_stale_runs(self, batch_id: str) -> int:
+        """引擎重启后清理本批次的孤儿运行行;返回受影响行数。"""
+        payload = self._request("POST", f"/batches/{batch_id}/fail-stale-runs", json={})
+        if not isinstance(payload, dict):
+            return 0
+        return int(payload.get("failedRuns") or 0)
+
     def complete_run(
         self,
         run_id: str,
