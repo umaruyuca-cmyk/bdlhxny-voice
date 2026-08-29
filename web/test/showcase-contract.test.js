@@ -67,12 +67,15 @@ test("未运行数据渲染为诚实占位而非估算值", async () => {
 });
 
 
-test("指标定义总表页:纯定义文档,不 fetch 批次数据", async () => {
-  const page = await readFile(new URL("../public/judging/metrics.html", import.meta.url), "utf8");
+test("指标定义与总表页:纯定义文档,不 fetch 批次数据(P1-2 合并后)", async () => {
+  const page = await readFile(new URL("../public/judging/index.html", import.meta.url), "utf8");
   assert.doesNotMatch(page, /fetch\(/, "指标定义页不发起任何数据请求(纯文档)");
-  assert.match(page, /指标定义总表|全部指标/, "页面为指标定义总表");
+  assert.match(page, /指标定义与总表|全部指标/, "页面承载指标定义与总表");
   assert.match(page, /公告页/, "指标数字入口指向公告页");
   assert.doesNotMatch(page, /批次指标总表/, "旧「批次指标总表」命名不得残留");
+  // 旧 /judging/metrics 已并入本页,保留跳转兼容
+  const legacy = await readFile(new URL("../public/judging/metrics.html", import.meta.url), "utf8");
+  assert.match(legacy, /http-equiv="refresh"/, "旧 metrics 地址为跳转页");
 });
 
 test("压缩实验页不与长上下文库重复展示压缩前后明细", async () => {

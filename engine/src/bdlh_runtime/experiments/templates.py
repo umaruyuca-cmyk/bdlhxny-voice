@@ -83,6 +83,11 @@ class ExperimentTemplate:
     #: 需要模型能力支持(温度模板)
     requires_capability: str | None = None
     notes: str = ""
+    #: 默认重复次数 = 快速试跑口径(P0-6):一次提交默认只跑每变体 1 次,
+    #: 正式最小样本通过追加阶段达成,系统不得在用户选择 1 时自动补跑
+    default_repeat_count: int = 1
+    #: 每变体形成正式最小样本所需的重复次数(展示口径,与样本量分级对齐)
+    formal_min_repeat_count: int = 3
 
     def to_payload(self) -> dict[str, Any]:
         """公开形态:目的、自变量、变体、冻结条件与权限(不含评判细节)。"""
@@ -99,6 +104,8 @@ class ExperimentTemplate:
             "anonymous_allowed": self.anonymous_allowed,
             "owner_allowed": self.owner_allowed,
             "repeat_count_range": list(self.repeat_count_range),
+            "default_repeat_count": self.default_repeat_count,
+            "formal_min_repeat_count": self.formal_min_repeat_count,
             "max_runs_per_batch": self.max_runs_per_batch,
             "result_metrics": list(self.result_metrics),
             "advanced_allowed_paths": list(self.advanced_allowed_paths),
@@ -226,6 +233,7 @@ _register(
         anonymous_allowed=True,
         owner_allowed=True,
         repeat_count_range=(1, 1),
+        formal_min_repeat_count=1,
         max_runs_per_batch=4,
         result_metrics=("original_tokens", "working_tokens", "build_duration_ms", "compression_extra_tokens",
                         "required_retained", "key_facts_retained", "omitted_items", "compiled_context_hash"),
@@ -298,12 +306,15 @@ _register(
         allowed_test_types=("COMPARISON_CASE",),
         anonymous_allowed=False,
         owner_allowed=True,
-        repeat_count_range=(3, 5),
+        repeat_count_range=(1, 5),
+        default_repeat_count=1,
+        formal_min_repeat_count=3,
         max_runs_per_batch=20,
         result_metrics=("success_rate", "answer_stability", "duration_ms_spread", "token_spread"),
         requires_capability="supports_temperature",
         classification=CLASSIFICATION_FORMAL,
-        notes="不支持温度的模型不能创建该模板批次;温度与 top_p 不同时变化;effective 由适配器确认",
+        notes="不支持温度的模型不能创建该模板批次;温度与 top_p 不同时变化;effective 由适配器确认;"
+        "默认 repeat_count=1(快速试跑,4×1,不进入正式发布指标),正式最小样本(每档 3 次)通过追加阶段达成",
     )
 )
 _register(
@@ -369,6 +380,7 @@ _register(
         anonymous_allowed=False,
         owner_allowed=True,
         repeat_count_range=(1, 1),
+        formal_min_repeat_count=1,
         max_runs_per_batch=2,
         result_metrics=("original_tokens", "working_tokens", "required_retained", "summary_model_calls",
                         "task_success", "tool_correct"),

@@ -73,6 +73,13 @@ class NativeRunRecord:
     tool_not_visible_events: list[dict[str, Any]] = field(default_factory=list)
     #: 实际发给 SDK 的模型参数(逐运行记录,防止「配置四种温度、请求全是 0.1」)
     applied_model_params: dict[str, Any] = field(default_factory=dict)
+    #: ── Token 计量(RecordingLLM 逐请求抄录响应 usage;账单口径) ──────────
+    input_tokens: int = 0
+    output_tokens: int = 0
+    #: 响应缺失 usage 元数据、按本地计数器估算时为 True(不以 0 冒充实测)
+    tokens_estimated: bool = False
+    #: 逐请求计量摘要(不含消息快照防报告膨胀;request_hash 供对账)
+    model_calls: list[dict[str, Any]] = field(default_factory=list)
 
     def to_payload(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -101,6 +108,9 @@ def build_llm_for_config(run_config: RunConfig, *, model: str | None = None) -> 
         temperature=float(temperature),
         max_output_tokens=params.max_output_tokens,
         parallel_tool_calls=params.parallel_tool_calls,
+        # P0-3:重试上限来自冻结运行配置;None 时 SDK 默认重试会把一次
+        # 逻辑调用放大为多次 HTTP 请求,配置与实际行为不一致
+        max_retries=run_config.limits.llm_retry_count,
     )
 
 
@@ -118,7 +128,30 @@ def applied_params_of(llm: Any) -> dict[str, Any]:
     model_kwargs = getattr(llm, "model_kwargs", None) or {}
     if "parallel_tool_calls" in model_kwargs:
         applied["parallel_tool_calls"] = bool(model_kwargs["parallel_tool_calls"])
+    max_retries = getattr(llm, "max_retries", None)
+    if max_retries is not None:
+        applied["max_retries"] = max_retries
     return applied
+
+
+class _ModelCallCollector:
+    """轻量模型调用收集器:满足 RecordingLLM 对 recorder 的最小接口。
+
+    eval 路径的 RunRecorder 绑定完整 RunRecord;模板/实验组路径只需要
+    逐请求计量行(方案 11.1),内存收集后随运行 payload 落库/落盘。
+    """
+
+    def __init__(self) -> None:
+        self.rows: list[Any] = []
+        self._seq = 0
+
+    def next_model_sequence(self) -> int:
+        self._seq += 1
+        return self._seq
+
+    def record_model_call(self, row: Any) -> Any:
+        self.rows.append(row)
+        return row
 
 
 def build_template_catalog(visible_tools: tuple[str, ...] | list[str]) -> tuple[ToolCatalog, list[ToolCard]]:
@@ -177,6 +210,18 @@ async def run_native_agent(
     per_run_llm = llm if llm is not None else build_llm_for_config(run_config)
     applied_params = applied_params_of(per_run_llm)
     llm_missing = llm is None and per_run_llm is None
+    # Token 计量(11.1):与 eval 路径同口径的 RecordingLLM 包装——逐请求抄录
+    # 响应 usage(账单口径;缺失时本地计数器估算并打标)。包装在 applied_params
+    # 读取之后,AgentLoop 与 bind_tools 的绑定模型都被覆盖;超时前已发生的
+    # 请求同样计入(费用已产生,必须可见)。
+    from bdlh_runtime.evaluation.run_telemetry import RecordingLLM
+
+    call_collector = _ModelCallCollector()
+    loop_llm = (
+        RecordingLLM(per_run_llm, call_collector, os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"))
+        if per_run_llm is not None
+        else None
+    )
     catalog, ordered_cards = build_template_catalog(visible_tools)
     mock_executor = executor or FrozenFixtureExecutor(fixtures or [], fixture_version=fixture_version)
     loader = ToolLoader(
@@ -189,7 +234,7 @@ async def run_native_agent(
         fallback_policy="none",
     )
     loop = AgentLoop(
-        llm=per_run_llm,
+        llm=loop_llm,
         catalog=catalog,
         executor=mock_executor,
         loader=loader,
@@ -246,6 +291,11 @@ async def run_native_agent(
 
     status, category = classify_failure(error)
     call_records = list(getattr(mock_executor, "call_records", []) or [])
+    model_call_rows = [row.to_payload() for row in call_collector.rows]
+    for row_payload in model_call_rows:
+        # 消息快照体积大且 eval 路径已有专用表;模板报告只留计量摘要,
+        # request_hash 足以与请求方对账
+        row_payload.pop("messages", None)
     record = NativeRunRecord(
         run_id=turn.run_id,
         variant_label=variant_label,
@@ -271,6 +321,10 @@ async def run_native_agent(
         eligible_catalog_hash=catalog_schema_hash(eligible_manifests),
         tool_not_visible_events=_not_visible_events(audits, call_records),
         applied_model_params=applied_params,
+        input_tokens=sum(int(row.get("inputTokens") or 0) for row in model_call_rows),
+        output_tokens=sum(int(row.get("outputTokens") or 0) for row in model_call_rows),
+        tokens_estimated=any(row.tokens_estimated for row in call_collector.rows),
+        model_calls=model_call_rows,
     )
     if category:
         record.error = record.error or category
@@ -317,11 +371,17 @@ async def run_template_batch(
     applied_model_params 会如实反映实例属性)。
     ``on_run_done(record_dict)`` 在每次运行完成后回调(作业进度用)。
     """
+    from bdlh_runtime.experiments.budget import JobBudget
+
     runs: list[dict[str, Any]] = []
     skipped: list[str] = []
+    budget = JobBudget.from_env()
     for planned in plan.runs:
         if should_stop is not None and should_stop():
             skipped.append(planned.run_id)
+            continue
+        if budget.exhausted:
+            skipped.append(planned.run_id)  # 预算终止:不再发起新调用,已完成运行保留
             continue
         provider = None
         if confirmation_provider_factory is not None:
@@ -339,6 +399,7 @@ async def run_template_batch(
             variant_label=planned.variant_label,
             repeat_index=planned.repeat_index,
         )
+        budget.record(llm_requests=record.actual_agent_steps)  # 每步至多一次逻辑模型调用
         payload = record.to_payload()
         runs.append(payload)
         if on_run_done is not None:
@@ -355,6 +416,8 @@ async def run_template_batch(
         "runs": runs,
         "skipped_run_ids": skipped,
         "by_variant": _aggregate_by_variant(runs),
+        "budget": budget.to_payload(),
+        "budget_terminated": budget.terminated_reason or None,
     }
 
 

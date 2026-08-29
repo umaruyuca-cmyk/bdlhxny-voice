@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>数据库与冻结数据 · 数据与运行</title>
-<meta name="description" content="PostgreSQL 为唯一数据来源:init.sql 承接表、冻结工具返回与长上下文用例。">
+<title>数据库与部署 · 数据与运行</title>
+<meta name="description" content="PostgreSQL 为唯一数据来源;冻结数据、公私边界与本地启动。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -45,7 +46,6 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
           <li><a href="/experiment/">模板中心</a></li>
-          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
         </ul>
       </details>
@@ -62,8 +62,7 @@
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
-          <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">指标定义总表</a></li>
+          <li><a href="/judging/">指标定义与总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -83,21 +82,17 @@
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
         <ul>
-          <li><a href="/engine/">Agent 循环</a></li>
-          <li><a href="/engine/loading">工具装载</a></li>
-          <li><a href="/engine/catalog">工具目录</a></li>
-          <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail">输出护栏</a></li>
-          <li><a href="/engine/tools">工具清单</a></li>
+          <li><a href="/engine/">运行流程</a></li>
+          <li><a href="/engine/catalog">资源与工具</a></li>
+          <li><a href="/engine/governance">治理与安全边界</a></li>
         </ul>
       </details>
     <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/" class="active">数据库与冻结数据</a></li>
+          <li><a href="/ops/" class="active">数据库与部署</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
-          <li><a href="/ops/deploy">部署与边界</a></li>
           <li><a href="/ops/roadmap">路线图</a></li>
         </ul>
       </details>
@@ -111,14 +106,20 @@
       <ul>
         <li><a href="#schema">库结构</a></li>
         <li><a href="#fixtures">冻结数据</a></li>
+        <li><a href="#boundary">公私边界</a></li>
+        <li><a href="#local">本地启动</a></li>
       </ul>
     </aside>
       <div class="detail-body">
-        <h1>数据库与冻结数据 · 数据与运行</h1>
+        <h1>数据库与部署 · 数据与运行</h1>
 <h2 id="schema">库结构</h2>
 <p>全部表结构在 <code>db/postgresql/setup/init.sql</code>(手动执行,无 Flyway):用例三表(定义/版本/变体)、数据快照、批次与运行、执行明细(run_events / model_calls+messages / tool_calls / guardrail_checks / run_measurements / context_builds 全家)、工件与发布(publications / publication_runs)、账号会话与工具目录八表。增量脚本放 <code>db/postgresql/changes/</code>,由所有者手动执行。</p>
     <h2 id="fixtures">冻结数据</h2>
-<p>冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
+<p>冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),隔离执行质量差异;长上下文主文库为 3 个场景化冻结 Session(见<a href="/context/library">长上下文库</a>),旧六套结构化夹具(<code>changes/20260821-long-context-cases.sql</code>)仍可供引擎回归使用。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>
+    <h2 id="boundary">公私边界</h2>
+<p>公开部署只含静态站:镜像构建物理排除 <code>/lab</code>,公开页面零后端调用、无输入控件(契约测试守卫);评测与登录只在私有侧。<code>deploy/.env</code> 只在部署机,密钥不进镜像与日志。</p>
+    <h2 id="local">本地启动</h2>
+<p>三服务顺序:data(数据库隧道就绪后)→ engine(/ready 依赖 data)→ web(<code>npm run dev</code>);完整步骤、环境变量与排查速查见 <code>deploy/本地启动说明.md</code> 与 <code>deploy/README.md</code>(云形态:TLS 由网关终止,明文端口不直接暴露公网)。</p>
       </div>
     </div>
   </main>

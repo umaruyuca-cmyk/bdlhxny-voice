@@ -12,6 +12,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -21,6 +22,7 @@
     </div>
   </div>
 </header>
+
 <main class="docs-main">
   <div class="eyebrow">Announcements</div>
   <h1>公告</h1>
@@ -30,7 +32,13 @@
     <div class="stat"><b>112</b><span><a href="/tools/">工具目录</a>(冻结 Mock,版本化)</span></div>
     <div class="stat"><b>20</b><span><a href="/cases/">对比用例</a>(固定题库)</span></div>
     <div class="stat"><b>3</b><span><a href="/context/library">压缩长 Session</a>(版本化语料)</span></div>
-    <div class="stat"><b>6</b><span><a href="/experiment/">实验模板</a>(唯一自变量)</span></div>
+    <div class="stat"><b>7</b><span><a href="/experiment/">实验模板</a>(唯一自变量)</span></div>
+  </div>
+
+  <div class="cta-row" aria-label="下一步入口">
+    <a class="btn cta" href="/experiment/">查看实验</a>
+    <a class="btn ghost cta" href="/cases/">浏览案例</a>
+    <a class="btn ghost cta" href="/about/">了解系统</a>
   </div>
 
   <div class="panel panel-dashed" id="announcePubState">
@@ -56,7 +64,7 @@
         return;
       }
       var latest = pubs[0];
-      el.textContent = "最新正式发布:" + (latest.published_at || "") + "(批次 " + String(latest.batch_id || "").slice(0, 8) + ");对照汇总、压缩结果与代表性实例以该批次公开快照为准。";
+      el.textContent = "最新正式发布:" + window.SITE.fmtTime(latest.published_at) + "(批次 " + String(latest.batch_id || "").slice(0, 8) + ");对照汇总、压缩结果与代表性实例以该批次公开快照为准。";
     })
     .catch(function () {
       var el = document.getElementById("announcePubState");

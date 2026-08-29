@@ -56,6 +56,23 @@ class PublicTestError(ValueError):
     """请求不合法或超出限额;message 面向页面展示,不含内部细节。"""
 
 
+class IdempotencyConflict(PublicTestError):
+    """同一幂等键配不同请求体:拒绝(409),不静默复用旧任务。"""
+
+    def __init__(self) -> None:
+        super().__init__("幂等键冲突:该键已被不同参数的请求使用,请刷新页面后重新提交")
+
+
+def _request_hash(request: dict[str, Any]) -> str:
+    """请求体规范化哈希(键排序;不含幂等键本身),判定"同一请求"的依据。"""
+    import hashlib
+    import json as _json
+
+    payload = {key: request[key] for key in sorted(request) if key != "idempotency_key"}
+    digest = hashlib.sha256(_json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    return f"sha256:{digest.hexdigest()}"
+
+
 class AnonymousJobService:
     def __init__(
         self,
@@ -82,40 +99,62 @@ class AnonymousJobService:
     # ------------------------------------------------------------------ 创建
 
     def create_job(self, request: dict[str, Any], *, anonymous_id_hash: str) -> JobRecord:
-        """校验匿名测试请求并创建后台任务;立即返回,不等待执行完成。"""
+        """校验匿名测试请求并创建后台任务;立即返回,不等待执行完成。
+
+        幂等(P0-4):请求可携带 ``idempotency_key``;同一匿名身份 + 同一键 +
+        同一请求体哈希的重复提交(网络重试/并发)返回原任务,不创建第二个任务、
+        不产生额外模型费用;同键不同请求体返回 409(IdempotencyConflict)。
+        查重 → 限额 → 保存 在 ``_running_lock`` 临界区内原子执行。
+        """
         unknown_fields = set(request) - _ALLOWED_REQUEST_FIELDS
         if unknown_fields:
             raise PublicTestError(
                 f"请求包含不允许的字段:{sorted(unknown_fields)};匿名测试不接受问题正文、"
                 "系统提示、工具定义、Mock 返回、模型地址或密钥"
             )
-        test_type_raw = str(request.get("test_type") or "")
-        try:
-            test_type = TestType(test_type_raw)
-        except ValueError:
-            raise PublicTestError(
-                f"test_type 只能是 COMPRESSION_CASE 或 COMPARISON_CASE,收到 {test_type_raw!r}"
-            ) from None
+        idempotency_key = str(request.get("idempotency_key") or "").strip() or None
+        if idempotency_key is not None and (len(idempotency_key) < 8 or len(idempotency_key) > 128):
+            raise PublicTestError("idempotency_key 长度必须在 8–128 字符之间")
 
-        if "template_id" in request:
-            job = self._create_template_job(request, job_id=new_job_id())
-        elif test_type is TestType.COMPARISON_CASE:
-            raise PublicTestError(
-                "对比用例必须经实验模板发起:请在请求中提供 template_id"
-                "(请在请求中提供 template_id)"
-            )
-        else:
-            job = self._create_compression_job(request, job_id=new_job_id())
+        with self._running_lock:
+            if idempotency_key is not None:
+                existing = self.store.find_by_idempotency_key(
+                    idempotency_key, anonymous_id_hash=anonymous_id_hash
+                )
+                if existing is not None:
+                    if existing.request_hash and existing.request_hash != _request_hash(request):
+                        raise IdempotencyConflict() from None
+                    return existing  # 同一请求的重试/并发提交:返回原任务
 
-        job.requester_type = REQUESTER_ANONYMOUS
-        job.anonymous_id_hash = anonymous_id_hash
-        job.run_purpose = RUN_PURPOSE_PUBLIC_TRIAL
-        job.publishable = False  # 匿名运行固定不可发布
-        job.max_agent_steps = self.quota.max_agent_steps
-        job.quota_snapshot = self.quota.as_dict()
+            test_type_raw = str(request.get("test_type") or "")
+            try:
+                test_type = TestType(test_type_raw)
+            except ValueError:
+                raise PublicTestError(
+                    f"test_type 只能是 COMPRESSION_CASE 或 COMPARISON_CASE,收到 {test_type_raw!r}"
+                ) from None
 
-        self._check_quota(job)
-        self.store.save(job)
+            if "template_id" in request:
+                job = self._create_template_job(request, job_id=new_job_id())
+            elif test_type is TestType.COMPARISON_CASE:
+                raise PublicTestError(
+                    "对比用例必须经实验模板发起:请在请求中提供 template_id"
+                    "(请在请求中提供 template_id)"
+                )
+            else:
+                job = self._create_compression_job(request, job_id=new_job_id())
+
+            job.requester_type = REQUESTER_ANONYMOUS
+            job.anonymous_id_hash = anonymous_id_hash
+            job.run_purpose = RUN_PURPOSE_PUBLIC_TRIAL
+            job.publishable = False  # 匿名运行固定不可发布
+            job.max_agent_steps = self.quota.max_agent_steps
+            job.quota_snapshot = self.quota.as_dict()
+            job.idempotency_key = idempotency_key
+            job.request_hash = _request_hash(request) if idempotency_key else None
+
+            self._check_quota(job)
+            self.store.save(job)
 
         def target() -> None:
             self.execute(job.job_id)
@@ -322,7 +361,12 @@ class AnonymousJobService:
             if unit.status == UNIT_STATUS_QUEUED:  # 取消只阻止尚未开始的单元
                 unit.status = UNIT_STATUS_CANCELLED
         done = job.completed_unit_count()
-        if cancelled and done < len(job.units):
+        budget_reason = str(result.get("budget_terminated") or "") if isinstance(result, dict) else ""
+        if budget_reason:
+            # 预算终止(§11.2):已完成单元与工件保留,任务进入明确终态,不冒充完整成功
+            job.error = budget_reason
+            job.status = JOB_STATUS_PARTIAL if done else JOB_STATUS_FAILED
+        elif cancelled and done < len(job.units):
             job.status = JOB_STATUS_CANCELLED if done == 0 else JOB_STATUS_PARTIAL
         else:
             job.status = JOB_STATUS_COMPLETE
@@ -360,7 +404,9 @@ class AnonymousJobService:
                        # 模板批次摘要(混合路线):模板标识/分类/自变量/按变体聚合
                        "template_id", "template_version", "classification",
                        "independent_variable", "by_variant", "run_count",
-                       "skipped_run_ids"}
+                       "skipped_run_ids",
+                       # 作业级预算口径(§11.2):真实请求累计与终止原因
+                       "budget", "budget_terminated"}
         }
         self.store.save(job)
 

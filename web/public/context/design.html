@@ -5,13 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>长短对照设计 · 上下文压缩</title>
-<meta name="description" content="六套长上下文用例 × full-raw/budgeted-comp 两变体,同一 Agent、同一判官。">
+<meta name="description" content="三个场景化长 Session × 四种上下文方式的对照设计口径。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -45,7 +46,6 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
           <li><a href="/experiment/">模板中心</a></li>
-          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
         </ul>
       </details>
@@ -62,8 +62,7 @@
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
-          <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">指标定义总表</a></li>
+          <li><a href="/judging/">指标定义与总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -83,21 +82,17 @@
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
         <ul>
-          <li><a href="/engine/">Agent 循环</a></li>
-          <li><a href="/engine/loading">工具装载</a></li>
-          <li><a href="/engine/catalog">工具目录</a></li>
-          <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail">输出护栏</a></li>
-          <li><a href="/engine/tools">工具清单</a></li>
+          <li><a href="/engine/">运行流程</a></li>
+          <li><a href="/engine/catalog">资源与工具</a></li>
+          <li><a href="/engine/governance">治理与安全边界</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/">数据库与部署</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
-          <li><a href="/ops/deploy">部署与边界</a></li>
           <li><a href="/ops/roadmap">路线图</a></li>
         </ul>
       </details>
@@ -109,20 +104,22 @@
       <aside class="page-toc" aria-label="本页目录">
       <h4 class="page-toc-title">本页目录</h4>
       <ul>
-        <li><a href="#cases">六套用例 × 两条变体</a></li>
+        <li><a href="#cases">三个 Session × 四种上下文方式</a></li>
         <li><a href="#assertions">上下文断言</a></li>
         <li><a href="#launch">如何发起</a></li>
       </ul>
     </aside>
       <div class="detail-body">
         <h1>长短对照设计 · 上下文压缩</h1>
-<h2 id="cases">六套用例 × 两条变体</h2>
-<p>方向覆盖金融 3(组合诊断 / 估值口径 / 新闻去重)+ 其他 2(出行天气 / 长文档手册)+ 闲聊 1(长历史)。每套两条变体挂同一份上下文条目,只变处理策略:</p>
+<h2 id="cases">三个 Session × 四种上下文方式</h2>
+<p>对照语料为三个场景化冻结 Session(产品与架构演进 / 上下文引擎排查 / 数据库与云部署)。每个 Session 独立派生四种上下文方式,唯一自变量是 <code>context_strategy</code>,其余条件(模型、循环实现、工具目录、Mock)全部冻结:</p>
 <ul>
-  <li><strong>full-raw</strong>:全量透传(大预算);</li>
-  <li><strong>budgeted-comp</strong>:按预算压缩(小预算)。</li>
+  <li><strong>full</strong>:完整透传(对照);</li>
+  <li><strong>recent-window</strong>:最近窗口(基准);</li>
+  <li><strong>single-summary</strong>:一次摘要(基准);</li>
+  <li><strong>budgeted</strong>:按预算压缩(本项目算法)。</li>
 </ul>
-<p>条目数据在库(<code>changes/20260821-long-context-cases.sql</code>,批量条目由确定性生成,有业务含义),执行时经数据服务读取,运行记录关联真实变体与快照;条目元信息与原文下载见<a href="/context/library">长上下文库</a>。</p>
+<p>默认实验是 4×1:4 种上下文方式 × 1 种固定原生配置,每格单次样本(模板 <code>context-strategy-comparison</code>);条目元信息与原文下载见<a href="/context/library">长上下文库</a>。旧的六套结构化夹具(<code>changes/20260821-long-context-cases.sql</code>)仍可供引擎回归使用,不再属于主文库对照语料。</p>
     <h2 id="assertions">上下文断言</h2>
 <p>与编排对照同一 Agent 逻辑、同一冻结工具数据、同一判官之外,压缩对照新增四类断言:</p>
 <ul>
@@ -132,7 +129,7 @@
   <li><strong>注入隔离</strong>:untrusted 条目不在指令区且被包裹(或被整体隔离)。</li>
 </ul>
     <h2 id="launch">如何发起</h2>
-<p>登录后进入实验模块「压缩对照批次」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>
+<p>登录所有者进入<a href="/experiment/">实验中心</a>选择模板 <code>context-strategy-comparison</code>(或压缩方法对照 <code>compression-method-comparison</code>)按模板发起;匿名访客可经<a href="/experiment/compression">压缩用例</a>页发起公开测试(生成上下文 / 单组合运行 / 原生 4×1)。正式数字经维护者审核发布后出现在<a href="/">公告页</a>。</p>
       </div>
     </div>
   </main>

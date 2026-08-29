@@ -12,6 +12,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -21,6 +22,7 @@
     </div>
   </div>
 </header>
+
 <main class="docs-main">
   <div class="eyebrow">Experiments</div>
   <h1>实验模板</h1>
@@ -28,7 +30,7 @@
 
   <div id="tplList" class="tpl-grid"><div class="placeholder-block">正在读取实验模板注册表…</div></div>
 
-  <p class="note">灰色「需登录」卡仅登录所有者可发起,未登录仍可查看其定义;能否发起以服务端角色校验为准。压缩用例(三个版本化长 Session × 四种上下文方式)有<a href="/experiment/compression">独立入口</a>;已发起的批次见<a href="/experiment/batches">批次列表</a>,匿名测试记录见<a href="/test/">我的测试</a>。</p>
+  <p class="note">灰色「需登录」卡仅登录所有者可发起,未登录仍可查看其定义;能否发起以服务端角色校验为准。压缩用例(三个版本化长 Session × 四种上下文方式)有<a href="/experiment/compression">独立入口</a>;历史运行(我的测试 / 我的批次 / 公告批次)统一见<a href="/test/">运行记录</a>。</p>
 </main>
 <script src="/docs/docs.js"></script>
 <script src="/docs/experiment.js"></script>

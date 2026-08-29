@@ -547,12 +547,24 @@ def snapshot_messages(messages: list[Any]) -> list[dict[str, Any]]:
 
 
 def _usage_of(response: Any) -> tuple[int, int, bool]:
-    """(input_tokens, output_tokens, 是否估算);与判官同口径。"""
+    """(input_tokens, output_tokens, 是否估算);与判官同口径。
+
+    ``usage_metadata`` 在 langchain-core 中是 **dict**:早期实现误用属性
+    访问导致该字段永远读不到、静默落到估算/旧字段分支;此处 dict 与
+    对象两种形态都读,真实账单口径优先于估算。
+    """
+
+    def _num(source: Any, key: str) -> int:
+        value = source.get(key, 0) if isinstance(source, dict) else getattr(source, key, 0)
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
 
     usage = getattr(response, "usage_metadata", None)
-    if usage is not None:
-        p = int(getattr(usage, "input_tokens", 0) or 0)
-        c = int(getattr(usage, "output_tokens", 0) or 0)
+    if usage:
+        p = _num(usage, "input_tokens")
+        c = _num(usage, "output_tokens")
         if p > 0 or c > 0:
             return p, c, False
     meta = getattr(response, "response_metadata", None)

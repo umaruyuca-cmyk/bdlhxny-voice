@@ -48,6 +48,7 @@ from bdlh_runtime.experiments.run_config import (
     ToolsConfig,
     hash_of,
 )
+from bdlh_runtime.experiments.budget import JobBudget
 from bdlh_runtime.session import (
     CompiledContext,
     SessionCompiler,
@@ -403,7 +404,13 @@ async def _default_cell_runner(
     *,
     llm: Any,
 ) -> dict[str, Any]:
-    """生产执行器:统一原生 AgentLoop 读冻结工件运行一次。"""
+    """生产执行器:统一原生 AgentLoop 读冻结工件运行一次。
+
+    P0-5:``llm=None`` 时按服务端 env 构建正式客户端(与模板批次同一
+    ``build_llm_for_config`` 口径);仍不可用时单元诚实标记
+    ``LLM_UNAVAILABLE``,不伪装为成功的 Agent 运行。显式传入的 llm
+    仅用于测试注入 Fake。
+    """
     import asyncio as _asyncio
     import os
 
@@ -412,6 +419,19 @@ async def _default_cell_runner(
 
     gold = load_gold(session_case_dir(session.session_id) / "gold" / f"{session.session_id}.gold.json")
     dispatcher = dispatcher_from_gold(gold)
+
+    llm_missing = False
+    if llm is None:
+        from bdlh_runtime.experiments.template_runner import build_llm_for_config
+
+        llm = build_llm_for_config(
+            RunConfig(
+                limits=LimitsConfig(
+                    max_agent_steps=max_agent_steps, max_tool_calls=max(0, max_agent_steps + 2)
+                )
+            )
+        )
+        llm_missing = llm is None
 
     async def executor(name: str, arguments: dict[str, Any]) -> Any:
         result = await dispatcher(name, arguments)
@@ -460,6 +480,11 @@ async def _default_cell_runner(
         agent_result = await _asyncio.wait_for(loop.run(turn), timeout=timeout_s)
         answer = agent_result.answer
         error = agent_result.context_error if agent_result.degraded else None
+        if llm_missing:
+            error = error or (
+                "LLM_UNAVAILABLE: api key 或 base_url 未配置(create_llm 返回 None),"
+                "本单元未执行任何 Agent 模型调用"
+            )
         stop_reason = agent_result.stop_reason or ""
         actual_steps = agent_result.actual_steps
     except TimeoutError:
@@ -545,14 +570,19 @@ async def run_native_context_matrix(
     run_configs = build_compression_run_configs(
         session, compiled, steps, agent_mode_ids=(NATIVE_AGENT_MODE_ID,)
     )
+    budget = JobBudget.from_env()
     for unit in units:
         if should_stop is not None and should_stop():
             skipped.append(unit.unit_id)
+            continue
+        if budget.exhausted:
+            skipped.append(unit.unit_id)  # 预算终止:不再发起新调用,已完成单元保留
             continue
         artifact = compiled[unit.context_variant or ""]
         raw = await runner(
             session, artifact, unit.agent_mode_id, unit.unit_id, steps, llm=llm
         )
+        budget.record(llm_requests=int(raw.get("actual_agent_steps") or 0))
         cells.append(
             _assemble_cell_result(
                 session, artifact, unit.context_variant or "", unit.agent_mode_id, raw, compiled,
@@ -591,6 +621,9 @@ async def run_native_context_matrix(
         "run_configs": {key: config.config_payload_with_hash() for key, config in run_configs.items()},
         "fixed_conditions": fixed_conditions,
         "fixed_conditions_hash": hash_of(fixed_conditions),
+        # 作业级预算口径(§11.2):只含已测量的真实请求;超限时此处携带终止原因
+        "budget": budget.to_payload(),
+        "budget_terminated": budget.terminated_reason or None,
     }
 
 
@@ -643,16 +676,24 @@ def _assemble_cell_result(
 #: LLM 摘要与主模型同源(env 唯一真源),失败回退抽取式并在工件 warnings 标注。
 COMPRESSION_METHODS: tuple[str, ...] = ("budgeted", "budgeted-llm")
 
+#: 方法标识 → 进度展示名(作业进度 phase 文案与单元列表共用)
+COMPRESSION_METHOD_LABELS: dict[str, str] = {
+    "budgeted": "抽取式(代码)",
+    "budgeted-llm": "生成式(LLM 摘要)",
+}
+
 
 def _compile_method_artifacts(
     session: SessionCase,
     variants: dict[str, Any],
     *,
     llm_summarizer: Any | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> dict[str, CompiledContext]:
     """同一 budgeted 变体定义编译两次:抽取式 vs LLM 生成式(同模型同目标 token)。
 
     ``llm_summarizer`` 供测试注入 Fake 摘要器;生产走 from_env(llm_summary=True)。
+    ``on_phase`` 在每个可能耗时的阶段开始时回调(作业进度展示当前步骤)。
     """
     from bdlh_runtime.engine.loop import load_prompt
 
@@ -663,7 +704,11 @@ def _compile_method_artifacts(
     if budgeted_def is None:
         raise CompressionSessionError("Session 变体定义缺少 budgeted-session,不能做压缩方法对照")
     common_rules = load_prompt("system_base.md", "scene_chat.md")
+    if on_phase is not None:
+        on_phase("构建抽取式压缩上下文(代码,无模型调用)")
     extractive = SessionCompiler.from_env(llm_summary=False).compile(session, budgeted_def, common_rules=common_rules)
+    if on_phase is not None:
+        on_phase(f"生成 LLM 摘要 · {COMPRESSION_METHOD_LABELS['budgeted-llm']}(真实模型调用,可能较慢)")
     if llm_summarizer is not None:
         generative_compiler = SessionCompiler(summarizer=llm_summarizer)
     else:
@@ -673,12 +718,18 @@ def _compile_method_artifacts(
 
 
 def generate_compression_method_contexts(
-    session_id: str, *, llm_summarizer: Any | None = None
+    session_id: str,
+    *,
+    llm_summarizer: Any | None = None,
+    on_phase: Callable[[str], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """生成两种压缩方法的上下文工件(0 个 Agent 运行;LLM 摘要按需真实调用)。"""
+    if should_stop is not None and should_stop():
+        raise CompressionSessionError("已取消:压缩方法对照生成中止")
     session, variants, _ = _load_session_bundle(session_id)
     compiler_probe = SessionCompiler.from_env(llm_summary=False)
-    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer)
+    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer, on_phase=on_phase)
     artifacts = {method: ctx.to_payload() for method, ctx in compiled.items()}
     return {
         "test_type": TestType.COMPRESSION_CASE.value,
@@ -714,13 +765,14 @@ async def run_compression_method_comparison(
     should_stop: Callable[[], bool] | None = None,
     llm_summarizer: Any | None = None,
     on_cell_done: Callable[[dict[str, Any]], None] | None = None,
+    on_phase: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """压缩方法对照:两种压缩上下文各自运行同一次 Agent,唯一自变量是压缩方法。"""
     from bdlh_runtime.experiments import default_max_agent_steps
 
     steps = max_agent_steps or default_max_agent_steps()
     session, variants, _ = _load_session_bundle(session_id)
-    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer)
+    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer, on_phase=on_phase)
     runner = cell_runner or _default_cell_runner
     configs = {
         method: RunConfig(
@@ -738,12 +790,25 @@ async def run_compression_method_comparison(
     }
     cells: list[CellRunResult] = []
     skipped: list[str] = []
+    # 预算先记构建期摘要的真实请求(缓存命中不计),再逐单元累计 Agent 步数
+    budget = JobBudget.from_env()
+    budget.record(
+        llm_requests=sum(c.build_model_calls for c in compiled.values()),
+        input_tokens=sum(c.build_input_tokens for c in compiled.values()),
+        cost=sum(c.build_cost for c in compiled.values()),
+    )
     for method in COMPRESSION_METHODS:
         unit_id = f"{session_id}:{method}:{NATIVE_AGENT_MODE_ID}"
         if should_stop is not None and should_stop():
             skipped.append(unit_id)
             continue
+        if budget.exhausted:
+            skipped.append(unit_id)  # 预算终止:剩余单元不再发起模型调用
+            continue
+        if on_phase is not None:
+            on_phase(f"运行 Agent · {COMPRESSION_METHOD_LABELS.get(method, method)} · 第1次")
         raw = await runner(session, compiled[method], NATIVE_AGENT_MODE_ID, unit_id, steps, llm=llm)
+        budget.record(llm_requests=int(raw.get("actual_agent_steps") or 0))
         cell = _assemble_cell_result(
             session, compiled[method], method, NATIVE_AGENT_MODE_ID, raw, compiled,
             config_hash=configs[method].config_hash,
@@ -790,9 +855,82 @@ async def run_compression_method_comparison(
         "fixed_conditions": fixed_conditions,
         "fixed_conditions_hash": hash_of(fixed_conditions),
         "by_variant": by_variant,
+        "budget": budget.to_payload(),
+        "budget_terminated": budget.terminated_reason or None,
         "compression_details": build_compression_details(
             {m: c.to_payload() for m, c in compiled.items()}, events=session.events
         ),
+    }
+
+
+async def run_single_compression_method(
+    session_id: str,
+    method: str,
+    *,
+    llm: Any = None,
+    max_agent_steps: int | None = None,
+    cell_runner: CellRunner | None = None,
+    llm_summarizer: Any | None = None,
+    on_phase: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """单变体压缩方法运行(P0-7 实验组):一次调用只运行一个压缩方法的 Agent。
+
+    复用 ``run_compression_method_comparison`` 的编译与执行链路;冻结工件经
+    session 工件与摘要缓存复用,重复运行不重新生成摘要。返回与
+    NativeRunRecord 同形的 payload(统计模块直接消费);``run_id`` 逐次唯一,
+    同一变体多次重复不会被判重。``llm``/``cell_runner`` 仅供测试注入。
+    """
+    from uuid import uuid4
+
+    from bdlh_runtime.experiments import default_max_agent_steps
+
+    if method not in COMPRESSION_METHODS:
+        raise CompressionSessionError(f"未知压缩方法:{method!r};可用:{list(COMPRESSION_METHODS)}")
+    steps = max_agent_steps or default_max_agent_steps()
+    session, variants, _ = _load_session_bundle(session_id)
+    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer, on_phase=on_phase)
+    runner = cell_runner or _default_cell_runner
+    run_config = RunConfig(
+        execution_engine=EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+        tool_delivery=TOOL_DELIVERY_ALL,
+        governance_profile=GOVERNANCE_STANDARD,
+        context_strategy=method,
+        model=ModelParams(model_id="configured-model"),
+        limits=LimitsConfig(max_agent_steps=steps, max_tool_calls=max(0, steps + 2)),
+        tools=ToolsConfig(catalog_version="session-mock-v1"),
+        context=ContextParams(token_budget=int(compiled[method].token_budget or 0)),
+        fixture_version=str(session.fixture_set_id or "session-gold-v1"),
+    )
+    unit_id = f"{session_id}:{method}:{NATIVE_AGENT_MODE_ID}"
+    if on_phase is not None:
+        on_phase(f"运行 Agent · {COMPRESSION_METHOD_LABELS.get(method, method)} · 第1次")
+    raw = await runner(session, compiled[method], NATIVE_AGENT_MODE_ID, unit_id, steps, llm=llm)
+    cell = _assemble_cell_result(
+        session,
+        compiled[method],
+        method,
+        NATIVE_AGENT_MODE_ID,
+        raw,
+        compiled,
+        config_hash=run_config.config_hash,
+    )
+    judgment = dict(cell.judgment or {})
+    return {
+        "run_id": f"{unit_id}:{uuid4().hex[:8]}",
+        "variant_label": cell.context_variant,
+        "repeat_index": 0,  # 展示与统计以实验组登记的 repeat_index 为准
+        "config_hash": cell.config_hash or run_config.config_hash,
+        "governance_profile": GOVERNANCE_STANDARD,
+        "answer": cell.answer,
+        "tool_calls": list(cell.tool_calls or []),
+        "judgment": judgment,
+        "task_success": bool(judgment.get("tool_correct")),
+        "stop_reason": cell.stop_reason,
+        "actual_agent_steps": int(cell.actual_agent_steps or 0),
+        "duration_ms": int(cell.duration_ms or 0),
+        "validity": cell.validity,
+        "error": cell.error,
+        "context_artifact_hash": cell.context_artifact_hash,
     }
 
 

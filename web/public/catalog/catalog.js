@@ -110,13 +110,13 @@
           renderRows: function (rows) {
             return rows.map(function (t) {
               return "<tr>" +
-                '<td><a href="/tools/detail.html?name=' + encodeURIComponent(t.name) + '"><code>' + esc(t.name) + "</code></a></td>" +
-                "<td>" + esc(t.description) + "</td>" +
-                '<td><span class="cat-badge domain">' + esc(t.domain) + "</span></td>" +
-                '<td><span class="cat-badge side-' + esc(t.side_effect) + '">' + esc(t.side_effect) + "</span></td>" +
-                '<td><span class="cat-badge risk-' + esc(t.risk_level) + '">' + esc(t.risk_level) + "</span></td>" +
-                "<td>" + (t.requires_auth ? "是" : "否") + "</td>" +
-                "<td>" + (t.enabled ? "✓" : "—") + "</td>" +
+                '<td data-label="工具名"><a href="/tools/detail.html?name=' + encodeURIComponent(t.name) + '"><code>' + esc(t.name) + "</code></a></td>" +
+                '<td data-label="描述">' + esc(t.description) + "</td>" +
+                '<td data-label="领域"><span class="cat-badge domain">' + esc(t.domain) + "</span></td>" +
+                '<td data-label="副作用"><span class="cat-badge side-' + esc(t.side_effect) + '">' + esc(t.side_effect) + "</span></td>" +
+                '<td data-label="风险"><span class="cat-badge risk-' + esc(t.risk_level) + '">' + esc(t.risk_level) + "</span></td>" +
+                '<td data-label="需登录">' + (t.requires_auth ? "是" : "否") + "</td>" +
+                '<td data-label="状态">' + (t.enabled ? "✓" : "—") + "</td>" +
                 "</tr>";
             }).join("");
           }
@@ -147,12 +147,12 @@
           renderRows: function (rows) {
             return rows.map(function (c) {
               return "<tr>" +
-                '<td><a href="/cases/detail.html?id=' + encodeURIComponent(c.id) + '"><code>' + esc(c.id) + "</code></a></td>" +
-                "<td>" + esc(c.title || "—") + "</td>" +
-                '<td><span class="cat-badge kind-' + c.kind + '">' + esc(c.kind_label) + "</span></td>" +
-                "<td>" + esc(c.scene) + "</td>" +
-                "<td>" + (c.tool_count || 0) + "</td>" +
-                '<td><a href="/experiment/?case=' + encodeURIComponent(c.id) + '">选择实验模板</a></td>' +
+                '<td data-label="题号"><a href="/cases/detail.html?id=' + encodeURIComponent(c.id) + '"><code>' + esc(c.id) + "</code></a></td>" +
+                '<td data-label="类别">' + esc(c.title || "—") + "</td>" +
+                '<td data-label="类型"><span class="cat-badge kind-' + c.kind + '">' + esc(c.kind_label) + "</span></td>" +
+                '<td data-label="场景">' + esc(c.scene) + "</td>" +
+                '<td data-label="工具数">' + (c.tool_count || 0) + "</td>" +
+                '<td data-label="进入实验"><a href="/experiment/?case=' + encodeURIComponent(c.id) + '">选择实验模板</a></td>' +
                 "</tr>";
             }).join("");
           }

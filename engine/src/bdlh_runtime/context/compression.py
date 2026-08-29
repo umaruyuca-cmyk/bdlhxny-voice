@@ -16,8 +16,11 @@ class ContextCompressor(Protocol):
 class SummarizerCompressor:
     """budgeted 压缩的生成式变体:被压缩条目的替代文本由摘要器生成。
 
-    - 摘要器(LLMSummarizer)返回非空且不同于原文时采用——即"LLM 生成式压缩";
-    - 返回空或与原文相同时回退内层结构化抽取,不编造、不超出预算语义;
+    - 优先消费编译器预生成的冻结摘要映射(``set_summary_map``):
+      构建阶段零网络调用,映射内条目不再逐条请求模型;
+    - 无映射(或映射未覆盖该条目)时回退到逐条摘要路径——该路径只在
+      未启用批量预处理的调用方(如直接注入的单测)出现;
+    - 摘要非空、不同于原文且不超预算时采用;否则回退内层结构化抽取;
     - LLM 不可用/调用失败/超预算的降级事件由摘要器记入 usage.warnings,
       经编译器写入工件 warnings(诚实标注,不冒充生成成功)。
     """
@@ -25,8 +28,20 @@ class SummarizerCompressor:
     def __init__(self, summarizer: HistorySummarizer, inner: ContextCompressor | None = None) -> None:
         self._summarizer = summarizer
         self._inner = inner or StructuredTextCompressor()
+        self._summary_map: dict[str, str] | None = None
+
+    def set_summary_map(self, mapping: dict[str, str]) -> None:
+        """注入预生成的 item_id → 摘要冻结映射(批量分块摘要的产物)。"""
+
+        self._summary_map = dict(mapping)
 
     def compress(self, item: ContextItem, max_tokens: int, counter: TokenCounter) -> str:
+        if self._summary_map is not None:
+            # 冻结映射已注入:构建阶段零网络调用;未覆盖/超预算条目直接抽取式回退
+            text = (self._summary_map.get(item.item_id) or "").strip()
+            if text and text != item.content.strip() and counter.count(text) <= max_tokens:
+                return text
+            return self._inner.compress(item, max_tokens, counter)
         summary = self._summarizer.summarize([item.content], max_tokens, counter)
         text = (summary or "").strip()
         if text and text != item.content.strip():

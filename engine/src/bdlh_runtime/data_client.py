@@ -77,6 +77,19 @@ class DataClient:
             raise DataServiceError("data service returned an invalid batch list")
         return payload
 
+    def save_batch_report(self, batch_id: str, report: dict[str, Any]) -> None:
+        """批次执行报告落库(报告读取的第一来源;列缺失/未执行迁移时由调用方降级)。"""
+        self._request("POST", f"/batches/{batch_id}/report", json={"report": report})
+
+    def get_batch_report(self, batch_id: str) -> dict[str, Any] | None:
+        """读取批次执行报告;无报告(未完成/历史批次/未迁移列)返回 None,不抛错。"""
+        try:
+            payload = self._request("GET", f"/batches/{batch_id}/report")
+        except (DataServiceError, httpx.HTTPError):
+            return None
+        report = payload.get("report") if isinstance(payload, dict) else None
+        return report if isinstance(report, dict) and report else None
+
     def complete_batch(self, batch_id: str, status: str) -> None:
         self._request(
             "POST",

@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>工具目录 · 引擎与治理</title>
-<meta name="description" content="ToolCard 统一登记格式;目录数据源在数据库,高危操作红线物理化。">
+<title>资源与工具 · 引擎与治理</title>
+<meta name="description" content="ToolCard 统一登记、目录唯一数据来源、高危操作红线物理化与当前目录快照构成。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -45,7 +46,6 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
           <li><a href="/experiment/">模板中心</a></li>
-          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
         </ul>
       </details>
@@ -62,8 +62,7 @@
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
-          <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">指标定义总表</a></li>
+          <li><a href="/judging/">指标定义与总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -83,21 +82,17 @@
     <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
         <ul>
-          <li><a href="/engine/">Agent 循环</a></li>
-          <li><a href="/engine/loading">工具装载</a></li>
-          <li><a href="/engine/catalog" class="active">工具目录</a></li>
-          <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail">输出护栏</a></li>
-          <li><a href="/engine/tools">工具清单</a></li>
+          <li><a href="/engine/">运行流程</a></li>
+          <li><a href="/engine/catalog" class="active">资源与工具</a></li>
+          <li><a href="/engine/governance">治理与安全边界</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/">数据库与部署</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
-          <li><a href="/ops/deploy">部署与边界</a></li>
           <li><a href="/ops/roadmap">路线图</a></li>
         </ul>
       </details>
@@ -111,14 +106,22 @@
       <ul>
         <li><a href="#single-source">唯一数据来源</a></li>
         <li><a href="#c1">高危操作红线(C-1)物理化</a></li>
+        <li><a href="#list">工具构成(当前目录快照)</a></li>
       </ul>
     </aside>
       <div class="detail-body">
-        <h1>工具目录 · 引擎与治理</h1>
+        <h1>资源与工具 · 引擎与治理</h1>
 <h2 id="single-source">唯一数据来源</h2>
 <p><code>ToolCard</code> 是全部工具(本地实现 + 未来 MCP 代理)的统一登记格式;目录数据源在 PostgreSQL(八表 + 资格层),引擎启动拉取快照,代码不内置兜底清单。</p>
     <h2 id="c1">高危操作红线(C-1)物理化</h2>
 <p>目录注册内置高危操作语义守卫:名字或描述含被禁止执行的操作语义(当前配置为交易执行类:买入/卖出/下单/place_order 等)的工具<strong>物理上无法注册</strong>——语义层无须也无法「识别后放行」危险操作。</p>
+    <h2 id="list">工具构成(当前目录快照)</h2>
+<p>目录共 112 个工具,构成如下表;完整名单与权限以数据库目录和治理链实时裁决为准。全部工具只读(G2 红线),高危操作类工具物理上无法注册(见上文 C-1);写入类工具默认停用,仅作为评测轴参与指标计算。</p>
+<table><thead><tr><th>类别</th><th>数量</th><th>覆盖范围</th><th>默认身份</th></tr></thead><tbody>
+      <tr><td>通用工具</td><td>96</td><td>检索浏览 / 文件 / 邮件 / 日历 / 代码 / 文档 / 地图 / 翻译 / 设备 / 健康等 56 个领域</td><td>多为游客可用</td></tr>
+      <tr><td>领域工具</td><td>16</td><td>行情与基本面 8 / 组合与账户 4 / 深度检索 2 / 综合分析 1 / 用户画像 1</td><td>部分需登录</td></tr>
+      <tr><td>检索元工具</td><td>1</td><td>search_tools(检索装载模式用,引擎侧登记,不入目录表)</td><td>游客</td></tr>
+    </tbody></table>
       </div>
     </div>
   </main>

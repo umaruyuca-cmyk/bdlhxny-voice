@@ -4,144 +4,88 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>我的测试</title>
-<meta name="description" content="当前匿名身份发起的测试任务:进度、结果与取消;匿名结果不进入公告指标。">
+<title>运行记录 · Touchstone</title>
+<meta name="description" content="历史运行的统一入口:我的测试(匿名任务)、我的批次(登录后)与公告批次(已审核发布);匿名结果不进入公告指标。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
-      <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
     <a class="topbar-lab" title="进入实验中心发起批次"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>实验中心</a>
     <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
     <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
     </div>
-    <button class="side-btn" id="sideBtn" type="button" aria-label="展开导航">导航</button>
   </div>
 </header>
-<div class="docs-layout">
-  <aside class="docs-side" id="docsSide">
-    <nav class="side-tree" aria-label="站点模块导航">
-    <a class="side-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>公告</a>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>系统概览</summary>
-        <ul>
-          <li><a href="/about/">系统定位与架构</a></li>
-          <li><a href="/about/banks">题库与数据</a></li>
-          <li><a href="/about/repo">仓库与复现</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>实例展示</summary>
-        <ul>
-          <li><a href="/showcase/">用例详情</a></li>
-          <li><a href="/showcase/tools">用例调用明细</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
-        <ul>
-          <li><a href="/experiment/">模板中心</a></li>
-          <li><a href="/experiment/batches">批次列表</a></li>
-          <li><a href="/experiment/compression">压缩用例</a></li>
-        </ul>
-      </details>
-    <a class="side-item active" href="/test/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>我的测试</a>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>上下文压缩</summary>
-        <ul>
-          <li><a href="/context/">压缩算法</a></li>
-          <li><a href="/context/library">长上下文库</a></li>
-          <li><a href="/context/design">长短对照设计</a></li>
-          <li><a href="/context/results">用例结果</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
-        <ul>
-          <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">指标定义总表</a></li>
-          <li><a href="/judging/judge">判官说明</a></li>
-          <li><a href="/judging/invalid">无效运行与口径</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>工具目录</summary>
-        <ul>
-          <li><a href="/tools/">全部工具</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>用例库</summary>
-        <ul>
-          <li><a href="/cases/">全部用例</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
-        <ul>
-          <li><a href="/engine/">Agent 循环</a></li>
-          <li><a href="/engine/loading">工具装载</a></li>
-          <li><a href="/engine/catalog">工具目录</a></li>
-          <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail">输出护栏</a></li>
-          <li><a href="/engine/tools">工具清单</a></li>
-        </ul>
-      </details>
-    <details class="side-group">
-        <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
-        <ul>
-          <li><a href="/ops/">数据库与冻结数据</a></li>
-          <li><a href="/ops/run-api">私有运行 API</a></li>
-          <li><a href="/ops/artifacts">工件与发布</a></li>
-          <li><a href="/ops/deploy">部署与边界</a></li>
-          <li><a href="/ops/roadmap">路线图</a></li>
-        </ul>
-      </details>
-  </nav>
-    <div class="side-foot">全部指标由代码断言生成,可复核<br><a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">源码仓库</a></div>
-  </aside>
-  <main class="docs-main">
-<div class="detail-layout">
-      <aside class="page-toc" aria-label="本页目录">
-      <h4 class="page-toc-title">本页目录</h4>
-      <ul>
-        <li><a href="#notice">匿名测试结果说明</a></li>
-        <li><a href="#jobs">任务列表</a></li>
-        <li><a href="#reading">口径说明</a></li>
-      </ul>
-    </aside>
-      <div class="detail-body">
-        <h1>我的测试</h1>
-<h2 id="notice">匿名测试结果说明</h2>
-<div class="note"><strong>匿名测试结果</strong>:只代表本次选择的用例、工具和运行条件,不进入公告指标,也不会自动公开。任务与单元进度持久化在服务端,关闭或刷新页面不会停止任务;重新进入本页可继续查看。</div>
-    <h2 id="jobs">任务列表</h2>
-<p id="jobLoadState" class="lab-note">正在读取…</p>
-<div id="jobList"><div class="placeholder-block">正在读取…</div></div>
+
+<main class="docs-main">
+    <div class="eyebrow">Run Records</div>
+    <h1>运行记录</h1>
+    <p class="page-sub">历史运行的唯一入口(P1-3 统一):「我的测试」是当前匿名身份发起的公开测试任务;登录后增加「我的批次」(所有者名下全部批次);「公告批次」展示维护者审核发布的正式批次,所有人可读。</p>
+
+    <div class="note"><strong>匿名测试结果</strong>:只代表本次选择的用例、工具和运行条件,不进入公告指标,也不会自动公开。任务与单元进度持久化在服务端,关闭或刷新页面不会停止任务;重新进入本页可继续查看。</div>
+
+<div class="tabs" role="tablist" id="tabs">
+  <button type="button" class="on" id="tabJobs" role="tab" aria-selected="true">我的测试</button>
+  <button type="button" id="tabBatches" role="tab" aria-selected="false" style="display:none">我的批次</button>
+  <button type="button" id="tabPub" role="tab" aria-selected="false">公告批次</button>
+</div>
+<div class="exp-panel" style="border-top-left-radius:0;padding:6px 12px 12px">
+  <div id="jobsPanel"><p id="jobLoadState" class="lab-note">正在读取…</p>
+<div id="jobList"><div class="placeholder-block">正在读取…</div></div></div>
+  <div id="batchesPanel" style="display:none">
+    <div class="note" style="margin-top:10px"><strong>两条通道</strong>:登录后从实验中心按模板发起的正式批次记入账号名下,展示在这里(进度在批次详情);未登录时从压缩用例等入口发起的匿名测试,按浏览器 Cookie 归属,展示在「我的测试」。</div>
+    <p id="batchLoadState" class="lab-note">正在读取…</p>
+    <div id="batchList"><div class="placeholder-block">正在读取…</div></div>
+  </div>
+  <div id="pubPanel" style="display:none"><div class="placeholder-block">正在读取发布索引…</div></div>
+</div>
+
     <h2 id="reading">口径说明</h2>
 <ul>
   <li>取消只阻止尚未开始的单元;已产生的运行与费用保留,任务显示「已取消」或「部分完成」。</li>
   <li>无效运行(服务错误、超时等)单独显示,不自动补跑。</li>
   <li>服务重启后的中断任务标记为「已中断」,已完成单元保留,可重新发起而不丢失历史。</li>
   <li>匿名身份由浏览器 HttpOnly Cookie 标识,清除浏览器数据后无法恢复这些记录。</li>
+  <li>页面时间均为浏览者本地时区,统一 yyyyMMdd HH:mm:ss 格式。</li>
+  <li>无模板批次挂「无模板」标记保留可读;批次号与 config_hash 全站 8 位短显,悬停可见全量,点击复制。</li>
 </ul>
-      </div>
-    </div>
-  </main>
-</div>
+</main>
 <script src="/docs/docs.js"></script>
+<script src="/docs/experiment.js"></script>
 
 <script>
 (function () {
   "use strict";
+  var E = window.EXP;
   function esc(v) {
     return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
     });
   }
+
+  /* ── 三 Tab(P1-3):登录后追加「我的批次」;公告批次全员可读 ── */
+  var tabs = { jobs: "tabJobs", batches: "tabBatches", pub: "tabPub" };
+  var panels = { jobs: "jobsPanel", batches: "batchesPanel", pub: "pubPanel" };
+  function switchTab(name) {
+    Object.keys(tabs).forEach(function (key) {
+      var btn = document.getElementById(tabs[key]);
+      var on = key === name;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+      document.getElementById(panels[key]).style.display = on ? "block" : "none";
+    });
+  }
+  Object.keys(tabs).forEach(function (key) {
+    document.getElementById(tabs[key]).addEventListener("click", function () { switchTab(key); });
+  });
+  if (E.isOwner()) document.getElementById("tabBatches").style.display = "";
+
+  /* ── Tab 1:我的测试(匿名任务;进度用共享状态化组件 E.jobProgress) ── */
   var STATUS_LABEL = {
     QUEUED: "排队中", RUNNING: "运行中", COMPLETE: "完成", FAILED: "失败",
     CANCELLED: "已取消", INTERRUPTED: "已中断", PARTIAL: "部分完成",
@@ -166,12 +110,6 @@
     return '<span class="tag ' + cls + '">' + esc(STATUS_LABEL[status] || status) + "</span>";
   }
 
-  function progressHtml(done, total) {
-    var pct = total ? Math.round((done / total) * 100) : 0;
-    return '<div class="prog"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
-      '<small>' + done + " / " + total + " 个单元</small>";
-  }
-
   function cardHtml(j) {
     var target = j.test_type === "COMPARISON_CASE"
       ? ("用例 " + esc(j.case_id || "—"))
@@ -186,9 +124,9 @@
     return '<div class="job-card" id="job-' + esc(j.job_id) + '">' +
       '<div class="job-head">' + statusBadge(j.status) +
       "<b>" + esc(SCOPE_LABEL[j.execution_scope] || j.execution_scope) + "</b>" + custom +
-      '<span class="job-time">' + esc(j.created_at || "") + "</span></div>" +
+      '<span class="job-time">' + esc(E.fmtTime(j.created_at)) + "</span></div>" +
       '<div class="job-meta">' + target + " · 任务号 <code>" + esc(j.job_id) + "</code></div>" +
-      progressHtml(j.completed_units || 0, j.total_units || 0) +
+      E.jobProgress(j) +
       '<div class="job-actions">' + actions + "</div>" +
       '<div class="job-detail" id="detail-' + esc(j.job_id) + '">' +
       (openDetails[j.job_id] ? '<div class="placeholder-block">读取中…</div>' : "") + "</div>" +
@@ -198,7 +136,7 @@
   function render(jobs) {
     if (!jobs.length) {
       stateEl.textContent = "";
-      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
+      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 或 <a href="/experiment/">实验中心</a> 发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
       return;
     }
     stateEl.textContent = "共 " + jobs.length + " 个任务,按创建时间倒序;运行中的任务每 5 秒自动刷新。";
@@ -311,6 +249,68 @@
 
   load();
   setInterval(load, 5000);
+
+  /* ── Tab 2:我的批次(登录后;所有者 Bearer 通道) ── */
+  var batchStateEl = document.getElementById("batchLoadState");
+  var batchListEl = document.getElementById("batchList");
+
+  function renderBatches(payload) {
+    var rows = (payload && payload.batches) || [];
+    if (!rows.length) {
+      batchStateEl.textContent = "";
+      batchListEl.innerHTML = '<div class="placeholder-block">登录后还没有发起过批次。到 <a href="/experiment/">实验中心</a> 按模板发起;进度与结果会同时出现在这里。</div>';
+      return;
+    }
+    batchStateEl.textContent = "共 " + rows.length + " 个批次,按创建时间倒序;运行中的批次每 5 秒自动刷新。";
+    batchListEl.innerHTML = '<table class="exp-table"><tr><th>批次</th><th>实验</th><th>规模</th><th>状态</th><th>时间</th><th></th></tr>' +
+      rows.map(function (b) {
+        var scale = b.templateId
+          ? esc(b.variantCount + " 组 × " + b.repeatCount + " 次 = " + b.runCount + " 次运行")
+          : esc((b.runCount == null ? "—" : b.runCount) + " 次运行");
+        return "<tr><td><code>" + esc(String(b.id || "").slice(0, 8)) + "…</code></td>" +
+          '<td><a href="/experiment/batch/' + encodeURIComponent(b.id) + '">' + esc(b.name || b.templateId || "批次") + "</a></td>" +
+          "<td>" + scale + "</td>" +
+          "<td>" + E.statusTag(b.status, "batch") + "</td>" +
+          "<td>" + esc(E.fmtTime(b.createdAt)) + "</td>" +
+          '<td><a href="/experiment/batch/' + encodeURIComponent(b.id) + '">查看详情 →</a></td></tr>';
+      }).join("") + "</table>";
+  }
+
+  function loadBatches() {
+    return E.get("/api/v1/batches?limit=20").then(renderBatches).catch(function (err) {
+      batchStateEl.textContent = "";
+      batchListEl.innerHTML = '<div class="placeholder-block">批次读取失败(' + esc(err.message || "数据服务不可用") +
+        ");登录会话可能已过期,请重新登录。</div>";
+    });
+  }
+  if (E.isOwner()) {
+    loadBatches();
+    setInterval(function () { if (E.isOwner()) loadBatches(); }, 5000);
+  }
+
+  /* ── Tab 3:公告批次(正式发布索引,所有人可读) ── */
+  fetch("/showcase-data/publications/index.json", { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (index) {
+      var pubs = (index && (index.formal_publications || index.formal_batches)) || [];
+      var box = document.getElementById("pubPanel");
+      if (!pubs.length) {
+        box.innerHTML = '<div class="placeholder-block">尚未发布:发布链路为「实验模板与固定题库 → 后台运行产生结果与证据 → 维护者审核 → 公开快照」。当前没有已发布的正式批次;汇总数字与代表性实例见<a href="/">公告页</a>。</div>';
+        return;
+      }
+      box.innerHTML = '<table class="exp-table"><tr><th>批次</th><th>实验类型</th><th>规模</th><th>模型</th><th>发布时间</th><th></th></tr>' +
+        pubs.map(function (p) {
+          return "<tr><td>" + E.hashChip(p.batch_id) + "</td>" +
+            '<td class="mono">' + E.esc(p.experiment_type || "—") + "</td>" +
+            '<td class="mono">' + E.esc((p.runs_per_case || "?") + " 次/题 × " + (p.case_count || "?") + " 题") + "</td>" +
+            '<td class="mono">' + E.esc(p.model || "—") + "</td>" +
+            '<td class="mono">' + E.fmtTime(p.published_at) + "</td>" +
+            '<td><a href="/experiment/batch/' + encodeURIComponent(p.batch_id) + '">查看详情 →</a></td></tr>';
+        }).join("") + "</table>";
+    })
+    .catch(function () {
+      document.getElementById("pubPanel").innerHTML = '<div class="placeholder-block">尚未发布(发布索引不可读);汇总状态见<a href="/">公告页</a>。</div>';
+    });
 })();
 </script>
 </body>

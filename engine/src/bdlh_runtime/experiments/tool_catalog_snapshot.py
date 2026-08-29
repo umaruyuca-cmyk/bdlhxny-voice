@@ -1,7 +1,8 @@
 """对比用例冻结工具目录快照。
 
 工具定义来自正式目录口径(通用 Mock 工具),不在执行器里构造空 Schema。
-所有实验变体读取同一份快照与同一顺序。垂直领域工具由可选场景包另行注入。
+所有实验变体读取同一份快照与同一顺序。对比用例引用的垂直领域工具
+(如金融持仓只读工具)也一并冻结在此快照,缺工具即启动失败。
 """
 
 from __future__ import annotations
@@ -402,6 +403,36 @@ _SNAPSHOT_TOOLS: tuple[SnapshotTool, ...] = (
         ("query",),
         operations=("READ_PUBLIC_RESEARCH",),
         toolsets=("news_read",),
+    ),
+    SnapshotTool(
+        "market.get_realtime_quote",
+        "查询标的最新行情",
+        ("symbol",),
+        operations=("READ_MARKET_DATA",),
+        toolsets=("market_read",),
+    ),
+    SnapshotTool(
+        "market.get_news",
+        "查询标的结构化新闻",
+        ("symbol",),
+        operations=("READ_MARKET_DATA",),
+        toolsets=("news_read",),
+    ),
+    SnapshotTool(
+        "portfolio.get_current_positions",
+        "读取当前用户持仓列表",
+        (),
+        requires_authenticated_user=True,
+        operations=("READ_PORTFOLIO",),
+        toolsets=("portfolio_read",),
+    ),
+    SnapshotTool(
+        "portfolio.get_account_snapshot",
+        "读取当前用户账户快照",
+        (),
+        requires_authenticated_user=True,
+        operations=("READ_PORTFOLIO",),
+        toolsets=("portfolio_read",),
     ),
 )
 

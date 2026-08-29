@@ -23,7 +23,7 @@
     if (entry.kind_key === "session") {
       return s.event_count + " 个事件(用户 " + s.user_messages + " / 助手 " + s.assistant_messages +
         " / 工具对 " + s.tool_pairs + " / 失败 " + s.failed_tool_pairs + ")· " +
-        String(s.first_at || "").slice(0, 10) + " ~ " + String(s.last_at || "").slice(0, 10);
+        window.SITE.fmtDate(s.first_at) + " ~ " + window.SITE.fmtDate(s.last_at);
     }
     return "—";
   }

@@ -970,6 +970,11 @@ details.case-trace summary { cursor: pointer; font-size: 14px; }
 .cat-badge.kind-negative { background: #fee2e2; color: #991b1b; }
 .cat-badge.kind-context { background: #fae8ff; color: #86198f; }
 .cat-badge.kind-complex { background: #d1fae5; color: #065f46; }
+/* 对比用例题库现行 kind(basic/combo/multi/exception/security)徽章配色 */
+.cat-badge.kind-combo { background: #e0f2fe; color: #075985; }
+.cat-badge.kind-multi { background: #d1fae5; color: #065f46; }
+.cat-badge.kind-exception { background: #fef3c7; color: #92400e; }
+.cat-badge.kind-security { background: #fee2e2; color: #991b1b; }
 .cat-paginate {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   margin-top: 20px; flex-wrap: wrap;
@@ -1443,12 +1448,12 @@ details.case-trace summary { cursor: pointer; font-size: 14px; }
 .b-blue{background:#eef0fe;color:#2e31c9}
 .b-outline{border:1px solid var(--doc-border);color:var(--doc-faint);background:#fff}
 .b-outline::before{display:none}
-.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin:16px 0}
-.tpl-card{background:#fff;border:1px solid var(--doc-border);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:9px;transition:border-color .15s,box-shadow .15s}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:14px;margin:16px 0}
+.tpl-card{background:#fff;border:1px solid var(--doc-border);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:9px;transition:border-color .15s,box-shadow .15s;min-width:0}
 .tpl-card.linked{cursor:pointer}
 .tpl-card.linked:hover{border-color:#c9ccd4;box-shadow:0 1px 2px rgba(16,17,19,.04),0 8px 24px -12px rgba(16,17,19,.12)}
 .tpl-card.locked{opacity:.62}
-.tpl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.tpl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
 .tpl-name{font-weight:650;font-size:15px;letter-spacing:-.01em;line-height:1.45}
 .tpl-purpose{font-size:13px;color:var(--doc-dim)}
 .tpl-var{font-size:12.5px;color:var(--doc-dim);border-top:1px solid #f0f0f2;padding-top:9px}
@@ -1551,12 +1556,30 @@ a{color:var(--doc-cyan)}
 .docs-main{max-width:1160px;margin:0 auto;padding:40px 24px 80px;width:100%;border:0;background:transparent}
 .detail-layout{display:block}
 .detail-body{max-width:none}
-.page-toc{max-width:none;margin-bottom:20px}
-.page-toc-title{display:none}
-.page-toc ul{flex-direction:row;flex-wrap:wrap;gap:6px}
+/* 页内目录(P1-6):竖排锚点列表,带「本页目录」小标题,明确是页内跳转而非标签页;
+   由 shell 仅在章节 ≥3 时生成,短页面不出现装饰性目录 */
+.page-toc{max-width:none;margin-bottom:22px}
+.page-toc-title{display:block;font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--doc-faint);margin-bottom:6px}
+.page-toc ul{flex-direction:column;flex-wrap:nowrap;gap:2px}
 .page-toc ul::before{display:none}
 .page-toc li::before,.page-toc li a.active::before,.page-toc li:has(a.active)::before{display:none}
-.page-toc li a{border:1px solid var(--doc-border);border-radius:99px;padding:3px 12px;font-size:12.5px;background:#fff}
+.page-toc li a{display:inline-block;border:0;border-radius:6px;padding:2px 0 2px 15px;font-size:12.5px;background:none;color:var(--doc-dim);position:relative;text-decoration:none}
+.page-toc li a::before{content:"";position:absolute;left:2px;top:.7em;width:5px;height:5px;border-radius:50%;background:var(--doc-border)}
+.page-toc li a:hover{color:var(--doc-text)}
+.page-toc li a.active{color:var(--doc-accent);font-weight:600}
+.page-toc li a.active::before{background:var(--doc-accent)}
+
+/* 首页下一步入口(P1-1):三个 CTA,移动端等宽堆叠 */
+.cta-row{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}
+.cta-row .cta{padding:10px 22px;font-size:14px;border-radius:9px;text-decoration:none}
+@media(max-width:680px){.cta-row .cta{flex:1;text-align:center;min-height:44px}}
+
+/* 模板卡片技术详情折叠(P1-4) */
+.tpl-detail{font-size:12px;color:var(--doc-faint)}
+.tpl-detail summary{cursor:pointer;color:var(--doc-dim);padding:4px 0;user-select:none}
+.tpl-detail summary:hover{color:var(--doc-text)}
+.tpl-detail[open] summary{margin-bottom:4px}
+.tpl-detail .tpl-tech{margin:2px 0}
 
 /* ── 排版:eyebrow / h1 / page-sub / h2 / note ── */
 .docs-main h1,.detail-body > h1:first-child{font-size:26px;font-weight:700;letter-spacing:-.02em;margin:0 0 8px;color:var(--doc-text)}
@@ -1599,13 +1622,48 @@ a{color:var(--doc-cyan)}
 .job-detail{margin-top:10px}
 .prog{height:6px;border-radius:99px;background:#f0f0f2;overflow:hidden;margin-top:8px;max-width:420px}
 .prog-bar{height:100%;background:var(--doc-accent);border-radius:99px}
+.job-phase{display:block;margin-top:6px;color:var(--doc-faint);font-size:12px}
 
 /* ── 登录遮罩配色对齐 ── */
 .login-go{background:var(--doc-accent)}
 .login-go:hover{background:var(--doc-cyan)}
 
+/* 移动端导航(P0-2):顶栏两行可见——品牌+动作一行,五导航独占一行允许换行;
+   不依赖横向滑动发现入口(窄屏禁用 overflow-x 滚动截断)。
+   P2-1:主导航由构建期静态写入页面,无需 noscript 兜底。 */
 @media(max-width:920px){
-  .site-nav{overflow-x:auto}
-  .topbar-inner{padding:0 14px}
+  .topbar-inner{flex-wrap:wrap;height:auto;min-height:56px;padding:8px 14px;row-gap:6px}
+  .topbar-actions{flex-wrap:wrap;justify-content:flex-end;margin-left:auto}
+  .site-nav{order:9;flex:0 0 100%;flex-wrap:wrap;overflow-x:visible}
+  .site-nav a{padding:6px 10px;font-size:13px}
   .run-layout{grid-template-columns:1fr}
+}
+
+/* ── 窄屏可用性(P0-3):≤680px 表格卡片化、定义列表纵排、长字段受控换行 ── */
+/* 长技术字段(模板 ID / 变量路径 / config hash / URL)不撑破 flex/grid 布局 */
+code,.hash,.tpl-tech{overflow-wrap:anywhere}
+.mono{overflow-wrap:anywhere}
+.exp-panel,.job-card,.job-detail,.run-drill{min-width:0}
+
+@media(max-width:680px){
+  /* 搜索与筛选占满整行 */
+  .cat-toolbar .cat-search{min-width:0;width:100%;max-width:none}
+  .cat-toolbar .cat-filter{flex:1}
+  /* 用例/工具表格 → 卡片式行:表头隐藏,td 以 data-label 前缀自说明 */
+  .cat-table,.cat-table tbody{display:block}
+  .cat-table thead{display:none}
+  .cat-table tr{display:block;border:1px solid var(--doc-border);border-radius:10px;background:#fff;padding:10px 14px;margin:10px 0}
+  .cat-table tr:hover td{background:transparent}
+  .cat-table td{display:block;border-bottom:0;padding:3px 0}
+  .cat-table td::before{content:attr(data-label);display:block;font-size:10.5px;color:var(--doc-faint);letter-spacing:.04em;margin-bottom:1px}
+  .cat-table td[data-label=""]::before,.cat-table td:not([data-label])::before{display:none}
+  /* 数据结果表(exp-table)保留桌面列布局,允许受控横向滚动,不推动整页宽度 */
+  .exp-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* 运行页定义列表:横排 k/v → 上下堆叠 */
+  .def-list li{display:block}
+  .def-list .k{display:block;min-width:0;margin-bottom:2px}
+  /* 触控目标 ≥44px:分页与任务操作按钮 */
+  .cat-paginate button{min-width:44px;min-height:44px}
+  .job-actions button{min-height:44px;min-width:44px;padding:0 10px}
+  .tpl-foot{flex-wrap:wrap;gap:8px}
 }

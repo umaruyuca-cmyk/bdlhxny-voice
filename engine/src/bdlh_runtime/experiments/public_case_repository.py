@@ -107,6 +107,15 @@ def _case_from_view(view: dict[str, Any]) -> ComparisonCase | None:
                 "fixture_version": checks.get("fixture_set_version") or 1,
                 "tool_catalog_version": str(checks.get("tool_catalog_version") or ""),
                 "fixture_source_hash": str(checks.get("fixture_source_hash") or ""),
+                # 已注册变体与快照(agent_runs 落库外键需要;视图键为 camelCase)
+                "case_variants": [
+                    {
+                        "variant_id": str(v.get("variantId") or ""),
+                        "snapshot_id": str(v.get("snapshotId") or ""),
+                    }
+                    for v in view.get("variants") or []
+                    if v.get("variantId")
+                ],
             },
         )
     except ComparisonCaseError:

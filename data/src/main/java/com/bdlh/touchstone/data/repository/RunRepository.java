@@ -79,6 +79,42 @@ public class RunRepository {
     }
 
     /**
+     * 批次执行报告落库(报告为执行器完整 payload JSON)。
+     * 报告是批次详情页压缩明细/汇总的第一读取来源;完成时由 engine 写入。
+     */
+    public void saveBatchReport(UUID batchId, SaveBatchReportRequest request) {
+        int updated = jdbc.update(
+                """
+                UPDATE touchstone.run_batches
+                SET report = ?::jsonb
+                WHERE id = ?
+                """,
+                request.report().toString(),
+                batchId);
+        if (updated == 0) {
+            throw new IllegalArgumentException("unknown batch_id: " + batchId);
+        }
+    }
+
+    /** 读取批次执行报告;空报告({})按不存在处理,由调用方回退本地工件。 */
+    public JsonNode getBatchReport(UUID batchId) {
+        String text = jdbc.queryForObject(
+                """
+                SELECT report::text FROM touchstone.run_batches WHERE id = ?
+                """,
+                String.class,
+                batchId);
+        if (text == null || text.isBlank() || "{}".equals(text.trim())) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(text);
+        } catch (JsonProcessingException exception) {
+            return null;
+        }
+    }
+
+    /**
      * 批次列表(所有者视角,新到旧 keyset 分页)。
      *
      * cursor = 上一页最后一条批次 id;按 (created_at, id) 二元组比较翻页。

@@ -10,7 +10,8 @@
     "generate:site": "node scripts/generate-site.mjs",
     "generate:context-sessions": "node scripts/generate-session-context-cases.mjs",
     "generate:context-library": "node scripts/generate-context-library.mjs",
-    "publish:showcase": "node scripts/publish-showcase.mjs"
+    "publish:showcase": "node scripts/publish-showcase.mjs",
+    "test:visual": "node scripts/visual-smoke.mjs"
   },
   "engines": {
     "node": ">=20"

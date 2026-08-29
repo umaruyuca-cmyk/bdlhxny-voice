@@ -41,6 +41,7 @@ UNIT_STATUS_COMPLETE = "COMPLETE"
 UNIT_STATUS_CANCELLED = "CANCELLED"
 UNIT_STATUS_INTERRUPTED = "INTERRUPTED"
 UNIT_STATUS_FAILED = "FAILED"
+UNIT_STATUS_INVALID = "INVALID"
 
 REQUESTER_ANONYMOUS = "ANONYMOUS"
 REQUESTER_OWNER = "OWNER"
@@ -127,7 +128,9 @@ class JobRecord:
     #: 工具排除预设(template-availability-degradation 匿名路径)
     template_preset_id: str | None = None
     quota_snapshot: dict[str, Any] = field(default_factory=dict)
+    #: 幂等键 + 请求体哈希(同一键重复提交时判定"同一请求"的依据)
     idempotency_key: str | None = None
+    request_hash: str | None = None
     cancel_requested: bool = False
     created_at: str = field(default_factory=_now_iso)
     updated_at: str = field(default_factory=_now_iso)
@@ -197,12 +200,53 @@ class JobStore:
                 break
         return jobs
 
-    def find_by_idempotency_key(self, key: str) -> JobRecord | None:
+    def find_by_idempotency_key(
+        self, key: str, *, anonymous_id_hash: str | None = None
+    ) -> JobRecord | None:
+        """按幂等键查找任务;给出 ``anonymous_id_hash`` 时限定同一匿名身份,
+        防止一个匿名身份复用另一个身份的幂等结果。"""
         for path in sorted(self._root.glob("job-*.json"), reverse=True)[:200]:
             job = self._load(path)
-            if job.idempotency_key == key:
+            if job.idempotency_key == key and (
+                anonymous_id_hash is None or job.anonymous_id_hash == anonymous_id_hash
+            ):
                 return job
         return None
+
+    def audit_invalid_agent_runs(self) -> list[str]:
+        """历史数据审计(修复方案 §15):把「标记完成但没有任何 Agent 模型调用
+        证据」的运行单元标记为 INVALID / LLM_UNAVAILABLE。
+
+        - 只处理 COMPLETE 且 ``actual_agent_steps==0`` 的单元(有效运行至少
+          应有 1 次模型调用,除非显式快路径——快路径单元不带 COMPLETE+0 步组合);
+        - 原记录保留:不改动答案/耗时/停止原因,只新增
+          ``summary.measurement_invalid_reason`` 并把 validity 置 INVALID;
+        - 幂等:已审计过的任务(result.measurement_invalid 标记)跳过;
+        - 返回本次被标记的 job_id 列表。
+        """
+        audited: list[str] = []
+        for path in self._root.glob("job-*.json"):
+            job = self._load(path)
+            if job.result.get("measurement_invalid"):
+                continue
+            suspects = [
+                unit
+                for unit in job.units
+                if unit.status == UNIT_STATUS_COMPLETE and unit.actual_agent_steps == 0
+            ]
+            if not suspects:
+                continue
+            for unit in suspects:
+                unit.validity = "INVALID"
+                unit.summary["measurement_invalid_reason"] = (
+                    "LLM_UNAVAILABLE: 历史审计发现该单元无 Agent 模型调用证据"
+                    "(actual_agent_steps=0),不能作为有效 Agent 运行进入发布指标"
+                )
+            job.result["measurement_invalid"] = True
+            job.result["measurement_invalid_unit_ids"] = [unit.unit_id for unit in suspects]
+            self.save(job)
+            audited.append(job.job_id)
+        return audited
 
     def recover_interrupted(self) -> list[str]:
         """服务重启恢复:活跃任务 → INTERRUPTED,活跃单元 → INTERRUPTED。

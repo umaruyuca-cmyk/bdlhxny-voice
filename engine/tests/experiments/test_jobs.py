@@ -435,3 +435,98 @@ class TestAnonymousService:
         cancelled = service.cancel_job(job.job_id, ANON_A)
         assert cancelled.status == JOB_STATUS_CANCELLED
         assert all(unit.status == UNIT_STATUS_CANCELLED for unit in cancelled.units)
+
+
+# ── 幂等(P0-4)──────────────────────────────────────────────────────────
+
+
+class TestIdempotency:
+    def _payload(self, **over):
+        body = {"test_type": "COMPARISON_CASE", "template_id": TEMPLATE_ID,
+                "case_id": "cmp-x", "repeat_count": 3}
+        body.update(over)
+        return body
+
+    def test_same_key_same_body_returns_original_job(self, tmp_path):
+        service = _service(tmp_path, template_executor=_fake_template_executor)
+        job1 = service.create_job(
+            self._payload(idempotency_key="key-aaaaaaaa-1"), anonymous_id_hash=ANON_A
+        )
+        job2 = service.create_job(
+            self._payload(idempotency_key="key-aaaaaaaa-1"), anonymous_id_hash=ANON_A
+        )
+        assert job1.job_id == job2.job_id  # 重试/并发提交不创建第二个任务
+
+    def test_same_key_different_body_conflicts(self, tmp_path):
+        from bdlh_runtime.experiments.public_service import IdempotencyConflict
+
+        service = _service(tmp_path, template_executor=_fake_template_executor)
+        service.create_job(
+            self._payload(idempotency_key="key-bbbbbbbb-1"), anonymous_id_hash=ANON_A
+        )
+        with pytest.raises(IdempotencyConflict):
+            service.create_job(
+                self._payload(idempotency_key="key-bbbbbbbb-1", repeat_count=1),
+                anonymous_id_hash=ANON_A,
+            )
+
+    def test_same_key_different_identity_not_shared(self, tmp_path):
+        service = _service(tmp_path, template_executor=_fake_template_executor)
+        job_a = service.create_job(
+            self._payload(idempotency_key="key-cccccccc-1"), anonymous_id_hash=ANON_A
+        )
+        job_b = service.create_job(
+            self._payload(idempotency_key="key-cccccccc-1"), anonymous_id_hash=ANON_B
+        )
+        assert job_a.job_id != job_b.job_id  # 不同匿名身份互不串用
+
+    def test_invalid_key_length_rejected(self, tmp_path):
+        service = _service(tmp_path, template_executor=_fake_template_executor)
+        with pytest.raises(PublicTestError, match="idempotency_key"):
+            service.create_job(
+                self._payload(idempotency_key="short"), anonymous_id_hash=ANON_A
+            )
+
+
+# ── 历史数据审计(修复方案 §15)─────────────────────────────────────────
+
+
+class TestInvalidAgentRunAudit:
+    def test_zero_step_complete_units_marked_invalid(self, tmp_path):
+        """COMPLETE 且 actual_agent_steps=0 的单元 → INVALID + 原因保留,答案不改。"""
+        store = JobStore(tmp_path / "jobs")
+        unit = JobUnit(seq=1, unit_id="u1", agent_mode_id="a", repeat_index=0,
+                       status=UNIT_STATUS_COMPLETE, actual_agent_steps=0, task_success=True)
+        healthy = JobUnit(seq=2, unit_id="u2", agent_mode_id="b", repeat_index=0,
+                          status=UNIT_STATUS_COMPLETE, actual_agent_steps=2, task_success=True)
+        job = JobRecord(job_id="job-audit-1", test_type=TestType.COMPARISON_CASE.value,
+                        execution_scope="template-batch", anonymous_id_hash=ANON_A,
+                        units=[unit, healthy])
+        store.save(job)
+        audited = store.audit_invalid_agent_runs()
+        assert audited == ["job-audit-1"]
+        stored = store.get("job-audit-1")
+        suspect = stored.units[0]
+        assert suspect.validity == "INVALID"
+        assert "LLM_UNAVAILABLE" in suspect.summary["measurement_invalid_reason"]
+        assert stored.units[1].validity == ""  # 正常单元不受影响
+        assert stored.result["measurement_invalid"] is True
+        assert stored.result["measurement_invalid_unit_ids"] == ["u1"]
+
+    def test_audit_is_idempotent(self, tmp_path):
+        store = JobStore(tmp_path / "jobs")
+        job = JobRecord(job_id="job-audit-2", test_type=TestType.COMPARISON_CASE.value,
+                        execution_scope="template-batch", anonymous_id_hash=ANON_A,
+                        units=[JobUnit(seq=1, unit_id="u1", agent_mode_id="a", repeat_index=0,
+                                       status=UNIT_STATUS_COMPLETE, actual_agent_steps=0)])
+        store.save(job)
+        assert store.audit_invalid_agent_runs() == ["job-audit-2"]
+        assert store.audit_invalid_agent_runs() == []  # 已审计任务不再重复处理
+
+    def test_healthy_jobs_untouched(self, tmp_path):
+        store = JobStore(tmp_path / "jobs")
+        store.save(JobRecord(job_id="job-fine", test_type=TestType.COMPARISON_CASE.value,
+                             execution_scope="template-batch", anonymous_id_hash=ANON_A,
+                             units=[JobUnit(seq=1, unit_id="u1", agent_mode_id="a", repeat_index=0,
+                                            status=UNIT_STATUS_COMPLETE, actual_agent_steps=3)]))
+        assert store.audit_invalid_agent_runs() == []

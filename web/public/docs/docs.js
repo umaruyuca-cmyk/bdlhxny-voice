@@ -3,12 +3,15 @@
   "use strict";
 
   // 0. 原型 v2 外壳(前端信息架构 §三:5 个一级模块):wordmark + 五导航 + 角色标签。
-  //    导航注入到既有 topbar,旧页面不改标记即可获得新外壳;活动态按路径推导。
+  //    P2-1:主导航已由站点生成器/页面模板静态写入,本脚本只做增强——
+  //    按路径推导活动态;旧缓存页缺静态 nav 时兜底注入。禁用脚本也能用基础导航。
   (function injectChrome() {
     var inner = document.querySelector(".topbar-inner");
     if (!inner) return;
     var brand = inner.querySelector(".brand");
-    if (brand) brand.innerHTML = '<span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span>';
+    if (brand && !brand.querySelector(".wordmark")) {
+      brand.innerHTML = '<span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span>';
+    }
 
     var NAV = [
       { href: "/", label: "公告", match: function (p) { return p === "/" || p === "/index.html"; } },
@@ -26,13 +29,23 @@
       } },
     ];
     var path = location.pathname;
-    var nav = document.createElement("nav");
-    nav.className = "site-nav";
-    nav.setAttribute("aria-label", "站点模块导航");
-    nav.innerHTML = NAV.map(function (item) {
-      return '<a href="' + item.href + '"' + (item.match(path) ? ' class="on"' : "") + ">" + item.label + "</a>";
-    }).join("");
-    inner.insertBefore(nav, inner.querySelector(".topbar-actions") || null);
+    var nav = inner.querySelector("nav.site-nav");
+    if (!nav) {
+      // 兜底:页面缺静态导航(极旧缓存)时注入;正常路径不会走到这里
+      nav = document.createElement("nav");
+      nav.className = "site-nav";
+      nav.setAttribute("aria-label", "站点模块导航");
+      nav.innerHTML = NAV.map(function (item) {
+        return '<a href="' + item.href + '">' + item.label + "</a>";
+      }).join("");
+      inner.insertBefore(nav, inner.querySelector(".topbar-actions") || null);
+    }
+    // 活动态高亮(交互增强):静态导航本身不依赖脚本可用
+    var links = Array.prototype.slice.call(nav.querySelectorAll("a"));
+    links.forEach(function (a) {
+      var item = NAV.filter(function (n) { return n.href === a.getAttribute("href"); })[0];
+      if (item && item.match(path)) a.classList.add("on");
+    });
 
     var actions = inner.querySelector(".topbar-actions");
     if (actions && !actions.querySelector(".role-label")) {
@@ -83,6 +96,26 @@
     window.addEventListener("scroll", spy, { passive: true });
     spy();
   }
+  // 3.5 全站时间展示格式:yyyyMMdd HH:mm:ss(本地时区)——页面脚本经 window.SITE.fmtTime /
+  //     fmtDate(仅日期 yyyyMMdd)使用;后端返回的 ISO 8601 原始串不再直接上屏。
+  window.SITE = {
+    fmtTime: function (value) {
+      if (value == null || value === "") return "—";
+      var d = new Date(value);
+      if (isNaN(d.getTime())) return String(value).replace("T", " ").slice(0, 19);
+      var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      return "" + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
+        " " + p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
+    },
+    fmtDate: function (value) {
+      if (value == null || value === "") return "—";
+      var d = new Date(value);
+      if (isNaN(d.getTime())) return String(value).slice(0, 10).replace(/-/g, "");
+      var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
+      return "" + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate());
+    },
+  };
+
   // 4. 登录遮罩(当前页弹窗,不跳转) + 登录态三按钮(登录/实验中心/退出登录)
   var RUN_API = window.__RUN_API__ || "http://127.0.0.1:8090";
   // 所有者会话键:ts_owner(旧键 lab_token 一次性迁移,老会话不掉线)
@@ -128,7 +161,7 @@
     var mask = document.createElement("div");
     mask.className = "login-mask";
     mask.innerHTML =
-      '<div class="login-dialog" role="dialog" aria-label="所有者登录">' +
+      '<div class="login-dialog" role="dialog" aria-modal="true" aria-label="所有者登录">' +
       "<h3>所有者登录</h3>" +
       '<p class="login-sub">仅项目所有者；密码连续输错 5 次将锁定 15 分钟。登录后留在当前页，可：</p>' +
       '<ul class="login-caps">' +
@@ -136,24 +169,39 @@
       "<li>跟踪批次进度，运行中可协作取消</li>" +
       "<li>查看「我的批次」全部历史与单次运行完整明细</li>" +
       "</ul>" +
-      '<label>用户名<input class="login-user" type="text" autocomplete="username"></label>' +
-      '<label>密码<input class="login-pass" type="password" autocomplete="current-password"></label>' +
-      '<p class="login-err" aria-live="polite"></p>' +
+      '<label>用户名<input class="login-user" type="text" autocomplete="username" aria-describedby="loginErr"></label>' +
+      '<label>密码<input class="login-pass" type="password" autocomplete="current-password" aria-describedby="loginErr"></label>' +
+      '<p class="login-err" id="loginErr" aria-live="polite"></p>' +
       '<div class="login-row"><button type="button" class="login-cancel">取消</button>' +
       '<button type="button" class="login-go">登录</button></div></div>';
     document.body.appendChild(mask);
     var user = mask.querySelector(".login-user");
     var pass = mask.querySelector(".login-pass");
     var err = mask.querySelector(".login-err");
+    var dialog = mask.querySelector(".login-dialog");
+    var dialogOpener = null; // 打开前的焦点元素,关闭后归还
 
+    function focusables() {
+      return Array.prototype.filter.call(
+        dialog.querySelectorAll("button, input, a[href]"),
+        function (el) { return el.offsetParent != null; },
+      );
+    }
     function open() {
       err.textContent = "";
+      user.setAttribute("aria-invalid", "false");
+      pass.setAttribute("aria-invalid", "false");
+      dialogOpener = document.activeElement;
       mask.classList.add("show");
       user.focus();
     }
     function close() {
       mask.classList.remove("show");
       pass.value = "";
+      // 焦点归还触发按钮(P2-2):键盘用户关闭弹窗后不丢焦点
+      var back = dialogOpener || loginBtn;
+      if (back && typeof back.focus === "function") back.focus();
+      dialogOpener = null;
     }
     loginBtn.addEventListener("click", function (e) {
       e.preventDefault(); // 不跳转登录页,当前页遮罩
@@ -164,7 +212,17 @@
     });
     mask.querySelector(".login-cancel").addEventListener("click", close);
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") close();
+      if (!mask.classList.contains("show")) return;
+      if (e.key === "Escape") { close(); return; }
+      // 焦点圈定(P2-2):Tab/Shift+Tab 在弹窗内首尾循环,不漏到页面底层
+      if (e.key === "Tab") {
+        var list = focusables();
+        if (!list.length) return;
+        var first = list[0];
+        var last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     });
     pass.addEventListener("keydown", function (e) {
       if (e.key === "Enter") submit();
@@ -174,6 +232,8 @@
     function submit() {
       if (!user.value.trim() || !pass.value) {
         err.textContent = "请输入用户名与密码";
+        if (!user.value.trim()) user.setAttribute("aria-invalid", "true");
+        if (!pass.value) pass.setAttribute("aria-invalid", "true");
         return;
       }
       err.textContent = "登录中…";

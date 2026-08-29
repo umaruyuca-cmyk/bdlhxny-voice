@@ -312,6 +312,41 @@ def test_generate_compression_method_contexts_two_artifacts():
     assert isinstance(result["by_variant"]["budgeted-llm"]["warnings"], list)
 
 
+def test_compression_method_on_phase_reports_steps():
+    """on_phase 阶段回调:生成阶段按顺序报「构建抽取式 → LLM 摘要」,
+    运行阶段额外逐单元报「运行 Agent」——作业进度据此展示当前步骤。"""
+    phases: list[str] = []
+    compression.generate_compression_method_contexts(
+        SESSION_ID, llm_summarizer=_FakeLLMSummarizer(), on_phase=phases.append
+    )
+    assert [p.split("(")[0] for p in phases] == ["构建抽取式压缩上下文", "生成 LLM 摘要 · 生成式"]
+
+    run_phases: list[str] = []
+
+    async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
+        return {
+            "answer": "按最终决定执行。", "error": None, "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5,
+        }
+
+    from bdlh_runtime.experiments.compression import run_compression_method_comparison
+
+    import asyncio
+
+    asyncio.run(
+        run_compression_method_comparison(
+            SESSION_ID,
+            cell_runner=fake_runner,
+            max_agent_steps=4,
+            llm_summarizer=_FakeLLMSummarizer(),
+            on_phase=run_phases.append,
+        )
+    )
+    # 前 2 个阶段同生成阶段;随后每个单元开跑前报「运行 Agent · <方法>」
+    assert run_phases[:2] == phases
+    assert run_phases[2:] == ["运行 Agent · 抽取式(代码) · 第1次", "运行 Agent · 生成式(LLM 摘要) · 第1次"]
+
+
 @pytest.mark.asyncio
 async def test_run_compression_method_comparison_two_cells():
     """压缩方法对照(运行阶段):2 个单元,唯一自变量进入 run_configs 与固定条件。"""
@@ -346,3 +381,110 @@ async def test_run_compression_method_comparison_two_cells():
     assert result["frozen_artifact_hashes"]["budgeted"] != result["frozen_artifact_hashes"]["budgeted-llm"]
 
 
+
+
+class _BatchCapSummarizer:
+    """带批量分块摘要的替身:统计 chunk 请求次数,校验 P0-1 上限生效。"""
+
+    def __init__(self) -> None:
+        self.batch_calls = 0
+        self.item_calls = 0
+
+    def summarize(self, texts, max_tokens, counter):  # noqa: ANN001
+        self.item_calls += 1
+        return "【逐条摘要】" + " ".join(text[:16] for text in texts)
+
+    def summarize_batch(self, items, *, max_tokens_per_item, counter):  # noqa: ANN001
+        self.batch_calls += 1
+        return {item_id: f"【批量摘要】{text[:16]}" for item_id, text in items}
+
+
+def test_generative_compile_caps_summary_calls_via_batch(monkeypatch):
+    """带批量摘要的编译链:长 Session 的 LLM 请求次数 ≤ 配置上限(修复 108 次放大)。"""
+    from bdlh_runtime.session import SessionCompiler
+
+    monkeypatch.setenv("LLM_SUMMARY_MAX_CALLS_PER_BUILD", "4")
+    session, variants, _ = compression._load_session_bundle("ctx-session-product-evolution-01")
+    budgeted_def = next(
+        v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"
+    )
+    fake = _BatchCapSummarizer()
+    compiled = SessionCompiler(summarizer=fake).compile(session, budgeted_def, common_rules="规则")
+    assert fake.batch_calls <= 4  # 分块请求数受硬上限约束
+    assert fake.item_calls == 0  # 映射未覆盖项走抽取式回退,不再逐条调用 LLM
+    assert compiled.compiled_messages
+    assert compiled.build_model_calls <= 4  # 工件计量与真实请求数一致
+
+
+@pytest.mark.asyncio
+async def test_default_cell_runner_llm_unavailable_marks_invalid(monkeypatch):
+    """P0-5:llm=None 且 env 未配置 → 按 env 构建失败,单元诚实标记 LLM_UNAVAILABLE。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    session, variants, _ = compression._load_session_bundle(SESSION_ID)
+    budgeted_def = next(
+        v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"
+    )
+    from bdlh_runtime.session import SessionCompiler
+
+    artifact = SessionCompiler().compile(session, budgeted_def, common_rules="规则")
+    raw = await compression._default_cell_runner(
+        session, artifact, "native-tool-calling", "run-key", 4, llm=None
+    )
+    assert raw["error"] and "LLM_UNAVAILABLE" in raw["error"]  # 不伪装为成功
+    assert raw["actual_agent_steps"] == 0  # 未进入 Agent 模型循环
+
+
+@pytest.mark.asyncio
+async def test_native_matrix_budget_terminates_remaining_units(monkeypatch):
+    """§11.2:LLM 请求超过作业上限 → 剩余单元跳过,budget_terminated 说明原因。"""
+    monkeypatch.setenv("MAX_LLM_REQUESTS_PER_JOB", "2")
+    session, variants, _ = compression._load_session_bundle(SESSION_ID)
+
+    async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
+        return {
+            "answer": "按最终决定执行。", "error": None, "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 2, "duration_ms": 5,
+        }
+
+    result = await compression.run_native_context_matrix(
+        SESSION_ID, cell_runner=fake_runner, max_agent_steps=4
+    )
+    assert result["budget_terminated"]  # 2 步/格 × 2 格 > 上限 2
+    assert len(result["cells"]) == 2  # 第三格前已超限
+    assert len(result["skipped_unit_ids"]) == 2  # 剩余两格跳过
+    assert result["budget"]["llm_requests"] == 4  # 只累计真实执行单元的步数
+    assert "MAX_LLM_REQUESTS_PER_JOB" in result["budget"]["terminated_reason"]
+
+
+@pytest.mark.asyncio
+async def test_method_comparison_budget_counts_build_requests(monkeypatch):
+    """§11.2:方法对照的构建期摘要真实请求计入作业预算(缓存命中不计)。"""
+    monkeypatch.setenv("MAX_LLM_REQUESTS_PER_JOB", "1")
+
+    class _CountingSummarizer:
+        """构建期摘要替身:每格真实调用 1 次(build_model_calls=1)。"""
+
+        def summarize(self, texts, max_tokens, counter):  # noqa: ANN001
+            return "【LLM摘要】" + " ".join(text[:16] for text in texts)
+
+        def summarize_batch(self, items, *, max_tokens_per_item, counter):  # noqa: ANN001
+            return {item_id: "【批量摘要】" + text[:16] for item_id, text in items}
+
+    ran: list[str] = []
+
+    async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
+        ran.append(run_key)
+        return {
+            "answer": "ok", "error": None, "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 2, "duration_ms": 5,
+        }
+
+    result = await compression.run_compression_method_comparison(
+        SESSION_ID, cell_runner=fake_runner, max_agent_steps=4, llm_summarizer=_CountingSummarizer()
+    )
+    # 抽取式格先执行(2 步 → 累计 2 超上限 1);生成式格前预算已超限 → 跳过
+    assert len(ran) == 1
+    assert result["budget_terminated"]
+    assert result["budget"]["llm_requests"] == 2
+    assert len(result["skipped_unit_ids"]) == 1

@@ -53,12 +53,19 @@ STRUCTURED_TEXT_ALGO_VERSION = "structured-text-v1"
 
 @dataclass(frozen=True)
 class BuildMetrics:
-    """摘要/压缩构建本身的成本(single-summary 模型摘要时由调用方填入)。"""
+    """摘要/压缩构建本身的成本(single-summary 模型摘要时由调用方填入)。
+
+    口径(purpose=COMPRESSION):model_calls/tokens/cost 只含本轮真实模型
+    请求(缓存命中不计);cache_hits 单独累计,不进入当前费用。
+    """
 
     model_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     cost: float = 0.0
+    cache_hits: int = 0
+    purpose: str = "COMPRESSION"
+    batch_chunks: int = 0
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,11 @@ class CompiledContext:
     build_input_tokens: int
     build_output_tokens: int
     build_cost: float
+    #: 构建用量口径(§11.1):COMPRESSION 与 Agent 主模型(AGENT)分开统计;
+    #: 缓存命中数单独记录,build_* 字段只含本轮真实模型请求
+    build_cache_hits: int = 0
+    build_purpose: str = "COMPRESSION"
+    build_summary_chunks: int = 0
     warnings: tuple[str, ...] = field(default_factory=tuple)
     strategy: str = ""
     required_retained: bool = True
@@ -124,6 +136,9 @@ class CompiledContext:
             "build_input_tokens": self.build_input_tokens,
             "build_output_tokens": self.build_output_tokens,
             "build_cost": self.build_cost,
+            "build_cache_hits": self.build_cache_hits,
+            "build_purpose": self.build_purpose,
+            "build_summary_chunks": self.build_summary_chunks,
             "warnings": list(self.warnings),
             "required_retained": self.required_retained,
             "budget_fit": self.budget_fit,
@@ -255,23 +270,23 @@ class SessionCompiler:
         take_usage = getattr(self._builder.summarizer, "take_usage", None)
         if callable(take_usage):
             take_usage()
-        started = time.perf_counter()
-        built = self._builder.build(
-            ContextBuildRequest(
-                items=tuple(items),
-                token_budget=token_budget,
-                strategy=strategy,
-                owner_id=None,
-                # recent-window 由预算主导,条数上限取全部条目(说明 §3.2)
-                recent_n=len(items),
-                summary_recent_tokens=int(
-                    reserved.get("recent_session_events")
-                    or reserved.get("recent_session_events_max")
-                    or 1024
-                ),
-                summary_max_tokens=int(reserved.get("history_summary_max") or 2560),
-            )
+        build_request = ContextBuildRequest(
+            items=tuple(items),
+            token_budget=token_budget,
+            strategy=strategy,
+            owner_id=None,
+            # recent-window 由预算主导,条数上限取全部条目(说明 §3.2)
+            recent_n=len(items),
+            summary_recent_tokens=int(
+                reserved.get("recent_session_events")
+                or reserved.get("recent_session_events_max")
+                or 1024
+            ),
+            summary_max_tokens=int(reserved.get("history_summary_max") or 2560),
         )
+        self._prebuild_summary_map(items, build_request)
+        started = time.perf_counter()
+        built = self._builder.build(build_request)
         duration_ms = round((time.perf_counter() - started) * 1000)
 
         event_ids_by_item = {entry.item.item_id: list(entry.event_ids) for entry in serialized}
@@ -348,6 +363,9 @@ class SessionCompiler:
             build_input_tokens=metrics.input_tokens,
             build_output_tokens=metrics.output_tokens,
             build_cost=metrics.cost,
+            build_cache_hits=metrics.cache_hits,
+            build_purpose=metrics.purpose,
+            build_summary_chunks=metrics.batch_chunks,
             warnings=tuple(warnings),
             strategy=strategy.value,
             required_retained=built.report.required_retained,
@@ -357,6 +375,47 @@ class SessionCompiler:
             scoring_version=built.report.scoring_version,
             build_result=built,
         )
+
+    def _prebuild_summary_map(self, items: list[ContextItem], request: ContextBuildRequest) -> None:
+        """生成式压缩预处理(P0-1):构建前用有限分块摘要生成冻结映射。
+
+        只在压缩器是 SummarizerCompressor 且摘要器支持批量分块
+        (``summarize_batch``)时启用;每条摘要目标 = 该条目按压缩比
+        估算的目标 token(与构建器 fair-share 上限同源,映射值超出
+        实际预算时由压缩器回退抽取式)。构建阶段从此零网络调用。
+        """
+        compressor = getattr(self._builder, "_compressor", None)
+        summarizer = self._builder.summarizer
+        if type(compressor).__name__ != "SummarizerCompressor":
+            return
+        summarize_batch = getattr(summarizer, "summarize_batch", None)
+        set_map = getattr(compressor, "set_summary_map", None)
+        if not callable(summarize_batch) or not callable(set_map):
+            return
+        candidates = [
+            item
+            for item in items
+            if item.classification is ContextClassification.COMPRESSIBLE and item.content.strip()
+        ]
+        if not candidates:
+            return
+        entries = [(item.item_id, item.content.strip()) for item in candidates]
+        targets = [
+            max(
+                1,
+                min(
+                    self._counter.count(text),
+                    max(
+                        request.minimum_compressed_tokens,
+                        int(self._counter.count(text) * request.compression_ratio),
+                    ),
+                ),
+            )
+            for _item_id, text in entries
+        ]
+        target = max(min(targets), 1)
+        mapping = summarize_batch(entries, max_tokens_per_item=target, counter=self._counter)
+        set_map({item_id: text for item_id, text in mapping.items() if text.strip()})
 
     @staticmethod
     def _collect_metrics(
@@ -377,6 +436,9 @@ class SessionCompiler:
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 cost=usage.cost,
+                cache_hits=getattr(usage, "cache_hits", 0),
+                purpose=getattr(usage, "purpose", "COMPRESSION"),
+                batch_chunks=getattr(usage, "batch_chunks", 0),
             ),
             list(getattr(usage, "warnings", []) or []),
         )

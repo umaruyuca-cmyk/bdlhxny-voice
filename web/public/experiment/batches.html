@@ -3,116 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
-<title>实验 · 批次列表 · Touchstone</title>
-<meta name="description" content="批次列表:公告批次(已审核发布的正式批次)与我的批次(匿名测试与所有者未发布批次)。">
-<link rel="stylesheet" href="/docs/docs.css">
-</head></head>
+<meta http-equiv="refresh" content="0;url=/test/">
+<title>实验 · 批次列表</title>
+<meta name="description" content="批次列表已并入「运行记录」页(我的测试)。">
+<link rel="canonical" href="/test/">
+</head>
 <body>
-<header class="topbar">
-  <div class="topbar-inner">
-    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
-    <div class="topbar-actions">
-      <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
-    <a class="topbar-lab" title="进入实验中心发起批次"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>实验中心</a>
-    <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
-    <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
-    </div>
-  </div>
-</header>
-<main class="docs-main">
-    <div class="eyebrow">Batches</div>
-    <h1>批次列表</h1>
-    <p class="page-sub">「公告批次」展示已审核发布的正式批次快照,所有人可读;「我的批次」展示当前身份发起的批次——匿名身份只显示自己的公开测试,登录所有者可见全部批次。</p>
-<div class="tabs" role="tablist" id="tabs">
-  <button type="button" class="on" id="tabPub" role="tab">公告批次</button>
-  <button type="button" id="tabMine" role="tab">我的批次</button>
-</div>
-<div class="exp-panel" style="border-top-left-radius:0;padding:6px 12px 12px">
-  <div id="pubBox" data-anchor="pub"><div class="placeholder-block">正在读取发布索引…</div></div>
-  <div id="mineBox" style="display:none"><div class="placeholder-block">正在读取…</div></div>
-</div>
-<p class="lab-note">无模板批次挂「无模板」标记保留可读;匿名测试结果不进入公告。批次号与 config_hash 全站 8 位短显,悬停可见全量,点击复制。</p>
-</main>
-<script src="/docs/docs.js"></script>
-<script src="/docs/experiment.js"></script>
-<script>
-(function () {
-  "use strict";
-  var E = window.EXP;
-
-  document.getElementById("tabPub").addEventListener("click", function () { switchTab(true); });
-  document.getElementById("tabMine").addEventListener("click", function () { switchTab(false); });
-  function switchTab(pub) {
-    document.getElementById("tabPub").classList.toggle("on", pub);
-    document.getElementById("tabMine").classList.toggle("on", !pub);
-    document.getElementById("pubBox").style.display = pub ? "block" : "none";
-    document.getElementById("mineBox").style.display = pub ? "none" : "block";
-  }
-
-  fetch("/showcase-data/publications/index.json", { cache: "no-store" })
-    .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (index) {
-      var pubs = (index && (index.formal_publications || index.formal_batches)) || [];
-      var box = document.getElementById("pubBox");
-      if (!pubs.length) {
-        box.innerHTML = '<div class="placeholder-block">尚未发布:发布链路为「实验模板与固定题库 → 后台运行产生结果与证据 → 维护者审核 → 公开快照」。当前没有已发布的正式批次。</div>';
-        return;
-      }
-      box.innerHTML = '<table class="exp-table"><tr><th>批次</th><th>实验类型</th><th>规模</th><th>模型</th><th>发布时间</th><th></th></tr>' +
-        pubs.map(function (p) {
-          return "<tr><td>" + E.hashChip(p.batch_id) + "</td>" +
-            '<td class="mono">' + E.esc(p.experiment_type || "—") + "</td>" +
-            '<td class="mono">' + E.esc((p.runs_per_case || "?") + " 次/题 × " + (p.case_count || "?") + " 题") + "</td>" +
-            '<td class="mono">' + E.esc(p.model || "—") + "</td>" +
-            '<td class="mono">' + E.fmtTime(p.published_at) + "</td>" +
-            '<td><a href="/experiment/batch/' + encodeURIComponent(p.batch_id) + '">查看详情 →</a></td></tr>';
-        }).join("") + "</table>";
-    })
-    .catch(function () {
-      document.getElementById("pubBox").innerHTML = '<div class="placeholder-block">尚未发布(发布索引不可读)。</div>';
-    });
-
-  function renderMine(rowsHtml, emptyText) {
-    var box = document.getElementById("mineBox");
-    box.innerHTML = rowsHtml
-      ? '<table class="exp-table"><tr><th>批次/任务</th><th>实验</th><th>类型</th><th>规模</th><th>状态</th><th>时间</th></tr>' + rowsHtml + "</table>"
-      : '<div class="placeholder-block">' + E.esc(emptyText) + "</div>";
-  }
-
-  if (E.isOwner()) {
-    E.get("/api/v1/batches?limit=20").then(function (payload) {
-      var rows = (payload.batches || []).map(function (b) {
-        var noTemplate = !b.templateId;
-        var scale = noTemplate ? E.esc(b.runCount + " 次运行") : E.esc(b.variantCount + " 组 × " + b.repeatCount + " 次 = " + b.runCount + " 次运行");
-        return "<tr><td>" + E.hashChip(b.id) + "</td>" +
-          '<td><a href="/experiment/batch/' + encodeURIComponent(b.id) + '">' + E.esc(b.name || b.templateId || "批次") + "</a></td>" +
-          "<td>" + (noTemplate ? E.esc("无模板") : E.classificationBadge(b.templateClassification)) + "</td>" +
-          '<td class="mono">' + scale + "</td>" +
-          "<td>" + E.statusTag(b.status, "batch") + "</td>" +
-          '<td class="mono">' + E.fmtTime(b.createdAt) + "</td></tr>";
-      });
-      renderMine(rows.join(""), "尚未运行:登录所有者还没有任何批次。");
-    }).catch(function (err) {
-      renderMine("", "批次列表读取失败:" + (err.message || "数据服务不可用"));
-    });
-  } else {
-    E.get("/api/v1/public/test-jobs").then(function (jobs) {
-      var rows = (jobs || []).map(function (j) {
-        return "<tr><td>" + E.hashChip(j.job_id) + "</td>" +
-          '<td><a href="/experiment/batch/' + encodeURIComponent(j.job_id) + '">' + E.esc(j.template_id || (j.test_type === "COMPRESSION_CASE" ? "压缩用例测试" : "对比用例测试")) + "</a></td>" +
-          "<td>" + E.badge("b-blue", "个人测试 · 非正式结果") + "</td>" +
-          '<td class="mono">' + E.esc(j.completed_units + "/" + j.total_units) + "</td>" +
-          "<td>" + E.statusTag(j.status) + "</td>" +
-          '<td class="mono">' + E.fmtTime(j.created_at) + "</td></tr>";
-      });
-      renderMine(rows.join(""), "尚未运行:当前匿名身份还没有发起过测试。");
-    }).catch(function (err) {
-      renderMine("", "我的测试读取失败(" + (err.message || "运行服务不可达") + ");需要 engine 服务与 /api/v1/public/ 反代。");
-    });
-  }
-})();
-</script>
-
+<p>历史运行记录已统一到运行记录页,<a href="/test/">继续查看</a>。</p>
 </body>
 </html>

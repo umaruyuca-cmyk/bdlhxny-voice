@@ -12,6 +12,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
     <a class="topbar-lab" title="进入实验中心发起批次"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>实验中心</a>
@@ -20,6 +21,7 @@
     </div>
   </div>
 </header>
+
 <main class="docs-main">
     <a class="crumb" href="/experiment/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>返回实验模板</a>
     <div class="eyebrow">New Run</div>
@@ -70,6 +72,7 @@
             <div>
               <div class="num" id="estNum">—</div>
               <div class="formula" id="estNote">配置变更后自动重新预估;提交前必须显示精确运行数。</div>
+              <div class="formula" id="callLimits" style="color:#6b7280"></div>
               <div class="err" id="estErr" style="display:none"></div>
             </div>
             <button type="button" class="btn-primary" id="submitBtn" disabled>提交批次</button>
@@ -89,7 +92,18 @@
   var params = new URLSearchParams(location.search);
   var templateId = params.get("template") || "";
   var owner = E.isOwner();
-  var state = { template: null, options: null, plan: null, estimate: null, blocked: "" };
+  var state = { template: null, options: null, plan: null, estimate: null, blocked: "", idempotencyKey: null };
+
+  /* 提交幂等键:一次提交尝试内稳定复用(网络重试不产生第二个任务);
+     配置变更后重新生成;成功后页面跳转,键自然废弃。 */
+  function ensureIdempotencyKey() {
+    if (!state.idempotencyKey) {
+      state.idempotencyKey = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : "idem-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    }
+    return state.idempotencyKey;
+  }
 
   var ADV_LABELS = {
     "limits.max_tool_calls": "单次运行工具调用上限",
@@ -290,6 +304,7 @@
   var planTimer = null;
   function refreshEstimate() {
     if (planTimer) clearTimeout(planTimer);
+    state.idempotencyKey = null; // 配置已变更:下一次提交使用新的幂等键
     planTimer = setTimeout(runEstimate, 350);
   }
 
@@ -301,6 +316,21 @@
     else errBox.style.display = "none";
     state.blocked = blocked || "";
     document.getElementById("submitBtn").disabled = !!blocked;
+  }
+
+  /* 调用上限说明(§11.3):服务端下发,是上限口径而非实际费用预估 */
+  function renderCallLimits() {
+    var limits = (state.options || {}).call_limits;
+    if (!limits) return;
+    var maxSteps = ((state.options || {}).fixed_conditions || {}).max_agent_steps;
+    var parts = [];
+    if (maxSteps) parts.push("每单元最大 Agent 步骤:" + maxSteps);
+    parts.push("摘要调用上限:" + (limits.summary_max_calls_per_build || "?") + " 次/次构建");
+    if (limits.max_llm_requests_per_job) parts.push("单任务 LLM 请求上限:" + limits.max_llm_requests_per_job);
+    if (limits.max_input_tokens_per_job) parts.push("单任务输入 Token 上限:" + limits.max_input_tokens_per_job);
+    if (limits.max_estimated_cost_per_job) parts.push("单任务估算费用上限:" + limits.max_estimated_cost_per_job);
+    var box = document.getElementById("callLimits");
+    if (box) box.textContent = parts.join(" · ");
   }
 
   function runEstimate() {
@@ -332,7 +362,11 @@
       if (request.advanced) planRequest.advanced = request.advanced;
       E.post("/api/v1/template-batches/plan", planRequest).then(function (plan) {
         state.plan = plan;
-        setEstimate(plan.run_count + " 次运行", (plan.runs || []).length ? ((plan.fixed_conditions && plan.fixed_conditions.variant_labels || []).length + " 组 × " + request.repeat_count + " 次 = " + plan.run_count + " 次运行(服务端精确预估)") : "", "", "");
+        var groups = (plan.fixed_conditions && plan.fixed_conditions.variant_labels || []).length || 1;
+        var formalMin = (t.formal_min_repeat_count != null) ? t.formal_min_repeat_count : 3;
+        setEstimate("首轮 " + groups + " 个样本(每变体 1 次)",
+          "实验组流程:创建实验组后逐样本发起,每次请求只创建一个运行(方案 13.4);"
+          + "已完成样本保留,追加样本在实验组页逐次进行,正式最小样本每变体 " + formalMin + " 次。", "", "");
       }).catch(function (err) {
         state.plan = null;
         setEstimate("预估失败", "预估接口返回错误;", err.message, err.message);
@@ -348,35 +382,124 @@
     }
   }
 
+  /* 实验组单样本请求(P0-7 13.5):一次 POST 只创建一个 Agent 运行;
+     等待完成后调用方才发下一个,失败即停(熔断),已完成结果保留。 */
+  function newRunKey() {
+    return (window.crypto && window.crypto.randomUUID)
+      ? window.crypto.randomUUID()
+      : "run-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  function waitSeriesRun(seriesId, runKey) {
+    return new Promise(function (resolve) {
+      var deadline = Date.now() + 180000; // 单运行等待上限 3 分钟(agent 超时 60s + 余量)
+      (function tick() {
+        E.get("/api/v1/experiment-series/" + encodeURIComponent(seriesId) + "/runs").then(function (data) {
+          var row = (data.runs || []).filter(function (r) { return r.run_key === runKey; })[0];
+          if (row && row.status === "done") { resolve(""); return; }
+          if (row && row.status === "failed") {
+            resolve("样本 " + (row.variant_id || runKey) + " 失败:" + (row.error || "未知原因")
+              + ";已停止后续样本(熔断),已完成结果保留。");
+            return;
+          }
+          if (Date.now() > deadline) {
+            resolve("样本等待超时;运行仍在后台进行,可稍后在实验组页刷新查看。");
+            return;
+          }
+          setTimeout(tick, 2000);
+        }).catch(function () {
+          if (Date.now() > deadline) { resolve("轮询中断;可稍后在实验组页查看。"); return; }
+          setTimeout(tick, 4000);
+        });
+      })();
+    });
+  }
+
+  function runSingleSample(seriesId, variantId) {
+    setEstimate("运行样本:" + variantId, "实验组 " + seriesId + " · 一次请求一个运行;完成后自动继续下一个变体。", "", "");
+    return E.post("/api/v1/experiment-series/" + encodeURIComponent(seriesId) + "/runs",
+      { variant_id: variantId, idempotency_key: newRunKey() }).then(function (entry) {
+      return waitSeriesRun(seriesId, entry.run_key);
+    });
+  }
+
+  /* 创建实验组 → 首轮每个变体各发一次单样本请求(顺序,失败熔断)。
+     bodyPatch 用于压缩用例(session_id);对比用例默认带 case_id/预设/高级设置。 */
+  function startSeriesFlow(bodyPatch) {
+    var request = currentRequest();
+    var body = { template_id: request.template_id };
+    if (bodyPatch) {
+      Object.keys(bodyPatch).forEach(function (key) { body[key] = bodyPatch[key]; });
+    } else {
+      body.case_id = request.case_id;
+      if (request.preset_id) body.preset_id = request.preset_id;
+      if (request.advanced) body.advanced = request.advanced;
+    }
+    return E.post("/api/v1/experiment-series", body).then(function (series) {
+      var seriesId = series.series_id;
+      var variants = series.variant_labels || [];
+      var stopped = "";
+      var chain = Promise.resolve();
+      variants.forEach(function (variantId) {
+        chain = chain.then(function () {
+          if (stopped) return null;
+          return runSingleSample(seriesId, variantId).then(function (message) {
+            if (message) stopped = message;
+          });
+        });
+      });
+      return chain.then(function () {
+        return { seriesId: seriesId, warning: stopped };
+      });
+    });
+  }
+
   function submit() {
     var t = state.template;
     var isComparison = (t.allowed_test_types || []).indexOf("COMPARISON_CASE") >= 0;
     var button = document.getElementById("submitBtn");
     button.disabled = true;
     button.textContent = "提交中…";
-    var submitJob;
     var isMethodCmp = t.template_id === "compression-method-comparison";
-    if (owner && (isComparison || isMethodCmp)) {
-      var ownerBody = currentRequest();
-      if (isMethodCmp) {
-        ownerBody = { template_id: t.template_id, repeat_count: 1, session_id: ownerBody.session_id,
-          context_only: ownerBody.execution_scope === "context-only" };
+    var flow;
+    if (owner && isMethodCmp) {
+      var methodRequest = currentRequest();
+      if (methodRequest.execution_scope === "context-only") {
+        // 生成上下文工件(0 个 Agent 运行):保留旧批次入口(13.13 兼容)
+        var methodBody = { template_id: t.template_id, repeat_count: 1,
+          session_id: methodRequest.session_id, context_only: true };
+        methodBody.idempotency_key = ensureIdempotencyKey();
+        flow = E.post("/api/v1/template-batches", methodBody).then(function (result) {
+          return { target: "/experiment/batch/" + encodeURIComponent(result.batch_id)
+            + "?job=" + encodeURIComponent(result.job_id || ""), warning: "" };
+        });
+      } else {
+        // Agent 运行已迁移实验组(13.4/13.5):两个压缩方法各发一次单样本请求
+        flow = startSeriesFlow({ session_id: methodRequest.session_id }).then(function (acc) {
+          return { target: "/experiment/series/" + encodeURIComponent(acc.seriesId), warning: acc.warning };
+        });
       }
-      submitJob = E.post("/api/v1/template-batches", ownerBody);
+    } else if (owner && isComparison) {
+      // 模板批次发起已退役(13.13):走实验组 + 单次运行
+      flow = startSeriesFlow().then(function (acc) {
+        return { target: "/experiment/series/" + encodeURIComponent(acc.seriesId), warning: acc.warning };
+      });
     } else {
       var payload = currentRequest();
       if (isComparison) payload.test_type = "COMPARISON_CASE";
-      submitJob = E.post("/api/v1/public/test-jobs", payload);
+      payload.idempotency_key = ensureIdempotencyKey();
+      flow = E.post("/api/v1/public/test-jobs", payload).then(function (result) {
+        return { target: "/experiment/batch/" + encodeURIComponent(result.job_id), warning: "" };
+      });
     }
-    submitJob.then(function (result) {
-      var target = (isComparison || isMethodCmp) && owner
-        ? "/experiment/batch/" + encodeURIComponent(result.batch_id) + "?job=" + encodeURIComponent(result.job_id || "")
-        : "/experiment/batch/" + encodeURIComponent(result.job_id);
-      location.href = target;
+    flow.then(function (acc) {
+      location.href = acc.target + (acc.warning ? "?warning=" + encodeURIComponent(acc.warning) : "");
     }).catch(function (err) {
       button.disabled = false;
       button.textContent = "提交批次";
-      var message = err.status === 429 ? "已有批次在运行,请等待完成后再发起(全局仅一个批次槽)。"
+      var message = err.status === 410 ? "模板批次发起已退役:请改用实验组流程(刷新页面重试)。"
+        : err.status === 429 ? "已有评测任务在运行,请等待完成后再发起(全局仅一个任务槽)。"
+        : err.status === 409 ? "提交冲突:" + err.message
         : err.status === 503 ? "系统异常:数据服务不可用,请稍后再试。"
         : err.message;
       setEstimate("提交失败", "", message, message);
@@ -411,11 +534,12 @@
         return;
       }
       document.getElementById("runBody").style.display = "block";
+      renderCallLimits();
     if (t.template_id === "compression-method-comparison") {
       var mOnly = document.querySelector('#fMode option[value="context-only"]');
       var mFull = document.querySelector('#fMode option[value="native-matrix"]');
       if (mOnly) mOnly.textContent = "生成两种压缩上下文(0 个 Agent 运行;含 LLM 摘要调用)";
-      if (mFull) mFull.textContent = "运行压缩方法对照(2 个 Agent 运行)";
+      if (mFull) mFull.textContent = "运行压缩方法对照(2 个样本,逐次单请求发起)";
     }
       renderDefinition();
       renderConfig();

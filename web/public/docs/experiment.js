@@ -111,12 +111,14 @@ window.EXP = (function () {
   }
 
   function fmtTime(value) {
+    // 全站统一 yyyyMMdd HH:mm:ss(docs.js 先于本脚本加载;兜底实现保持同格式)
+    if (window.SITE && window.SITE.fmtTime) return window.SITE.fmtTime(value);
     if (!value) return "—";
     var d = new Date(value);
     if (isNaN(d.getTime())) return String(value).replace("T", " ").slice(0, 19);
     var p2 = function (n) { return (n < 10 ? "0" : "") + n; };
     return "" + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) +
-      " " + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+      " " + p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
   }
 
   var JOB_STATUS_LABEL = {
@@ -173,18 +175,49 @@ window.EXP = (function () {
     });
   }
 
-  /* 模板卡片(模板中心/发起页共用):目的、受控变量与变体、技术口径行 */
+  /* 模板卡片(模板中心/发起页共用;P1-4 精简):默认只留名称/目的/受控变量/主按钮;
+     「正式单变量」是全站常态不在每卡重复,徽章只表达例外(专项交叉/需登录);
+     模板 ID、变量路径、指标与重复范围收进「技术详情」折叠区。 */
   function templateCardHtml(t, locked) {
     var variants = (t.variants || []).map(function (v) { return variantLabel(t, v.label); }).join(" / ");
-    var perm = t.owner_allowed === false ? "仅匿名" : (t.anonymous_allowed ? "免登录可用" : "仅登录所有者");
+    var badgeHtml = "";
+    var cls = t.classification || "";
+    if (cls === "special-cross" || cls === "cross-diagnostic") badgeHtml = classificationBadge(cls);
+    var permNote = "";
+    if (locked) permNote = '<span class="tpl-perm">仅登录所有者可发起</span>';
+    else if (t.owner_allowed === false) permNote = '<span class="tpl-perm">仅匿名测试可发起</span>';
+    var range = t.repeat_count_range || [];
+    var metrics = (t.result_metrics || []).join("、");
     return '<div class="tpl-card' + (locked ? " locked" : " linked") + '">' +
-      '<div class="tpl-head"><span class="tpl-name">' + esc(title(t)) + "</span>" +
-      classificationBadge(t.classification) + "</div>" +
+      '<div class="tpl-head"><span class="tpl-name">' + esc(title(t)) + "</span>" + badgeHtml + "</div>" +
       '<div class="tpl-purpose">' + esc(t.purpose) + "</div>" +
       '<div class="tpl-var">受控变量:<b>' + esc(varLabel(t)) + "</b>" + (variants ? " — " + esc(variants) : "") + "</div>" +
-      '<div class="tpl-tech">' + esc(t.template_id) + " v" + esc(t.version) + " · variable: " + esc((t.independent_variable || []).join(",")) + "</div>" +
-      '<div class="tpl-foot"><span class="tpl-perm">' + perm + (locked ? " · 需登录后发起" : "") + "</span>" +
+      '<details class="tpl-detail"><summary>技术详情</summary>' +
+      '<div class="tpl-tech">' + esc(t.template_id) + " v" + esc(t.version) +
+      " · variable: " + esc((t.independent_variable || []).join(",")) + "</div>" +
+      (metrics ? '<div class="tpl-tech">指标:' + esc(metrics) + "</div>" : "") +
+      '<div class="tpl-tech">重复 ' + esc(range[0] != null ? range[0] : "?") + "–" + esc(range[1] != null ? range[1] : "?") +
+      " 次 · 批次上限 " + esc(t.max_runs_per_batch != null ? t.max_runs_per_batch : "?") + " 次运行</div>" +
+      "</details>" +
+      '<div class="tpl-foot">' + permNote +
       '<span class="tpl-go">' + (locked ? "需登录" : "发起实验 →") + "</span></div></div>";
+  }
+
+  /* 状态化进度组件(P0-4 落地为 P2-4 共享组件):进度条仅在「运行中 + 总量已知」时
+     渲染真实比例;排队/完成/失败只用阶段文字,不出现满格装饰条或无依据百分比。 */
+  function jobProgress(j) {
+    var done = j.completed_units || 0;
+    var total = j.total_units || 0;
+    if (j.status === "RUNNING" && total > 0) {
+      var pct = Math.min(100, Math.max(0, Math.round(done * 100 / total)));
+      return '<div class="prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct +
+        '" aria-label="已完成 ' + done + " / " + total + ' 个单元">' +
+        '<div class="prog-bar" style="width:' + pct + '%"></div></div>' +
+        '<small>已完成 ' + done + " / " + total + " 个单元</small>";
+    }
+    if (j.status === "QUEUED") return '<small class="job-phase">排队中,尚未开始执行</small>';
+    if (j.status === "COMPLETE") return '<small class="job-phase">完成 · 共 ' + (total || done) + " 个单元</small>";
+    return "";
   }
 
   return {
@@ -210,5 +243,6 @@ window.EXP = (function () {
     poll: poll,
     loadTemplates: loadTemplates,
     templateCardHtml: templateCardHtml,
+    jobProgress: jobProgress,
   };
 })();

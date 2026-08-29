@@ -42,6 +42,25 @@ public class RunController {
         return ResponseEntity.accepted().build();
     }
 
+    /** 批次执行报告写入(engine 完成时调用;报告读取的第一来源)。 */
+    @PostMapping("/batches/{batchId}/report")
+    public ResponseEntity<Void> saveBatchReport(
+            @PathVariable UUID batchId,
+            @Valid @RequestBody SaveBatchReportRequest request) {
+        runs.saveBatchReport(batchId, request);
+        return ResponseEntity.accepted().build();
+    }
+
+    /** 批次执行报告读取;无报告(未完成/历史批次)返回 404,由调用方回退本地工件。 */
+    @GetMapping("/batches/{batchId}/report")
+    public ResponseEntity<Map<String, Object>> getBatchReport(@PathVariable UUID batchId) {
+        com.fasterxml.jackson.databind.JsonNode report = runs.getBatchReport(batchId);
+        if (report == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("report", report));
+    }
+
     @GetMapping("/batches")
     public Map<String, Object> listBatches(
             @RequestParam(defaultValue = "20") int limit,

@@ -35,7 +35,20 @@ from bdlh_runtime.evaluation.run_telemetry import (
 )
 from bdlh_runtime.experiments.compression import public_session_overview
 from bdlh_runtime.experiments.job_store import JobStore, sha256_hex
-from bdlh_runtime.experiments.public_service import AnonymousJobService, PublicTestError
+from bdlh_runtime.experiments.series_runner import SeriesRunError, execute_series_run
+from bdlh_runtime.experiments.series_store import (
+    DbSeriesStore,
+    SeriesConflictError,
+    SeriesIdempotencyConflict,
+    SeriesRecord,
+    run_entry_view,
+)
+from bdlh_runtime.experiments.public_service import (
+    AnonymousJobService,
+    IdempotencyConflict,
+    PublicTestError,
+    _request_hash,
+)
 from bdlh_runtime.infra.env import load_deploy_env
 
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "/app/artifacts"))
@@ -69,6 +82,10 @@ def recover_jobs_on_startup() -> None:
     interrupted = _job_store.recover_interrupted()
     if interrupted:
         print(f"[run_api] 服务重启:{len(interrupted)} 个未完成任务已标记为 INTERRUPTED,不自动重跑")
+    audited = _job_store.audit_invalid_agent_runs()
+    if audited:
+        print(f"[run_api] 历史审计:{len(audited)} 个任务含无 Agent 模型调用证据的单元,"
+              f"已标记 INVALID/LLM_UNAVAILABLE(原记录保留)")
     try:
         orphans = _fail_orphan_batches(_data())
         if orphans:
@@ -94,6 +111,43 @@ if _allowed_origins:
     )
 _JOBS: dict[str, dict[str, Any]] = {}
 _BATCH_SLOTS = threading.BoundedSemaphore(max(1, int(os.getenv("MAX_CONCURRENT_BATCHES", "1"))))
+
+# 所有者批次幂等(P0-4):account_id + idempotency_key → (request_hash, 响应)。
+# 单实例部署,内存表即可保证"查重→创建"原子;数据库唯一约束由增量脚本提供。
+_IDEMPOTENCY_LOCK = threading.Lock()
+_IDEMPOTENT_RESPONSES: dict[str, tuple[str, dict[str, Any]]] = {}
+
+
+def _account_id(account: dict[str, Any]) -> str:
+    return str(account.get("accountId") or account.get("username") or "")
+
+
+def _check_owner_idempotency(account: dict[str, Any], request: BaseModel) -> dict[str, Any] | None:
+    """所有者批次幂等查重:同键同请求体 → 返回首次响应;同键不同请求体 → 409。"""
+    key = str(getattr(request, "idempotency_key", "") or "").strip()
+    if not key:
+        return None
+    body = request.model_dump(exclude={"idempotency_key"})
+    with _IDEMPOTENCY_LOCK:
+        stored = _IDEMPOTENT_RESPONSES.get(f"{_account_id(account)}:{key}")
+        if stored is None:
+            return None
+        request_hash, response = stored
+        if request_hash != _request_hash(body):
+            raise HTTPException(
+                status_code=409,
+                detail="幂等键冲突:该键已被不同参数的请求使用,请修改配置后使用新键重试",
+            )
+        return dict(response)
+
+
+def _remember_owner_idempotency(account: dict[str, Any], request: BaseModel, response: dict[str, Any]) -> None:
+    key = str(getattr(request, "idempotency_key", "") or "").strip()
+    if not key:
+        return
+    body = request.model_dump(exclude={"idempotency_key"})
+    with _IDEMPOTENCY_LOCK:
+        _IDEMPOTENT_RESPONSES[f"{_account_id(account)}:{key}"] = (_request_hash(body), dict(response))
 
 
 def _fail_orphan_batches(data: DataClient, *, limit: int = 50) -> int:
@@ -150,6 +204,10 @@ class ContextBatchRequest(BaseModel):
         default_factory=lambda: os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"),
         min_length=1,
         max_length=100,
+    )
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=128,
+        description="提交幂等键;同键同请求体的重试返回原批次,不同请求体返回 409",
     )
 
 
@@ -310,6 +368,9 @@ def start_context_batch(
     account: Annotated[dict[str, Any], Depends(require_login)],
 ) -> dict[str, str]:
     """长上下文压缩对照:同一 Agent、同一冻结数据,唯一变量是上下文处理策略。"""
+    replay = _check_owner_idempotency(account, request)
+    if replay is not None:
+        return replay
     data = _data()
     try:
         views = data.list_cases()
@@ -363,6 +424,7 @@ def start_context_batch(
             _persist_runs(data, batch_id, request, payload, run_records)
             _persist_artifact(batch_id, payload)
             data.complete_batch(batch_id, "COMPLETE")
+            _save_batch_report_best_effort(data, batch_id, payload)
             _finish_job_progress(job)
             job["status"] = "done"
             job["report"] = payload
@@ -375,7 +437,9 @@ def start_context_batch(
             _BATCH_SLOTS.release()
 
     threading.Thread(target=task, daemon=True).start()
-    return {"job_id": job_id, "batch_id": batch_id}
+    response = {"job_id": job_id, "batch_id": batch_id}
+    _remember_owner_idempotency(account, request, response)
+    return response
 
 
 @app.get("/api/v1/batches")
@@ -402,6 +466,50 @@ def get_batch(batch_id: str, account: Annotated[dict[str, Any], Depends(require_
         return _data().get_batch(batch_id)
     except DataServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 —— data 400(如误传任务号)按不存在处理,不炸 500
+        raise HTTPException(status_code=404, detail="批次不存在或标识无效") from exc
+
+
+def _load_batch_report(batch_id: str) -> dict[str, Any] | None:
+    """批次报告读取:数据服务 report 列优先,本地工件兜底;不存在返回 None。"""
+    try:
+        from_db = _data().get_batch_report(batch_id)
+        if from_db:
+            return from_db
+    except Exception as exc:  # noqa: BLE001 —— 报告读取不因 data 不可达而失败,走磁盘兜底
+        print(f"[run_api] 批次报告读库失败,回退本地工件:{exc}")
+    path = ARTIFACTS_DIR / f"{batch_id}.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/v1/batches/{batch_id}/report")
+def get_batch_report(batch_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
+    """批次执行报告(磁盘工件):内存作业随服务重启清除后,报告的持久来源。
+
+    返回执行器落盘的完整 payload(含 compression_details/by_variant/stats);
+    工件不存在(批次未完成或较早日志批次)按 404 处理。
+    """
+    report = _load_batch_report(batch_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="批次报告不存在(未完成,且无本地工件)")
+    return report
+
+
+@app.get("/api/v1/statistics/batches/{batch_id}")
+def get_batch_statistics(batch_id: str, account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
+    """实验组累计统计快照(P0-7):纯代码从原始运行记录重算,不产生任何 LLM 请求。
+
+    原始运行记录是事实真源,统计快照是可重建的派生数据;
+    每次请求全量重算,展示口径永远与源数据一致。
+    """
+    report = _load_batch_report(batch_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="批次报告不存在,无法生成统计快照")
+    from bdlh_runtime.statistics import build_snapshot
+
+    return build_snapshot(batch_id, report=report)
 
 
 @app.get("/api/v1/runs/{run_id}/detail")
@@ -486,7 +594,41 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
             },
         },
         "quota": quota.as_dict(),
+        # 调用上限说明(§11.3):发起前展示;是上限口径,不冒充实际费用
+        "call_limits": {
+            "summary_max_calls_per_build": _summary_max_calls(),
+            "max_llm_requests_per_job": _env_limit_int("MAX_LLM_REQUESTS_PER_JOB"),
+            "max_input_tokens_per_job": _env_limit_int("MAX_INPUT_TOKENS_PER_JOB"),
+            "max_estimated_cost_per_job": _env_limit_float("MAX_ESTIMATED_COST_PER_JOB"),
+        },
     }
+
+
+def _summary_max_calls() -> int:
+    from bdlh_runtime.session.llm_summary import LLMSummarizer
+
+    raw = (os.getenv("LLM_SUMMARY_MAX_CALLS_PER_BUILD") or "").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return LLMSummarizer.MAX_CALLS_PER_BUILD_DEFAULT
+
+
+def _env_limit_int(name: str, *, fallback: int = 0) -> int:
+    raw = (os.getenv(name) or "").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return fallback
+
+
+def _env_limit_float(name: str) -> float:
+    raw = (os.getenv(name) or "").strip()
+    try:
+        value = float(raw)
+        return value if value > 0 else 0.0
+    except ValueError:
+        return 0.0
 
 
 @app.get("/api/v1/public/test-jobs/{job_id}/context-artifacts/{variant_id}")
@@ -534,6 +676,10 @@ class TemplateBatchPlanRequest(BaseModel):
     context_only: bool = Field(default=False, description="只生成输入不运行(仅上下文模板允许)")
     session_id: str | None = Field(default=None, max_length=100, description="压缩类模板作用于的 Session 编号")
     advanced: dict[str, Any] | None = Field(default=None, description="高级设置;键必须落在模板白名单内")
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=128,
+        description="提交幂等键;同键同请求体的重试返回原批次,不同请求体返回 409",
+    )
 
 
 class TemplateBatchRequest(TemplateBatchPlanRequest):
@@ -641,14 +787,21 @@ def _execute_template_batch(
 
 def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any, result: dict[str, Any]) -> None:
     """逐运行落库:模板标识与配置快照进 modelConfig;失败由调用方记入作业错误。"""
+    # agent_runs 对 (case,version,variant) 与 snapshot_id 有外键:只能引用
+    # case_variants/data_snapshots 已注册行;模板自变量(温度等)记录在
+    # modelConfig.variantLabel,不进 variant_id。
+    registered = next(
+        (v for v in (case.conditions.get("case_variants") or []) if v.get("snapshot_id")),
+        None,
+    )
     for row in result.get("runs") or []:
         run_id = data.create_run(
             {
                 "batchId": batch_id,
                 "caseId": case.case_id,
                 "caseVersion": case.case_version,
-                "variantId": str(row.get("variant_label") or ""),
-                "snapshotId": "",
+                "variantId": str(registered["variant_id"]) if registered else "default",
+                "snapshotId": str(registered["snapshot_id"]) if registered else f"{case.case_id}:default:{case.fixture_set_id}",
                 "agentMode": "native-tool-calling",
                 "contextStrategy": str((row.get("run_config") or {}).get("context_strategy") or "full"),
                 "model": str(((row.get("run_config") or {}).get("model") or {}).get("model_id") or ""),
@@ -660,6 +813,20 @@ def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any
                 },
             }
         )
+        model_calls = row.get("model_calls") or []
+        if model_calls:
+            # Token 计量落库(11.1):逐请求摘要行 + 汇总测量;账单口径来自
+            # 响应 usage,本地估算行随 NativeRunRecord.tokens_estimated 可辨
+            data.save_model_calls(run_id, model_calls)
+            data.save_measurements(
+                run_id,
+                {
+                    "llmMs": sum(int(call.get("durationMs") or 0) for call in model_calls),
+                    "totalDurationMs": int(row.get("duration_ms") or 0),
+                    "promptTokens": int(row.get("input_tokens") or 0),
+                    "completionTokens": int(row.get("output_tokens") or 0),
+                },
+            )
         data.complete_run(
             run_id,
             {
@@ -671,6 +838,82 @@ def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any
             status="COMPLETE" if row.get("validity") == "VALID" else "INVALID",
             error_category=row.get("error"),
         )
+
+
+def _persist_series_run(data: DataClient, series: SeriesRecord, payload: dict[str, Any]) -> None:
+    """实验组单次运行落库(agent_runs):与批次运行同一张表、同一查询口径。
+
+    实验组状态文档(报告列)已有正本;此处尽力而为,失败只记日志、
+    不回滚实验组登记。压缩用例的 caseId=Session 编号,与压缩对照批次一致。
+    """
+    from bdlh_runtime.experiments.templates import EXPERIMENT_DEFINITION_VERSION, get_template
+
+    template = get_template(series.template_id)
+    is_compression = "COMPRESSION_CASE" in template.allowed_test_types
+    run_config = payload.get("run_config") or {}
+    model_config = {
+        "templateId": series.template_id,
+        "templateVersion": series.template_version,
+        "experimentDefinitionVersion": EXPERIMENT_DEFINITION_VERSION,
+        "seriesId": series.series_id,
+        "variantLabel": payload.get("variant_label"),
+        "repeatIndex": payload.get("repeat_index"),
+        "configHash": payload.get("config_hash"),
+        "appliedModelParams": payload.get("applied_model_params") or {},
+    }
+    if is_compression:
+        case_id = series.case_id
+        case_version = 1
+        variant_id = str(payload.get("variant_label") or "default")
+        snapshot_id = f"{case_id}:default"
+    else:
+        case = _public_template_case(series.case_id)
+        registered = next(
+            (v for v in (case.conditions.get("case_variants") or []) if v.get("snapshot_id")),
+            None,
+        )
+        case_id = case.case_id
+        case_version = int(case.case_version)
+        variant_id = str(registered["variant_id"]) if registered else "default"
+        snapshot_id = str(registered["snapshot_id"]) if registered else f"{case.case_id}:default:{case.fixture_set_id}"
+        model_config["fixtureSetId"] = str(case.fixture_set_id)
+    run_id = data.create_run(
+        {
+            "batchId": series.series_id,
+            "caseId": case_id,
+            "caseVersion": case_version,
+            "variantId": variant_id,
+            "snapshotId": snapshot_id,
+            "agentMode": "native-tool-calling",
+            "contextStrategy": str(run_config.get("context_strategy") or "full"),
+            "model": str((run_config.get("model") or {}).get("model_id") or "configured-model"),
+            "gitCommit": os.getenv("GIT_COMMIT", "unknown"),
+            "modelConfig": model_config,
+        }
+    )
+    model_calls = payload.get("model_calls") or []
+    if model_calls:
+        data.save_model_calls(run_id, model_calls)
+        data.save_measurements(
+            run_id,
+            {
+                "llmMs": sum(int(call.get("durationMs") or 0) for call in model_calls),
+                "totalDurationMs": int(payload.get("duration_ms") or 0),
+                "promptTokens": int(payload.get("input_tokens") or 0),
+                "completionTokens": int(payload.get("output_tokens") or 0),
+            },
+        )
+    data.complete_run(
+        run_id,
+        {
+            "answer_excerpt": str(payload.get("answer") or "")[:200],
+            "stop_reason": payload.get("stop_reason"),
+            "actual_agent_steps": payload.get("actual_agent_steps"),
+            "config_hash": payload.get("config_hash"),
+        },
+        status="COMPLETE" if payload.get("validity") == "VALID" else "INVALID",
+        error_category=payload.get("error"),
+    )
 
 
 def _public_template_case(case_id: str) -> Any:
@@ -693,7 +936,8 @@ def _persist_comparison_runs(data: DataClient, batch_id: str, session_id: str, r
                 "caseId": session_id,
                 "caseVersion": int(result.get("session_version") or 1),
                 "variantId": str(row.get("context_variant") or ""),
-                "snapshotId": "",
+                # data 侧 @NotBlank;对齐 case:变体:版本 约定
+                "snapshotId": f"{session_id}:{row.get('context_variant')}:v{result.get('session_version') or 1}",
                 "agentMode": str(row.get("agent_mode_id") or "native-tool-calling"),
                 "contextStrategy": str(row.get("context_variant") or ""),
                 "model": os.getenv("LLM_MODEL", ""),
@@ -718,7 +962,9 @@ def _persist_comparison_runs(data: DataClient, batch_id: str, session_id: str, r
         )
 
 
-def _start_compression_method_batch(request: TemplateBatchRequest, template: Any) -> dict[str, str]:
+def _start_compression_method_batch(
+    request: TemplateBatchRequest, template: Any, *, account: dict[str, Any]
+) -> dict[str, str]:
     """压缩方法对照批次(仅私有台):抽取式 vs LLM 生成式,同模型同目标 token。
 
     - context_only=true:只生成两种压缩上下文(摘要 LLM 按需真实调用,0 个 Agent 运行);
@@ -738,6 +984,9 @@ def _start_compression_method_batch(request: TemplateBatchRequest, template: Any
     )
 
     session_id = str(request.session_id or "")
+    replay = _check_owner_idempotency(account, request)
+    if replay is not None:
+        return replay
     known_sessions = [row[0] for row in COMPRESSION_SESSIONS]
     if session_id not in known_sessions:
         raise HTTPException(status_code=400, detail=f"未知压缩 Session:{session_id!r};可用:{known_sessions}")
@@ -787,8 +1036,14 @@ def _start_compression_method_batch(request: TemplateBatchRequest, template: Any
         "error": None,
         "cancel_requested": False,
     }
-    _init_job_progress(job, run_count, per_run=False)
+    _init_job_progress(job, run_count, per_run=True)
     _JOBS[job_id] = job
+
+    def note_phase(text: str) -> None:
+        """作业进度 phase:当前正在执行的步骤(编译/LLM 摘要/逐单元运行),前端实时展示。"""
+        progress = job.get("progress") or {}
+        progress["phase"] = text
+        job["progress"] = progress
 
     def task() -> None:
         try:
@@ -799,18 +1054,24 @@ def _start_compression_method_batch(request: TemplateBatchRequest, template: Any
                 job["progress"] = progress
 
             if request.context_only:
-                payload = generate_compression_method_contexts(session_id)
+                payload = generate_compression_method_contexts(
+                    session_id,
+                    on_phase=note_phase,
+                    should_stop=lambda: bool(job.get("cancel_requested")),
+                )
             else:
                 payload = _asyncio.run(
                     run_compression_method_comparison(
                         session_id,
                         max_agent_steps=_public_service.quota.max_agent_steps,
                         on_cell_done=bump_cell,
+                        on_phase=note_phase,
                     )
                 )
                 _persist_comparison_runs(data, batch_id, session_id, payload)
             _persist_artifact(batch_id, payload)
             data.complete_batch(batch_id, "COMPLETE")
+            _save_batch_report_best_effort(data, batch_id, payload)
             _finish_job_progress(job)
             job["status"] = "done"
             job["report"] = payload
@@ -823,13 +1084,15 @@ def _start_compression_method_batch(request: TemplateBatchRequest, template: Any
             _BATCH_SLOTS.release()
 
     threading.Thread(target=task, daemon=True).start()
-    return {
+    response = {
         "job_id": job_id,
         "batch_id": batch_id,
         "template_id": template.template_id,
         "classification": template.classification,
         "formal": "true",
     }
+    _remember_owner_idempotency(account, request, response)
+    return response
 
 
 @app.post("/api/v1/template-batches")
@@ -837,10 +1100,12 @@ def start_template_batch(
     request: TemplateBatchRequest,
     account: Annotated[dict[str, Any], Depends(require_login)],
 ) -> dict[str, str]:
-    """所有者按模板发起批次:固定用例 × 模板变体,统一原生底座执行。
+    """旧模板批次入口(P0-7 13.13 已退役,保留压缩方法对照兼容)。
 
-    上下文类模板(context-strategy-comparison)不在此入口——它作用于压缩
-    Session,请使用压缩用例的「原生 4×1」入口。
+    一次请求隐式展开成 4/8/12/20 个 Agent 运行的路径一律 410;
+    报告/批次/统计读取与预估接口保留。仅保留 compression-method-comparison:
+    固定 2 单元、repeat_count 强制为 1,无重复次数乘法,待实验组支持
+    压缩用例后再迁移。上下文类模板不在此入口(压缩用例「原生 4×1」入口)。
     """
     from bdlh_runtime.experiments.templates import CLASSIFICATION_FORMAL, TemplatePlanError, get_template
 
@@ -848,13 +1113,31 @@ def start_template_batch(
         template = get_template(request.template_id)
     except TemplatePlanError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+    if request.template_id != "compression-method-comparison":
+        raise HTTPException(
+            status_code=410,
+            detail="模板批次发起已退役(方案 13.13):一次请求只创建一个 Agent 运行。"
+            "请改用实验组接口:POST /api/v1/experiment-series 创建实验组,"
+            "再 POST /api/v1/experiment-series/{series_id}/runs 逐个追加样本;"
+            "预估(/template-batches/plan)与报告读取接口保留。",
+        )
+    if not request.context_only:
+        # 压缩方法对照的 Agent 运行已迁移实验组:两方法逐样本单请求;
+        # 仅「生成上下文工件」(context_only,0 个 Agent 运行)保留本入口
+        raise HTTPException(
+            status_code=410,
+            detail="压缩方法对照的 Agent 运行已迁移实验组(方案 13.13):"
+            "POST /api/v1/experiment-series {template_id, session_id} 创建实验组,"
+            "再 POST /api/v1/experiment-series/{series_id}/runs 逐个运行各压缩方法;"
+            "仅「生成上下文工件(context_only)」保留本入口(0 个 Agent 运行)。",
+        )
     if template.classification != CLASSIFICATION_FORMAL:
         raise HTTPException(
             status_code=400,
             detail="该模板分类不支持从模板入口发起;请选择正式单变量模板",
         )
     if template.template_id == "compression-method-comparison":
-        return _start_compression_method_batch(request, template)
+        return _start_compression_method_batch(request, template, account=account)
     if "COMPARISON_CASE" not in template.allowed_test_types:
         raise HTTPException(
             status_code=400,
@@ -863,6 +1146,9 @@ def start_template_batch(
     if request.context_only:
         raise HTTPException(status_code=400, detail="发起接口不接受 context_only;预估请用 /template-batches/plan")
     case = _public_template_case(request.case_id)
+    replay = _check_owner_idempotency(account, request)
+    if replay is not None:
+        return replay
     plan = _plan_owner_template_batch(request)
     model = os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
     data = _data()
@@ -915,6 +1201,7 @@ def start_template_batch(
             _persist_template_runs(data, batch_id, plan, case, report)
             _persist_artifact(batch_id, report)
             data.complete_batch(batch_id, "COMPLETE")
+            _save_batch_report_best_effort(data, batch_id, report)
             _finish_job_progress(job)
             job["status"] = "done"
             job["report"] = report
@@ -927,13 +1214,290 @@ def start_template_batch(
             _BATCH_SLOTS.release()
 
     threading.Thread(target=task, daemon=True).start()
-    return {
+    response = {
         "job_id": job_id,
         "batch_id": batch_id,
         "template_id": plan.template_id,
         "classification": plan.classification,
         "formal": str(plan.classification == CLASSIFICATION_FORMAL).lower(),
     }
+    _remember_owner_idempotency(account, request, response)
+    return response
+
+
+# ---------------------------------------------------------------------
+# 实验组与单次运行(P0-7 13.3–13.5):一次提交只创建一个 Agent 运行,
+# 数据分析由统计模块从独立 Run 重建,实验组只负责逻辑分组与样本积累。
+
+
+class ExperimentSeriesCreateRequest(BaseModel):
+    """创建实验组:只保存定义与冻结条件,不运行任何 Agent。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: str = Field(min_length=1, max_length=100)
+    case_id: str = Field(default="", max_length=100)
+    session_id: str | None = Field(
+        default=None, max_length=100,
+        description="压缩类模板(compression-method-comparison)作用于的 Session 编号",
+    )
+    variant_labels: list[str] | None = Field(
+        default=None, max_length=20, description="模板既有变体的子集;缺省为全部变体"
+    )
+    preset_id: str | None = Field(default=None, max_length=100)
+    advanced: dict[str, Any] | None = Field(default=None)
+
+
+class SeriesRunRequest(BaseModel):
+    """单次运行请求:一个变体 + 幂等键;repeat_count/变体数组一律拒绝。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    variant_id: str = Field(min_length=1, max_length=100)
+    idempotency_key: str | None = Field(
+        default=None, min_length=8, max_length=128,
+        description="同键同请求体重试返回原运行;同键不同变体返回 409",
+    )
+
+
+_SERIES_STORE = DbSeriesStore(lambda: _data())  # 数据库是唯一事实真源;文件版仅测试/离线迁移使用
+
+
+def _series_run_entry_view(entry: dict[str, Any] | None, series_id: str) -> dict[str, Any]:
+    return run_entry_view(entry or {}, series_id=series_id)
+
+
+@app.post("/api/v1/experiment-series", status_code=201)
+def create_experiment_series(
+    request: ExperimentSeriesCreateRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """创建实验组(方案 13.4):冻结模板定义与用例,不创建任何运行单元。"""
+    from bdlh_runtime.experiments.templates import (
+        CLASSIFICATION_FORMAL,
+        ROLE_OWNER,
+        TemplatePlanError,
+        get_template,
+        plan_template_batch,
+    )
+
+    try:
+        template = get_template(request.template_id)
+    except TemplatePlanError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if template.classification != CLASSIFICATION_FORMAL or not (
+        "COMPARISON_CASE" in template.allowed_test_types
+        or "COMPRESSION_CASE" in template.allowed_test_types
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="实验组目前只支持正式单变量模板(对比用例或压缩用例)",
+        )
+    compression_session = "COMPRESSION_CASE" in template.allowed_test_types
+    if compression_session:
+        from bdlh_runtime.experiments.compression import COMPRESSION_SESSIONS
+
+        known_sessions = [row[0] for row in COMPRESSION_SESSIONS]
+        if str(request.session_id or "") not in known_sessions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"未知压缩 Session:{request.session_id!r};可用:{known_sessions}",
+            )
+        case_ref = str(request.session_id)
+    else:
+        case_ref = _public_template_case(request.case_id).case_id
+    try:
+        plan = plan_template_batch(
+            request.template_id,
+            repeat_count=1,
+            role=ROLE_OWNER,
+            advanced=request.advanced,
+            preset_id=request.preset_id,
+            variant_labels=request.variant_labels,
+            model_capability=_template_model_capability(),
+        )
+    except (TemplatePlanError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    planned_labels = {run.variant_label for run in plan.runs}
+    record = SeriesRecord(
+        series_id=f"series-{uuid4().hex[:12]}",  # DB 版以 create_batch 生成的 batch_id 为准
+        template_id=plan.template_id,
+        template_version=plan.template_version,
+        case_id=case_ref,
+        title=f"{plan.template_id} · {case_ref}",
+        variant_labels=[variant.label for variant in template.variants if variant.label in planned_labels],
+        fixed_conditions=plan.fixed_conditions,
+        fixed_conditions_hash=plan.fixed_conditions_hash,
+        advanced=request.advanced or {},
+        preset_id=request.preset_id,
+        formal_min_repeat_count=template.formal_min_repeat_count,
+    )
+    try:
+        record = _SERIES_STORE.create(record)
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail=f"数据服务不可用,实验组未创建:{exc}") from exc
+    series_id = record.series_id
+    return {
+        "series_id": series_id,
+        "template_id": record.template_id,
+        "case_id": record.case_id,
+        "variant_labels": record.variant_labels,
+        "definition_hash": record.fixed_conditions_hash,
+        "formal_min_repeat_count": record.formal_min_repeat_count,
+        "runs_url": f"/api/v1/experiment-series/{series_id}/runs",
+        "statistics_url": f"/api/v1/statistics/experiment-series/{series_id}",
+    }
+
+
+@app.post("/api/v1/experiment-series/{series_id}/runs")
+def create_series_run(
+    series_id: str,
+    request: SeriesRunRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """创建一个且仅一个 Agent 运行(方案 13.4/13.5)。
+
+    - 幂等:同键同请求体重试返回原运行;同键不同变体返回 409;
+    - 单活跃运行:同一实验组进行中的运行未完成前,新请求返回 409;
+    - 失败不自动启动下一个运行;用户可再次 POST 继续积累样本。
+    """
+    request_hash = sha256_hex(json.dumps({"variant_id": request.variant_id}, sort_keys=True))
+    try:
+        entry, replayed = _SERIES_STORE.begin_run(
+            series_id,
+            variant_id=request.variant_id,
+            idempotency_key=request.idempotency_key,
+            request_hash=request_hash,
+        )
+    except SeriesIdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    except SeriesConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+    if replayed:
+        return _series_run_entry_view(entry, series_id)
+    if not _BATCH_SLOTS.acquire(blocking=False):
+        # 回滚排队条目:下一次同键重试可以重新发起,而不是重放一次"未执行"的失败
+        _SERIES_STORE.cancel_run(series_id, entry["run_key"])
+        raise HTTPException(status_code=429, detail="已有评测任务在运行,请稍后再发起")
+    model = os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B")
+
+    def task() -> None:
+        succeeded = False
+        payload: dict[str, Any] = {}
+        try:
+            _SERIES_STORE.mark_running(series_id, entry["run_key"])
+            payload = execute_series_run(
+                _SERIES_STORE.get(series_id),
+                request.variant_id,
+                model=model,
+                model_capability=_template_model_capability(),
+                max_agent_steps=_public_service.quota.max_agent_steps,
+            )
+            payload["repeat_index"] = entry["repeat_index"]  # 登记序号回写,统计与展示一致
+            _SERIES_STORE.complete_run(series_id, entry["run_key"], payload)
+            succeeded = True
+        except Exception as exc:  # noqa: BLE001 —— 失败进入可见状态,不自动启动下一个运行
+            _SERIES_STORE.fail_run(series_id, entry["run_key"], f"{type(exc).__name__}: {exc}")
+        finally:
+            _BATCH_SLOTS.release()
+        if not succeeded:
+            return
+        # 槽位已释放:agent_runs 落库是纯簿记,不占用 Agent 并发槽;
+        # 失败不影响登记(状态文档已有正本)
+        record = _SERIES_STORE.get(series_id)
+        if record is None:
+            return
+        try:
+            _persist_series_run(_data(), record, payload)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[run_api] 实验组运行落库失败(登记保留):{type(exc).__name__}: {exc}")
+
+    threading.Thread(target=task, daemon=True).start()
+    return _series_run_entry_view(entry, series_id)
+
+
+@app.get("/api/v1/experiment-series/{series_id}")
+def get_experiment_series(
+    series_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """实验组详情:冻结定义 + 样本积累状态(不显示强迫用户完成的百分比)。"""
+    record = _SERIES_STORE.get(series_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="实验组不存在")
+    active = record.active_run()
+    return {
+        "series_id": record.series_id,
+        "template_id": record.template_id,
+        "template_version": record.template_version,
+        "case_id": record.case_id,
+        "title": record.title,
+        "status": record.status,
+        "definition_hash": record.fixed_conditions_hash,
+        "variant_labels": record.variant_labels,
+        "formal_min_repeat_count": record.formal_min_repeat_count,
+        "counts_by_variant": record.counts_by_variant(),
+        "total_runs": sum(1 for row in record.runs if row.get("status") == "done"),
+        "active_run": _series_run_entry_view(active, series_id) if active else None,
+        "created_at": record.created_at,
+    }
+
+
+@app.get("/api/v1/experiment-series/{series_id}/runs")
+def list_series_runs(
+    series_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """实验组内全部独立运行(完成/进行中/失败,含各自证据)。"""
+    record = _SERIES_STORE.get(series_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="实验组不存在")
+    return {
+        "series_id": series_id,
+        "runs": [_series_run_entry_view(row, series_id) for row in record.runs],
+    }
+
+
+@app.get("/api/v1/statistics/experiment-series/{series_id}")
+def get_series_statistics(
+    series_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """实验组累计统计快照(P0-7):纯代码从已完成 Run 全量重算,不产生任何 LLM 请求。
+
+    失败运行以无效证据身份进入 excluded_runs,保持排除口径透明。
+    """
+    record = _SERIES_STORE.get(series_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="实验组不存在")
+    runs: list[dict[str, Any]] = []
+    for row in record.runs:
+        if row.get("status") == "done" and isinstance(row.get("payload"), dict):
+            runs.append(row["payload"])
+        elif row.get("status") == "failed":
+            runs.append(
+                {
+                    "run_id": row.get("run_key"),
+                    "variant_label": row.get("variant_id"),
+                    "repeat_index": row.get("repeat_index"),
+                    "config_hash": "",
+                    "validity": "INVALID",
+                    "stop_reason": "RUN_FAILED",
+                    "actual_agent_steps": 0,
+                    "duration_ms": 0,
+                    "tool_calls": [],
+                    "error": row.get("error"),
+                }
+            )
+    report = {
+        "template_id": record.template_id,
+        "template_version": record.template_version,
+        "fixed_conditions_hash": record.fixed_conditions_hash,
+        "runs": runs,
+    }
+    from bdlh_runtime.statistics import build_snapshot
+
+    return build_snapshot(series_id, report=report, planned_variants=record.variant_labels)
 
 
 @app.post("/api/v1/public/test-jobs")
@@ -946,6 +1510,8 @@ def create_public_test_job(payload: dict[str, Any], request: Request, response: 
     token = _anon_token(request, response)
     try:
         job = _public_service.create_job(payload, anonymous_id_hash=sha256_hex(token))
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except PublicTestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return {
@@ -1043,6 +1609,7 @@ def _finish_job_progress(job: dict[str, Any]) -> None:
     if progress is not None:
         progress["done"] = progress["total"]
         progress["current"] = ""
+        progress.pop("phase", None)
 
 
 def _execute_context_eval(
@@ -1189,6 +1756,17 @@ def _write_run_artifact_file(run_id: str, artifact: dict[str, Any]) -> str:
     content = json.dumps(artifact, ensure_ascii=False, indent=2)
     (ARTIFACTS_DIR / storage_ref).write_text(content, encoding="utf-8")
     return storage_ref
+
+
+def _save_batch_report_best_effort(data: DataClient, batch_id: str, payload: dict[str, Any]) -> None:
+    """执行报告落库(尽力而为):列未迁移或 data 不可达时只记日志,不影响批次完成;
+
+    磁盘工件(_persist_artifact)始终保留,作为报告读取的兜底来源。
+    """
+    try:
+        data.save_batch_report(batch_id, payload)
+    except Exception as exc:  # noqa: BLE001 —— 报告持久化失败不阻断批次终态
+        print(f"[run_api] 批次报告落库失败(已保留本地工件):{type(exc).__name__}: {exc}")
 
 
 def _persist_artifact(batch_id: str, payload: dict[str, Any]) -> None:

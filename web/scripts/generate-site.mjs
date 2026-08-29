@@ -58,7 +58,9 @@ const MODULES = [
   { href: "/ops/", label: "数据与运行", icon: "ops" },
 ];
 
-/** 各模块页面清单(侧栏级联树子项;currentPath 高亮)。公告为单页模块,不设子级。 */
+/** 各模块页面清单(侧栏级联树子项;currentPath 高亮)。公告为单页模块,不设子级。
+ *  薄页合并(P1-2):Engine 6→3(运行流程/资源与工具/治理与安全边界),
+ *  Judging 4→3(指标定义与总表合一),ops 并入部署边界;旧 URL 由 redirect-map 301。 */
 const PAGES = {
   "/": [],
   "/test/": [],
@@ -73,7 +75,6 @@ const PAGES = {
   ],
   "/experiment/": [
     { href: "/experiment/", title: "模板中心" },
-    { href: "/experiment/batches", title: "批次列表" },
     { href: "/experiment/compression", title: "压缩用例" },
   ],
   "/context/": [
@@ -83,8 +84,7 @@ const PAGES = {
     { href: "/context/results", title: "用例结果" },
   ],
   "/judging/": [
-    { href: "/judging/", title: "指标定义" },
-    { href: "/judging/metrics", title: "指标定义总表" },
+    { href: "/judging/", title: "指标定义与总表" },
     { href: "/judging/judge", title: "判官说明" },
     { href: "/judging/invalid", title: "无效运行与口径" },
   ],
@@ -95,21 +95,27 @@ const PAGES = {
     { href: "/cases/", title: "全部用例" },
   ],
   "/engine/": [
-    { href: "/engine/", title: "Agent 循环" },
-    { href: "/engine/loading", title: "工具装载" },
-    { href: "/engine/catalog", title: "工具目录" },
-    { href: "/engine/governance", title: "治理中间件" },
-    { href: "/engine/guardrail", title: "输出护栏" },
-    { href: "/engine/tools", title: "工具清单" },
+    { href: "/engine/", title: "运行流程" },
+    { href: "/engine/catalog", title: "资源与工具" },
+    { href: "/engine/governance", title: "治理与安全边界" },
   ],
   "/ops/": [
-    { href: "/ops/", title: "数据库与冻结数据" },
+    { href: "/ops/", title: "数据库与部署" },
     { href: "/ops/run-api", title: "私有运行 API" },
     { href: "/ops/artifacts", title: "工件与发布" },
-    { href: "/ops/deploy", title: "部署与边界" },
     { href: "/ops/roadmap", title: "路线图" },
   ],
 };
+
+/** 主导航(P2-1 静态化):构建时写进 topbar,docs.js 只做活动态高亮增强。 */
+const MAIN_NAV = [
+  { href: "/", label: "公告" },
+  { href: "/experiment/", label: "实验" },
+  { href: "/test/", label: "我的测试" },
+  { href: "/assets/", label: "数据资产" },
+  { href: "/docs/", label: "文档" },
+];
+const STATIC_NAV_HTML = `<nav class="site-nav" aria-label="站点模块导航">${MAIN_NAV.map((m) => `<a href="${m.href}">${m.label}</a>`).join("")}</nav>`;
 
 const esc = (v) => String(v).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 
@@ -143,8 +149,9 @@ function sideTree(currentPath, moduleKey) {
 
 function shell({ title, description, currentPath, moduleKey, sections, extraScripts = "", homeShell = false, bodyHtml = "", pageClass = "", pageToc = true }) {
   // 页内目录与正文保持同一详情区,具体视觉位置由页面类型的 CSS 决定。
+  // P1-6:少于 3 个有效章节的页面不生成装饰性目录。
   const hasDetailLayout = !homeShell && sections.length > 0;
-  const hasToc = hasDetailLayout && pageToc;
+  const hasToc = hasDetailLayout && pageToc && sections.length >= 3;
   const toc = hasToc
     ? `<aside class="page-toc" aria-label="本页目录">
       <h4 class="page-toc-title">本页目录</h4>
@@ -184,7 +191,8 @@ ${body}`;
 <body${pageClass ? ` class="${esc(pageClass)}"` : ""}>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    ${STATIC_NAV_HTML}
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -267,8 +275,8 @@ const ABOUT_BANKS = {
       id: "banks",
       title: "题库",
       html: `<ul>
-  <li><strong>实现方式对照题库 98 道</strong>:通用工具用例 72(相似区分 / 不存在工具 / 权限确认 / 无工具 / 多工具组合)+ 领域基础题 18(对话、知识、拦截与多步示例)+ 负例 8,均存 PostgreSQL 为唯一数据来源,见<a href="/experiment/cases">固定题库</a>。</li>
-  <li><strong>上下文压缩用例 6 套</strong>,每套 <code>full-raw</code> 全量与 <code>budgeted-comp</code> 压缩两条变体;条目构成与元信息见<a href="/context/library">长上下文库</a>,设计口径见<a href="/context/design">长短对照设计</a>。</li>
+  <li><strong>对比用例题库 20 条</strong>:基础 4 / 组合 4 / 多工具 6 / 异常 3 / 安全 3(调用关系金标 <code>call-relation-v1</code>),均存 PostgreSQL 为唯一数据来源,见<a href="/cases/">用例库</a>。</li>
+  <li><strong>上下文压缩语料 3 个场景 Session</strong>(产品与架构演进 / 上下文引擎排查 / 数据库与云部署),每个 Session 独立派生完整透传、最近窗口、一次摘要、按预算压缩四种上下文方式;条目构成与元信息见<a href="/context/library">长上下文库</a>,设计口径见<a href="/context/design">长短对照设计</a>。</li>
 </ul>`,
     },
     {
@@ -289,7 +297,7 @@ const ABOUT_REPO = {
     {
       id: "repo",
       title: "仓库构成",
-      html: `<p>代码在 <a href="${GITHUB}" target="_blank" rel="noopener">GitHub</a>:<code>engine/</code>(被测内核与对照 runner)、<code>data/</code>(题库与记录服务)、<code>web/</code>(公开展示层与实验发起入口)、<code>db/</code>(库结构与种子)。</p>`,
+      html: `<p>代码在 <a href="${GITHUB}" target="_blank" rel="noopener">GitHub</a>:<code>engine/</code>(评测运行引擎与实验执行)、<code>data/</code>(题库与记录服务)、<code>web/</code>(公开展示层与实验发起入口)、<code>db/</code>(库结构与种子)。</p>`,
     },
     {
       id: "reproduce",
@@ -312,382 +320,11 @@ const ABOUT_REPO = {
   ],
 };
 
-// ── 模块:我的测试(匿名任务列表/进度/取消/结果,读公开测试接口)────────
-
-const myTestsScript = `
-<script>
-(function () {
-  "use strict";
-  function esc(v) {
-    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
-    });
-  }
-  var STATUS_LABEL = {
-    QUEUED: "排队中", RUNNING: "运行中", COMPLETE: "完成", FAILED: "失败",
-    CANCELLED: "已取消", INTERRUPTED: "已中断", PARTIAL: "部分完成",
-  };
-  var SCOPE_LABEL = {
-    "context-only": "生成四份上下文(0 个 Agent 运行)",
-    "current-combo": "运行当前组合(1 个运行)",
-    "native-matrix": "原生 4×1 上下文实验(4 个运行)",
-  };
-  var ACTIVE = { QUEUED: 1, RUNNING: 1 };
-  var listEl = document.getElementById("jobList");
-  var stateEl = document.getElementById("jobLoadState");
-  var openDetails = {}; // job_id -> true(展开态,重渲染后保持)
-
-  function check(res) {
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return res.json();
-  }
-
-  function statusBadge(status) {
-    var cls = status === "COMPLETE" ? "ok" : (ACTIVE[status] ? "run" : "off");
-    return '<span class="tag ' + cls + '">' + esc(STATUS_LABEL[status] || status) + "</span>";
-  }
-
-  function progressHtml(done, total) {
-    var pct = total ? Math.round((done / total) * 100) : 0;
-    return '<div class="prog"><div class="prog-bar" style="width:' + pct + '%"></div></div>' +
-      '<small>' + done + " / " + total + " 个单元</small>";
-  }
-
-  function cardHtml(j) {
-    var target = j.test_type === "COMPARISON_CASE"
-      ? ("用例 " + esc(j.case_id || "—"))
-      : ("Session " + esc(j.session_id || "—"));
-    var custom = j.custom_conditions ? ' <span class="tag off">自定义条件</span>' : "";
-    var actions = "";
-    if (ACTIVE[j.status]) {
-      actions += ' <button type="button" data-cancel="' + esc(j.job_id) + '">取消</button>';
-    }
-    actions += ' <button type="button" data-toggle="' + esc(j.job_id) + '">' +
-      (openDetails[j.job_id] ? "收起结果" : "查看结果") + "</button>";
-    return '<div class="job-card" id="job-' + esc(j.job_id) + '">' +
-      '<div class="job-head">' + statusBadge(j.status) +
-      "<b>" + esc(SCOPE_LABEL[j.execution_scope] || j.execution_scope) + "</b>" + custom +
-      '<span class="job-time">' + esc(j.created_at || "") + "</span></div>" +
-      '<div class="job-meta">' + target + " · 任务号 <code>" + esc(j.job_id) + "</code></div>" +
-      progressHtml(j.completed_units || 0, j.total_units || 0) +
-      '<div class="job-actions">' + actions + "</div>" +
-      '<div class="job-detail" id="detail-' + esc(j.job_id) + '">' +
-      (openDetails[j.job_id] ? '<div class="placeholder-block">读取中…</div>' : "") + "</div>" +
-      "</div>";
-  }
-
-  function render(jobs) {
-    if (!jobs.length) {
-      stateEl.textContent = "";
-      listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 实验页发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
-      return;
-    }
-    stateEl.textContent = "共 " + jobs.length + " 个任务,按创建时间倒序;运行中的任务每 5 秒自动刷新。";
-    listEl.innerHTML = jobs.map(cardHtml).join("");
-    Array.prototype.forEach.call(listEl.querySelectorAll("[data-cancel]"), function (btn) {
-      btn.addEventListener("click", function () {
-        btn.disabled = true;
-        fetch("/api/v1/public/test-jobs/" + btn.getAttribute("data-cancel") + "/cancel", { method: "POST" })
-          .then(load, load);
-      });
-    });
-    Array.prototype.forEach.call(listEl.querySelectorAll("[data-toggle]"), function (btn) {
-      btn.addEventListener("click", function () {
-        var id = btn.getAttribute("data-toggle");
-        if (openDetails[id]) delete openDetails[id]; else openDetails[id] = true;
-        load();
-      });
-    });
-    Object.keys(openDetails).forEach(function (id) { loadDetail(id); });
-  }
-
-  function load() {
-    return fetch("/api/v1/public/test-jobs", { cache: "no-store" }).then(check).then(render).catch(function (err) {
-      stateEl.textContent = "";
-      listEl.innerHTML = '<div class="placeholder-block">运行服务不可达(' + esc(err.message) +
-        ")。纯静态部署不提供任务查询;需要 engine 服务与 <code>/api/v1/public/</code> 反代。</div>";
-    });
-  }
-
-  function unitRow(u, label) {
-    var ok = u.task_success ? '<span class="tag ok">成功</span>' : '<span class="tag off">未成功</span>';
-    var inval = u.validity === "INVALID" ? ' <span class="tag off">无效</span>' : "";
-    return "<tr><td>" + esc(label || u.unit_id) + "</td><td>" + ok + inval + "</td><td>" +
-      esc(u.actual_agent_steps || "—") + "</td><td>" + esc(u.stop_reason || "—") + "</td><td>" +
-      esc(u.duration_ms || "—") + " ms</td></tr>";
-  }
-
-  function renderDetail(id, payload) {
-    var box = document.getElementById("detail-" + id);
-    if (!box) return;
-    var result = payload.result || {};
-    var units = payload.units || [];
-    var html = '<p><small><span class="tag off">个人测试 · 非正式结果</span> 不进入公告指标;只有维护者审核发布的批次才进入公告。</small></p>';
-    var def = result.fixed_conditions || {};
-    if (def.experiment_definition || result.fixed_conditions_hash) {
-      html += '<p><small>实验定义:' + esc(def.experiment_definition || "—") +
-        (def.experiment_definition_note ? "(" + esc(def.experiment_definition_note) + ")" : "") +
-        ' · 固定条件哈希 <code>' + esc(String(result.fixed_conditions_hash || "").slice(0, 16)) + "…</code></small></p>";
-    }
-    var rcs = result.run_configs || {};
-    var rcKeys = Object.keys(rcs);
-    if (rcKeys.length) {
-      html += '<p><small>运行配置快照(config_hash):' + rcKeys.map(function (k) {
-        return esc(k) + " → <code>" + esc(String((rcs[k] && rcs[k].config_hash) || "").slice(0, 12)) + "…</code>";
-      }).join(" · ") + "</small></p>";
-    }
-    if (payload.test_type === "COMPARISON_CASE") {
-      html += "<h4>实现结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
-      Object.keys(result.by_agent || {}).forEach(function (mode) {
-        var a = result.by_agent[mode];
-        html += "<tr><td>" + esc(mode) + "</td><td>" + a.success_count + "/" + a.total_runs + "</td><td>" +
-          a.valid_runs + "/" + a.invalid_runs + "</td><td>" +
-          esc(a.duration_ms_min) + " / " + esc(a.duration_ms_median) + " / " + esc(a.duration_ms_max) +
-          "</td><td>" + esc(a.duration_ms_stdev == null ? "—" : a.duration_ms_stdev) + "</td></tr>";
-      });
-      html += "</tbody></table>";
-      if ((result.invalid_runs || []).length) {
-        html += '<p><small>无效运行(' + result.invalid_runs.length + ",不自动补跑):" +
-          result.invalid_runs.map(function (r) { return esc(r.unit_id); }).join("、") + "</small></p>";
-      }
-      html += "<h4>逐次运行(" + units.length + ")</h4><table><thead><tr><th>单元</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
-      units.forEach(function (u) { html += unitRow(u, u.agent_mode_id + " × 第" + (u.repeat_index + 1) + "次"); });
-      html += "</tbody></table>";
-      units.forEach(function (u) {
-        html += '<details class="metric-def"><summary>' + esc(u.unit_id) + " 回答与调用</summary>" +
-          "<p><small>回答:" + esc((u.answer || "").slice(0, 300)) + "</small></p>" +
-          '<pre class="cat-schema">' + esc(JSON.stringify(u.tool_calls || [], null, 1)) + "</pre></details>";
-      });
-    } else if (payload.execution_scope === "context-only") {
-      var stats = result.stats || {};
-      html += "<h4>四份上下文工件</h4><table><thead><tr><th>方式</th><th>压缩前</th><th>压缩后</th></tr></thead><tbody>";
-      ["full-session", "recent-window", "single-summary", "budgeted-session"].forEach(function (v) {
-        html += "<tr><td>" + esc(v) + "</td><td>" + esc((stats.original_tokens || {})[v]) +
-          "</td><td>" + esc((stats.working_tokens || {})[v]) + "</td></tr>";
-      });
-      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「原生 4×1」。</small></p>";
-    } else {
-      html += "<h4>矩阵单元</h4><table><thead><tr><th>上下文 × Agent</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
-      units.forEach(function (u) {
-        html += unitRow(u, (u.context_variant || "") + " × " + u.agent_mode_id);
-      });
-      html += "</tbody></table>";
-      var hashes = result.frozen_artifact_hashes || {};
-      html += '<p><small>冻结工件哈希(各实现复用同一批):' +
-        Object.keys(hashes).map(function (v) { return esc(v) + " → <code>" + String(hashes[v]).slice(0, 18) + "…</code>"; }).join(" · ") +
-        "</small></p>";
-    }
-    if (payload.error) html += '<p><small>错误:' + esc(payload.error) + "</small></p>";
-    box.innerHTML = html;
-  }
-
-  function loadDetail(id) {
-    fetch("/api/v1/public/test-jobs/" + id + "/results", { cache: "no-store" }).then(check)
-      .then(function (payload) { renderDetail(id, payload); })
-      .catch(function (err) {
-        var box = document.getElementById("detail-" + id);
-        if (box) box.innerHTML = '<div class="placeholder-block">结果读取失败:' + esc(err.message) + "</div>";
-      });
-  }
-
-  load();
-  setInterval(load, 5000);
-})();
-</script>`;
-
-const TEST_MY = {
-  path: "test/index.html",
-  title: "我的测试",
-  description: "当前匿名身份发起的测试任务:进度、结果与取消;匿名结果不进入公告指标。",
-  moduleKey: "/test/",
-  currentPath: "/test/",
-  sections: [
-    {
-      id: "notice",
-      title: "匿名测试结果说明",
-      html: `<div class="note"><strong>匿名测试结果</strong>:只代表本次选择的用例、工具和运行条件,不进入公告指标,也不会自动公开。任务与单元进度持久化在服务端,关闭或刷新页面不会停止任务;重新进入本页可继续查看。</div>`,
-    },
-    {
-      id: "jobs",
-      title: "任务列表",
-      html: `<p id="jobLoadState" class="lab-note">正在读取…</p>
-<div id="jobList"><div class="placeholder-block">正在读取…</div></div>`,
-    },
-    {
-      id: "reading",
-      title: "口径说明",
-      html: `<ul>
-  <li>取消只阻止尚未开始的单元;已产生的运行与费用保留,任务显示「已取消」或「部分完成」。</li>
-  <li>无效运行(服务错误、超时等)单独显示,不自动补跑。</li>
-  <li>服务重启后的中断任务标记为「已中断」,已完成单元保留,可重新发起而不丢失历史。</li>
-  <li>匿名身份由浏览器 HttpOnly Cookie 标识,清除浏览器数据后无法恢复这些记录。</li>
-</ul>`,
-    },
-  ],
-  extraScripts: myTestsScript,
-};
+// ── 模块:我的测试 / 压缩用例(均已手工维护,不在 ALL_PAGES;重跑不覆盖)──
+//    test/index.html 为统一运行记录页(我的测试/我的批次/公告批次三 Tab);
+//    experiment/compression.html 为压缩用例实验入口。两者内容直接维护产物文件。
 
 // ── 模块:实验(模板中心为根,手工维护;压缩用例页由本脚本生成)──────────
-
-// 压缩用例页内联脚本:读长上下文库渲染三个 Session 与四策略概览;
-// 三个手动按钮只在点击时调用公开测试接口,页面加载不创建任何任务。
-const compressionScript = `
-<script>
-(function () {
-  "use strict";
-  function esc(v) {
-    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
-    });
-  }
-  var MODES = ["full-session", "recent-window", "single-summary", "budgeted-session"];
-  var MODE_LABEL = {
-    "full-session": "完整 Session(对照)",
-    "recent-window": "最近窗口(基准)",
-    "single-summary": "一次摘要(基准)",
-    "budgeted-session": "按预算压缩(本项目算法)",
-  };
-  var AGENTS = ["native-tool-calling"]; // 统一原生底座
-  var selected = { session: null, mode: "budgeted-session", agent: "native-tool-calling" };
-
-  fetch("/showcase-data/context-library.json", { cache: "no-store" })
-    .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (lib) {
-      var list = document.getElementById("sessionList");
-      var entries = (lib && lib.entries) || [];
-      if (!entries.length) {
-        list.innerHTML = '<div class="placeholder-block">尚未维护压缩 Session。</div>';
-        return;
-      }
-      var wanted = new URLSearchParams(location.search).get("session_id");
-      selected.session = entries.some(function (e) { return e.id === wanted; }) ? wanted : entries[0].id;
-
-      function renderList() {
-        list.innerHTML = entries.map(function (s) {
-          var stats = s.stats || {};
-          var picked = s.id === selected.session ? ' <small style="color:#1d4ed8">[当前选中]</small>' : "";
-          return '<details class="side-group"' + (picked ? ' open' : '') + '><summary>' + esc(s.title || s.id) + picked + "</summary>" +
-            '<div class="kv"><span>事件</span><b>' + esc(stats.event_count) + " 个(用户消息 " + esc(stats.user_messages) +
-            " / 工具对 " + esc(stats.tool_pairs) + ")</b></div>" +
-            '<div class="kv"><span>原始规模</span><b>' + (s.original_tokens == null ? "—" : esc(s.original_tokens) + " token") + "</b></div>" +
-            '<div class="kv"><span>当前输入</span><b>' + esc(String(s.current_question || "").slice(0, 100)) + "…</b></div>" +
-            '<p><small><button type="button" data-select-session="' + esc(s.id) + '"' +
-            (picked ? ' disabled' : '') + ">选中该 Session</button>" +
-            (picked ? " 三个操作按钮当前作用于它" : "") +
-            ' · <a href="/context/library">完整压缩前后对照见长上下文库</a></small></p></details>';
-        }).join("");
-        Array.prototype.forEach.call(list.querySelectorAll("[data-select-session]"), function (btn) {
-          btn.addEventListener("click", function () {
-            selected.session = btn.getAttribute("data-select-session");
-            renderList(); // 原地切换选中态,不重新加载页面
-          });
-        });
-        var current = document.getElementById("currentSessionId");
-        if (current) current.textContent = selected.session || "—";
-      }
-
-      renderList();
-    })
-    .catch(function () {
-      document.getElementById("sessionList").innerHTML = '<div class="placeholder-block">长上下文库数据不可读。</div>';
-    });
-
-  var modeSel = document.getElementById("modeSelect");
-  var agentSel = document.getElementById("agentSelect");
-  MODES.forEach(function (m) {
-    var o = document.createElement("option");
-    o.value = m; o.textContent = MODE_LABEL[m];
-    modeSel.appendChild(o);
-  });
-  AGENTS.forEach(function (a) { agentSel.appendChild(new Option(a, a)); });
-  modeSel.addEventListener("change", function () { selected.mode = modeSel.value; });
-  agentSel.addEventListener("change", function () { selected.agent = agentSel.value; });
-
-  function postJob(body) {
-    return fetch("/api/v1/public/test-jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(function (res) {
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return res.json();
-    });
-  }
-  function note(msg, isError) { noteHtml(esc(msg), isError); }
-  function noteHtml(html, isError) {
-    var box = document.getElementById("compressStatus");
-    box.innerHTML = html;
-    box.className = isError ? "lab-note lab-note-error" : "lab-note";
-  }
-  function requireSession() {
-    if (!selected.session) { note("没有可用的压缩 Session。", true); return null; }
-    return selected.session;
-  }
-  document.getElementById("btnGenerate").addEventListener("click", function () {
-    var sid = requireSession(); if (!sid) return;
-    note("正在提交「生成四份上下文」任务…");
-    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "context-only" })
-      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(0 个 Agent 运行)。到 <a href=\"/test/\">我的测试</a> 查看四份工件。"); })
-      .catch(function (e) { note("提交失败:" + e.message + "(公开运行服务未部署或不可达;本站静态部署不提供运行入口)", true); });
-  });
-  document.getElementById("btnRunCombo").addEventListener("click", function () {
-    var sid = requireSession(); if (!sid) return;
-    note("正在提交「运行当前组合」任务(1 个运行)…");
-    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "current-combo", context_variant: selected.mode, agent_mode_id: selected.agent })
-      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(1 个 Agent 运行)。到 <a href=\"/test/\">我的测试</a> 查看进度与结果。"); })
-      .catch(function (e) { note("提交失败:" + e.message, true); });
-  });
-  document.getElementById("btnRunNative").addEventListener("click", function () {
-    var sid = requireSession(); if (!sid) return;
-    note("正在提交「原生 4×1」任务(4 个运行)…");
-    postJob({ test_type: "COMPRESSION_CASE", session_id: sid, execution_scope: "native-matrix" })
-      .then(function (r) { noteHtml('任务已创建:<code>' + r.job_id + "</code>(4 个运行:4 种上下文 × 1 种固定原生配置)。到 <a href=\"/test/\">我的测试</a> 查看结果。"); })
-      .catch(function (e) { note("提交失败:" + e.message, true); });
-  });
-})();
-</script>`;
-
-const EXPERIMENT_COMPRESSION = {
-  path: "experiment/compression.html",
-  title: "压缩用例 · 实验",
-  description: "三个长 Session × 四种上下文方式;默认上下文实验 4×1(原生底座);生成上下文与 Agent 运行拆开,每格单次样本。",
-  moduleKey: "/experiment/",
-  currentPath: "/experiment/compression",
-  sections: [
-    {
-      id: "scope",
-      title: "实验对象与数量口径",
-      html: `<p>压缩用例只使用上下文压缩模块维护的<strong>三个版本化长 Session</strong>:产品演进与需求决策、上下文引擎排查、数据库与部署。<strong>默认上下文实验是 4×1</strong>:4 种上下文方式 × 1 种固定原生 Tool Calling 配置(模板 <code>context-strategy-comparison</code>,唯一自变量 = <code>context_strategy</code>,其余条件冻结),共 4 个运行、每格 1 次。</p>
-<p>三个数量口径全链路分开:<code>repeat_count</code>(压缩用例每格固定 1)/ <code>max_agent_steps</code>(单次运行内模型判断+工具回传的最大步数,服务端配置)/ 实现编号(统一为原生 Tool Calling 底座一种)。</p>`,
-    },
-    {
-      id: "sessions",
-      title: "三个 Session 概览",
-      html: `<div id="sessionList"><div class="placeholder-block">正在读取长上下文库…</div></div>
-<p class="lab-note">当前输入 = Session 最新一条有效用户消息,只发送一次,不进入历史压缩;其之前的事件构成历史。四种方式经过相同的输入构建、Token 统计与工件冻结;只有「按预算压缩」是本项目算法,完整/最近窗口/一次摘要为对照方法。<strong>各 Session 四种方式的压缩前后 Token 明细见<a href="/context/library">长上下文库</a></strong>,本页只维护实验入口,不重复展示第二份数字。</p>`,
-    },
-    {
-      id: "actions",
-      title: "三个手动操作",
-      html: `<p>三个操作互不自动触发——生成上下文完成后不会自动运行 Agent;Session、算法参数或预算变化后旧工件不能复用,需重新生成。</p>
-<p class="lab-note">操作作用于:<code id="currentSessionId">—</code>(在上方 Session 列表点击「选中该 Session」切换;从长上下文库进入时按链接自动预选)</p>
-<div class="lab-row">
-  <label>上下文方式 <select id="modeSelect"></select></label>
-  <label>Agent 实现 <select id="agentSelect"></select></label>
-</div>
-<p>
-  <button type="button" class="btn" id="btnGenerate">生成四份上下文(0 个 Agent 运行)</button>
-  <button type="button" class="btn" id="btnRunCombo">运行当前组合(1 个运行)</button>
-  <button type="button" class="btn" id="btnRunNative">运行原生 4×1(4 个运行 · 默认上下文实验)</button>
-</p>
-<div id="compressStatus" class="lab-note">按钮只在点击时调用公开测试接口;页面加载、静态站生成都不会创建实验任务。静态部署(无运行服务)时提交会失败并如实提示。</div>`,
-    },
-  ],
-    extraScripts: compressionScript,
-};
-
-// 对比用例页内联脚本:读用例库公开投影;重复次数只允许 3/5;
-// 开始按钮只在点击时调用公开测试接口。
 
 // ── 模块:上下文压缩 ─────────────────────────────────────────────────────
 
@@ -798,19 +435,21 @@ const CONTEXT_LIBRARY = {
 const CONTEXT_DESIGN = {
   path: "context/design.html",
   title: "长短对照设计 · 上下文压缩",
-  description: "六套长上下文用例 × full-raw/budgeted-comp 两变体,同一 Agent、同一判官。",
+  description: "三个场景化长 Session × 四种上下文方式的对照设计口径。",
   moduleKey: "/context/",
   currentPath: "/context/design",
   sections: [
     {
       id: "cases",
-      title: "六套用例 × 两条变体",
-      html: `<p>方向覆盖金融 3(组合诊断 / 估值口径 / 新闻去重)+ 其他 2(出行天气 / 长文档手册)+ 闲聊 1(长历史)。每套两条变体挂同一份上下文条目,只变处理策略:</p>
+      title: "三个 Session × 四种上下文方式",
+      html: `<p>对照语料为三个场景化冻结 Session(产品与架构演进 / 上下文引擎排查 / 数据库与云部署)。每个 Session 独立派生四种上下文方式,唯一自变量是 <code>context_strategy</code>,其余条件(模型、循环实现、工具目录、Mock)全部冻结:</p>
 <ul>
-  <li><strong>full-raw</strong>:全量透传(大预算);</li>
-  <li><strong>budgeted-comp</strong>:按预算压缩(小预算)。</li>
+  <li><strong>full</strong>:完整透传(对照);</li>
+  <li><strong>recent-window</strong>:最近窗口(基准);</li>
+  <li><strong>single-summary</strong>:一次摘要(基准);</li>
+  <li><strong>budgeted</strong>:按预算压缩(本项目算法)。</li>
 </ul>
-<p>条目数据在库(<code>changes/20260821-long-context-cases.sql</code>,批量条目由确定性生成,有业务含义),执行时经数据服务读取,运行记录关联真实变体与快照;条目元信息与原文下载见<a href="/context/library">长上下文库</a>。</p>`,
+<p>默认实验是 4×1:4 种上下文方式 × 1 种固定原生配置,每格单次样本(模板 <code>context-strategy-comparison</code>);条目元信息与原文下载见<a href="/context/library">长上下文库</a>。旧的六套结构化夹具(<code>changes/20260821-long-context-cases.sql</code>)仍可供引擎回归使用,不再属于主文库对照语料。</p>`,
     },
     {
       id: "assertions",
@@ -826,7 +465,7 @@ const CONTEXT_DESIGN = {
     {
       id: "launch",
       title: "如何发起",
-      html: `<p>登录后进入实验模块「压缩对照批次」按钮,或 CLI <code>python -m bdlh_runtime.evaluation.context_eval</code>:六套 × 两变体 × N 次;每变体运行产出九段工件与 context_builds 处理报告(条目/决策/消息级)。结果见<a href="/context/results">用例结果</a>。</p>`,
+      html: `<p>登录所有者进入<a href="/experiment/">实验中心</a>选择模板 <code>context-strategy-comparison</code>(或压缩方法对照 <code>compression-method-comparison</code>)按模板发起;匿名访客可经<a href="/experiment/compression">压缩用例</a>页发起公开测试(生成上下文 / 单组合运行 / 原生 4×1)。正式数字经维护者审核发布后出现在<a href="/">公告页</a>。</p>`,
     },
   ],
 };
@@ -847,12 +486,12 @@ const CONTEXT_RESULTS = {
     {
       id: "table",
       title: "策略对照(读正式发布索引)",
-      html: `<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按变体展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离。</div></div>`,
+      html: `<div id="strategyTable"><div class="placeholder-block">尚未发布:压缩实验结果只展示经维护者审核发布的正式批次,不展示开发调试批次。发布后此处按变体展示工具选择正确率、关键事实召回、禁用事实泄漏与注入隔离;在此之前可到<a href="/experiment/compression">压缩用例实验</a>发起运行。</div></div>`,
     },
     {
       id: "pairs",
       title: "正反例成对展示",
-      html: `<p>同一用例的成功运行与失败运行并排展示,标注唯一变化的策略与来自校验器的失败原因;没有失败样本时显示「暂无失败样本」,且完整批次始终可查。</p><div id="contextPairs"><div class="placeholder-block">尚未发布。</div></div>`,
+      html: `<p>同一用例的成功运行与失败运行并排展示,标注唯一变化的策略与来自校验器的失败原因;没有失败样本时显示「暂无失败样本」,且完整批次始终可查。</p><div id="contextPairs"><div class="placeholder-block">尚未发布。正式批次发布后,这里与公告页一起展示代表性实例;现在可先了解<a href="/context/design">长短对照设计</a>。</div></div>`,
     },
   ],
   extraScripts: `
@@ -867,7 +506,7 @@ const CONTEXT_RESULTS = {
       if (!pubs.length) return;
       var box = document.getElementById("strategyTable");
       if (box) {
-        box.innerHTML = '<p class="lab-note">最新正式发布:' + String(pubs[0].published_at || "") +
+        box.innerHTML = '<p class="lab-note">最新正式发布:' + window.SITE.fmtTime(pubs[0].published_at) +
           "(批次 " + String(pubs[0].batch_id || "").slice(0, 8) + ")。逐项指标与实例下钻见<a href=\"/\">公告页</a>;本页不再单独维护第二份结果展示。</p>";
       }
     })
@@ -892,8 +531,8 @@ const METRIC_ROWS = [
 
 const JUDGING_METRICS = {
   path: "judging/index.html",
-  title: "指标定义 · 评判标准",
-  description: "全部实验共用的指标口径;分母只含有效运行。",
+  title: "指标定义与总表 · 评判标准",
+  description: "全部实验共用的指标口径与总表;分母只含有效运行;指标数字以公告页发布数据为准。",
   moduleKey: "/judging/",
   currentPath: "/judging/",
   sections: [
@@ -921,26 +560,7 @@ const JUDGING_METRICS = {
       id: "denominator",
       title: "分母口径与数字入口",
       html: `<p>所有比例的分母只含 <strong>VALID</strong> 运行;无效运行(见<a href="/judging/invalid">无效运行与口径</a>)单列数量与原因,不冒充失败样本。0%→0% 的变化渲染为占位符而非「改善/回归」。每个汇总数字可回溯到 run_id。</p>
-<p><strong>指标数字的唯一入口是<a href="/#agent-summary">公告页 Agent 对比汇总区</a></strong>:实验结果数据只经维护者审核发布进入公告;本模块只维护指标定义,不再单独维护第二份批次指标总表。</p>`,
-    },
-  ],
-};
-
-const JUDGING_BATCH_METRICS = {
-  path: "judging/metrics.html",
-  title: "指标定义总表 · 评判标准",
-  description: "基础能力、合规与效率指标的完整定义;指标数字以公告页发布数据为准。",
-  moduleKey: "/judging/",
-  currentPath: "/judging/metrics",
-  sections: [
-    {
-      id: "table",
-      title: "全部指标(逐组口径)",
-      html: `<p>下表为<strong>指标定义总表</strong>——基础能力/合规/效率与通用目录专项(GT-7)的完整口径,每行说明计算方式与分母;「未运行」表示该组无对应金标或调用,不进分母。</p>
-<table><thead><tr><th>指标</th><th>定义</th></tr></thead><tbody>
-      ${METRIC_ROWS}
-    </tbody></table>
-<p class="lab-note">指标<strong>数字</strong>不再在本模块展示:实验结果只经维护者审核发布,唯一入口是<a href="/#agent-summary">公告页 Agent 对比汇总区</a>(未发布时显示「尚未发布」)。定义详见<a href="/judging/">指标定义</a>与<a href="/judging/judge">判官说明</a>。</p>`,
+<p><strong>指标数字的唯一入口是<a href="/">公告页</a></strong>:实验结果数据只经维护者审核发布进入公告;本模块只维护指标定义,不再单独维护第二份指标汇总页。</p>`,
     },
   ],
 };
@@ -1005,12 +625,12 @@ const JUDGING_INVALID = {
   ],
 };
 
-// ── 模块:引擎与治理(六页)─────────────────────────────────────────────
+// ── 模块:引擎与治理(三页;P1-2 由六页合并)────────────────────────────
 
-const ENGINE_LOOP = {
+const ENGINE_RUNTIME = {
   path: "engine/index.html",
-  title: "Agent 循环 · 引擎与治理",
-  description: "三层闸门、上下文构建器接入与九类运行事件。",
+  title: "运行流程 · 引擎与治理",
+  description: "Agent 循环三层闸门、上下文构建器接入、九类运行事件与工具装载策略。",
   moduleKey: "/engine/",
   currentPath: "/engine/",
   sections: [
@@ -1030,19 +650,9 @@ const ENGINE_LOOP = {
       title: "九类运行事件",
       html: `<p>每次运行发出统一事件流并逐步落库:<code>run.started / context.completed / model.completed / tool.requested / tool.completed / guardrail.completed / output.completed / judgment.completed / run.completed</code>。事件只记录可观察过程,不记录隐藏思维;全部执行器同口径埋点。</p>`,
     },
-  ],
-};
-
-const ENGINE_LOADING = {
-  path: "engine/loading.html",
-  title: "工具装载 · 引擎与治理",
-  description: "scoped 定向装载与 search 检索装载两种策略。",
-  moduleKey: "/engine/",
-  currentPath: "/engine/loading",
-  sections: [
     {
       id: "modes",
-      title: "两种装载策略",
+      title: "两种工具装载策略",
       html: `<ul>
   <li><strong>scoped(默认)</strong>:按场景与登录态定向装载当轮可见工具——规模约二十张卡时更确定、可审计;</li>
   <li><strong>search(实验)</strong>:模型先经 <code>search_tools</code> 检索再按名调用——面向规模增长;权限过滤先于检索。</li>
@@ -1052,10 +662,16 @@ const ENGINE_LOADING = {
   ],
 };
 
-const ENGINE_CATALOG = {
+const TOOL_ROWS = [
+  ["通用工具", "96", "检索浏览 / 文件 / 邮件 / 日历 / 代码 / 文档 / 地图 / 翻译 / 设备 / 健康等 56 个领域", "多为游客可用"],
+  ["领域工具", "16", "行情与基本面 8 / 组合与账户 4 / 深度检索 2 / 综合分析 1 / 用户画像 1", "部分需登录"],
+  ["检索元工具", "1", "search_tools(检索装载模式用,引擎侧登记,不入目录表)", "游客"],
+].map(([kind, count, scope, who]) => `<tr><td>${kind}</td><td>${count}</td><td>${scope}</td><td>${who}</td></tr>`).join("\n      ");
+
+const ENGINE_RESOURCES = {
   path: "engine/catalog.html",
-  title: "工具目录 · 引擎与治理",
-  description: "ToolCard 统一登记格式;目录数据源在数据库,高危操作红线物理化。",
+  title: "资源与工具 · 引擎与治理",
+  description: "ToolCard 统一登记、目录唯一数据来源、高危操作红线物理化与当前目录快照构成。",
   moduleKey: "/engine/",
   currentPath: "/engine/catalog",
   sections: [
@@ -1069,13 +685,21 @@ const ENGINE_CATALOG = {
       title: "高危操作红线(C-1)物理化",
       html: `<p>目录注册内置高危操作语义守卫:名字或描述含被禁止执行的操作语义(当前配置为交易执行类:买入/卖出/下单/place_order 等)的工具<strong>物理上无法注册</strong>——语义层无须也无法「识别后放行」危险操作。</p>`,
     },
+    {
+      id: "list",
+      title: "工具构成(当前目录快照)",
+      html: `<p>目录共 112 个工具,构成如下表;完整名单与权限以数据库目录和治理链实时裁决为准。全部工具只读(G2 红线),高危操作类工具物理上无法注册(见上文 C-1);写入类工具默认停用,仅作为评测轴参与指标计算。</p>
+<table><thead><tr><th>类别</th><th>数量</th><th>覆盖范围</th><th>默认身份</th></tr></thead><tbody>
+      ${TOOL_ROWS}
+    </tbody></table>`,
+    },
   ],
 };
 
-const ENGINE_GOVERNANCE = {
+const ENGINE_SAFETY = {
   path: "engine/governance.html",
-  title: "治理中间件 · 引擎与治理",
-  description: "G1-G7 拦截链;工具调用唯一执行咽喉。",
+  title: "治理与安全边界 · 引擎与治理",
+  description: "G1-G7 治理拦截链、稳定审计码与答案出口三项检查。",
   moduleKey: "/engine/",
   currentPath: "/engine/governance",
   sections: [
@@ -1091,59 +715,25 @@ const ENGINE_GOVERNANCE = {
       title: "审计码",
       html: `<p>拦截带稳定审计码(如 <code>G3-AUTH-001</code> 未登录调用机主工具、<code>G4-BUDGET-001</code> 预算耗尽、<code>G5-SCHEMA-001</code> 参数不符);<code>tool_calls</code> 中被拦截的调用记 <code>DENIED</code> 并挂审计码。</p>`,
     },
-  ],
-};
-
-const ENGINE_GUARDRAIL = {
-  path: "engine/guardrail.html",
-  title: "输出护栏 · 引擎与治理",
-  description: "答案出口三检查:数字接地、C-1 高危操作、C-2 未授权建议。",
-  moduleKey: "/engine/",
-  currentPath: "/engine/guardrail",
-  sections: [
     {
       id: "checks",
-      title: "三项出口检查",
+      title: "输出护栏:答案出口三检查",
       html: `<ul>
   <li><strong>数字接地</strong>:答案中的非平凡数字必须出现在某条工具结果中,幻觉数字替换为「[数据待核实]」;</li>
   <li><strong>C-1</strong>:高危操作语义替换为「(该操作不被允许)」并追加风险披露(当前配置:交易执行类);</li>
   <li><strong>C-2</strong>:未被授权的专业建议结论替换为固定免责表述(当前配置:适当性类结论)。</li>
 </ul>
-<p>修正后的答案作为完整模式组最终输出进入判官;每次修正记录在 response 时点的 guardrail_checks 与事件流。</p>`,
+<p>修正后的答案作为最终输出进入判官;每次修正记录在 response 时点的 guardrail_checks 与事件流。</p>`,
     },
   ],
 };
 
-const TOOL_ROWS = [
-  ["通用工具", "96", "检索浏览 / 文件 / 邮件 / 日历 / 代码 / 文档 / 地图 / 翻译 / 设备 / 健康等 56 个领域", "多为游客可用"],
-  ["领域工具", "16", "行情与基本面 8 / 组合与账户 4 / 深度检索 2 / 综合分析 1 / 用户画像 1", "部分需登录"],
-  ["检索元工具", "1", "search_tools(检索装载模式用,引擎侧登记,不入目录表)", "游客"],
-].map(([kind, count, scope, who]) => `<tr><td>${kind}</td><td>${count}</td><td>${scope}</td><td>${who}</td></tr>`).join("\n      ");
-
-const ENGINE_TOOLS = {
-  path: "engine/tools.html",
-  title: "工具构成 · 引擎与治理",
-  description: "当前目录快照的工具构成;数据源在数据库。",
-  moduleKey: "/engine/",
-  currentPath: "/engine/tools",
-  sections: [
-    {
-      id: "list",
-      title: "工具构成(当前目录快照)",
-      html: `<p>目录共 112 个工具,构成如下表;完整名单与权限以数据库目录和治理链实时裁决为准。全部工具只读(G2 红线),高危操作类工具物理上无法注册(见<a href="/engine/catalog">工具目录</a>);写入类工具默认停用,仅作为评测轴参与指标计算。</p>
-<table><thead><tr><th>类别</th><th>数量</th><th>覆盖范围</th><th>默认身份</th></tr></thead><tbody>
-      ${TOOL_ROWS}
-    </tbody></table>`,
-    },
-  ],
-};
-
-// ── 模块:数据与运行(五页)─────────────────────────────────────────────
+// ── 模块:数据与运行(四页;P1-2 部署边界并入本页)─────────────────────
 
 const OPS_DB = {
   path: "ops/index.html",
-  title: "数据库与冻结数据 · 数据与运行",
-  description: "PostgreSQL 为唯一数据来源:init.sql 承接表、冻结工具返回与长上下文用例。",
+  title: "数据库与部署 · 数据与运行",
+  description: "PostgreSQL 为唯一数据来源;冻结数据、公私边界与本地启动。",
   moduleKey: "/ops/",
   currentPath: "/ops/",
   sections: [
@@ -1155,7 +745,17 @@ const OPS_DB = {
     {
       id: "fixtures",
       title: "冻结数据",
-      html: `<p>冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),隔离执行质量差异;长上下文用例与变体见 <code>changes/20260821-long-context-cases.sql</code>(6 用例 × 2 变体 + 快照,批量条目确定性生成)。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>`,
+      html: `<p>冻结工具返回存 <code>fixture_tool_responses</code>(fixture 集 <code>ab-eval</code>),隔离执行质量差异;长上下文主文库为 3 个场景化冻结 Session(见<a href="/context/library">长上下文库</a>),旧六套结构化夹具(<code>changes/20260821-long-context-cases.sql</code>)仍可供引擎回归使用。引擎不直连库:题库、目录、fixture、变体上下文全部经 data 服务 internal 接口。</p>`,
+    },
+    {
+      id: "boundary",
+      title: "公私边界",
+      html: `<p>公开部署只含静态站:镜像构建物理排除 <code>/lab</code>,公开页面零后端调用、无输入控件(契约测试守卫);评测与登录只在私有侧。<code>deploy/.env</code> 只在部署机,密钥不进镜像与日志。</p>`,
+    },
+    {
+      id: "local",
+      title: "本地启动",
+      html: `<p>三服务顺序:data(数据库隧道就绪后)→ engine(/ready 依赖 data)→ web(<code>npm run dev</code>);完整步骤、环境变量与排查速查见 <code>deploy/本地启动说明.md</code> 与 <code>deploy/README.md</code>(云形态:TLS 由网关终止,明文端口不直接暴露公网)。</p>`,
     },
   ],
 };
@@ -1176,7 +776,7 @@ const OPS_RUNAPI = {
   <li><code>GET /api/v1/experiment-templates</code> — 实验模板清单(目的/唯一自变量/变体/冻结条件/权限与上限);</li>
   <li><code>POST /api/v1/template-batches/plan</code> — 模板批次预估(精确运行数与变体 config_hash,不创建运行);</li>
   <li><code>POST /api/v1/template-batches</code> — 按模板发起正式批次(固定用例 × 模板变体,统一原生底座);</li>
-  <li><code>POST /api/v1/context-batches</code> — 发起上下文压缩对照批次(六套 × 两变体);</li>
+  <li><code>POST /api/v1/context-batches</code> — 发起上下文压缩对照批次(三 Session × 四种上下文方式口径);</li>
   <li><code>GET /api/v1/jobs/{id}</code> 与 <code>POST /api/v1/jobs/{id}/cancel</code> — 作业状态与协作取消(幂等);</li>
   <li><code>GET /api/v1/batches/{id}</code> / <code>GET /api/v1/runs/{id}/detail</code> — 批次运行列表与单次运行逐步明细;</li>
   <li><code>/api/v1/public/*</code> — 匿名受限测试接口(实验页运行入口)。</li>
@@ -1206,26 +806,6 @@ const OPS_ARTIFACTS = {
   ],
 };
 
-const OPS_DEPLOY = {
-  path: "ops/deploy.html",
-  title: "部署与边界 · 数据与运行",
-  description: "本地原生启动、云形态与公私边界。",
-  moduleKey: "/ops/",
-  currentPath: "/ops/deploy",
-  sections: [
-    {
-      id: "boundary",
-      title: "公私边界",
-      html: `<p>公开部署只含静态站:镜像构建物理排除 <code>/lab</code>,公开页面零后端调用、无输入控件(契约测试守卫);评测与登录只在私有侧。<code>deploy/.env</code> 只在部署机,密钥不进镜像与日志。</p>`,
-    },
-    {
-      id: "local",
-      title: "本地启动",
-      html: `<p>三服务顺序:data(数据库隧道就绪后)→ engine(/ready 依赖 data)→ web(<code>npm run dev</code>);完整步骤、环境变量与排查速查见 <code>deploy/本地启动说明.md</code> 与 <code>deploy/README.md</code>(云形态:TLS 由网关终止,明文端口不直接暴露公网)。</p>`,
-    },
-  ],
-};
-
 const OPS_ROADMAP = {
   path: "ops/roadmap.html",
   title: "路线图 · 数据与运行",
@@ -1238,7 +818,7 @@ const OPS_ROADMAP = {
       title: "已落地",
       html: `<ul>
   <li>统一运行工件与运行事件落库(九类事件、九段工件、有效性分类);</li>
-  <li>上下文构建器接入与长上下文对照执行(全模型输入过构建器、六套 × 两变体);</li>
+  <li>上下文构建器接入与长上下文对照执行(全模型输入过构建器);</li>
   <li>评测有效样本门槛与交错运行(确定性洗牌、每组 ≥5 VALID);</li>
   <li>批次取消、token 上限与 /lab 运行详情下钻;</li>
   <li>发布校验全量版与正式批次认定(publications 登记);</li>
@@ -1348,32 +928,28 @@ const ALL_PAGES = [
   TOOLS_DETAIL,
   CASES_LIST,
   CASES_DETAIL,
-  TEST_MY,
-  EXPERIMENT_COMPRESSION,
-    CONTEXT_ALGO,
+  CONTEXT_ALGO,
   CONTEXT_LIBRARY,
   CONTEXT_DESIGN,
   CONTEXT_RESULTS,
   JUDGING_METRICS,
-  JUDGING_BATCH_METRICS,
   JUDGING_JUDGE,
   JUDGING_INVALID,
-  ENGINE_LOOP,
-  ENGINE_LOADING,
-  ENGINE_CATALOG,
-  ENGINE_GOVERNANCE,
-  ENGINE_GUARDRAIL,
-  ENGINE_TOOLS,
+  ENGINE_RUNTIME,
+  ENGINE_RESOURCES,
+  ENGINE_SAFETY,
   OPS_DB,
   OPS_RUNAPI,
   OPS_ARTIFACTS,
-  OPS_DEPLOY,
   OPS_ROADMAP,
 ];
 
-export async function generateSite() {
+export async function generateSite({ only } = {}) {
+  // only:逗号分隔的页面 path 白名单(如 "about/banks.html,ops/index.html"),
+  // 用于 shell 演进后安全重生成指定产物页;手维护页不在 ALL_PAGES,永远不会被覆盖。
+  const pages = only && only.length ? ALL_PAGES.filter((page) => only.includes(page.path)) : ALL_PAGES;
   let count = 0;
-  for (const page of ALL_PAGES) {
+  for (const page of pages) {
     const target = path.join(PUBLIC, page.path);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, shell(page), "utf8");
@@ -1386,7 +962,9 @@ export { shell };
 
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
-  generateSite()
+  const onlyFlag = process.argv.indexOf("--only");
+  const only = onlyFlag > -1 ? String(process.argv[onlyFlag + 1] || "").split(",").map((x) => x.trim()).filter(Boolean) : undefined;
+  generateSite({ only })
     .then((count) => console.log(`generated ${count} pages under web/public`))
     .catch((error) => {
       console.error(error);

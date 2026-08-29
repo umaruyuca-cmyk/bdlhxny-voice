@@ -131,11 +131,14 @@
   "omitted_event_ids": [],
   "original_tokens": 29902,
   "working_tokens": 8122,
-  "build_duration_ms": 253,
+  "build_duration_ms": 307,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
   "build_cost": 0.0,
+  "build_cache_hits": 0,
+  "build_purpose": "COMPRESSION",
+  "build_summary_chunks": 0,
   "warnings": [
     "algo_version=structured-text-v1"
   ],
@@ -145,5 +148,5 @@
   "scores": [],
   "scoring_version": "",
   "status": "COMPLETE",
-  "compile_wall_ms": 254
+  "compile_wall_ms": 307
 }

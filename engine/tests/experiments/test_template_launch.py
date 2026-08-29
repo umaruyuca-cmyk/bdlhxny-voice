@@ -137,29 +137,43 @@ def test_template_plan_endpoint_temperature_needs_env_llm(owner_client, monkeypa
     assert "温度" in response.json()["detail"]
 
 
-def test_template_launch_endpoint_validates_before_batch(owner_client, monkeypatch):
-    """发起入口在创建批次前完成校验:上下文模板/未知用例/context_only 均拒绝。"""
+def test_template_launch_endpoint_retires_multi_run_batches(owner_client, monkeypatch):
+    """退役闸(方案 13.13):除压缩方法对照外,/template-batches 一律 410,指向实验组接口。"""
     from bdlh_runtime.experiments import public_case_repository
 
     monkeypatch.setattr(
         public_case_repository, "get_case_repository", lambda: _MemoryRepo([_case()])
     )
-    context_template = owner_client.post(
+    retired_governance = owner_client.post(
+        "/api/v1/template-batches",
+        json={"template_id": "governance-on-off", "repeat_count": 1, "case_id": "cmp-tpl-01"},
+    )
+    assert retired_governance.status_code == 410
+    assert "experiment-series" in retired_governance.json()["detail"]
+    retired_context = owner_client.post(
         "/api/v1/template-batches",
         json={"template_id": "context-strategy-comparison", "repeat_count": 1, "case_id": "cmp-tpl-01"},
     )
-    assert context_template.status_code == 400
-    unknown_case = owner_client.post(
+    assert retired_context.status_code == 410
+    retired_unknown_case = owner_client.post(
         "/api/v1/template-batches",
         json={"template_id": "governance-on-off", "repeat_count": 1, "case_id": "no-such-case"},
     )
-    assert unknown_case.status_code == 400
-    context_only = owner_client.post(
+    assert retired_unknown_case.status_code == 410
+    # 压缩方法对照:Agent 运行已迁移实验组(410);仅 context_only 保留旧入口
+    method_cmp_agent = owner_client.post(
         "/api/v1/template-batches",
-        json={"template_id": "governance-on-off", "repeat_count": 1, "case_id": "cmp-tpl-01",
-              "context_only": True},
+        json={"template_id": "compression-method-comparison", "repeat_count": 1, "session_id": "no-such"},
     )
-    assert context_only.status_code == 400
+    assert method_cmp_agent.status_code == 410
+    assert "实验组" in method_cmp_agent.json()["detail"]
+    method_cmp_context = owner_client.post(
+        "/api/v1/template-batches",
+        json={"template_id": "compression-method-comparison", "repeat_count": 1,
+              "session_id": "no-such", "context_only": True},
+    )
+    assert method_cmp_context.status_code == 400
+    assert "未知压缩 Session" in method_cmp_context.json()["detail"]
 
 
 class _MemoryRepo:
@@ -227,11 +241,19 @@ def test_persist_template_runs_builds_create_run_payloads(monkeypatch):
     )
     created: list[dict] = []
     completed: list[tuple[str, dict]] = []
+    saved_calls: list[tuple[str, list]] = []
+    saved_measurements: list[tuple[str, dict]] = []
 
     class FakeData:
         def create_run(self, payload):
             created.append(payload)
             return f"run-{len(created)}"
+
+        def save_model_calls(self, run_id, calls):
+            saved_calls.append((run_id, calls))
+
+        def save_measurements(self, run_id, payload):
+            saved_measurements.append((run_id, payload))
 
         def complete_run(self, run_id, payload, *, status, error_category=None):
             completed.append((run_id, payload))
@@ -244,6 +266,12 @@ def test_persist_template_runs_builds_create_run_payloads(monkeypatch):
     assert all(payload["modelConfig"]["templateId"] == "governance-on-off" for payload in created)
     assert len(completed) == 2
     assert all(row[1]["config_hash"] for row in completed)
+    # Token 计量落库(11.1):每次运行 2 个模型请求,估算行随计量摘要落库
+    assert len(saved_calls) == 2
+    assert all(len(calls) == 2 for _, calls in saved_calls)
+    assert all(row["purpose"] == "AGENT" for _, calls in saved_calls for row in calls)
+    assert len(saved_measurements) == 2
+    assert all(payload["promptTokens"] > 0 for _, payload in saved_measurements)
 
 
 # ── 阻断1:匿名模板任务(服务层,替身执行器) ────────────────────────────────
@@ -740,3 +768,133 @@ def test_owner_batch_list_requires_login():
     client = TestClient(run_api.app)
     assert client.get("/api/v1/batches").status_code == 401
 
+
+
+def test_build_llm_for_config_applies_retry_count(monkeypatch):
+    """P0-3:limits.llm_retry_count 必须传给 SDK,配置与实际重试行为一致。"""
+    import langchain_openai
+
+    from bdlh_runtime.experiments.run_config import LimitsConfig, RunConfig
+    from bdlh_runtime.experiments.template_runner import build_llm_for_config
+
+    captured: dict = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", _FakeChatOpenAI)
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:9")
+
+    config = RunConfig(limits=LimitsConfig(llm_retry_count=0))
+    llm = build_llm_for_config(config)
+    assert llm is not None
+    assert captured["max_retries"] == 0  # 0 = 只尝试一次,不再沿用 SDK 默认 2
+
+
+def test_template_batch_reports_budget(monkeypatch):
+    """§11.2:模板批次结果携带 budget 口径;预算超限时剩余运行跳过。"""
+    import asyncio
+
+    from bdlh_runtime.experiments.run_config import (
+        EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+        LimitsConfig,
+        ModelParams,
+        RunConfig,
+        ToolsConfig,
+    )
+    from bdlh_runtime.experiments.templates import PlannedRun, TemplateBatchPlan
+
+    monkeypatch.setenv("MAX_LLM_REQUESTS_PER_JOB", "1")
+
+    def _plan(run_count: int) -> TemplateBatchPlan:
+        runs = [
+            PlannedRun(
+                run_id=f"r{i}",
+                variant_label=f"v{i}",
+                repeat_index=0,
+                run_config=RunConfig(
+                    execution_engine=EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+                    model=ModelParams(model_id="m"),
+                    limits=LimitsConfig(max_agent_steps=4, max_tool_calls=6),
+                    tools=ToolsConfig(),
+                ),
+            )
+            for i in range(run_count)
+        ]
+        return TemplateBatchPlan(
+            template_id="t", template_version=1, classification="formal",
+            independent_variable=("v",), fixed_conditions={}, fixed_conditions_hash="h",
+            runs=tuple(runs), run_count=len(runs),
+        )
+
+    from bdlh_runtime.experiments.template_runner import run_template_batch
+
+    async def _run() -> dict:
+        return await run_template_batch(
+            _plan(3),
+            message="m",
+            visible_tools=("web.search",),
+            llm=FakeChatModel([AIMessage(content="最终回答。") for _ in range(3)]),  # 共享实例,每运行 1 次响应
+        )
+
+    result = asyncio.run(_run())
+    assert result["budget"]["llm_requests"] <= 3
+    assert "budget_terminated" in result
+
+
+# ── Token 计量接入(11.1):RecordingLLM 抄录响应 usage,缺失时估算打标 ──────
+
+
+def _run_native_with(llm):
+    import asyncio
+
+    from bdlh_runtime.experiments.template_runner import run_native_agent
+
+    return asyncio.run(
+        run_native_agent(
+            run_config=plan_template_batch("governance-on-off", repeat_count=1).runs[0].run_config,
+            message="上海今天天气如何?",
+            visible_tools=("weather.get_forecast",),
+            llm=llm,
+        )
+    )
+
+
+def test_native_agent_captures_real_token_usage():
+    """响应带 usage_metadata:逐请求抄录账单口径,汇总进运行记录。"""
+    tool_step = AIMessage(
+        content="",
+        tool_calls=[{"name": "weather.get_forecast", "args": {"location": "上海"}, "id": "c1", "type": "tool_call"}],
+        usage_metadata={"input_tokens": 110, "output_tokens": 20, "total_tokens": 130},
+    )
+    answer_step = AIMessage(
+        content="上海今天多云,25℃。",
+        usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+    )
+    record = _run_native_with(FakeChatModel([tool_step, answer_step]))
+    assert record.input_tokens == 230
+    assert record.output_tokens == 50
+    assert record.tokens_estimated is False
+    assert [row["purpose"] for row in record.model_calls] == ["AGENT", "AGENT"]
+    assert all(row["inputTokens"] > 0 for row in record.model_calls)
+    # 报告防膨胀:计量摘要不含消息快照,request_hash 供对账
+    assert all("messages" not in row for row in record.model_calls)
+    assert all(row["requestHash"] for row in record.model_calls)
+
+
+def test_native_agent_estimates_when_usage_missing():
+    """usage 元数据缺失:按本地计数器估算并打标,不以 0 冒充实测。"""
+    record = _run_native_with(
+        FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海今天多云,25℃。"),
+            ]
+        )
+    )
+    assert record.tokens_estimated is True
+    assert record.input_tokens > 0
+    assert record.output_tokens > 0
+    assert len(record.model_calls) == 2

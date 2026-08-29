@@ -13,6 +13,7 @@ import { REDIRECTS, redirectFor } from "../scripts/redirect-map.mjs";
 
 const NAV_HREFS = ["/", "/experiment/", "/test/", "/assets/", "/docs/"];
 
+/** P1-2 薄页合并 + P1-3 运行记录统一后的页面清单(27 页)。 */
 const SITE_PAGES = [
   "/index.html",
   "/assets/index.html",
@@ -20,20 +21,18 @@ const SITE_PAGES = [
   "/about/index.html", "/about/banks.html", "/about/repo.html",
   "/showcase/index.html", "/showcase/tools.html",
   "/experiment/index.html", "/experiment/compression.html",
-  "/experiment/run.html", "/experiment/batches.html", "/experiment/batch.html",
+  "/experiment/run.html", "/experiment/batch.html",
   "/test/index.html",
   "/context/index.html", "/context/library.html", "/context/design.html", "/context/results.html",
-  "/judging/index.html", "/judging/metrics.html", "/judging/judge.html", "/judging/invalid.html",
-  "/engine/index.html", "/engine/loading.html", "/engine/catalog.html",
-  "/engine/governance.html", "/engine/guardrail.html", "/engine/tools.html",
-  "/ops/index.html", "/ops/run-api.html", "/ops/artifacts.html",
-  "/ops/deploy.html", "/ops/roadmap.html",
+  "/judging/index.html", "/judging/judge.html", "/judging/invalid.html",
+  "/engine/index.html", "/engine/catalog.html", "/engine/governance.html",
+  "/ops/index.html", "/ops/run-api.html", "/ops/artifacts.html", "/ops/roadmap.html",
 ];
 
 /** 实验模块页:允许匿名公开接口 + 同源所有者通道白名单(与 nginx/dev-server 反代同口径)。 */
 const EXPERIMENT_PAGES = [
   "/experiment/index.html", "/experiment/compression.html",
-  "/experiment/run.html", "/experiment/batches.html", "/experiment/batch.html",
+  "/experiment/run.html", "/experiment/batch.html",
   "/test/index.html",
 ];
 const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|batches|jobs|runs)(\/|\?|["'`]|$))/;
@@ -42,8 +41,12 @@ async function readPage(page) {
   return readFile(new URL(`../public${page}`, import.meta.url), "utf8");
 }
 
-/** 旧地址只保留跳转:showcase/results → 公告页,showcase/runs → 公告页 */
-const REDIRECT_ONLY_PAGES = ["/showcase/results.html", "/showcase/runs.html"];
+/** 旧地址只保留跳转:showcase 旧页回公告页,被合并的薄页(P1-2)与批次列表(P1-3)跳合并目标 */
+const REDIRECT_ONLY_PAGES = [
+  "/showcase/results.html", "/showcase/runs.html",
+  "/engine/loading.html", "/engine/tools.html", "/engine/guardrail.html",
+  "/judging/metrics.html", "/ops/deploy.html", "/experiment/batches.html",
+];
 
 test("旧展示地址保留跳转页(不重复公告内容)", async () => {
   for (const page of REDIRECT_ONLY_PAGES) {
@@ -53,21 +56,23 @@ test("旧展示地址保留跳转页(不重复公告内容)", async () => {
   }
 });
 
-test("模块页齐备,共享原型外壳(顶栏 wordmark + docs.js 注入五导航 + 角色标签)", async () => {
-  assert.equal(SITE_PAGES.length, 33);
+test("模块页齐备,共享静态外壳(顶栏 wordmark + 构建期静态五导航 + 角色标签)", async () => {
+  assert.equal(SITE_PAGES.length, 27);
   const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
-  for (const href of NAV_HREFS) {
-    assert.ok(sharedJs.includes(`"${href}"`), `docs.js 注入的导航缺少模块 ${href}`);
-  }
   for (const label of ["公告", "实验", "我的测试", "数据资产", "文档"]) {
-    assert.ok(sharedJs.includes(`"${label}"`), `docs.js 导航缺少条目「${label}」`);
+    assert.ok(sharedJs.includes(`"${label}"`), `docs.js 高亮逻辑缺少模块标签「${label}」`);
   }
-  assert.match(sharedJs, /role-label/, "docs.js 需注入角色标签(匿名访客/登录所有者)");
+  assert.match(sharedJs, /role-label/, "docs.js 注入角色标签(匿名访客/登录所有者)");
   for (const page of SITE_PAGES) {
     const html = await readPage(page);
     assert.match(html, /docs\.css/, `${page} 必须引用 docs.css`);
     assert.match(html, /docs\.js/, `${page} 必须引入共享导航脚本`);
     assert.match(html, /class="brand"/, `${page} 顶栏必须有品牌行`);
+    // P2-1:主导航静态化——HTML 自带五导航,JS 禁用也可导航
+    assert.match(html, /<nav class="site-nav"/, `${page} 顶栏含静态五导航`);
+    for (const href of NAV_HREFS) {
+      assert.ok(html.includes(`href="${href}"`), `${page} 静态导航缺少模块 ${href}`);
+    }
     assert.ok(html.includes("topbar-gh"), `${page} 顶栏需要 GitHub 外链`);
     assert.ok(html.includes("topbar-login"), `${page} 顶栏需要登录入口`);
   }
@@ -76,8 +81,7 @@ test("模块页齐备,共享原型外壳(顶栏 wordmark + docs.js 注入五导�
 test("二级页面提供返回上级入口,无导航死胡同(IA §二.8)", async () => {
   const backLinks = {
     "/experiment/run.html": 'class="crumb" href="/experiment/"',
-    "/experiment/batches.html": null, // 一级模块页,顶栏导航即返回
-    "/experiment/batch.html": 'class="crumb" href="/experiment/batches"',
+    "/experiment/batch.html": 'class="crumb" href="/test/"', // P1-3:批次详情返回运行记录
   };
   for (const [page, probe] of Object.entries(backLinks)) {
     const html = await readPage(page);
@@ -113,9 +117,10 @@ test("公告为独立单页:eyebrow/事实卡/单一空态面板,系统说明并
   assert.ok(repo.includes('id="repo"') && repo.includes('id="gates"'), "仓库与门禁在系统概览模块");
 });
 
-test("五模块导航由共享脚本注入,每个模块首页可达(原型 §总览)", async () => {
+test("五模块导航静态化,JS 只做高亮增强(P2-1)", async () => {
   const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
-  assert.match(sharedJs, /site-nav/, "docs.js 注入顶部导航");
+  assert.match(sharedJs, /querySelector\("nav\.site-nav"\)/, "docs.js 复用页面静态导航(缺省兜底注入)");
+  assert.doesNotMatch(sharedJs, /nav\.className = "site-nav";\s*nav\.innerHTML[^(]*\)\.join\(""\);\s*inner\.insertBefore\(nav/, "docs.js 不再无条件创建主导航");
   for (const page of ["/index.html", "/assets/index.html", "/docs/index.html"]) {
     const html = await readPage(page);
     assert.match(html, /src="\/docs\/docs\.js"/, `${page} 依赖共享导航脚本`);
@@ -160,6 +165,14 @@ test("旧路径 301:redirect-map 与两台服务器一致;/docs/ 与 /assets/ �
   assert.equal(redirectFor("/showcase/context"), "/context/results");
   assert.equal(redirectFor("/docs"), null, "/docs 为文档模块首页,不再 301");
   assert.equal(redirectFor("/docs/docs.css"), null, "静态资产不重定向");
+  // P1-2/P1-3:被合并薄页与批次列表的旧地址全部 301 到合并目标
+  assert.equal(redirectFor("/engine/loading"), "/engine/");
+  assert.equal(redirectFor("/engine/tools"), "/engine/catalog");
+  assert.equal(redirectFor("/engine/guardrail"), "/engine/governance");
+  assert.equal(redirectFor("/judging/metrics"), "/judging/");
+  assert.equal(redirectFor("/ops/deploy"), "/ops/");
+  assert.equal(redirectFor("/experiment/batches"), "/test/");
+  assert.equal(redirectFor("/docs/tools"), "/engine/catalog", "/docs/tools 指向合并后的资源与工具页");
 
   const devServer = await readFile(new URL("../dev-server.js", import.meta.url), "utf8");
   assert.match(devServer, /redirectFor/, "dev-server 需接入 301 映射");
@@ -223,12 +236,15 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(index, /loadTemplates|test-options|experiment-templates/, "模板中心从模板注册表读数据");
   assert.match(index, /\/experiment\/run\?template=/, "模板卡片进入统一发起页");
   assert.match(index, /selectedCase/, "从用例库进入模板中心时保留已选题号");
+  assert.match(index, /运行记录/, "实验中心把历史运行指到统一运行记录页");
 
-  // 模板卡片:标题/受控变量用规范中文,技术口径行保留原变量名(IA §二.7 文案分层)
+  // 模板卡片文案:规范中文展示名 + 变体标签映射(P1-4:技术口径收进折叠区)
   const experimentJs = await readFile(new URL("../public/docs/experiment.js", import.meta.url), "utf8");
   assert.match(experimentJs, /formal-single-variable/, "classification 兼容 real 注册表值");
   assert.match(experimentJs, /长上下文记忆策略对比/, "模板标题有中文展示名映射");
   assert.match(experimentJs, /完整上下文/, "变体标签有中文展示名映射");
+  assert.match(experimentJs, /tpl-detail/, "模板 ID/变量路径收进技术详情折叠区");
+  assert.match(experimentJs, /special-cross/, "徽章只表达例外(专项交叉),正式单变量不逐卡重复");
 
   // 统一发起页:plan → 确认 → 提交;变体不可编辑;预估条必须先显示
   const run = await readPage("/experiment/run.html");
@@ -239,14 +255,7 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(run, /受控变量/, "左栏展示受控变量");
   assert.match(run, /断开页面不影响后台任务/, "提交前提示断页不中断");
 
-  // 批次列表:公告 Tab + 我的批次 Tab
-  const batches = await readPage("/experiment/batches.html");
-  assert.match(batches, /公告批次/, "批次列表有公告 Tab");
-  assert.match(batches, /我的批次/, "批次列表有我的批次 Tab");
-  assert.match(batches, /publications\/index\.json/, "公告 Tab 读发布索引");
-  assert.match(batches, /个人测试 · 非正式结果/, "匿名批次标记非正式结果");
-
-  // 批次详情:口径卡 + 请求/生效参数 + 按变量分组;哈希 8 位短显
+  // 批次详情:口径卡 + 请求/生效参数 + 按变量分组;哈希 8 位短显;返回运行记录
   const batch = await readPage("/experiment/batch.html");
   assert.match(batch, /实验口径/, "批次详情有口径卡");
   assert.match(batch, /请求参数与实际生效参数/, "批次详情有请求/生效对照表");
@@ -256,20 +265,41 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(experimentJs, /slice\(0, 8\)/, "哈希 chip 8 位短显(共享组件)");
   assert.match(batch, /\/api\/v1\/runs\//, "所有者视图可下钻单次运行明细");
   assert.match(batch, /无模板/, "无模板批次挂中性标记");
+  // 进度区真实性:作业 404(服务重启清内存)必须终止轮询并回刷批次终态,不能冻结在「进行中」
+  assert.match(batch, /status === "gone"/, "作业 404 映射为清除终态(终止轮询)");
+  assert.match(batch, /作业进度记录已随服务重启清除/, "清除态有明确文案");
+  assert.match(batch, /function ownerMeta\(batch\)/, "meta 行抽为可刷新函数");
+  assert.match(batch, /ownerMeta\(fresh\)/, "终态回刷同时刷新 meta 状态行");
+  assert.match(batch, /最近完成:/, "进度 current 标注为最近完成(不冒充当前)");
+  assert.match(batch, /不逐次计数/, "done 未计数时如实说明,不用假百分比");
 });
 
-test("我的测试页:读公开任务接口,空状态与匿名声明齐全", async () => {
+test("运行记录页(P1-3):三 Tab 统一历史运行,匿名任务走公开接口", async () => {
   const page = await readPage("/test/index.html");
-  assert.match(page, /\/api\/v1\/public\/test-jobs/, "我的测试页读取公开任务接口");
-  assert.match(page, /个人测试结果不会进入公告|匿名测试结果/, "页面固定显示非正式结果声明");
-  assert.match(page, /不会进入公告|不进入公告指标/, "声明不进入公告");
+  assert.match(page, /运行记录/, "页面为统一运行记录页");
+  // 三 Tab:我的测试(全员) / 我的批次(登录后追加) / 公告批次(全员)
+  assert.match(page, /id="tabJobs"/, "Tab 1:我的测试(匿名任务)");
+  assert.match(page, /id="tabBatches"/, "Tab 2:我的批次(登录后)");
+  assert.match(page, /id="tabPub"/, "Tab 3:公告批次(正式发布)");
+  assert.match(page, /tabBatches"\)[^;]*style\.display = "none"|\\"tabBatches\\".*style="display:none"|id="tabBatches"[^>]*style="display:none"/, "我的批次 Tab 登录前隐藏(登录后追加)");
+  assert.match(page, /\/api\/v1\/public\/test-jobs/, "我的测试 Tab 读取公开任务接口");
+  assert.match(page, /E\.get\("\/api\/v1\/batches\?limit=20"\)/, "我的批次 Tab 读所有者批次列表");
+  assert.match(page, /publications\/index\.json/, "公告批次 Tab 读发布索引");
+  assert.match(page, /个人测试结果不会进入公告|个人测试 · 非正式结果|匿名测试结果/, "页面固定显示非正式结果声明");
   assert.match(page, /尚未发起任何测试/, "空任务时显示真实空状态");
   assert.match(page, /每 5 秒自动刷新/, "运行中任务自动刷新进度");
   assert.match(page, /data-cancel/, "运行中任务可取消(只阻止未开始单元)");
-  assert.doesNotMatch(page, /\/api\/v1\/(?!public\/)/, "只允许匿名公开接口");
+  // 进度用共享状态化组件(P2-4),不内联第二份实现
+  assert.match(page, /E\.jobProgress\(j\)/, "任务卡进度使用共享组件 E.jobProgress");
+  assert.doesNotMatch(page, /function progressHtml/, "页面不再内联进度组件");
+  // 全站时间格式:上屏时间一律经格式化工具,不直出 ISO 原始串
+  assert.match(page, /E\.fmtTime\(j\.created_at\)/, "任务创建时间经 fmtTime 格式化");
+  assert.doesNotMatch(page, /esc\(j\.created_at \|\| ""\)/, "不再直出原始 ISO 时间");
   // 顶部导航:五模块含「我的测试」,由共享脚本注入全站
   const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
   assert.match(sharedJs, /\/test\//, "共享导航含我的测试入口");
+  assert.match(sharedJs, /window\.SITE/, "共享脚本暴露全站时间格式工具");
+  assert.match(sharedJs, /getHours\(\)\) \+ ":" \+ p2\(d\.getMinutes\(\)\) \+ ":" \+ p2\(d\.getSeconds\(\)\)/, "时间格式为 yyyyMMdd HH:mm:ss");
 });
 
 test("实验页手动触发:任务提交只在函数体内,由点击调用", async () => {
@@ -328,6 +358,27 @@ test("公告页空框架:只读正式发布索引与静态资产,未发布统一
   assert.match(css, /\.radar-svg\s*{[^}]*width:\s*min\(100%,\s*400px\);/s, "雷达图本体不得随全宽容器无上限放大");
 });
 
+test("公告页事实卡数字与数据真源一致(防硬编码脱节)", async () => {
+  const announce = await readPage("/index.html");
+  const nums = [...announce.matchAll(/class="stat"><b>(\d+)<\/b>/g)].map((m) => Number(m[1]));
+  assert.equal(nums.length, 4, "公告页应有四张事实卡(工具/用例/Session/模板)");
+  const [tools, cases, sessions, templates] = nums;
+
+  const toolsData = JSON.parse(await readFile(new URL("../public/showcase-data/tools.json", import.meta.url), "utf8"));
+  assert.equal(tools, toolsData.total, "工具目录数与 tools.json 一致");
+  const casesData = JSON.parse(await readFile(new URL("../public/showcase-data/cases.json", import.meta.url), "utf8"));
+  assert.equal(cases, casesData.total, "对比用例数与 cases.json 一致");
+  const libraryData = JSON.parse(await readFile(new URL("../public/showcase-data/context-library.json", import.meta.url), "utf8"));
+  assert.equal(sessions, libraryData.entries.length, "压缩 Session 数与 context-library.json 一致");
+  // 模板数量真源是 engine 注册表:templates.py 顶层 _register() 调用次数(新增模板须同步公告页)
+  const templatesPy = await readFile(
+    new URL("../../engine/src/bdlh_runtime/experiments/templates.py", import.meta.url),
+    "utf8",
+  );
+  const registered = (templatesPy.match(/^_register\(/gm) || []).length;
+  assert.equal(templates, registered, `实验模板数与 templates.py 注册数一致(当前注册 ${registered} 个)`);
+});
+
 test("工具调用明细页:真实空状态,不使用演示数据", async () => {
   const tools = await readPage("/showcase/tools.html");
   assert.match(tools, /暂无已发布的调用明细|尚未发布/, "明细页保持空状态");
@@ -360,8 +411,93 @@ test("长上下文库页与静态导出产物一致(三个压缩 Session)", asyn
 
 test("静态站生成不发起实验:生成器只读 showcase-data 静态产物", async () => {
   const generator = await readFile(new URL("../scripts/generate-site.mjs", import.meta.url), "utf8");
-  // 文档正文可以描述 API 路径,但生成器本身不发起任何网络请求(只读本地 showcase-data)
-  assert.doesNotMatch(generator, /fetch\(|urllib|http\.request|axios/, "generate-site.mjs 不发起网络请求");
+  // 生成器 Node 侧只用文件系统:断言 import 面(白名单 fs/path/url),不得引入网络模块。
+  // 内联 <script> 字符串里的 fetch 属于产物页面的浏览器行为,不是生成器行为,不在此断言范围。
+  const imports = [...generator.matchAll(/^import[^\n]*$/gm)].map((m) => m[0]);
+  assert.ok(imports.length > 0, "生成器应显式 import(空 import 面无法白名单校验)");
+  for (const line of imports) {
+    assert.match(line, /from "node:(fs|path|url)/, `生成器 import 只允许 node:fs/path/url:${line}`);
+  }
+  assert.doesNotMatch(generator, /urllib|require\("https?"\)|from "(node:)?(http|https|net|undici|axios|node-fetch)/, "生成器不得引入网络请求模块");
+});
+
+test("旧题库口径已清零:无 98 道/旧两变体/旧路径/旧表述(生成器与产物同步)", async () => {
+  const generator = await readFile(new URL("../scripts/generate-site.mjs", import.meta.url), "utf8");
+  // 生成器源不得再含旧数量与旧入口(P0-1:重跑生成器不得回退)
+  for (const stale of ["实现方式对照题库 98 道", "上下文压缩用例 6 套", 'href="/experiment/cases"', "被测内核与对照 runner", "六套 × 两变体"]) {
+    assert.ok(!generator.includes(stale), `generate-site.mjs 不得再含旧口径:${stale}`);
+  }
+  const banks = await readPage("/about/banks.html");
+  assert.match(banks, /对比用例题库 20 条/, "题库页写当前 20 条对比用例口径");
+  assert.match(banks, /href="\/cases\/"/, "题库入口使用正式路径 /cases/");
+  assert.doesNotMatch(banks, /\/experiment\/cases|98 道|6 套/, "题库页无旧数量与旧路径");
+  const repo = await readPage("/about/repo.html");
+  assert.match(repo, /评测运行引擎与实验执行/, "仓库构成使用当前 engine 定位表述");
+  const design = await readPage("/context/design.html");
+  assert.match(design, /context-strategy-comparison/, "长短对照设计写当前 4×1 模板口径");
+  assert.doesNotMatch(design, /full-raw|budgeted-comp/, "旧两变体命名不再作为当前口径出现");
+  for (const page of ["/about/banks.html", "/about/repo.html", "/context/design.html", "/ops/index.html", "/ops/run-api.html"]) {
+    const html = await readPage(page);
+    assert.doesNotMatch(html, /六套 × 两变体|6 用例 × 2 变体/, `${page} 无旧压缩对照数量口径`);
+  }
+});
+
+test("主导航静态化取代 noscript 兜底(P2-1 覆盖 P0-2 方案)", async () => {
+  // 导航已由构建期写入页面 HTML:noscript 兜底块与其样式一并移除
+  for (const page of SITE_PAGES) {
+    const html = await readPage(page);
+    assert.doesNotMatch(html, /<noscript>/, `${page} 不再需要 noscript 导航兜底(静态导航常驻)`);
+  }
+  const css = await readFile(new URL("../public/docs/docs.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.noscript-nav/, "docs.css 移除 noscript 导航样式");
+  // 禁用脚本可导航由静态导航保证(断言见「模块页齐备」);移动端两行可见仍在
+  assert.match(css, /\.site-nav\{[^}]*flex-wrap:wrap/, "≤920px 五导航换行完整可见");
+});
+
+test("进度表达状态化:全站不出现无数据依据的百分比(P0-4/P2-4)", async () => {
+  const batch = await readPage("/experiment/batch.html");
+  // 固定 8% 假进度与完成态满格条已删:进度条仅在活动 + 总量已知 + 逐次计数时渲染
+  assert.doesNotMatch(batch, /active \? 8/, "批次页不得用固定 8% 冒充进度");
+  assert.match(batch, /role="progressbar"/, "进度条带 role/aria 可读属性");
+  assert.match(batch, /var showBar = active && !gone && hasCount && total > 0/, "进度条仅在活动且总量已知时渲染");
+  const myTests = await readPage("/test/index.html");
+  assert.match(myTests, /E\.jobProgress\(j\)/, "任务卡进度走共享组件");
+  const experimentJs = await readFile(new URL("../public/docs/experiment.js", import.meta.url), "utf8");
+  assert.match(experimentJs, /j\.status === "RUNNING" && total > 0/, "共享进度组件仅在运行中且总量已知时渲染");
+  assert.match(experimentJs, /job-phase/, "排队/完成态使用阶段文字而非进度条");
+});
+
+test("窄屏可用性样式:模板网格单列、目录表卡片化、长字段受控换行(P0-3)", async () => {
+  const css = await readFile(new URL("../public/docs/docs.css", import.meta.url), "utf8");
+  assert.match(css, /minmax\(min\(340px,100%\),1fr\)/, "模板网格在窄屏自动降到单列");
+  assert.match(css, /\.cat-table td::before\{content:attr\(data-label\)/, "目录表窄屏卡片化并以 data-label 自说明");
+  assert.match(css, /code,\.hash,\.tpl-tech\{overflow-wrap:anywhere\}/, "长 ID/路径/哈希受控换行不撑破布局");
+  assert.match(css, /\.def-list li\{display:block\}/, "定义列表窄屏上下堆叠");
+  const catalog = await readFile(new URL("../public/catalog/catalog.js", import.meta.url), "utf8");
+  assert.match(catalog, /data-label="工具名"/, "工具表 td 带 data-label");
+  assert.match(catalog, /data-label="题号"/, "用例表 td 带 data-label");
+});
+
+test("首页公告保留定位并提供三个下一步入口(P1-1)", async () => {
+  const announce = await readPage("/index.html");
+  assert.match(announce, /cta-row/, "公告页有下一步入口区");
+  for (const [href, label] of [["/experiment/", "查看实验"], ["/cases/", "浏览案例"], ["/about/", "了解系统"]]) {
+    assert.ok(announce.includes(`href="${href}"`), `首页 CTA 缺少 ${label}(${href})`);
+  }
+  assert.doesNotMatch(announce, /id="(agent-summary|examples|drilldown|compression)"/, "不恢复旧版三 Agent 对照区块");
+});
+
+test("页面目录仅在章节 ≥3 时出现,且表现为页内锚点(P1-6)", async () => {
+  // 生成器按 sections.length>=3 输出目录;由产物双向验证
+  const banks = await readPage("/about/banks.html"); // 2 节
+  assert.doesNotMatch(banks, /page-toc/, "少于 3 个章节的页面不生成装饰性目录(about/banks)");
+  const algo = await readPage("/context/index.html"); // 6 节
+  assert.match(algo, /page-toc/, "长文档保留页内目录(context/)");
+  assert.match(algo, /本页目录/, "目录带「本页目录」标题,明确是锚点而非标签页");
+  const generator = await readFile(new URL("../scripts/generate-site.mjs", import.meta.url), "utf8");
+  assert.match(generator, /sections\.length >= 3/, "shell 生成目录的章节阈值锁定为 3(重跑不回退)");
+  const css = await readFile(new URL("../public/docs/docs.css", import.meta.url), "utf8");
+  assert.match(css, /\.page-toc li a\{[^}]*position:relative/, "目录条目为锚点列表样式(圆点标记,非胶囊标签)");
 });
 
 test("docs 目录:静态资产保留,index 为文档模块首页(原型 v2)", async () => {

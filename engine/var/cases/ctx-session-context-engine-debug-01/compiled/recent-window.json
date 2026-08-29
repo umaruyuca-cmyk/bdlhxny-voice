@@ -95,11 +95,14 @@
   ],
   "original_tokens": 29902,
   "working_tokens": 6605,
-  "build_duration_ms": 60,
+  "build_duration_ms": 79,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
   "build_cost": 0.0,
+  "build_cache_hits": 0,
+  "build_purpose": "COMPRESSION",
+  "build_summary_chunks": 0,
   "warnings": [
     "algo_version=structured-text-v1"
   ],
@@ -109,5 +112,5 @@
   "scores": [],
   "scoring_version": "",
   "status": "COMPLETE",
-  "compile_wall_ms": 60
+  "compile_wall_ms": 79
 }

@@ -486,6 +486,21 @@ def test_job_lookup_by_batch(client: TestClient) -> None:
         run_api_module._JOBS.pop("job-new", None)
 
 
+def test_batch_report_reads_disk_artifact(client: TestClient, tmp_path, monkeypatch) -> None:
+    """批次报告端点:读磁盘工件(内存作业清除后的持久来源);无工件 404。"""
+    import bdlh_runtime.run_api as run_api_module
+
+    monkeypatch.setattr(run_api_module, "ARTIFACTS_DIR", tmp_path)
+    (tmp_path / "batch-report-x.json").write_text(
+        '{"compression_details": {"budgeted": {"counts": {"kept": 1}}}}', encoding="utf-8"
+    )
+    ok = client.get("/api/v1/batches/batch-report-x/report", headers=_auth())
+    assert ok.status_code == 200
+    assert ok.json()["compression_details"]["budgeted"]["counts"]["kept"] == 1
+    missing = client.get("/api/v1/batches/no-such/report", headers=_auth())
+    assert missing.status_code == 404
+
+
 def test_context_batch_rejects_non_comparison_cases(client: TestClient) -> None:
     response = client.post(
         "/api/v1/context-batches",
@@ -493,3 +508,44 @@ def test_context_batch_rejects_non_comparison_cases(client: TestClient) -> None:
         headers=_auth(),
     )
     assert response.status_code == 400
+
+
+def test_owner_context_batch_idempotency(
+    client: TestClient,
+    fake_data: FakeDataClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P0-4:所有者批次同幂等键+同请求体 → 返回原批次;不同请求体 → 409。"""
+    monkeypatch.setattr(run_api, "_IDEMPOTENT_RESPONSES", {})
+    calls: list[int] = []
+    original_create = fake_data.create_batch
+
+    def counting_create(**kwargs: Any) -> str:
+        calls.append(1)
+        return original_create(**kwargs)
+
+    monkeypatch.setattr(fake_data, "create_batch", counting_create)
+
+    def fake_execute(_request: Any, _views: Any, _selected: Any) -> tuple[dict[str, Any], list[Any]]:
+        return {"run_records": []}, []
+
+    monkeypatch.setattr(run_api, "_execute_context_eval", fake_execute)
+    body = {"case_ids": ["ctx-mini-port"], "runs": 1, "idempotency_key": "owner-key-0001"}
+
+    first = client.post("/api/v1/context-batches", json=body, headers=_auth())
+    assert first.status_code == 200
+    _poll(client, first.json()["job_id"])  # 等批次槽释放
+
+    replay = client.post("/api/v1/context-batches", json=body, headers=_auth())
+    assert replay.status_code == 200
+    assert replay.json()["batch_id"] == first.json()["batch_id"]
+    assert replay.json()["job_id"] == first.json()["job_id"]
+    assert len(calls) == 1  # 重试没有创建第二个批次
+
+    conflict = client.post(
+        "/api/v1/context-batches",
+        json={**body, "runs": 2},
+        headers=_auth(),
+    )
+    assert conflict.status_code == 409
+    assert len(calls) == 1

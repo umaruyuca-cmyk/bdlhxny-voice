@@ -115,6 +115,7 @@ def create_llm(
     timeout: float = 30.0,
     max_output_tokens: int | None = None,
     parallel_tool_calls: bool | None = None,
+    max_retries: int | None = None,
 ) -> Any | None:
     """创建 ChatOpenAI 实例（OpenAI 兼容）。
 
@@ -123,15 +124,16 @@ def create_llm(
 
     返回 None 的情况：
     - api_key 为空（未配置 LLM_API_KEY）；
-    - base_url 为空（未配置 LLM_BASE_URL,且调用方未显式传入）;
+    - base_url 为空（未配置 LLM_BASE_URL,且调用方未显式传入);
     - langchain_openai 未安装。
 
     调用方拿到 None 时应降级为规则替身或明确报错，不要把 None 当错误处理。
 
     temperature 默认 0.1：对照评测要求输出可复现，降低随机性。
-    ``max_output_tokens``/``parallel_tool_calls`` 为 None 时不向 SDK 传递
-    (保持端点默认);显式给出才进入构造参数——保证配置里记录的冻结条件
-    与实际发给 SDK 的参数一致。
+    ``max_output_tokens``/``parallel_tool_calls``/``max_retries`` 为 None 时
+    不向 SDK 传递 (保持端点默认);显式给出才进入构造参数——保证配置里
+    记录的冻结条件与实际发给 SDK 的参数一致。SDK 默认 max_retries=2 会把
+    一次超时放大成 3 倍墙钟时间,对有降级兜底的调用方应显式传 0。
     """
 
     if not api_key:
@@ -156,6 +158,8 @@ def create_llm(
     if parallel_tool_calls is not None:
         # ChatOpenAI 把非默认参数转存 model_kwargs,随每个请求发送
         extra["model_kwargs"] = {"parallel_tool_calls": bool(parallel_tool_calls)}
+    if max_retries is not None:
+        extra["max_retries"] = int(max_retries)
     return ChatOpenAI(
         api_key=api_key,
         base_url=resolved_base_url,

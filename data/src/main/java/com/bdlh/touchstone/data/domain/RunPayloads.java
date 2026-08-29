@@ -31,6 +31,9 @@ public final class RunPayloads {
 
     public record CompleteBatchRequest(@NotBlank String status) {}
 
+    /** 批次执行报告写入:报告为执行器完整 payload(JSON),完成时由 engine 落库。 */
+    public record SaveBatchReportRequest(@NotNull JsonNode report) {}
+
     public record ContextItemInput(
             @NotBlank String itemKey,
             @NotBlank String itemType,

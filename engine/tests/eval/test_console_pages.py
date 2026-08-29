@@ -18,8 +18,13 @@ _WEB_PUBLIC = Path(__file__).resolve().parents[3] / "web" / "public"
 
 
 def test_tools_page_lists_all_catalog_tools():
-    """工具构成页声明 DB 目录快照的构成(总量112=通用96+领域16+元工具)。"""
+    """工具构成页:独立构成页已并入工具目录页(跳转桩),目录页声明构成明细。"""
     html = (_WEB_PUBLIC / "engine" / "tools.html").read_text(encoding="utf-8")
+    if "已并入" in html:  # 跳转桩:内容并入 /tools/ 目录页,构成断言移至目录页
+        target = (_WEB_PUBLIC / "tools" / "index.html").read_text(encoding="utf-8")
+        assert "112" in target, "工具目录页需声明目录总量 112"
+        assert "search_tools" in target or "检索" in target, "检索元工具需在目录页说明"
+        return
     assert "112" in html, "构成页需声明目录总量 112"
     assert "96" in html and "16" in html, "构成页需声明 通用96/领域16 两档数量"
     assert "search_tools" in html, "检索元工具需在构成页说明"
@@ -58,12 +63,13 @@ def test_announce_reads_publication_index_only():
 
 
 def test_judging_metrics_page_is_pure_definitions():
-    """指标定义总表:纯文档,不读批次数据;数字入口指向公告页。"""
+    """指标定义总表:纯文档,不读批次数据;数字入口指向公告页(跳转桩同样合规)。"""
     html = (_WEB_PUBLIC / "judging" / "metrics.html").read_text(encoding="utf-8")
     assert "fetch(" not in html, "指标定义页不得发起数据请求"
     assert "batches/" not in html, "指标定义页不得引用批次产物"
     assert "showcase-data/index.json" not in html, "指标定义页不得读旧批次索引"
-    assert "公告页" in html, "指标数字入口指向公告页"
+    if "已并入" not in html:  # 独立总表页保留时才检查入口文案;跳转桩无正文
+        assert "公告页" in html, "指标数字入口指向公告页"
 
 
 def test_context_results_reads_publication_index_only():

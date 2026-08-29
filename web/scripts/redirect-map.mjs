@@ -18,7 +18,7 @@ export const REDIRECTS = new Map([
   ["/docs/eval", "/judging/"],
   ["/docs/agents", "/engine/"],
   ["/docs/skill", "/engine/catalog"],
-  ["/docs/tools", "/engine/tools"],
+  ["/docs/tools", "/engine/catalog"],
   ["/docs/results", "/showcase/results"],
   ["/showcase/context", "/context/results"],
   ["/home", "/"],
@@ -27,6 +27,18 @@ export const REDIRECTS = new Map([
   ["/lab", "/experiment/"],
   ["/lab/", "/experiment/"],
   ["/lab/index", "/experiment/"],
+  ["/engine/loading", "/engine/"],
+  ["/engine/loading.html", "/engine/"],
+  ["/engine/tools", "/engine/catalog"],
+  ["/engine/tools.html", "/engine/catalog"],
+  ["/engine/guardrail", "/engine/governance"],
+  ["/engine/guardrail.html", "/engine/governance"],
+  ["/judging/metrics", "/judging/"],
+  ["/judging/metrics.html", "/judging/"],
+  ["/ops/deploy", "/ops/"],
+  ["/ops/deploy.html", "/ops/"],
+  ["/experiment/batches", "/test/"],
+  ["/experiment/batches.html", "/test/"],
 ]);
 
 /** 归一化:去掉 .html 后查表(旧链接可能带扩展名)。 */

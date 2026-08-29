@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Agent 循环 · 引擎与治理</title>
-<meta name="description" content="三层闸门、上下文构建器接入与九类运行事件。">
+<title>运行流程 · 引擎与治理</title>
+<meta name="description" content="Agent 循环三层闸门、上下文构建器接入、九类运行事件与工具装载策略。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="brand-mark">◆</span>Agent 对照评测<span class="brand-sub">实现方式 · 上下文压缩 · 可复核指标</span></a>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
     <div class="topbar-actions">
       <a class="topbar-mytests" href="/test/">我的测试</a>
       <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
@@ -45,7 +46,6 @@
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>实验</summary>
         <ul>
           <li><a href="/experiment/">模板中心</a></li>
-          <li><a href="/experiment/batches">批次列表</a></li>
           <li><a href="/experiment/compression">压缩用例</a></li>
         </ul>
       </details>
@@ -62,8 +62,7 @@
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>评判标准</summary>
         <ul>
-          <li><a href="/judging/">指标定义</a></li>
-          <li><a href="/judging/metrics">指标定义总表</a></li>
+          <li><a href="/judging/">指标定义与总表</a></li>
           <li><a href="/judging/judge">判官说明</a></li>
           <li><a href="/judging/invalid">无效运行与口径</a></li>
         </ul>
@@ -83,21 +82,17 @@
     <details class="side-group here" open>
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>引擎与治理</summary>
         <ul>
-          <li><a href="/engine/" class="active">Agent 循环</a></li>
-          <li><a href="/engine/loading">工具装载</a></li>
-          <li><a href="/engine/catalog">工具目录</a></li>
-          <li><a href="/engine/governance">治理中间件</a></li>
-          <li><a href="/engine/guardrail">输出护栏</a></li>
-          <li><a href="/engine/tools">工具清单</a></li>
+          <li><a href="/engine/" class="active">运行流程</a></li>
+          <li><a href="/engine/catalog">资源与工具</a></li>
+          <li><a href="/engine/governance">治理与安全边界</a></li>
         </ul>
       </details>
     <details class="side-group">
         <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>数据与运行</summary>
         <ul>
-          <li><a href="/ops/">数据库与冻结数据</a></li>
+          <li><a href="/ops/">数据库与部署</a></li>
           <li><a href="/ops/run-api">私有运行 API</a></li>
           <li><a href="/ops/artifacts">工件与发布</a></li>
-          <li><a href="/ops/deploy">部署与边界</a></li>
           <li><a href="/ops/roadmap">路线图</a></li>
         </ul>
       </details>
@@ -112,10 +107,11 @@
         <li><a href="#gates">三层闸门</a></li>
         <li><a href="#context">模型输入统一经上下文构建器</a></li>
         <li><a href="#events">九类运行事件</a></li>
+        <li><a href="#modes">两种工具装载策略</a></li>
       </ul>
     </aside>
       <div class="detail-body">
-        <h1>Agent 循环 · 引擎与治理</h1>
+        <h1>运行流程 · 引擎与治理</h1>
 <h2 id="gates">三层闸门</h2>
 <div class="flow">G-α 语义快路径(闲聊/知识/禁止不进循环、不装载工具) → G-β 模型决定是否调用工具 → G-γ 治理中间件预算为上限</div>
 <p>循环内 <code>bind_tools → 治理中间件 → Observation 回填</code>;系统提示从 <code>prompts/</code> 文件加载,禁止内联长字符串。</p>
@@ -123,6 +119,12 @@
 <p>所有模型输入的上下文拼装统一经 <code>ContextBuilder.build()</code>(架构测试守卫,无旁路):系统提示作为纯指令条目逐字透传;固定上下文条目按分类、预算、属主与可信度裁决。见<a href="/context/">上下文压缩</a>。</p>
     <h2 id="events">九类运行事件</h2>
 <p>每次运行发出统一事件流并逐步落库:<code>run.started / context.completed / model.completed / tool.requested / tool.completed / guardrail.completed / output.completed / judgment.completed / run.completed</code>。事件只记录可观察过程,不记录隐藏思维;全部执行器同口径埋点。</p>
+    <h2 id="modes">两种工具装载策略</h2>
+<ul>
+  <li><strong>scoped(默认)</strong>:按场景与登录态定向装载当轮可见工具——规模约二十张卡时更确定、可审计;</li>
+  <li><strong>search(实验)</strong>:模型先经 <code>search_tools</code> 检索再按名调用——面向规模增长;权限过滤先于检索。</li>
+</ul>
+<p>每轮装载集合写入运行工件(<code>visible_tools</code>),单次运行页可见「当次模型到底看到了哪些工具」。</p>
       </div>
     </div>
   </main>
