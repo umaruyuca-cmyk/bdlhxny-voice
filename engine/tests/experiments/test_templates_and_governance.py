@@ -256,7 +256,7 @@ async def test_governance_variants_share_same_loop_tools_and_input():
     for row in variants.values():
         # 证据口径:visible_tools 为实际装载集合(all 模式 = eligible,按稳定名排序)
         assert sorted(row["visible_tools"]) == sorted(_VISIBLE)
-        assert row["tool_calls"][0]["tool"] == "weather.get_forecast"  # 相同输入→相同调用
+        assert row["tool_calls"][0]["toolName"] == "weather.get_forecast"  # 相同输入→相同调用
         assert row["config_hash"]
     assert variants["off"]["governance_profile"] == GOVERNANCE_OFF
     assert variants["standard"]["governance_profile"] == GOVERNANCE_STANDARD
@@ -314,14 +314,16 @@ async def test_governance_off_bypasses_permission_for_restricted_tool():
         authenticated=False,  # 游客调用需登录工具:standard 会拦,off 旁路
         user_id="guest",
     )
-    executed = [row for row in record.tool_calls if row["tool"] == "document.summarize"]
+    executed = [row for row in record.tool_calls if row["toolName"] == "document.summarize"]
     assert executed, "off 档旁路后 Mock 执行应发生"
     bypassed = [row for row in record.audits if row.get("bypassed")]
     assert bypassed, "旁路事件必须可见"
     assert any("G3-AUTH-001" in str(rule.get("rule_id")) for row in bypassed for rule in row["bypassed_rules"])
     assert record.bypassed_event_count >= 1
-    # Mock-only:执行返回带 simulated 标记
-    assert executed[0]["result"].get("simulated") is True
+    # Mock-only:执行返回带 simulated 标记(recorder 明细行的 resultSummary)
+    assert executed[0]["status"] == "SUCCESS" and executed[0]["fixtureHit"] is True
+    assert executed[0]["resultSummary"].get("simulated") is True
+    assert executed[0]["callId"] == "c1" and executed[0]["modelCallSequence"] == 1
 
 
 @pytest.mark.asyncio
@@ -338,7 +340,9 @@ async def test_governance_standard_blocks_restricted_tool_for_guest():
         authenticated=False,
         user_id="guest",
     )
-    assert not [row for row in record.tool_calls if row["tool"] == "document.summarize"]
+    # standard 档拦截:保留 DENIED 明细行(无真实执行,fixture_hit=false)
+    denied = [row for row in record.tool_calls if row["toolName"] == "document.summarize"]
+    assert denied and all(row["status"] == "DENIED" and row["fixtureHit"] is False for row in denied)
     assert any(row.get("audit_code") == "AUTHENTICATION_REQUIRED" for row in record.audits)
 
 

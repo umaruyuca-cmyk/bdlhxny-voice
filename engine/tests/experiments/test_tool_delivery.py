@@ -155,7 +155,9 @@ async def test_excluded_tool_not_in_search_results_nor_executed():
     search_hits = {row["name"] for row in record.search_log[0]["candidates"]}
     assert "weather.get_forecast" not in search_hits
     assert any(row.get("audit_code") == "TOOL_NOT_VISIBLE" for row in record.audits)
-    assert not [row for row in record.tool_calls if row["tool"] == "weather.get_forecast"]
+    # 未装载工具被治理拒绝:保留 DENIED 行,无真实执行(可观测性设计 §12.3)
+    denied = [row for row in record.tool_calls if row["toolName"] == "weather.get_forecast"]
+    assert denied and all(row["status"] == "DENIED" and row["fixtureHit"] is False for row in denied)
 
 
 @pytest.mark.asyncio
@@ -183,8 +185,13 @@ async def test_search_returns_ranked_candidates_then_loads_and_calls():
     assert all("rank" in row and "score" in row and "description" in row for row in ranked)
     assert [row["rank"] for row in ranked] == list(range(1, len(ranked) + 1))
     assert any(row["name"] == "weather.get_forecast" for row in ranked)
-    executed = [row for row in record.tool_calls if row["tool"] == "weather.get_forecast"]
-    assert executed and executed[0]["status"] == "success"
+    executed = [row for row in record.tool_calls if row["toolName"] == "weather.get_forecast"]
+    assert executed and executed[0]["status"] == "SUCCESS" and executed[0]["fixtureHit"] is True
+    # search 模式:第二轮才装载命中工具,当轮 Tool Schema 逐轮不同(设计 §5.3)
+    schemas_by_round = [row["toolSchemas"] for row in record.model_calls]
+    first_names = {spec["function"]["name"] for spec in schemas_by_round[0]}
+    assert first_names == {"search_tools"}
+    assert "weather.get_forecast" in {spec["function"]["name"] for spec in schemas_by_round[1]}
     assert record.eligible_catalog_hash
     assert record.tool_schema_hash
 
@@ -208,7 +215,7 @@ async def test_tool_not_visible_then_recover_by_searching_again():
     events = record.tool_not_visible_events
     assert events and events[0]["tool"] == "weather.get_forecast"
     assert events[0]["recovered"] is True  # 再次搜索装载后成功调用
-    assert any(row["tool"] == "weather.get_forecast" and row["status"] == "success"
+    assert any(row["toolName"] == "weather.get_forecast" and row["status"] == "SUCCESS"
                for row in record.tool_calls)
 
 

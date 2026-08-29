@@ -785,8 +785,45 @@ def _execute_template_batch(
     )
 
 
+def _persist_run_details(data: DataClient, run_id: str, row: dict[str, Any]) -> None:
+    """单次运行明细分项落库(模板/实验组路径,可观测性设计 §5.2)。
+
+    写入顺序:events → model_calls → tool_calls → guardrail_checks →
+    measurements。model_calls 必须先于 tool_calls——数据服务按
+    (run_id, model_call sequence) 解析 tool_calls.model_call_id 外键。
+    每类明细只在该运行确有内容时写入,不写空载荷。
+    """
+    events = list(row.get("events") or [])
+    if events:
+        data.save_events(run_id, events)
+    model_calls = list(row.get("model_calls") or [])
+    if model_calls:
+        # Token 计量落库(11.1):逐请求行 + 汇总测量;行内含逐轮消息/
+        # 当轮 Tool Schema/参数三态快照(可观测性设计 §5.2)
+        data.save_model_calls(run_id, model_calls)
+        data.save_measurements(
+            run_id,
+            {
+                "llmMs": sum(int(call.get("durationMs") or 0) for call in model_calls),
+                "totalDurationMs": int(row.get("duration_ms") or 0),
+                "promptTokens": int(row.get("input_tokens") or 0),
+                "completionTokens": int(row.get("output_tokens") or 0),
+            },
+        )
+    tool_calls = list(row.get("tool_calls") or [])
+    if tool_calls:
+        data.save_tool_calls(run_id, tool_calls)
+    guardrail_checks = list(row.get("guardrail_checks") or [])
+    if guardrail_checks:
+        data.save_guardrail_checks(run_id, guardrail_checks)
+
+
 def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any, result: dict[str, Any]) -> None:
-    """逐运行落库:模板标识与配置快照进 modelConfig;失败由调用方记入作业错误。"""
+    """逐运行落库:模板标识与配置快照进 modelConfig;失败由调用方记入作业错误。
+
+    可观测性(设计 §10 阶段一):events/model_calls/tool_calls/guardrail_checks
+    全量落库,正式模板运行不再出现「运行成功但明细表为空」。
+    """
     # agent_runs 对 (case,version,variant) 与 snapshot_id 有外键:只能引用
     # case_variants/data_snapshots 已注册行;模板自变量(温度等)记录在
     # modelConfig.variantLabel,不进 variant_id。
@@ -813,20 +850,7 @@ def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any
                 },
             }
         )
-        model_calls = row.get("model_calls") or []
-        if model_calls:
-            # Token 计量落库(11.1):逐请求摘要行 + 汇总测量;账单口径来自
-            # 响应 usage,本地估算行随 NativeRunRecord.tokens_estimated 可辨
-            data.save_model_calls(run_id, model_calls)
-            data.save_measurements(
-                run_id,
-                {
-                    "llmMs": sum(int(call.get("durationMs") or 0) for call in model_calls),
-                    "totalDurationMs": int(row.get("duration_ms") or 0),
-                    "promptTokens": int(row.get("input_tokens") or 0),
-                    "completionTokens": int(row.get("output_tokens") or 0),
-                },
-            )
+        _persist_run_details(data, run_id, row)
         data.complete_run(
             run_id,
             {
@@ -845,6 +869,7 @@ def _persist_series_run(data: DataClient, series: SeriesRecord, payload: dict[st
 
     实验组状态文档(报告列)已有正本;此处尽力而为,失败只记日志、
     不回滚实验组登记。压缩用例的 caseId=Session 编号,与压缩对照批次一致。
+    明细分项落库与模板批次共用 _persist_run_details(可观测性设计 §5.2)。
     """
     from bdlh_runtime.experiments.templates import EXPERIMENT_DEFINITION_VERSION, get_template
 
@@ -891,18 +916,7 @@ def _persist_series_run(data: DataClient, series: SeriesRecord, payload: dict[st
             "modelConfig": model_config,
         }
     )
-    model_calls = payload.get("model_calls") or []
-    if model_calls:
-        data.save_model_calls(run_id, model_calls)
-        data.save_measurements(
-            run_id,
-            {
-                "llmMs": sum(int(call.get("durationMs") or 0) for call in model_calls),
-                "totalDurationMs": int(payload.get("duration_ms") or 0),
-                "promptTokens": int(payload.get("input_tokens") or 0),
-                "completionTokens": int(payload.get("output_tokens") or 0),
-            },
-        )
+    _persist_run_details(data, run_id, payload)
     data.complete_run(
         run_id,
         {
@@ -1473,7 +1487,8 @@ def get_series_statistics(
     runs: list[dict[str, Any]] = []
     for row in record.runs:
         if row.get("status") == "done" and isinstance(row.get("payload"), dict):
-            runs.append(row["payload"])
+            # 报告口径:剥离逐轮消息正文(明细真源在数据服务明细表)
+            runs.append(_report_run_payload(row["payload"]))
         elif row.get("status") == "failed":
             runs.append(
                 {
@@ -1758,11 +1773,32 @@ def _write_run_artifact_file(run_id: str, artifact: dict[str, Any]) -> str:
     return storage_ref
 
 
+def _report_run_payload(row: dict[str, Any]) -> dict[str, Any]:
+    """报告口径的单运行 payload:剥离逐轮消息正文防报告膨胀。
+
+    明细真源在数据服务明细表(events/model_calls/tool_calls/guardrail_checks),
+    报告只保留计量摘要与快照元信息;request_hash 足以与明细表对账。
+    """
+    calls = [
+        {key: value for key, value in call.items() if key != "messages"}
+        if isinstance(call, dict)
+        else call
+        for call in row.get("model_calls") or []
+    ]
+    light = {key: value for key, value in row.items() if key != "model_calls"}
+    light["model_calls"] = calls
+    return light
+
+
 def _save_batch_report_best_effort(data: DataClient, batch_id: str, payload: dict[str, Any]) -> None:
     """执行报告落库(尽力而为):列未迁移或 data 不可达时只记日志,不影响批次完成;
 
     磁盘工件(_persist_artifact)始终保留,作为报告读取的兜底来源。
+    runs 内逐运行消息正文在保存前剥离(报告口径,见 _report_run_payload)。
     """
+    runs = payload.get("runs")
+    if isinstance(runs, list):
+        payload = {**payload, "runs": [_report_run_payload(row) if isinstance(row, dict) else row for row in runs]}
     try:
         data.save_batch_report(batch_id, payload)
     except Exception as exc:  # noqa: BLE001 —— 报告持久化失败不阻断批次终态

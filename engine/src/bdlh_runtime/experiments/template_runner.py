@@ -46,7 +46,13 @@ CONTEXT_STRATEGY_MAP = {
 
 @dataclass
 class NativeRunRecord:
-    """一次模板运行的完整记录(统一事件结构,不因变体缺失关键字段)。"""
+    """一次模板运行的完整记录(统一事件结构,不因变体缺失关键字段)。
+
+    自可观测性改造起(设计 §5.2),``events``/``model_calls``/``tool_calls``/
+    ``guardrail_checks`` 与 eval 链路同构产出:model_calls 保留逐轮消息与
+    Tool Schema/参数三态快照,tool_calls 为带调用关联的 recorder 明细行。
+    批次报告保存点负责剥离消息正文防膨胀,内存记录保持完整。
+    """
 
     run_id: str
     variant_label: str
@@ -78,8 +84,12 @@ class NativeRunRecord:
     output_tokens: int = 0
     #: 响应缺失 usage 元数据、按本地计数器估算时为 True(不以 0 冒充实测)
     tokens_estimated: bool = False
-    #: 逐请求计量摘要(不含消息快照防报告膨胀;request_hash 供对账)
+    #: 逐请求完整明细(含消息快照/当轮 Tool Schema/参数三态;报告保存点剥离正文)
     model_calls: list[dict[str, Any]] = field(default_factory=list)
+    #: run_events 事件流(run.started → … → run.completed,全局 sequence)
+    events: list[dict[str, Any]] = field(default_factory=list)
+    #: guardrail 检查明细(含 DENIED 拦截关联)
+    guardrail_checks: list[dict[str, Any]] = field(default_factory=list)
 
     def to_payload(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -134,24 +144,48 @@ def applied_params_of(llm: Any) -> dict[str, Any]:
     return applied
 
 
-class _ModelCallCollector:
-    """轻量模型调用收集器:满足 RecordingLLM 对 recorder 的最小接口。
+#: requested 了但适配器未发送时的默认原因文案(参数三态,设计 §4.1)
+_PARAM_NOT_SENT_NOTES = {
+    "temperature": "当前适配器未发送该参数",
+    "top_p": "当前适配器未发送该参数",
+    "reasoning_effort": "当前适配器未接线该参数",
+    "seed": "当前适配器未发送该参数",
+    "tool_choice": "当前适配器未显式发送,由模型自行决定",
+    "parallel_tool_calls": "当前适配器未发送该参数",
+    "max_output_tokens": "当前适配器未发送该参数",
+}
 
-    eval 路径的 RunRecorder 绑定完整 RunRecord;模板/实验组路径只需要
-    逐请求计量行(方案 11.1),内存收集后随运行 payload 落库/落盘。
+
+def model_param_snapshots(run_config: RunConfig, applied_params: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """参数三态快照(requested / sent / unsupported,可观测性设计 §4.1)。
+
+    requested 来自冻结运行配置;sent 来自模型客户端属性回读(applied_params,
+    证据口径,读不到的键不臆造);unsupported 为请求了但未实际发送的字段
+    及原因,并合入配置声明的 unsupported_reasons("字段: 原因"格式)。
     """
-
-    def __init__(self) -> None:
-        self.rows: list[Any] = []
-        self._seq = 0
-
-    def next_model_sequence(self) -> int:
-        self._seq += 1
-        return self._seq
-
-    def record_model_call(self, row: Any) -> Any:
-        self.rows.append(row)
-        return row
+    params = run_config.model
+    requested = {
+        key: value
+        for key, value in {
+            "temperature": params.temperature_requested,
+            "top_p": params.top_p_requested,
+            "reasoning_effort": params.reasoning_effort_requested,
+            "seed": params.seed_requested,
+            "max_output_tokens": params.max_output_tokens,
+            "tool_choice": params.tool_choice,
+            "parallel_tool_calls": params.parallel_tool_calls,
+        }.items()
+        if value is not None
+    }
+    sent = dict(applied_params or {})
+    unsupported: dict[str, Any] = {
+        key: _PARAM_NOT_SENT_NOTES.get(key, "当前适配器未发送该参数") for key in requested if key not in sent
+    }
+    for reason in params.unsupported_reasons:
+        name, _, note = str(reason).partition(": ")
+        if name:
+            unsupported.setdefault(name, note or "配置声明不支持")
+    return {"requested": requested, "sent": sent, "unsupported": unsupported}
 
 
 def build_template_catalog(visible_tools: tuple[str, ...] | list[str]) -> tuple[ToolCatalog, list[ToolCard]]:
@@ -196,13 +230,17 @@ async def run_native_agent(
     variant_label: str = "",
     repeat_index: int = 0,
     timeout_seconds: float | None = None,
+    template_id: str = "",
 ) -> NativeRunRecord:
     """按一份 RunConfig 在统一原生循环上执行一次运行。
 
     - ``tool_delivery`` = all/search 经 ToolLoader 落地;search 使用
       catalog 基座(完整目录 − 排除项)且不回退;
     - 治理档位与写确认提供方透传给中间件;
-    - 执行器固定 Mock(冻结 fixture);``executor`` 参数仅供测试注入替身。
+    - 执行器固定 Mock(冻结 fixture);``executor`` 参数仅供测试注入替身;
+    - 遥测:per-run ``RunRecorder`` 统一收集 events/model_calls(含逐轮
+      消息、当轮 Tool Schema、参数三态)/tool_calls(带调用关联)/
+      guardrail_checks,与 eval 链路同一落库协议(设计 §5.2)。
     """
     run_config.validate()
     # 逐运行模型客户端:llm=None 时按本运行生效参数构建独立实例
@@ -210,20 +248,33 @@ async def run_native_agent(
     per_run_llm = llm if llm is not None else build_llm_for_config(run_config)
     applied_params = applied_params_of(per_run_llm)
     llm_missing = llm is None and per_run_llm is None
-    # Token 计量(11.1):与 eval 路径同口径的 RecordingLLM 包装——逐请求抄录
-    # 响应 usage(账单口径;缺失时本地计数器估算并打标)。包装在 applied_params
-    # 读取之后,AgentLoop 与 bind_tools 的绑定模型都被覆盖;超时前已发生的
-    # 请求同样计入(费用已产生,必须可见)。
-    from bdlh_runtime.evaluation.run_telemetry import RecordingLLM
-
-    call_collector = _ModelCallCollector()
-    loop_llm = (
-        RecordingLLM(per_run_llm, call_collector, os.getenv("LLM_MODEL", "Qwen/Qwen3.6-35B-A3B"))
-        if per_run_llm is not None
-        else None
+    model_id = str(run_config.model.model_id or "")
+    run_id_value = run_id or f"native:{run_config.config_hash[:12]}"
+    from bdlh_runtime.evaluation.run_telemetry import (
+        RecordingExecutor,
+        RecordingLLM,
+        RunRecorder,
+        record_governance_audits,
     )
+
+    # per-run recorder(与 eval 链路同构;run.started 在构造时发出)
+    recorder = RunRecorder.for_template_run(
+        run_id=run_id_value,
+        model=model_id,
+        variant_label=variant_label,
+        repeat_index=repeat_index,
+        message=message,
+        context_strategy=str(run_config.context_strategy),
+        config_hash=run_config.config_hash,
+        template_id=template_id,
+    )
+    recorder.attach_model_params(**model_param_snapshots(run_config, applied_params))
+    loop_llm = RecordingLLM(per_run_llm, recorder, model_id) if per_run_llm is not None else None
     catalog, ordered_cards = build_template_catalog(visible_tools)
     mock_executor = executor or FrozenFixtureExecutor(fixtures or [], fixture_version=fixture_version)
+    # RecordingExecutor 记 tool.requested/completed、关联发起模型调用与 call_id;
+    # call_records 等属性经 __getattr__ 透传,批次报告口径不变
+    recorded_executor = RecordingExecutor(mock_executor, recorder)
     loader = ToolLoader(
         catalog,
         tool_loading=run_config.tool_delivery,
@@ -236,7 +287,7 @@ async def run_native_agent(
     loop = AgentLoop(
         llm=loop_llm,
         catalog=catalog,
-        executor=mock_executor,
+        executor=recorded_executor,
         loader=loader,
         max_agent_steps=run_config.limits.max_agent_steps,
         max_tool_calls=run_config.limits.max_tool_calls,
@@ -252,7 +303,7 @@ async def run_native_agent(
         scene_tag=scene_tag,
         authenticated=authenticated,
         history=list(history or []),
-        run_id=run_id or f"native:{run_config.config_hash[:12]}",
+        run_id=run_id_value,
         context_strategy=strategy,
         token_budget=run_config.context.token_budget,
     )
@@ -263,6 +314,7 @@ async def run_native_agent(
     started = time.perf_counter()
     timeout = timeout_seconds if timeout_seconds is not None else float(run_config.limits.agent_timeout_seconds)
     loaded_names: tuple[str, ...] = ()
+    audit_objects: list[Any] = []
     try:
         result = await asyncio.wait_for(loop.run(turn), timeout=timeout)
         answer = result.answer
@@ -273,6 +325,7 @@ async def run_native_agent(
             )
         stop_reason = result.stop_reason or ""
         actual_steps = result.actual_steps
+        audit_objects = list(result.audits)
         audits = [audit.model_dump() for audit in result.audits]
         observations = [
             obs.model_dump(mode="json") if hasattr(obs, "model_dump") else dict(obs)
@@ -281,6 +334,14 @@ async def run_native_agent(
         # 实际装载集合(最后一轮 bind_tools 的真源):排除项/搜索动态装载/
         # 每轮变化都以它为准,不用初始完整列表冒充(混合路线证据口径修正)
         loaded_names = tuple(result.loaded_tools or ())
+        if getattr(result, "context_report", None) is not None:
+            recorder.record_context(
+                {
+                    "strategy": strategy,
+                    "contextBuildMs": int(getattr(result, "context_build_ms", 0) or 0),
+                    "contextRebuilds": int(getattr(result, "context_rebuilds", 0) or 0),
+                }
+            )
     except TimeoutError:
         answer, error, stop_reason, actual_steps = "", "运行超时:单运行熔断", "TIMEOUT", 0
         audits, observations = [], []
@@ -290,12 +351,15 @@ async def run_native_agent(
     from bdlh_runtime.evaluation.run_telemetry import classify_failure, validity_of
 
     status, category = classify_failure(error)
+    # 治理审计 → guardrail_checks/DENIED 工具行(与 eval 链路同口径;
+    # 超时路径无审计对象,如实跳过)
+    if audit_objects:
+        record_governance_audits(recorder, audit_objects, observations)
+    recorder.complete(status=status, error_category=category or None, error_text=error)
     call_records = list(getattr(mock_executor, "call_records", []) or [])
-    model_call_rows = [row.to_payload() for row in call_collector.rows]
-    for row_payload in model_call_rows:
-        # 消息快照体积大且 eval 路径已有专用表;模板报告只留计量摘要,
-        # request_hash 足以与请求方对账
-        row_payload.pop("messages", None)
+    model_call_rows = [row.to_payload() for row in recorder.record.model_calls]
+    tool_call_rows = [row.to_payload() for row in recorder.record.tool_calls]
+    guardrail_rows = [row.to_payload() for row in recorder.record.guardrail_checks]
     record = NativeRunRecord(
         run_id=turn.run_id,
         variant_label=variant_label,
@@ -303,7 +367,7 @@ async def run_native_agent(
         config_hash=run_config.config_hash,
         governance_profile=run_config.governance_profile,
         answer=str(answer or ""),
-        tool_calls=call_records,
+        tool_calls=tool_call_rows,
         audits=audits,
         stop_reason=stop_reason,
         actual_agent_steps=actual_steps,
@@ -319,26 +383,28 @@ async def run_native_agent(
         bypassed_event_count=sum(1 for row in audits if row.get("bypassed")),
         observations=observations,
         eligible_catalog_hash=catalog_schema_hash(eligible_manifests),
-        tool_not_visible_events=_not_visible_events(audits, call_records),
+        tool_not_visible_events=_not_visible_events(audits, tool_call_rows),
         applied_model_params=applied_params,
         input_tokens=sum(int(row.get("inputTokens") or 0) for row in model_call_rows),
         output_tokens=sum(int(row.get("outputTokens") or 0) for row in model_call_rows),
-        tokens_estimated=any(row.tokens_estimated for row in call_collector.rows),
+        tokens_estimated=any(row.tokens_estimated for row in recorder.record.model_calls),
         model_calls=model_call_rows,
+        events=list(recorder.record.events),
+        guardrail_checks=guardrail_rows,
     )
     if category:
         record.error = record.error or category
     return record
 
 
-def _not_visible_events(audits: list[dict[str, Any]], call_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _not_visible_events(audits: list[dict[str, Any]], tool_call_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """提取 TOOL_NOT_VISIBLE 拒绝事件及恢复情况(后续同工具是否成功调用)。"""
     events: list[dict[str, Any]] = []
     for row in audits:
         if row.get("audit_code") != "TOOL_NOT_VISIBLE":
             continue
         tool = str(row.get("tool_name") or "")
-        recovered = any(str(call.get("tool")) == tool for call in call_records)
+        recovered = any(str(call.get("toolName")) == tool for call in tool_call_rows)
         events.append(
             {
                 "tool": tool,
@@ -398,6 +464,7 @@ async def run_template_batch(
             run_id=planned.run_id,
             variant_label=planned.variant_label,
             repeat_index=planned.repeat_index,
+            template_id=plan.template_id,
         )
         budget.record(llm_requests=record.actual_agent_steps)  # 每步至多一次逻辑模型调用
         payload = record.to_payload()
@@ -443,6 +510,7 @@ __all__ = [
     "applied_params_of",
     "build_llm_for_config",
     "build_template_catalog",
+    "model_param_snapshots",
     "run_native_agent",
     "run_template_batch",
     "PlannedRun",

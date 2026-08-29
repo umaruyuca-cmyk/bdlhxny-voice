@@ -7,6 +7,21 @@
 <title>实验 · 批次详情</title>
 <meta name="description" content="批次详情:首屏口径卡(实验目的、受控变量、冻结条件、技术口径、请求/生效参数对照),第二屏按模板变量分组的结果矩阵与单次运行下钻。">
 <link rel="stylesheet" href="/docs/docs.css">
+<style>
+/* 单次运行明细:时间线 + 折叠证据(仅本页作用域) */
+.run-timeline { border-left: 2px solid #d8dee9; margin: 8px 0 0 6px; padding-left: 14px; }
+.run-step { margin: 6px 0; background: #fff; border: 1px solid #e3e8f0; border-radius: 8px; padding: 6px 10px; }
+.run-step > summary { cursor: pointer; font-size: 13px; line-height: 1.6; }
+.run-step.step-bad { border-color: #e4b1b1; background: #fdf6f6; }
+.run-step.step-event { color: #5a6478; font-size: 12px; border: none; background: transparent; padding: 2px 10px; }
+.run-step .msg { margin: 4px 0; }
+.run-step .msg > summary { cursor: pointer; font-size: 12px; color: #44526b; }
+.json-wrap { margin: 6px 0; }
+.json-head { font-size: 12px; color: #44526b; display: flex; align-items: center; gap: 8px; }
+.json-block { background: #f6f8fb; border: 1px solid #e3e8f0; border-radius: 6px; padding: 8px; font-size: 12px; overflow: auto; max-height: 340px; white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; }
+.detail-tabs { margin: 10px 0 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.detail-tabs .tab.tab-on { background: #2b3a67; color: #fff; }
+</style>
 </head>
 <body>
 <header class="topbar">
@@ -52,7 +67,7 @@
 <script>
 (function () {
   "use strict";
-  console.log("[batch] 页面版本 20260828-2(进度状态化:仅活动且总量已知才渲染真实进度条)"); // 缓存自查:console 应出现此行
+  console.log("[batch] 页面版本 20260829-1(单次运行明细:时间线+折叠证据+参数三态)"); // 缓存自查:console 应出现此行
   var E = window.EXP;
   var params = new URLSearchParams(location.search);
   var pathId = decodeURIComponent(location.pathname.replace(/^\/experiment\/batch\/?/, "").replace(/\/+$/, ""));
@@ -601,29 +616,198 @@
         if (target.getAttribute("data-loaded")) return;
         E.get("/api/v1/runs/" + encodeURIComponent(btn.getAttribute("data-run")) + "/detail").then(function (detail) {
           target.setAttribute("data-loaded", "1");
-          var toolCalls = detail.toolCalls || [];
-          var modelCalls = detail.modelCalls || [];
-          var measurements = (detail.measurements || [])[0] || {};
-          target.innerHTML =
-            '<div class="stat-mini">' +
-            '<span class="m"><b>' + E.esc(toolCalls.length) + "</b>工具调用</span>" +
-            '<span class="m"><b>' + E.esc(modelCalls.length) + "</b>模型调用</span>" +
-            '<span class="m"><b>' + E.esc(measurements.total_duration_ms != null ? measurements.total_duration_ms : "—") + "</b>总耗时 ms</span>" +
-            '<span class="m"><b>' + E.esc(measurements.prompt_tokens != null ? measurements.prompt_tokens : "—") + "</b>输入 Token</span>" +
-            '<span class="m"><b>' + E.esc(measurements.completion_tokens != null ? measurements.completion_tokens : "—") + "</b>输出 Token</span>" +
-            "</div>" +
-            (toolCalls.length ? '<table class="exp-table"><tr><th>#</th><th>工具</th><th>状态</th><th>冻结命中</th><th>耗时</th></tr>' +
-              toolCalls.map(function (c) {
-                return "<tr><td>" + E.esc(c.sequence) + '</td><td class="mono">' + E.esc(c.tool_name) + "</td><td>" + E.esc(c.status) +
-                  "</td><td>" + (c.fixture_hit ? "是" : "否") + '</td><td class="mono">' + E.esc(c.duration_ms != null ? c.duration_ms : "—") + " ms</td></tr>";
-              }).join("") + "</table>" : "") +
-            '<p class="note-line">事件流 ' + (detail.events || []).length + " 条;护栏检查 " + (detail.guardrailChecks || []).length +
-            " 条;工件 " + (detail.artifacts || []).length + " 件。</p>";
+          renderRunDetail(target, detail);
         }).catch(function (err) {
           target.innerHTML = '<div class="placeholder-block">明细读取失败:' + E.esc(err.message || "数据服务不可用") + "</div>";
         });
       });
     });
+  }
+
+  // ── 单次运行明细:摘要 + 筛选页签 + 时间线(设计 §8 三层结构) ───────────────
+
+  var RUN_DETAIL_TABS = [["all", "全部"], ["model", "模型"], ["tool", "工具"], ["guardrail", "治理"], ["context", "上下文"]];
+  var EVENT_LABELS = {
+    "run.started": "运行开始",
+    "context.completed": "上下文构建完成",
+    "output.completed": "输出完成",
+    "judgment.completed": "评判完成",
+    "run.completed": "运行结束",
+    "model.result_appended": "工具结果回填模型上下文"
+  };
+
+  function jsonBlock(value, label) {
+    if (value == null) return "";
+    var text;
+    try { text = JSON.stringify(value, null, 2); } catch (e) { text = String(value); }
+    return '<div class="json-wrap"><div class="json-head">' + E.esc(label || "JSON") +
+      '<button type="button" class="drill copy-json">复制</button></div>' +
+      '<pre class="json-block">' + E.esc(text) + "</pre></div>";
+  }
+
+  function paramStateTable(call) {
+    // 参数三态(设计 §8.2):requested/sent/unsupported;不得用生效值冒充发送值
+    var requested = call.requested_params || {};
+    var sent = call.sent_params || {};
+    var unsupported = call.unsupported_params || {};
+    var keys = [];
+    Object.keys(requested).concat(Object.keys(sent)).forEach(function (key) {
+      if (keys.indexOf(key) < 0) keys.push(key);
+    });
+    if (!keys.length) return "";
+    var rows = keys.map(function (key) {
+      var hasSent = Object.prototype.hasOwnProperty.call(sent, key) && sent[key] !== null && sent[key] !== undefined;
+      var state = hasSent ? "已发送" : (unsupported[key] ? E.esc(unsupported[key]) : "未配置/未支持");
+      return '<tr><td class="mono">' + E.esc(key) + "</td><td>" +
+        E.esc(requested[key] != null ? JSON.stringify(requested[key]) : "—") + "</td><td>" +
+        (hasSent ? E.esc(JSON.stringify(sent[key])) : "—") + "</td><td>" + state + "</td></tr>";
+    }).join("");
+    return '<table class="exp-table"><tr><th>参数</th><th>请求值</th><th>实际发送</th><th>状态</th></tr>' + rows + "</table>";
+  }
+
+  function modelStep(entry) {
+    var call = entry.modelCall;
+    if (!call) {
+      // model.requested 锚点(响应尚未产生的步骤;完成后仅保留摘要行)
+      return '<div class="run-step step-event"><span class="mono">#' + E.esc(entry.sequence) + "</span> 模型请求已组装" +
+        (entry.payload && entry.payload.toolSchemaHash ? " · schema " + E.esc(String(entry.payload.toolSchemaHash).slice(0, 18)) + "…" : "") + "</div>";
+    }
+    var failed = call.status !== "COMPLETE";
+    var head = "模型调用 #" + E.esc(call.sequence) + " · " + E.esc(call.purpose || "AGENT") +
+      " · " + (call.duration_ms != null ? call.duration_ms : "—") + "ms · " +
+      (call.decision === "call_tool" ? "调用工具" : "最终回答") + " · " + E.esc(call.status || "");
+    var body = "";
+    var messages = call.messages || [];
+    if (messages.length) {
+      body += '<div class="msg"><b>输入消息 ' + messages.length + " 条</b>" + messages.map(function (m) {
+        var content = m.content || "";
+        return '<details><summary>' + E.esc(m.role) + " · " + content.length + " 字符 · " +
+          E.esc(m.tokens != null ? m.tokens : "—") + " token</summary>" +
+          '<pre class="json-block">' + E.esc(content) + "</pre></details>";
+      }).join("") + "</div>";
+    }
+    var schemas = call.tool_schemas || [];
+    if (schemas.length) {
+      var names = schemas.map(function (s) { return (s && s.function && s.function.name) || "?"; });
+      body += '<details class="msg"><summary>当轮 Tool Schema · ' + schemas.length + " 个(" +
+        E.esc(names.slice(0, 4).join(", ")) + (names.length > 4 ? " …" : "") + ")</summary>" +
+        jsonBlock(schemas, "tool_schemas") + "</details>";
+    }
+    body += paramStateTable(call);
+    if (call.response_summary) body += jsonBlock(call.response_summary, "response_summary");
+    if (call.request_payload) body += jsonBlock(call.request_payload, "request_payload");
+    body += '<p class="note-line mono">request_hash ' + E.esc(call.request_hash || "—") +
+      (call.error_category ? " · error " + E.esc(call.error_category) : "") + "</p>";
+    return '<details class="run-step' + (failed ? " step-bad" : "") + '"' + (failed ? " open" : "") +
+      "><summary>" + E.esc(head) + "</summary>" + body + "</details>";
+  }
+
+  function toolStep(entry) {
+    var call = entry.toolCall;
+    if (!call) return '<div class="run-step step-event">#' + E.esc(entry.sequence) + " 工具请求</div>";
+    var bad = call.status !== "SUCCESS";
+    var head = "工具 · " + E.esc(call.tool_name) + " · " + E.esc(call.status || "") +
+      " · " + (call.duration_ms != null ? call.duration_ms : "—") + "ms · " +
+      (call.fixture_hit ? "冻结命中" : "未命中冻结数据");
+    var body = jsonBlock(call.arguments, "arguments");
+    if (call.result_summary) body += jsonBlock(call.result_summary, "result_summary");
+    body += '<p class="note-line mono">call_id ' + E.esc(call.call_id || "—") +
+      " · audit " + E.esc(call.audit_code || "—") +
+      " · 发起模型调用 #" + E.esc(call.model_call_sequence != null ? call.model_call_sequence : "—") +
+      " · 事件 " + E.esc(call.requested_event_sequence != null ? call.requested_event_sequence : "—") + "→" +
+      E.esc(call.completed_event_sequence != null ? call.completed_event_sequence : "—") +
+      (call.error_category ? " · error " + E.esc(call.error_category) : "") + "</p>";
+    return '<details class="run-step' + (bad ? " step-bad" : "") + '"' + (bad ? " open" : "") +
+      "><summary>" + E.esc(head) + "</summary>" + body + "</details>";
+  }
+
+  function guardrailStep(entry) {
+    var check = entry.guardrailCheck;
+    if (!check) return '<div class="run-step step-event">#' + E.esc(entry.sequence) + " 治理检查</div>";
+    var bad = check.decision && check.decision !== "allow";
+    var head = "治理 · " + E.esc(check.stage || "") + " · " + E.esc(check.decision || "") +
+      (check.audit_code ? " · " + E.esc(check.audit_code) : "") +
+      (check.tool_name ? " · " + E.esc(check.tool_name) : "");
+    var body = "";
+    if (check.reasons && check.reasons.length) {
+      body += '<p class="note-line">原因:' + check.reasons.map(E.esc).join(";") + "</p>";
+    }
+    body += jsonBlock({ rule_ids: check.rule_ids, detail: check.detail }, "guardrail_check");
+    return '<details class="run-step' + (bad ? " step-bad" : "") + '"' + (bad ? " open" : "") +
+      "><summary>" + E.esc(head) + "</summary>" + body + "</details>";
+  }
+
+  function eventStep(entry) {
+    var label = EVENT_LABELS[entry.eventType] || entry.eventType;
+    return '<div class="run-step step-event"><span class="mono">#' + E.esc(entry.sequence) + "</span> " + E.esc(label) + "</div>";
+  }
+
+  function renderRunDetail(target, detail) {
+    var run = detail.run || detail;
+    var measurements = (detail.measurements || [])[0] || {};
+    var modelCalls = detail.modelCalls || [];
+    var toolCalls = detail.toolCalls || [];
+    var guardrails = detail.guardrailChecks || [];
+    var timeline = detail.timeline;
+    if (!timeline) {
+      // 旧数据兜底:无 timeline 时按三类明细并列展示
+      timeline = []
+        .concat(modelCalls.map(function (c) { return { type: "model", modelCall: c }; }))
+        .concat(toolCalls.map(function (c) { return { type: "tool", toolCall: c }; }))
+        .concat(guardrails.map(function (c) { return { type: "guardrail", guardrailCheck: c }; }));
+    }
+    var state = { filter: "all" };
+
+    function stepHtml(entry) {
+      if (entry.type === "model") return modelStep(entry);
+      if (entry.type === "tool") return toolStep(entry);
+      if (entry.type === "guardrail") return guardrailStep(entry);
+      return eventStep(entry);
+    }
+
+    function draw() {
+      var steps = timeline.filter(function (entry) {
+        if (state.filter === "all") return true;
+        if (state.filter === "context") return entry.type === "event" && entry.eventType === "context.completed";
+        return entry.type === state.filter;
+      });
+      target.innerHTML =
+        '<div class="stat-mini">' +
+        '<span class="m"><b>' + E.esc(run.status || "—") + "</b>状态</span>" +
+        '<span class="m"><b>' + E.esc(modelCalls.length) + "</b>模型调用</span>" +
+        '<span class="m"><b>' + E.esc(toolCalls.length) + "</b>工具调用</span>" +
+        '<span class="m"><b>' + E.esc(guardrails.length) + "</b>治理检查</span>" +
+        '<span class="m"><b>' + E.esc(measurements.total_duration_ms != null ? measurements.total_duration_ms : "—") + "</b>总耗时 ms</span>" +
+        '<span class="m"><b>' + E.esc(measurements.prompt_tokens != null ? measurements.prompt_tokens : "—") + "</b>输入 Token</span>" +
+        '<span class="m"><b>' + E.esc(measurements.completion_tokens != null ? measurements.completion_tokens : "—") + "</b>输出 Token</span>" +
+        "</div>" +
+        '<div class="detail-tabs">' + RUN_DETAIL_TABS.map(function (tab) {
+          return '<button type="button" class="drill tab' + (state.filter === tab[0] ? " tab-on" : "") +
+            '" data-tab="' + tab[0] + '">' + tab[1] + "</button>";
+        }).join("") + "</div>" +
+        '<div class="run-timeline">' +
+        (steps.length ? steps.map(stepHtml).join("") : '<div class="placeholder-block">该视角暂无步骤。</div>') +
+        "</div>" +
+        '<p class="note-line">时间线按 run_events 全局序号交织;事件流 ' + (detail.events || []).length +
+        " 条,工件 " + (detail.artifacts || []).length + " 件。</p>";
+      Array.prototype.forEach.call(target.querySelectorAll("[data-tab]"), function (btn) {
+        btn.addEventListener("click", function () {
+          state.filter = btn.getAttribute("data-tab");
+          draw();
+        });
+      });
+      Array.prototype.forEach.call(target.querySelectorAll(".copy-json"), function (btn) {
+        btn.addEventListener("click", function () {
+          var wrap = btn.closest(".json-wrap");
+          var pre = wrap ? wrap.querySelector("pre") : null;
+          if (pre && navigator.clipboard) navigator.clipboard.writeText(pre.textContent);
+          btn.textContent = "已复制";
+          setTimeout(function () { btn.textContent = "复制"; }, 1200);
+        });
+      });
+    }
+
+    draw();
   }
 
   if (!batchId) { fail("缺少批次标识。"); }

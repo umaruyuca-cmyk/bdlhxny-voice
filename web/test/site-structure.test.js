@@ -35,7 +35,7 @@ const EXPERIMENT_PAGES = [
   "/experiment/run.html", "/experiment/batch.html",
   "/test/index.html",
 ];
-const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|batches|jobs|runs)(\/|\?|["'`]|$))/;
+const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|experiment-series|batches|jobs|runs)(\/|\?|["'`]|$))/;
 
 async function readPage(page) {
   return readFile(new URL(`../public${page}`, import.meta.url), "utf8");
@@ -265,6 +265,17 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(experimentJs, /slice\(0, 8\)/, "哈希 chip 8 位短显(共享组件)");
   assert.match(batch, /\/api\/v1\/runs\//, "所有者视图可下钻单次运行明细");
   assert.match(batch, /无模板/, "无模板批次挂中性标记");
+  // 单次运行明细时间线(可观测性设计 §8):摘要 + 筛选页签 + 折叠证据
+  assert.match(batch, /renderRunDetail/, "单次运行明细走时间线渲染函数");
+  assert.match(batch, /run-timeline/, "明细含时间线容器");
+  assert.match(batch, /detail\.timeline/, "时间线优先消费 detail.timeline(全局事件序号交织)");
+  assert.match(batch, /detail-tabs/, "明细含筛选页签(全部/模型/工具/治理/上下文)");
+  assert.match(batch, /paramStateTable/, "模型调用展示参数三态(请求值/实际发送/状态)");
+  assert.match(batch, /unsupported_params/, "不支持的参数展示原因(三态口径)");
+  assert.match(batch, /copy-json/, "JSON 块提供复制按钮");
+  assert.match(batch, /E\.esc\(JSON\.stringify\(/, "JSON 渲染经 HTML 转义,不可注入");
+  assert.match(batch, /step-bad/, "失败/拒绝步骤标记并默认展开");
+  assert.match(batch, /未命中冻结数据/, "工具步骤展示 fixture 命中状态");
   // 进度区真实性:作业 404(服务重启清内存)必须终止轮询并回刷批次终态,不能冻结在「进行中」
   assert.match(batch, /status === "gone"/, "作业 404 映射为清除终态(终止轮询)");
   assert.match(batch, /作业进度记录已随服务重启清除/, "清除态有明确文案");

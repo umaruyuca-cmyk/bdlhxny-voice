@@ -161,18 +161,21 @@ class RunControllerTest {
     @Test
     void returnsRunDetailFromRepository() throws Exception {
         UUID runId = UUID.randomUUID();
-        when(repository.getRunDetail(runId)).thenReturn(Map.of(
-                "id", runId,
-                "events", java.util.List.of(),
-                "modelCalls", java.util.List.of(),
-                "toolCalls", java.util.List.of(),
-                "guardrailChecks", java.util.List.of(),
-                "measurements", java.util.List.of(),
-                "artifacts", java.util.List.of()));
+        java.util.Map<String, Object> detail = new java.util.LinkedHashMap<>();
+        detail.put("run", Map.of("id", runId));
+        detail.put("timeline", java.util.List.of());
+        detail.put("events", java.util.List.of());
+        detail.put("modelCalls", java.util.List.of());
+        detail.put("toolCalls", java.util.List.of());
+        detail.put("guardrailChecks", java.util.List.of());
+        detail.put("measurements", java.util.List.of());
+        detail.put("artifacts", java.util.List.of());
+        when(repository.getRunDetail(runId)).thenReturn(detail);
 
         mvc.perform(get("/internal/v1/runs/{id}/detail", runId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(runId.toString()))
+                .andExpect(jsonPath("$.run.id").value(runId.toString()))
+                .andExpect(jsonPath("$.timeline").isArray())
                 .andExpect(jsonPath("$.events").isArray())
                 .andExpect(jsonPath("$.toolCalls").isArray());
     }

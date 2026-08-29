@@ -1,8 +1,11 @@
-"""统一运行遥测:九类事件、逐步明细与九段统一工件(开发计划 §4.3、评测文档 §9)。
+"""统一运行遥测:运行事件、逐步明细与九段统一工件(开发计划 §4.3、评测文档 §9)。
 
 执行器(统一原生 Tool Calling 底座)同口径产出 ``RunRecord``:
-- 九类事件流(``run_events``);
-- 每次模型调用(``model_calls`` + ``model_call_messages``)与每次工具执行(``tool_calls``);
+- 事件流(``run_events``;含 model.requested / model.result_appended 逐轮锚点,
+  见 docs/design/Agent运行链路可观测性优化设计.md §6.3);
+- 每次模型调用(``model_calls`` + ``model_call_messages``;含当轮 Tool Schema
+  与 requested/sent/unsupported 参数三态快照)与每次工具执行
+  (``tool_calls``;关联发起模型调用、模型 call_id 与全局事件序号);
 - guardrail 检查明细(``guardrail_checks``)与分阶段测量(``run_measurements``);
 - 九段统一工件(``run_artifacts`` + ARTIFACTS_DIR 文件双写,hash 可复算)。
 
@@ -31,13 +34,15 @@ from bdlh_runtime.context import (
     ContextItem,
 )
 
-# ── 事件类型(开发计划 §4.3 九类)──────────────────────────────────────────
+# ── 事件类型(开发计划 §4.3 九类 + 可观测性设计 §6.3 增补两类)──────────────
 
 EVENT_RUN_STARTED = "run.started"
 EVENT_CONTEXT_COMPLETED = "context.completed"
+EVENT_MODEL_REQUESTED = "model.requested"
 EVENT_MODEL_COMPLETED = "model.completed"
 EVENT_TOOL_REQUESTED = "tool.requested"
 EVENT_TOOL_COMPLETED = "tool.completed"
+EVENT_MODEL_RESULT_APPENDED = "model.result_appended"
 EVENT_GUARDRAIL_COMPLETED = "guardrail.completed"
 EVENT_OUTPUT_COMPLETED = "output.completed"
 EVENT_JUDGMENT_COMPLETED = "judgment.completed"
@@ -47,9 +52,11 @@ RUN_EVENT_TYPES = frozenset(
     {
         EVENT_RUN_STARTED,
         EVENT_CONTEXT_COMPLETED,
+        EVENT_MODEL_REQUESTED,
         EVENT_MODEL_COMPLETED,
         EVENT_TOOL_REQUESTED,
         EVENT_TOOL_COMPLETED,
+        EVENT_MODEL_RESULT_APPENDED,
         EVENT_GUARDRAIL_COMPLETED,
         EVENT_OUTPUT_COMPLETED,
         EVENT_JUDGMENT_COMPLETED,
@@ -134,6 +141,32 @@ def payload_hash(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
+#: 请求快照协议版本(request_payload/tool_schemas/参数列的联合协议号)
+REQUEST_SNAPSHOT_VERSION = 1
+
+
+def request_fingerprint(
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    tool_schemas: list[Any] | None = None,
+    sent_params: dict[str, Any] | None = None,
+) -> str:
+    """请求指纹:覆盖 model + 规范化 messages + 当轮 tool_schemas + sent 参数。
+
+    不能只覆盖消息——工具提供方式或模型参数改变后哈希必须变化
+    (可观测性设计 §4.3);规范化走 canonical_json(键排序 + 紧凑分隔)。
+    """
+    return payload_hash(
+        {
+            "model": model,
+            "messages": messages,
+            "toolSchemas": list(tool_schemas or []),
+            "sentParams": dict(sent_params or {}),
+        }
+    )
+
+
 def estimate_tokens(text: str | None) -> int:
     """保守字符估算(chars//4);与 ``TOKENIZER_VERSION`` 口径绑定。"""
     return max(0, len(text or "") // 4)
@@ -148,7 +181,13 @@ def _now_iso() -> str:
 
 @dataclass
 class ModelCallRow:
-    """一次模型请求:model_calls 行 + 输入消息快照(model_call_messages)。"""
+    """一次模型请求:model_calls 行 + 输入消息快照(model_call_messages)。
+
+    快照字段(可观测性设计 §4.3/§6.1):tool_schemas 为当轮实际绑定内容
+    (search 提供方式下逐轮不同);参数三态 requested/sent/unsupported 在
+    模型客户端构建完成后确定、逐调用盖章;request_hash 由 request_fingerprint
+    覆盖 model+messages+tool_schemas+sent 参数,不只覆盖消息。
+    """
 
     sequence: int
     model: str = ""
@@ -165,6 +204,12 @@ class ModelCallRow:
     decision: str = "answer"  # call_tool / answer
     tools: list[str] = field(default_factory=list)
     messages: list[dict[str, Any]] = field(default_factory=list)
+    request_snapshot_version: int = REQUEST_SNAPSHOT_VERSION
+    tool_schemas: list[dict[str, Any]] = field(default_factory=list)
+    requested_params: dict[str, Any] = field(default_factory=dict)
+    sent_params: dict[str, Any] = field(default_factory=dict)
+    unsupported_params: dict[str, Any] = field(default_factory=dict)
+    response_summary: dict[str, Any] = field(default_factory=dict)
     _t: float = 0.0
 
     def to_payload(self) -> dict[str, Any]:
@@ -180,13 +225,26 @@ class ModelCallRow:
             "retryCount": self.retry_count,
             "status": self.status,
             "errorCategory": self.error_category,
+            "decision": self.decision,
+            "requestSnapshotVersion": self.request_snapshot_version,
+            "toolSchemas": self.tool_schemas,
+            "requestedParams": self.requested_params,
+            "sentParams": self.sent_params,
+            "unsupportedParams": self.unsupported_params,
+            "responseSummary": self.response_summary,
             "messages": self.messages,
         }
 
 
 @dataclass
 class ToolCallRow:
-    """一次工具执行请求:成功/失败按执行结果,被治理拦截记 DENIED。"""
+    """一次工具执行请求:成功/失败按执行结果,被治理拦截记 DENIED。
+
+    调用关联(可观测性设计 §4.4/§6.2):model_call_sequence 指向发起本次
+    执行的模型调用,call_id 为模型生成的调用 id(与 ToolMessage.tool_call_id
+    对应),requested/completed_event_sequence 指向 run_events 全局序号,
+    三者共同重建「模型 → 工具 → 模型」真实顺序。
+    """
 
     sequence: int
     tool_name: str
@@ -200,6 +258,10 @@ class ToolCallRow:
     audit_code: str | None = None
     fixture_hit: bool = True
     error_category: str | None = None
+    model_call_sequence: int | None = None
+    call_id: str | None = None
+    requested_event_sequence: int | None = None
+    completed_event_sequence: int | None = None
     _t: float = 0.0
 
     def to_payload(self) -> dict[str, Any]:
@@ -216,6 +278,10 @@ class ToolCallRow:
             "auditCode": self.audit_code,
             "fixtureHit": self.fixture_hit,
             "errorCategory": self.error_category,
+            "modelCallSequence": self.model_call_sequence,
+            "callId": self.call_id,
+            "requestedEventSequence": self.requested_event_sequence,
+            "completedEventSequence": self.completed_event_sequence,
         }
 
 
@@ -231,6 +297,7 @@ class GuardrailCheckRow:
     reasons: list[str] = field(default_factory=list)
     tool_name: str | None = None
     tool_call_sequence: int | None = None
+    model_call_sequence: int | None = None
     duration_ms: int = 0
     detail: dict[str, Any] = field(default_factory=dict)
     _t: float = 0.0
@@ -245,6 +312,7 @@ class GuardrailCheckRow:
             "reasons": self.reasons,
             "toolName": self.tool_name,
             "toolCallSequence": self.tool_call_sequence,
+            "modelCallSequence": self.model_call_sequence,
             "durationMs": self.duration_ms,
             "detail": self.detail,
         }
@@ -341,6 +409,11 @@ class RunRecorder:
         self._guard_seq = 0
         self._started = time.perf_counter()
         self._judgment_started = 0.0
+        # 请求参数三态(模型客户端构建完成后 attach;逐模型调用盖章)
+        self._model_params: dict[str, dict[str, Any]] = {"requested": {}, "sent": {}, "unsupported": {}}
+        # 待配对的模型生成 call_id(按名称 FIFO;工具执行与治理拦截各按序消费)
+        self._pending_tool_calls: list[dict[str, str | None]] = []
+        self._last_model_sequence: int | None = None
         self.emit(
             EVENT_RUN_STARTED,
             {
@@ -352,6 +425,41 @@ class RunRecorder:
                 "model": model,
                 "repeatIndex": repeat_index,
             },
+        )
+
+    @classmethod
+    def for_template_run(
+        cls,
+        *,
+        run_id: str,
+        model: str,
+        variant_label: str = "",
+        repeat_index: int = 0,
+        message: str = "",
+        context_strategy: str = "full",
+        config_hash: str = "",
+        template_id: str = "",
+    ) -> "RunRecorder":
+        """正式模板/实验组运行的 per-run recorder(与 eval 链路同一落库协议)。
+
+        RunRecord 的 case 维度字段按模板语义填充(case_id=template_id、
+        snapshot 取配置哈希口径);agent_runs 行仍由 run_api 按注册用例另行
+        创建,本 recorder 只负责事件与明细收集,保证正式模板与评测链路
+        产出同构的 events/model_calls/tool_calls/guardrail_checks。
+        """
+        return cls(
+            run_key=run_id,
+            case_id=template_id or "template",
+            case_version=1,
+            variant_id=variant_label or "default",
+            snapshot_id=f"template:{config_hash[:12]}" if config_hash else "template",
+            snapshot_hash=config_hash,
+            agent_mode=MODE_NATIVE,
+            context_strategy=context_strategy,
+            model=model,
+            repeat_index=repeat_index,
+            message=message,
+            category="TEMPLATE",
         )
 
     # -- 事件 ---------------------------------------------------------------
@@ -374,6 +482,7 @@ class RunRecorder:
 
     def record_model_call(self, row: ModelCallRow) -> ModelCallRow:
         self.record.model_calls.append(row)
+        self._last_model_sequence = row.sequence
         self.emit(
             EVENT_MODEL_COMPLETED,
             {
@@ -417,6 +526,51 @@ class RunRecorder:
     def next_guard_sequence(self) -> int:
         self._guard_seq += 1
         return self._guard_seq
+
+    # -- 请求快照与调用关联(可观测性设计 §4.1/§4.4/§5.1)────────────────────
+
+    def attach_model_params(
+        self,
+        *,
+        requested: dict[str, Any] | None = None,
+        sent: dict[str, Any] | None = None,
+        unsupported: dict[str, Any] | None = None,
+    ) -> None:
+        """登记参数三态快照:在模型客户端完成适配后调用(采集点 §5.1),
+        之后每次模型调用盖章同一份事实——同一运行内 sent 参数不逐轮漂移。"""
+        self._model_params = {
+            "requested": dict(requested or {}),
+            "sent": dict(sent or {}),
+            "unsupported": dict(unsupported or {}),
+        }
+
+    @property
+    def model_params(self) -> dict[str, dict[str, Any]]:
+        return self._model_params
+
+    @property
+    def last_model_call_sequence(self) -> int | None:
+        return self._last_model_sequence
+
+    def stash_tool_call_ids(self, calls: list[dict[str, Any]]) -> None:
+        """记录最近一次模型响应生成的工具调用(name/callId/发起序号)。
+
+        发起序号在 stash 时即固定为本次模型调用——治理拦截行在循环结束后
+        补录,届时不能拿「最近一次模型调用」冒充发起者。
+        """
+        for call in calls:
+            if call.get("name"):
+                self._pending_tool_calls.append(
+                    {"name": str(call["name"]), "callId": call.get("callId"), "modelCallSequence": self._last_model_sequence}
+                )
+
+    def pop_pending_tool_call(self, tool_name: str) -> dict[str, Any]:
+        """按名称 FIFO 取出配对项;治理拦截行同样消费,防止队列泄漏。"""
+        for index, pending in enumerate(self._pending_tool_calls):
+            if pending["name"] == tool_name:
+                del self._pending_tool_calls[index]
+                return pending
+        return {}
 
     # -- 阶段事件 ------------------------------------------------------------
 
@@ -579,15 +733,6 @@ def _usage_of(response: Any) -> tuple[int, int, bool]:
     return 0, max(1, estimate_tokens(text)), True
 
 
-def _tool_names_of(response: Any) -> list[str]:
-    names: list[str] = []
-    for call in getattr(response, "tool_calls", None) or []:
-        name = str(call.get("name") if isinstance(call, dict) else getattr(call, "name", "")) if call else ""
-        if name:
-            names.append(name)
-    return names
-
-
 # ── RecordingLLM / RecordingExecutor:执行器同口径包装 ────────────────
 
 
@@ -598,32 +743,52 @@ class _RecordingBoundModel(Runnable):
     鸭子类型对象无法进入该管道。
     """
 
-    def __init__(self, inner: Any, recorder: RunRecorder, model_name: str) -> None:
+    def __init__(self, inner: Any, recorder: RunRecorder, model_name: str, tool_specs: list[Any] | None = None) -> None:
         super().__init__()
         self._inner = inner
         self._recorder = recorder
         self._model = model_name
+        # 当轮实际绑定给模型的 Tool Schema(bind_tools 采集点,可观测性设计 §5.1)
+        self._tool_specs = list(tool_specs or [])
 
     def invoke(self, messages: Any, config: Any = None, **kwargs: Any) -> Any:
         started = time.perf_counter()
         input_rows = snapshot_messages(list(messages))
+        _emit_model_requested(self._recorder, self._model, self._tool_specs)
         try:
             response = self._inner.invoke(messages, config=config, **kwargs)
         except Exception as exc:  # noqa: BLE001 —— 异常记录后原样抛出
-            _record_failed_model_call(self._recorder, self._model, input_rows, started, exc)
+            _record_failed_model_call(self._recorder, self._model, input_rows, started, exc, tool_specs=self._tool_specs)
             raise
-        _record_model_response(response, list(messages), self._recorder, self._model, started, input_rows=input_rows)
+        _record_model_response(
+            response,
+            list(messages),
+            self._recorder,
+            self._model,
+            started,
+            input_rows=input_rows,
+            tool_specs=self._tool_specs,
+        )
         return response
 
     async def ainvoke(self, messages: Any, config: Any = None, **kwargs: Any) -> Any:
         started = time.perf_counter()
         input_rows = snapshot_messages(list(messages))
+        _emit_model_requested(self._recorder, self._model, self._tool_specs)
         try:
             response = await self._inner.ainvoke(messages, config=config, **kwargs)
         except Exception as exc:  # noqa: BLE001 —— 异常记录后原样抛出,由调用方决定重试
-            _record_failed_model_call(self._recorder, self._model, input_rows, started, exc)
+            _record_failed_model_call(self._recorder, self._model, input_rows, started, exc, tool_specs=self._tool_specs)
             raise
-        _record_model_response(response, list(messages), self._recorder, self._model, started, input_rows=input_rows)
+        _record_model_response(
+            response,
+            list(messages),
+            self._recorder,
+            self._model,
+            started,
+            input_rows=input_rows,
+            tool_specs=self._tool_specs,
+        )
         return response
 
     async def astream(self, messages: Any, config: Any = None, **kwargs: Any) -> Any:
@@ -633,6 +798,8 @@ class _RecordingBoundModel(Runnable):
             yield await self.ainvoke(messages, config=config, **kwargs)
             return
         started = time.perf_counter()
+        input_rows = snapshot_messages(list(messages))
+        _emit_model_requested(self._recorder, self._model, self._tool_specs)
         chunks: list[Any] = []
         async for chunk in astream(messages, config=config, **kwargs):
             chunks.append(chunk)
@@ -643,7 +810,15 @@ class _RecordingBoundModel(Runnable):
                 merged = merged + item
             except TypeError:
                 merged = item
-        _record_model_response(merged, list(messages), self._recorder, self._model, started)
+        _record_model_response(
+            merged,
+            list(messages),
+            self._recorder,
+            self._model,
+            started,
+            input_rows=input_rows,
+            tool_specs=self._tool_specs,
+        )
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
@@ -653,6 +828,8 @@ class RecordingLLM(Runnable):
     """LLM 记录包装:每次模型调用记输入快照/输出/usage/耗时;异常按类别归档。
 
     仅覆盖 ``invoke``/``ainvoke``/``astream``/``bind_tools``,其余属性透传内层模型。
+    ``bind_tools`` 同时捕获当轮 Tool Schema——search 提供方式下逐轮不同,
+    必须逐模型调用保存,不以最终 ``visible_tools`` 代替历史轮次。
     """
 
     def __init__(self, inner: Any, recorder: RunRecorder, model_name: str) -> None:
@@ -662,7 +839,9 @@ class RecordingLLM(Runnable):
         self._model = model_name
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> _RecordingBoundModel:
-        return _RecordingBoundModel(self._inner.bind_tools(tools, **kwargs), self._recorder, self._model)
+        return _RecordingBoundModel(
+            self._inner.bind_tools(tools, **kwargs), self._recorder, self._model, tool_specs=list(tools or [])
+        )
 
     def invoke(self, messages: Any, config: Any = None, **kwargs: Any) -> Any:
         return _RecordingBoundModel(self._inner, self._recorder, self._model).invoke(messages, config=config, **kwargs)
@@ -680,6 +859,19 @@ class RecordingLLM(Runnable):
         return getattr(self._inner, name)
 
 
+def _emit_model_requested(recorder: RunRecorder, model_name: str, tool_specs: list[Any]) -> int:
+    """model.requested:请求已组装待发送(逐轮起点,可观测性设计 §6.3)。"""
+    names = [spec.get("function", {}).get("name", "") for spec in tool_specs if isinstance(spec, dict)]
+    return recorder.emit(
+        EVENT_MODEL_REQUESTED,
+        {
+            "model": model_name,
+            "tools": [name for name in names if name],
+            "toolSchemaHash": payload_hash(tool_specs) if tool_specs else "",
+        },
+    )
+
+
 async def _record_model_invoke(
     inner: Any,
     messages: Any,
@@ -690,6 +882,7 @@ async def _record_model_invoke(
 ) -> Any:
     started = time.perf_counter()
     input_rows = snapshot_messages(list(messages))
+    _emit_model_requested(recorder, model_name, [])
     try:
         response = await inner.ainvoke(messages, config=config, **kwargs)
     except Exception as exc:  # noqa: BLE001 —— 异常记录后原样抛出,由调用方决定重试
@@ -705,21 +898,48 @@ def _record_failed_model_call(
     input_rows: list[dict[str, Any]],
     started: float,
     exc: Exception,
+    *,
+    tool_specs: list[Any] | None = None,
 ) -> None:
     duration_ms = round((time.perf_counter() - started) * 1000)
     status, category = classify_failure(str(exc))
+    params = recorder.model_params
     recorder.record_model_call(
         ModelCallRow(
             sequence=recorder.next_model_sequence(),
             model=model_name,
-            request_hash=payload_hash(input_rows),
+            request_hash=request_fingerprint(
+                model=model_name,
+                messages=input_rows,
+                tool_schemas=tool_specs,
+                sent_params=params.get("sent") or {},
+            ),
             duration_ms=duration_ms,
             status="INVALID" if status == RUN_STATUS_INVALID else "FAILED",
             error_category=category,
             messages=input_rows,
+            tool_schemas=list(tool_specs or []),
+            requested_params=params.get("requested") or {},
+            sent_params=params.get("sent") or {},
+            unsupported_params=params.get("unsupported") or {},
             _t=started,
         )
     )
+
+
+def _tool_calls_with_ids(response: Any) -> list[dict[str, Any]]:
+    """提取模型响应生成的工具调用:(name, callId, arguments)——调用关联真源。"""
+
+    rows: list[dict[str, Any]] = []
+    for call in getattr(response, "tool_calls", None) or []:
+        if not call:
+            continue
+        name = str(call.get("name") if isinstance(call, dict) else getattr(call, "name", ""))
+        call_id = str(call.get("id") if isinstance(call, dict) else getattr(call, "id", "")) or None
+        args = call.get("args") if isinstance(call, dict) else getattr(call, "args", {})
+        if name:
+            rows.append({"name": name, "callId": call_id, "arguments": args if isinstance(args, dict) else {}})
+    return rows
 
 
 def _record_model_response(
@@ -731,6 +951,7 @@ def _record_model_response(
     *,
     input_rows: list[dict[str, Any]] | None = None,
     duration_ms: int | None = None,
+    tool_specs: list[Any] | None = None,
 ) -> None:
     if input_rows is None:
         input_rows = snapshot_messages(messages)
@@ -739,13 +960,21 @@ def _record_model_response(
     input_tokens, output_tokens, estimated = _usage_of(response)
     if estimated and input_tokens == 0:
         input_tokens = sum(int(row["tokens"]) for row in input_rows)
-    tools = _tool_names_of(response)
+    tool_calls = _tool_calls_with_ids(response)
+    tools = [call["name"] for call in tool_calls]
+    params = recorder.model_params
+    specs = list(tool_specs or [])
     response_text = message_content(response)
     recorder.record_model_call(
         ModelCallRow(
             sequence=recorder.next_model_sequence(),
             model=model_name,
-            request_hash=payload_hash(input_rows),
+            request_hash=request_fingerprint(
+                model=model_name,
+                messages=input_rows,
+                tool_schemas=specs,
+                sent_params=params.get("sent") or {},
+            ),
             response_hash=payload_hash(response_text),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -755,15 +984,30 @@ def _record_model_response(
             decision="call_tool" if tools else "answer",
             tools=tools,
             messages=input_rows,
+            tool_schemas=specs,
+            requested_params=params.get("requested") or {},
+            sent_params=params.get("sent") or {},
+            unsupported_params=params.get("unsupported") or {},
+            response_summary={
+                "decision": "call_tool" if tools else "answer",
+                "toolCalls": [
+                    {"callId": call["callId"], "name": call["name"], "arguments": call["arguments"]}
+                    for call in tool_calls
+                ],
+                "textExcerpt": response_text[:200] if response_text else "",
+            },
             _t=started,
         )
     )
+    recorder.stash_tool_call_ids(tool_calls)
 
 
 class RecordingExecutor:
     """工具执行器记录包装:tool.requested / tool.completed + tool_calls 行。
 
     ``call_log`` / ``results`` 等判官依赖的属性透传内层执行器。
+    每行关联发起模型调用(model_call_sequence)、模型生成的 call_id 与
+    tool.requested/completed 两个事件的全局序号(可观测性设计 §4.4)。
     """
 
     def __init__(self, inner: Any, recorder: RunRecorder) -> None:
@@ -773,48 +1017,74 @@ class RecordingExecutor:
     async def __call__(self, name: str, arguments: dict[str, Any]) -> Any:
         recorder = self._recorder
         sequence = recorder.next_tool_sequence()
-        recorder.emit(EVENT_TOOL_REQUESTED, {"sequence": sequence, "tool": name, "arguments": arguments})
+        requested_seq = recorder.emit(
+            EVENT_TOOL_REQUESTED, {"sequence": sequence, "tool": name, "arguments": arguments}
+        )
+        model_call_sequence = recorder.last_model_call_sequence
+        pending = recorder.pop_pending_tool_call(name)
+        call_id = pending.get("callId")
+        if pending.get("modelCallSequence") is not None:
+            model_call_sequence = pending["modelCallSequence"]
         started = time.perf_counter()
         try:
             result = await self._inner(name, arguments)
         except Exception as exc:  # noqa: BLE001 —— 失败也是一次可观察执行
             duration_ms = round((time.perf_counter() - started) * 1000)
             _status, category = classify_failure(str(exc))
-            row = ToolCallRow(
-                sequence=sequence,
-                tool_name=name,
-                arguments=dict(arguments or {}),
-                arguments_hash=payload_hash(arguments or {}),
-                status="FAILED",
-                result_summary={"error": str(exc)},
-                duration_ms=duration_ms,
-                error_category=category,
-                _t=started,
-            )
-            recorder.record_tool_call(row)
-            recorder.emit(
+            completed_seq = recorder.emit(
                 EVENT_TOOL_COMPLETED,
                 {"sequence": sequence, "tool": name, "status": "FAILED", "durationMs": duration_ms},
+            )
+            recorder.record_tool_call(
+                ToolCallRow(
+                    sequence=sequence,
+                    tool_name=name,
+                    arguments=dict(arguments or {}),
+                    arguments_hash=payload_hash(arguments or {}),
+                    status="FAILED",
+                    result_summary={"error": str(exc)},
+                    duration_ms=duration_ms,
+                    fixture_hit=False,
+                    error_category=category,
+                    model_call_sequence=model_call_sequence,
+                    call_id=call_id,
+                    requested_event_sequence=requested_seq,
+                    completed_event_sequence=completed_seq,
+                    _t=started,
+                )
             )
             raise
         duration_ms = round((time.perf_counter() - started) * 1000)
         summary = result if isinstance(result, dict) else {"value": json.dumps(result, ensure_ascii=False, default=str)}
         status = "SUCCESS" if not (isinstance(result, dict) and result.get("status") == "FAILED") else "FAILED"
-        row = ToolCallRow(
-            sequence=sequence,
-            tool_name=name,
-            arguments=dict(arguments or {}),
-            arguments_hash=payload_hash(arguments or {}),
-            status=status,
-            result_summary=summary,
-            result_hash=payload_hash(summary),
-            duration_ms=duration_ms,
-            _t=started,
-        )
-        recorder.record_tool_call(row)
-        recorder.emit(
+        # NOT_IN_FIXTURE:该组参数没有冻结返回,未命中冻结数据(设计 §6.2)
+        fixture_hit = not (isinstance(result, dict) and result.get("error_code") == "NOT_IN_FIXTURE")
+        completed_seq = recorder.emit(
             EVENT_TOOL_COMPLETED,
             {"sequence": sequence, "tool": name, "status": status, "durationMs": duration_ms},
+        )
+        recorder.record_tool_call(
+            ToolCallRow(
+                sequence=sequence,
+                tool_name=name,
+                arguments=dict(arguments or {}),
+                arguments_hash=payload_hash(arguments or {}),
+                status=status,
+                result_summary=summary,
+                result_hash=payload_hash(summary),
+                duration_ms=duration_ms,
+                fixture_hit=fixture_hit,
+                model_call_sequence=model_call_sequence,
+                call_id=call_id,
+                requested_event_sequence=requested_seq,
+                completed_event_sequence=completed_seq,
+                _t=started,
+            )
+        )
+        # ToolMessage 回填紧随执行器返回(loop.py):结果进入下一轮模型上下文
+        recorder.emit(
+            EVENT_MODEL_RESULT_APPENDED,
+            {"sequence": sequence, "tool": name, "status": status, "modelCallSequence": model_call_sequence},
         )
         return result
 
@@ -837,6 +1107,7 @@ def record_governance_audits(recorder: RunRecorder, audits: list[Any], observati
             audit_code=getattr(audit, "audit_code", None),
             reasons=[] if allowed else [f"status={audit.status}"],
             tool_name=audit.tool_name,
+            model_call_sequence=recorder.last_model_call_sequence,
             duration_ms=int(getattr(audit, "elapsed_ms", 0) or 0),
             detail={"status": str(audit.status)},
             _t=time.perf_counter(),
@@ -844,6 +1115,12 @@ def record_governance_audits(recorder: RunRecorder, audits: list[Any], observati
         if allowed:
             recorder.record_guardrail_check(row)
             continue
+        # 治理拦截的调用同样来自模型输出:消费配对项(含发起模型调用序号),
+        # 防队列泄漏;发起序号以 stash 时固定值为准,不用当前最近一次冒充
+        pending = recorder.pop_pending_tool_call(str(audit.tool_name or ""))
+        denied_model_call_sequence = (
+            pending["modelCallSequence"] if pending.get("modelCallSequence") is not None else recorder.last_model_call_sequence
+        )
         tool_row = ToolCallRow(
             sequence=recorder.next_tool_sequence(),
             tool_name=audit.tool_name,
@@ -852,6 +1129,9 @@ def record_governance_audits(recorder: RunRecorder, audits: list[Any], observati
             status="DENIED",
             duration_ms=int(getattr(audit, "elapsed_ms", 0) or 0),
             audit_code=getattr(audit, "audit_code", None),
+            fixture_hit=False,
+            model_call_sequence=denied_model_call_sequence,
+            call_id=pending.get("callId"),
             _t=time.perf_counter(),
         )
         recorder.record_tool_call(tool_row)

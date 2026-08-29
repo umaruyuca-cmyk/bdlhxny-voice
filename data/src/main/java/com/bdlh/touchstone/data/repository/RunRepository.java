@@ -5,6 +5,7 @@ import static com.bdlh.touchstone.data.domain.RunPayloads.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -363,8 +364,13 @@ public class RunRepository {
                     """
                     INSERT INTO touchstone.model_calls
                         (id, run_id, sequence, purpose, model, request_hash, response_hash,
-                         input_tokens, output_tokens, duration_ms, retry_count, status, error_category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         input_tokens, output_tokens, duration_ms, retry_count, status, error_category,
+                         decision, request_snapshot_version, request_payload, tool_schemas,
+                         requested_params, sent_params, unsupported_params, response_summary)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            NULLIF(?::jsonb, 'null'::jsonb), NULLIF(?::jsonb, 'null'::jsonb),
+                            NULLIF(?::jsonb, 'null'::jsonb), NULLIF(?::jsonb, 'null'::jsonb),
+                            NULLIF(?::jsonb, 'null'::jsonb), NULLIF(?::jsonb, 'null'::jsonb))
                     """,
                     callId,
                     runId,
@@ -378,7 +384,15 @@ public class RunRepository {
                     call.durationMs(),
                     call.retryCount(),
                     call.status(),
-                    call.errorCategory());
+                    call.errorCategory(),
+                    call.decision(),
+                    call.requestSnapshotVersion(),
+                    jsonOrNull(call.requestPayload()),
+                    jsonOrNull(call.toolSchemas()),
+                    jsonOrNull(call.requestedParams()),
+                    jsonOrNull(call.sentParams()),
+                    jsonOrNull(call.unsupportedParams()),
+                    jsonOrNull(call.responseSummary()));
             if (call.messages() == null) {
                 continue;
             }
@@ -409,26 +423,48 @@ public class RunRepository {
             jdbc.update(
                     """
                     INSERT INTO touchstone.tool_calls
-                        (id, run_id, sequence, tool_name, arguments, arguments_hash, status,
-                         result_summary, result_hash, source_time, duration_ms, audit_code,
-                         fixture_hit, error_category)
-                    VALUES (?, ?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?::timestamptz, ?, ?, ?, ?)
+                        (id, run_id, model_call_id, sequence, tool_name, arguments, arguments_hash, status,
+                         result_summary, result_ref, result_hash, source_time, duration_ms, audit_code,
+                         fixture_hit, error_category, call_id, requested_event_sequence, completed_event_sequence)
+                    VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?::jsonb, ?, ?, ?::timestamptz, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     UUID.randomUUID(),
                     runId,
+                    resolveModelCallId(runId, call.modelCallSequence()),
                     call.sequence(),
                     call.toolName(),
                     json(call.arguments()),
                     call.argumentsHash(),
                     call.status(),
                     jsonOrEmpty(call.resultSummary()),
+                    call.resultRef(),
                     call.resultHash(),
                     call.sourceTime(),
                     call.durationMs(),
                     call.auditCode(),
                     call.fixtureHit(),
-                    call.errorCategory());
+                    call.errorCategory(),
+                    call.callId(),
+                    call.requestedEventSequence(),
+                    call.completedEventSequence());
         }
+    }
+
+    /** tool_calls.model_call_id 外键解析:engine 按 (run_id, model_call sequence) 关联。 */
+    private UUID resolveModelCallId(UUID runId, Integer modelCallSequence) {
+        if (modelCallSequence == null) {
+            return null;
+        }
+        List<UUID> ids = jdbc.queryForList(
+                "SELECT id FROM touchstone.model_calls WHERE run_id = ? AND sequence = ?",
+                UUID.class,
+                runId,
+                modelCallSequence);
+        if (ids.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "tool call references unknown model_call sequence %d for run %s".formatted(modelCallSequence, runId));
+        }
+        return ids.get(0);
     }
 
     @Transactional
@@ -438,8 +474,8 @@ public class RunRepository {
                     """
                     INSERT INTO touchstone.guardrail_checks
                         (id, run_id, sequence, stage, decision, audit_code, rule_ids,
-                         reasons, tool_name, detail, duration_ms)
-                    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?)
+                         reasons, tool_name, tool_call_id, model_call_id, detail, duration_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?::jsonb, ?)
                     """,
                     UUID.randomUUID(),
                     runId,
@@ -450,9 +486,24 @@ public class RunRepository {
                     jsonOr(check.ruleIds(), "[]"),
                     jsonOr(check.reasons(), "[]"),
                     check.toolName(),
+                    resolveToolCallId(runId, check.toolCallSequence()),
+                    resolveModelCallId(runId, check.modelCallSequence()),
                     jsonOr(check.detail(), "{}"),
                     check.durationMs());
         }
+    }
+
+    /** guardrail_checks.tool_call_id 外键解析(同 model_call_id)。 */
+    private UUID resolveToolCallId(UUID runId, Integer toolCallSequence) {
+        if (toolCallSequence == null) {
+            return null;
+        }
+        List<UUID> ids = jdbc.queryForList(
+                "SELECT id FROM touchstone.tool_calls WHERE run_id = ? AND sequence = ?",
+                UUID.class,
+                runId,
+                toolCallSequence);
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     public void saveMeasurements(UUID runId, SaveMeasurementsRequest m) {
@@ -558,6 +609,8 @@ public class RunRepository {
                 FROM touchstone.agent_runs WHERE id = ?
                 """,
                 runId));
+        // JSONB 以结构化节点返回(可观测性设计 §7.1:不让前端再次 JSON.parse)
+        jsonbFields(run, "model_config", "output");
         List<Map<String, Object>> builds = jdbc.queryForList(
                 """
                 SELECT id, strategy, tokenizer_version, compression_version,
@@ -572,24 +625,39 @@ public class RunRepository {
         return run;
     }
 
-    /** /lab 运行详情:事件流 + 模型/工具/guardrail 明细 + 测量 + 工件登记。 */
+    /** 运行详情:run + 全局事件序号交织的 timeline + 各分表明细(可观测性设计 §7.1)。 */
     public Map<String, Object> getRunDetail(UUID runId) {
         Map<String, Object> run = getRun(runId);
-        run.put("events", jdbc.queryForList(
+        List<Map<String, Object>> events = jdbc.queryForList(
                 """
                 SELECT sequence, event_type, payload::text AS payload, occurred_at
                 FROM touchstone.run_events WHERE run_id = ? ORDER BY sequence
                 """,
-                runId));
-        List<Map<String, Object>> calls = jdbc.queryForList(
+                runId);
+        events.forEach(row -> jsonbFields(row, "payload"));
+        List<Map<String, Object>> modelCalls = jdbc.queryForList(
                 """
                 SELECT id, sequence, purpose, model, request_hash, response_hash,
                        input_tokens, output_tokens, duration_ms, retry_count,
-                       status, error_category
+                       status, error_category, decision, request_snapshot_version,
+                       request_payload::text AS request_payload,
+                       tool_schemas::text AS tool_schemas,
+                       requested_params::text AS requested_params,
+                       sent_params::text AS sent_params,
+                       unsupported_params::text AS unsupported_params,
+                       response_summary::text AS response_summary
                 FROM touchstone.model_calls WHERE run_id = ? ORDER BY sequence
                 """,
                 runId);
-        for (Map<String, Object> call : calls) {
+        for (Map<String, Object> call : modelCalls) {
+            jsonbFields(
+                    call,
+                    "request_payload",
+                    "tool_schemas",
+                    "requested_params",
+                    "sent_params",
+                    "unsupported_params",
+                    "response_summary");
             call.put("messages", jdbc.queryForList(
                     """
                     SELECT message_order, role, content, content_ref, tokens, content_hash
@@ -598,23 +666,26 @@ public class RunRepository {
                     """,
                     call.get("id")));
         }
-        run.put("modelCalls", calls);
-        run.put("toolCalls", jdbc.queryForList(
+        List<Map<String, Object>> toolCalls = jdbc.queryForList(
                 """
                 SELECT sequence, tool_name, arguments::text AS arguments, arguments_hash,
-                       status, result_summary::text AS result_summary, result_hash,
-                       source_time, duration_ms, audit_code, fixture_hit, error_category
+                       status, result_summary::text AS result_summary, result_ref, result_hash,
+                       source_time, duration_ms, audit_code, fixture_hit, error_category,
+                       call_id, model_call_id, requested_event_sequence, completed_event_sequence
                 FROM touchstone.tool_calls WHERE run_id = ? ORDER BY sequence
                 """,
-                runId));
-        run.put("guardrailChecks", jdbc.queryForList(
+                runId);
+        toolCalls.forEach(row -> jsonbFields(row, "arguments", "result_summary"));
+        List<Map<String, Object>> guardrailChecks = jdbc.queryForList(
                 """
                 SELECT sequence, stage, decision, audit_code, rule_ids::text AS rule_ids,
-                       reasons::text AS reasons, tool_name, detail::text AS detail, duration_ms
+                       reasons::text AS reasons, tool_name, tool_call_id, model_call_id,
+                       detail::text AS detail, duration_ms
                 FROM touchstone.guardrail_checks WHERE run_id = ? ORDER BY sequence
                 """,
-                runId));
-        run.put("measurements", jdbc.queryForList(
+                runId);
+        guardrailChecks.forEach(row -> jsonbFields(row, "rule_ids", "reasons", "detail"));
+        List<Map<String, Object>> measurements = jdbc.queryForList(
                 """
                 SELECT queue_ms, snapshot_ms, context_collect_ms, context_compress_ms,
                        tool_loading_ms, llm_ms, tool_ms, guardrail_ms, judgment_ms,
@@ -623,14 +694,107 @@ public class RunRepository {
                        compression_input_tokens, compression_output_tokens
                 FROM touchstone.run_measurements WHERE run_id = ?
                 """,
-                runId));
-        run.put("artifacts", jdbc.queryForList(
+                runId);
+        List<Map<String, Object>> artifacts = jdbc.queryForList(
                 """
                 SELECT artifact_type, storage_ref, content_hash, "public", created_at
                 FROM touchstone.run_artifacts WHERE run_id = ?
                 """,
-                runId));
-        return run;
+                runId);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("run", run);
+        detail.put("timeline", buildTimeline(events, modelCalls, toolCalls, guardrailChecks));
+        detail.put("events", events);
+        detail.put("modelCalls", modelCalls);
+        detail.put("toolCalls", toolCalls);
+        detail.put("guardrailChecks", guardrailChecks);
+        detail.put("measurements", measurements);
+        detail.put("artifacts", artifacts);
+        return detail;
+    }
+
+    /**
+     * 时间线:以 run_events.sequence(运行内全局顺序真源,设计 §6.3)为主干,
+     * 把 model.completed/tool.completed/guardrail.completed 事件与对应明细行
+     * 关联展开;model.requested 作为「等待模型」锚点保留载荷。
+     */
+    private List<Map<String, Object>> buildTimeline(
+            List<Map<String, Object>> events,
+            List<Map<String, Object>> modelCalls,
+            List<Map<String, Object>> toolCalls,
+            List<Map<String, Object>> guardrailChecks) {
+        Map<Integer, Map<String, Object>> modelBySequence = bySequence(modelCalls);
+        Map<Integer, Map<String, Object>> toolBySequence = bySequence(toolCalls);
+        Map<Integer, Map<String, Object>> guardrailBySequence = bySequence(guardrailChecks);
+        List<Map<String, Object>> timeline = new ArrayList<>();
+        for (Map<String, Object> event : events) {
+            Object rawSequence = event.get("sequence");
+            if (!(rawSequence instanceof Number number)) {
+                continue;
+            }
+            String eventType = String.valueOf(event.get("eventType"));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> payload =
+                    event.get("payload") instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+            Integer detailSequence = intValue(payload.get("sequence"));
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("sequence", number.intValue());
+            entry.put("eventType", eventType);
+            switch (eventType) {
+                case "model.completed" -> {
+                    entry.put("type", "model");
+                    Map<String, Object> modelCall = detailSequence == null ? null : modelBySequence.get(detailSequence);
+                    if (modelCall != null) {
+                        entry.put("modelCall", modelCall);
+                    } else {
+                        entry.put("payload", payload);
+                    }
+                }
+                case "model.requested" -> {
+                    entry.put("type", "model");
+                    entry.put("payload", payload);
+                }
+                case "tool.completed" -> {
+                    entry.put("type", "tool");
+                    Map<String, Object> toolCall = detailSequence == null ? null : toolBySequence.get(detailSequence);
+                    if (toolCall != null) {
+                        entry.put("toolCall", toolCall);
+                    } else {
+                        entry.put("payload", payload);
+                    }
+                }
+                case "guardrail.completed" -> {
+                    entry.put("type", "guardrail");
+                    Map<String, Object> check =
+                            detailSequence == null ? null : guardrailBySequence.get(detailSequence);
+                    if (check != null) {
+                        entry.put("guardrailCheck", check);
+                    } else {
+                        entry.put("payload", payload);
+                    }
+                }
+                default -> {
+                    entry.put("type", "event");
+                    entry.put("payload", payload);
+                }
+            }
+            timeline.add(entry);
+        }
+        return timeline;
+    }
+
+    private Map<Integer, Map<String, Object>> bySequence(List<Map<String, Object>> rows) {
+        Map<Integer, Map<String, Object>> index = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            if (row.get("sequence") instanceof Number number) {
+                index.put(number.intValue(), row);
+            }
+        }
+        return index;
+    }
+
+    private Integer intValue(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
     }
 
     private String json(JsonNode node) {
@@ -651,5 +815,23 @@ public class RunRepository {
 
     private String jsonOr(JsonNode node, String fallback) {
         return node == null ? fallback : json(node);
+    }
+
+    /** 库内 jsonb(::text 读出)→ 结构化 JSON 节点;NULL/空值返回 null 节点。 */
+    private JsonNode jsonb(Object stored) {
+        if (stored == null) {
+            return objectMapper.nullNode();
+        }
+        try {
+            return objectMapper.readTree(stored.toString());
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("stored jsonb is not valid JSON", exception);
+        }
+    }
+
+    private void jsonbFields(Map<String, Object> row, String... keys) {
+        for (String key : keys) {
+            row.put(key, jsonb(row.get(key)));
+        }
     }
 }

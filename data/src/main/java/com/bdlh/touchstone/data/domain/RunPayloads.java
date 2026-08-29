@@ -123,6 +123,11 @@ public final class RunPayloads {
             @Min(0) int tokens,
             @NotBlank String contentHash) {}
 
+    /**
+     * 单次模型调用:计量行 + 应用层请求快照(可观测性设计 §4.3/§6.1)。
+     * requestHash 覆盖 model+messages+toolSchemas+sentParams;快照 JSONB 字段
+     * 均可空(旧版本 engine 不发送时保持兼容)。
+     */
     public record ModelCallInput(
             @Min(0) int sequence,
             @NotBlank String purpose,
@@ -135,10 +140,23 @@ public final class RunPayloads {
             @Min(0) int retryCount,
             @NotBlank String status,
             String errorCategory,
+            String decision,
+            Integer requestSnapshotVersion,
+            JsonNode requestPayload,
+            JsonNode toolSchemas,
+            JsonNode requestedParams,
+            JsonNode sentParams,
+            JsonNode unsupportedParams,
+            JsonNode responseSummary,
             List<@Valid ModelCallMessageInput> messages) {}
 
     public record SaveModelCallsRequest(@NotEmpty List<@Valid ModelCallInput> calls) {}
 
+    /**
+     * 单次工具调用:含与发起模型调用、模型生成 call_id、全局事件序号的
+     * 关联字段(可观测性设计 §4.4/§6.2);modelCallSequence 由数据服务解析为
+     * tool_calls.model_call_id 外键。
+     */
     public record ToolCallInput(
             @Min(0) int sequence,
             @NotBlank String toolName,
@@ -151,10 +169,16 @@ public final class RunPayloads {
             @Min(0) long durationMs,
             String auditCode,
             boolean fixtureHit,
-            String errorCategory) {}
+            String errorCategory,
+            String callId,
+            Integer modelCallSequence,
+            Integer requestedEventSequence,
+            Integer completedEventSequence,
+            String resultRef) {}
 
     public record SaveToolCallsRequest(@NotEmpty List<@Valid ToolCallInput> calls) {}
 
+    /** 单次治理检查;toolCallSequence/modelCallSequence 解析为对应外键。 */
     public record GuardrailCheckInput(
             @Min(0) int sequence,
             @NotBlank String stage,
@@ -163,6 +187,8 @@ public final class RunPayloads {
             JsonNode ruleIds,
             JsonNode reasons,
             String toolName,
+            Integer toolCallSequence,
+            Integer modelCallSequence,
             @Min(0) long durationMs,
             JsonNode detail) {}
 

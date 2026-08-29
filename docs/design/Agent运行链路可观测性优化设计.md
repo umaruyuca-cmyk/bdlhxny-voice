@@ -1,8 +1,9 @@
 # Agent 运行链路可观测性优化设计
 
-> 状态：优化提案，尚未实施  
-> 适用范围：Touchstone 正式模板运行、长上下文 Agent 运行、所有者批次详情  
-> 更新日期：2026-08-28
+> 状态：阶段一（运行完成后可复查）已于 2026-08-29 实施；阶段二（SSE 实时）与阶段三（诊断对比）未实施
+> 实施偏差说明：事件类型未严格收敛到 §6.3 清单——`output.completed`/`judgment.completed` 因 eval 链路依赖而保留，`model.requested`/`model.result_appended` 已增补
+> 适用范围：Touchstone 正式模板运行、长上下文 Agent 运行、所有者批次详情
+> 更新日期：2026-08-29
 
 ## 1. 背景与结论
 

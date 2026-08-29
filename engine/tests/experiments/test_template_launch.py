@@ -243,14 +243,26 @@ def test_persist_template_runs_builds_create_run_payloads(monkeypatch):
     completed: list[tuple[str, dict]] = []
     saved_calls: list[tuple[str, list]] = []
     saved_measurements: list[tuple[str, dict]] = []
+    saved_events: list[tuple[str, list]] = []
+    saved_tool_calls: list[tuple[str, list]] = []
+    saved_guardrails: list[tuple[str, list]] = []
 
     class FakeData:
         def create_run(self, payload):
             created.append(payload)
             return f"run-{len(created)}"
 
+        def save_events(self, run_id, events):
+            saved_events.append((run_id, events))
+
         def save_model_calls(self, run_id, calls):
             saved_calls.append((run_id, calls))
+
+        def save_tool_calls(self, run_id, calls):
+            saved_tool_calls.append((run_id, calls))
+
+        def save_guardrail_checks(self, run_id, checks):
+            saved_guardrails.append((run_id, checks))
 
         def save_measurements(self, run_id, payload):
             saved_measurements.append((run_id, payload))
@@ -272,6 +284,19 @@ def test_persist_template_runs_builds_create_run_payloads(monkeypatch):
     assert all(row["purpose"] == "AGENT" for _, calls in saved_calls for row in calls)
     assert len(saved_measurements) == 2
     assert all(payload["promptTokens"] > 0 for _, payload in saved_measurements)
+    # 可观测性(设计 §10 阶段一):events/tool_calls/guardrail_checks 全量落库
+    assert len(saved_events) == 2
+    event_types = [event["eventType"] for _, events in saved_events for event in events]
+    assert event_types[0] == "run.started" and event_types[-1] == "run.completed"
+    assert "model.requested" in event_types and "model.completed" in event_types
+    # 工具命中 → tool_calls 行带调用关联;治理档位 off/standard 均无拦截
+    assert len(saved_tool_calls) == 2
+    for _, calls in saved_tool_calls:
+        assert calls and all(
+            row["status"] == "SUCCESS" and row["modelCallSequence"] == 1 and row["callId"] == "c1"
+            for row in calls
+        )
+    assert len(saved_guardrails) == 2
 
 
 # ── 阻断1:匿名模板任务(服务层,替身执行器) ────────────────────────────────
@@ -417,7 +442,14 @@ async def test_all_mode_restricted_tool_visible_but_blocked_for_guest():
     )
     assert "document.summarize" in record.visible_tools  # 对模型可见
     assert any(row.get("audit_code") == "AUTHENTICATION_REQUIRED" for row in record.audits)  # 执行被拦
-    assert not [row for row in record.tool_calls if row["tool"] == "document.summarize"]
+    # 治理拦截保留 DENIED 明细行(可观测性设计 §12.3):无真实执行、
+    # 未命中冻结数据,并关联发起模型调用与模型生成的 call_id
+    denied = [row for row in record.tool_calls if row["toolName"] == "document.summarize"]
+    assert denied and all(
+        row["status"] == "DENIED" and row["fixtureHit"] is False and row["callId"] == "c1"
+        and row["modelCallSequence"] == 1
+        for row in denied
+    )
 
 
 # ── 阻断3:证据记录实际装载集合 ─────────────────────────────────────────────
@@ -879,9 +911,16 @@ def test_native_agent_captures_real_token_usage():
     assert record.tokens_estimated is False
     assert [row["purpose"] for row in record.model_calls] == ["AGENT", "AGENT"]
     assert all(row["inputTokens"] > 0 for row in record.model_calls)
-    # 报告防膨胀:计量摘要不含消息快照,request_hash 供对账
-    assert all("messages" not in row for row in record.model_calls)
+    # 可观测性改造后 model_calls 保留完整快照(设计 §5.2):逐轮消息/
+    # 当轮 Tool Schema/参数三态/request_hash 覆盖请求全量
+    assert all(row["messages"] for row in record.model_calls)
+    assert all(row["toolSchemas"] for row in record.model_calls)
     assert all(row["requestHash"] for row in record.model_calls)
+    assert all(row["requestSnapshotVersion"] == 1 for row in record.model_calls)
+    # 两轮请求消息不同(第一轮有系统+用户,第二轮多出工具消息)
+    assert record.model_calls[0]["messages"] != record.model_calls[1]["messages"]
+    # all 模式:每轮绑定 Schema 一致(设计 §12.3);search 模式的逐轮差异见 test_tool_delivery
+    assert record.model_calls[0]["toolSchemas"] == record.model_calls[1]["toolSchemas"]
 
 
 def test_native_agent_estimates_when_usage_missing():

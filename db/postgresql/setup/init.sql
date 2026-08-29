@@ -524,22 +524,33 @@ ALTER TABLE touchstone.context_items
     ADD COLUMN valid_to_time TIMESTAMPTZ;
 
 -- 一次模型请求一行，包括主 Agent、上下文压缩和评测模型调用。
+-- 快照列(request_payload/tool_schemas/参数三态/decision/response_summary)见
+-- changes/20260829-run-observability-snapshot.sql:每轮保存实际绑定内容,
+-- request_hash 覆盖 model + messages + tool_schemas + sent parameters。
 CREATE TABLE touchstone.model_calls (
-    id                  UUID PRIMARY KEY,
-    run_id              UUID NOT NULL REFERENCES touchstone.agent_runs(id) ON DELETE CASCADE,
-    sequence            INTEGER NOT NULL,
-    purpose             VARCHAR(30) NOT NULL,
-    model               VARCHAR(100) NOT NULL,
-    request_hash        VARCHAR(100) NOT NULL,
-    response_hash       VARCHAR(100),
-    input_tokens        INTEGER NOT NULL DEFAULT 0,
-    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens       INTEGER NOT NULL DEFAULT 0,
-    duration_ms         BIGINT NOT NULL DEFAULT 0,
-    retry_count         INTEGER NOT NULL DEFAULT 0,
-    status              VARCHAR(30) NOT NULL,
-    error_category      VARCHAR(100),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                       UUID PRIMARY KEY,
+    run_id                   UUID NOT NULL REFERENCES touchstone.agent_runs(id) ON DELETE CASCADE,
+    sequence                 INTEGER NOT NULL,
+    purpose                  VARCHAR(30) NOT NULL,
+    model                    VARCHAR(100) NOT NULL,
+    request_hash             VARCHAR(100) NOT NULL,
+    response_hash            VARCHAR(100),
+    input_tokens             INTEGER NOT NULL DEFAULT 0,
+    cached_input_tokens      INTEGER NOT NULL DEFAULT 0,
+    output_tokens            INTEGER NOT NULL DEFAULT 0,
+    duration_ms              BIGINT NOT NULL DEFAULT 0,
+    retry_count              INTEGER NOT NULL DEFAULT 0,
+    status                   VARCHAR(30) NOT NULL,
+    error_category           VARCHAR(100),
+    request_snapshot_version INTEGER,
+    request_payload          JSONB,
+    tool_schemas             JSONB,
+    requested_params         JSONB,
+    sent_params              JSONB,
+    unsupported_params       JSONB,
+    decision                 VARCHAR(20),
+    response_summary         JSONB,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (run_id, sequence),
     UNIQUE (id, run_id),
     CONSTRAINT model_call_purpose_valid CHECK (purpose IN ('AGENT', 'COMPRESSION', 'JUDGMENT')),
@@ -551,24 +562,30 @@ CREATE TABLE touchstone.model_calls (
 );
 
 -- 工具调用单独存储，网页可以直接展示工具选择、参数、来源和耗时。
+-- call_id/requested_event_sequence/completed_event_sequence 见
+-- changes/20260829-run-observability-snapshot.sql:与发起模型调用、模型生成的
+-- call_id、全局事件序号三方关联,稳定重建「模型 → 工具 → 模型」顺序。
 CREATE TABLE touchstone.tool_calls (
-    id                  UUID PRIMARY KEY,
-    run_id              UUID NOT NULL REFERENCES touchstone.agent_runs(id) ON DELETE CASCADE,
-    model_call_id       UUID,
-    sequence            INTEGER NOT NULL,
-    tool_name           VARCHAR(200) NOT NULL,
-    arguments           JSONB NOT NULL,
-    arguments_hash      VARCHAR(100) NOT NULL,
-    status              VARCHAR(30) NOT NULL,
-    result_summary      JSONB NOT NULL DEFAULT '{}'::jsonb,
-    result_ref          TEXT,
-    result_hash         VARCHAR(100),
-    source_time         TIMESTAMPTZ,
-    duration_ms         BIGINT NOT NULL DEFAULT 0,
-    audit_code          VARCHAR(100),
-    fixture_hit         BOOLEAN NOT NULL DEFAULT FALSE,
-    error_category      VARCHAR(100),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                       UUID PRIMARY KEY,
+    run_id                   UUID NOT NULL REFERENCES touchstone.agent_runs(id) ON DELETE CASCADE,
+    model_call_id            UUID,
+    sequence                 INTEGER NOT NULL,
+    tool_name                VARCHAR(200) NOT NULL,
+    arguments                JSONB NOT NULL,
+    arguments_hash           VARCHAR(100) NOT NULL,
+    status                   VARCHAR(30) NOT NULL,
+    result_summary           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    result_ref               TEXT,
+    result_hash              VARCHAR(100),
+    source_time              TIMESTAMPTZ,
+    duration_ms              BIGINT NOT NULL DEFAULT 0,
+    audit_code               VARCHAR(100),
+    fixture_hit              BOOLEAN NOT NULL DEFAULT FALSE,
+    error_category           VARCHAR(100),
+    call_id                  VARCHAR(128),
+    requested_event_sequence INTEGER,
+    completed_event_sequence INTEGER,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (run_id, sequence),
     FOREIGN KEY (model_call_id, run_id)
         REFERENCES touchstone.model_calls(id, run_id),
@@ -577,6 +594,10 @@ CREATE TABLE touchstone.tool_calls (
     ),
     CONSTRAINT tool_call_numbers_valid CHECK (sequence >= 0 AND duration_ms >= 0)
 );
+
+CREATE INDEX IF NOT EXISTS idx_tool_calls_model_call
+    ON touchstone.tool_calls (model_call_id)
+    WHERE model_call_id IS NOT NULL;
 
 -- 网页常用的 token、成本和分阶段耗时放在固定列中，便于 SQL 聚合 p50/p95。
 CREATE TABLE touchstone.run_measurements (

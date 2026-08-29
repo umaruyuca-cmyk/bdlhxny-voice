@@ -270,3 +270,113 @@ def test_event_payload_keys_match_data_service_contract():
     assert event["eventType"] == EVENT_RUN_STARTED
     assert isinstance(event["payload"], dict) and event["payload"]
     assert event["occurredAt"]
+
+
+# ── 可观测性快照(设计 §4/§5/§6):Schema 捕获/请求指纹/调用关联/事件锚点 ────
+
+
+@pytest.mark.asyncio
+async def test_recording_captures_bound_tool_schemas_and_param_states() -> None:
+    """bind_tools 捕获当轮 Schema;参数三态逐调用盖章;请求指纹不只覆盖消息。"""
+    from bdlh_runtime.evaluation.run_telemetry import REQUEST_SNAPSHOT_VERSION, payload_hash
+
+    recorder = _recorder()
+    recorder.attach_model_params(
+        requested={"temperature": 0.1, "tool_choice": "auto"},
+        sent={"temperature": 0.1, "max_output_tokens": 1200},
+        unsupported={"tool_choice": "当前适配器未显式发送,由模型自行决定"},
+    )
+    specs = [
+        {
+            "type": "function",
+            "function": {
+                "name": "market.get_realtime_quote",
+                "description": "读取实时行情",
+                "parameters": {"type": "object", "properties": {"symbol": {"type": "string"}}},
+            },
+        }
+    ]
+    await RecordingLLM(ScriptedToolModel(), recorder, "glm-4.7-flash").bind_tools(specs).ainvoke(
+        [SystemMessage(content="s"), HumanMessage(content="q")]
+    )
+    row = recorder.record.model_calls[0]
+    assert row.tool_schemas == specs
+    assert row.request_snapshot_version == REQUEST_SNAPSHOT_VERSION
+    assert row.requested_params["temperature"] == 0.1
+    assert row.sent_params["max_output_tokens"] == 1200
+    assert row.unsupported_params["tool_choice"]
+    # request_hash 覆盖 model+messages+tool_schemas+sent 参数,不等于消息哈希
+    assert row.request_hash.startswith("sha256:")
+    assert row.request_hash != payload_hash(row.messages)
+    # 响应摘要:可观察决策 + 模型生成的 tool_calls(call_id)
+    assert row.response_summary["decision"] == "call_tool"
+    assert row.response_summary["toolCalls"][0]["callId"] == "c1"
+
+
+def test_request_fingerprint_changes_when_schema_or_params_change() -> None:
+    """消息、工具 Schema 或发送参数任一变化 → 指纹必须变化(设计 §4.3/§12.1)。"""
+    from bdlh_runtime.evaluation.run_telemetry import request_fingerprint
+
+    messages = [{"messageOrder": 0, "role": "user", "content": "q", "tokens": 1, "contentHash": "x"}]
+    specs_a = [{"type": "function", "function": {"name": "a"}}]
+    specs_b = [{"type": "function", "function": {"name": "b"}}]
+    base = request_fingerprint(model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1})
+    assert base != request_fingerprint(model="m", messages=messages, tool_schemas=specs_b, sent_params={"temperature": 0.1})
+    assert base != request_fingerprint(model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.2})
+    assert base != request_fingerprint(model="other", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1})
+    # 全量相同 → 指纹稳定复算
+    assert base == request_fingerprint(model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1})
+
+
+class NotInFixtureExecutor:
+    """返回 NOT_IN_FIXTURE 的执行器(未命中冻结数据)。"""
+
+    async def __call__(self, name: str, arguments: dict) -> dict:
+        return {"status": "error", "error_code": "NOT_IN_FIXTURE", "message": "no fixture", "simulated": True}
+
+
+@pytest.mark.asyncio
+async def test_tool_call_rows_link_model_call_and_mark_not_in_fixture() -> None:
+    """工具行关联发起模型调用/call_id/事件序号;NOT_IN_FIXTURE → fixture_hit=false。"""
+    from bdlh_runtime.evaluation.run_telemetry import EVENT_MODEL_REQUESTED, EVENT_MODEL_RESULT_APPENDED
+
+    recorder = _recorder()
+    bound = RecordingLLM(ScriptedToolModel(), recorder, "glm-4.7-flash").bind_tools([])
+    await bound.ainvoke([HumanMessage(content="q")])
+    await RecordingExecutor(NotInFixtureExecutor(), recorder)(
+        "market.get_realtime_quote", {"symbol": "300750"}
+    )
+    row = recorder.record.tool_calls[0]
+    assert row.fixture_hit is False
+    assert row.status == "SUCCESS"  # 未命中冻结不冒充 FAILED;命中状态经 fixture_hit 区分
+    assert row.model_call_sequence == 1
+    assert row.call_id == "c1"
+    assert row.requested_event_sequence is not None and row.completed_event_sequence is not None
+    assert row.completed_event_sequence > row.requested_event_sequence
+    # 事件锚点:model.requested 在每次模型调用前;result_appended 紧随 tool.completed
+    event_types = [event["eventType"] for event in recorder.record.events]
+    assert EVENT_MODEL_REQUESTED in event_types
+    assert event_types[event_types.index(EVENT_TOOL_COMPLETED) + 1] == EVENT_MODEL_RESULT_APPENDED
+
+
+def test_governance_denied_row_consumes_pending_call_pairing() -> None:
+    """治理拦截行消费配对队列:call_id 归属发起模型调用,队列不泄漏。"""
+    recorder = _recorder()
+    audit = SimpleNamespace(
+        caller="guest",
+        tool_name="portfolio.get_current_positions",
+        arguments_summary="{}",
+        elapsed_ms=1,
+        status="REJECTED",
+        audit_code="G3-AUTH-001",
+    )
+    # 模拟模型已发起调用(工具未经执行器):直接登记最近模型调用序号并 stash 配对项
+    recorder._last_model_sequence = 1
+    recorder.stash_tool_call_ids([{"name": "portfolio.get_current_positions", "callId": "c9"}])
+    record_governance_audits(recorder, [audit], [])
+    denied = recorder.record.tool_calls[-1]
+    assert denied.status == "DENIED"
+    assert denied.fixture_hit is False
+    assert denied.call_id == "c9"
+    assert denied.model_call_sequence == 1
+    assert recorder.pop_pending_tool_call("portfolio.get_current_positions") == {}
