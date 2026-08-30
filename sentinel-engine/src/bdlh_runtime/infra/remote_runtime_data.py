@@ -26,6 +26,22 @@ class RuntimeDataClient:
         self._base_url = base_url.rstrip("/")
         self._internal_token = internal_token
         self._request = request
+        # 复用 keep-alive 连接池；一次 /chat/stream 会经此客户端发 5-8 个请求，
+        # 逐请求新建连接（TCP/TLS 握手）在 10Hz 轮询下开销显著。惰性创建，
+        # 注入 request 的测试路径不触发。
+        self._http: Any = None
+
+    def _shared_http_client(self) -> Any:
+        if self._http is None:
+            import httpx
+
+            self._http = httpx.Client(timeout=10.0)
+        return self._http
+
+    def close(self) -> None:
+        if self._http is not None:
+            self._http.close()
+            self._http = None
 
     def call(
         self,
@@ -55,16 +71,13 @@ class RuntimeDataClient:
                 response.raise_for_status()
                 return response.json() if status_code != 204 else {}
 
-            import httpx
-
-            with httpx.Client(timeout=10.0) as client:
-                response = client.request(
-                    method,
-                    f"{self._base_url}{path}",
-                    params=params,
-                    json=payload,
-                    headers=headers,
-                )
+            response = self._shared_http_client().request(
+                method,
+                f"{self._base_url}{path}",
+                params=params,
+                json=payload,
+                headers=headers,
+            )
             if response.status_code == 404 and allow_not_found:
                 return None
             response.raise_for_status()
@@ -88,12 +101,9 @@ class RuntimeDataClient:
                 response = self._request(method=method, path=path, params=query or {}, json=payload, headers=headers)
                 response.raise_for_status()
                 return response.json()
-            import httpx
-
-            with httpx.Client(timeout=10.0) as client:
-                response = client.request(
-                    method, f"{self._base_url}{path}", params=query or {}, json=payload, headers=headers
-                )
+            response = self._shared_http_client().request(
+                method, f"{self._base_url}{path}", params=query or {}, json=payload, headers=headers
+            )
             response.raise_for_status()
             return response.json()
         except Exception as exc:

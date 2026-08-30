@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 class EncoderUnavailableError(RuntimeError):
@@ -49,6 +49,24 @@ class QwenEmbeddingEncoder:
         self._timeout_seconds = timeout_seconds
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
         self._cache_size = cache_size
+        # 惰性创建、跨调用复用：启动期预编码与查询侧缓存未命中共用一个
+        # keep-alive 连接池，逐请求握手是纯开销。调用方经线程池并发访问，
+        # httpx.Client 并发请求线程安全。
+        self._http: Any = None
+
+    def _shared_http_client(self) -> Any:
+        if self._http is None:
+            import httpx
+
+            # trust_env=False：向量服务是内网/容器网调用，禁止被系统代理
+            # （Windows 注册表代理等）截走——否则 localhost 请求会被代理打成 502。
+            self._http = httpx.Client(timeout=self._timeout_seconds, trust_env=False)
+        return self._http
+
+    def close(self) -> None:
+        if self._http is not None:
+            self._http.close()
+            self._http = None
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         results: list[list[float] | None] = []
@@ -74,22 +92,17 @@ class QwenEmbeddingEncoder:
         return [vector if vector is not None else [] for vector in results]
 
     def _encode_remote(self, texts: list[str]) -> list[list[float]]:
-        import httpx
-
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         try:
-            # trust_env=False：向量服务是内网/容器网调用，禁止被系统代理
-            # （Windows 注册表代理等）截走——否则 localhost 请求会被代理打成 502。
-            with httpx.Client(timeout=self._timeout_seconds, trust_env=False) as client:
-                response = client.post(
-                    self._endpoint,
-                    headers=headers,
-                    json={"model": self._model, "input": texts},
-                )
-                response.raise_for_status()
-                payload = response.json()
+            response = self._shared_http_client().post(
+                self._endpoint,
+                headers=headers,
+                json={"model": self._model, "input": texts},
+            )
+            response.raise_for_status()
+            payload = response.json()
         except Exception as exc:  # noqa: BLE001
             raise EncoderUnavailableError(f"Qwen 向量服务不可用（{self._endpoint}）：{type(exc).__name__}") from exc
         try:
