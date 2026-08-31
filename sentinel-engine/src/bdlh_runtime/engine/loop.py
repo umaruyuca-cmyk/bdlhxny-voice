@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from collections.abc import Sequence
@@ -230,8 +231,13 @@ class AgentLoop:
         )
 
 
+@functools.cache
 def load_prompt(*filenames: str) -> str:
-    """从 ``prompts/`` 加载并拼接；文件缺失即失败，禁止内联兜底。"""
+    """从 ``prompts/`` 加载并拼接；文件缺失即失败，禁止内联兜底。
+
+    提示文件是契约真源、运行期不变，lru_cache 避免每条消息重复读盘；
+    缺失文件抛错不会进缓存。
+    """
     chunks: list[str] = []
     for name in filenames:
         path = _PROMPTS_DIR / name
