@@ -21,13 +21,16 @@ def runs_from_report(report: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 
 def report_meta(report: dict[str, Any] | None) -> dict[str, Any]:
-    """实验定义元数据:模板标识与冻结条件哈希(可比性校验的锚点)。"""
+    """实验定义元数据:模板标识、冻结条件哈希与正式样本门槛。"""
     if not isinstance(report, dict):
         return {}
     version = report.get("template_version")
+    fixed_conditions = report.get("fixed_conditions")
+    formal_min = fixed_conditions.get("formal_min_repeat_count") if isinstance(fixed_conditions, dict) else None
     return {
         "template_id": str(report.get("template_id") or ""),
         "template_version": int(version) if isinstance(version, int) else None,
         "fixed_conditions_hash": str(report.get("fixed_conditions_hash") or ""),
+        "formal_min_repeat_count": int(formal_min) if isinstance(formal_min, int) else None,
         "budget_terminated": report.get("budget_terminated"),
     }

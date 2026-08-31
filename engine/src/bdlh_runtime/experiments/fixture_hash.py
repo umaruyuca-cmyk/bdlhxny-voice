@@ -10,9 +10,7 @@ import hashlib
 import json
 from typing import Any
 
-ALLOWED_MOCK_STATUSES = frozenset(
-    {"success", "empty", "timeout", "denied", "stale", "conflict", "error"}
-)
+ALLOWED_MOCK_STATUSES = frozenset({"success", "empty", "timeout", "denied", "stale", "conflict", "error"})
 ALLOWED_MATCH_MODES = frozenset({"subset", "exact"})
 
 

@@ -42,55 +42,26 @@ FINANCE_DESCRIPTION_OVERLAYS: dict[str, str] = {
         "用于「某标的是哪个代码」。检索关键词：证券代码、标的解析。"
     ),
     "market.get_realtime_quote": (
-        "查询一只证券的最新公开报价（最新价、涨跌幅、成交额）。"
-        "用于「现在什么价」。检索关键词：实时报价、最新价、涨跌。"
+        "查询一只证券的最新公开报价（最新价、涨跌幅、成交额）。用于「现在什么价」。检索关键词：实时报价、最新价、涨跌。"
     ),
     "market.get_historical_prices": (
-        "查询一只证券的历史 OHLCV 价格序列。"
-        "用于「近一年走势」。检索关键词：历史价格、K线、OHLCV。"
+        "查询一只证券的历史 OHLCV 价格序列。用于「近一年走势」。检索关键词：历史价格、K线、OHLCV。"
     ),
-    "market.get_financial_statements": (
-        "查询一只证券的标准化财务报表。"
-        "用于「营收多少」。检索关键词：财报、三大报表。"
-    ),
-    "market.get_valuation": (
-        "查询一只证券的估值指标。"
-        "用于「估值高不高」。检索关键词：估值、市盈率、市净率。"
-    ),
-    "market.get_industry_context": (
-        "查询标的所属行业与行业背景。检索关键词：行业、板块。"
-    ),
-    "market.get_money_flow": (
-        "查询标的资金流向摘要。检索关键词：资金流。"
-    ),
-    "market.get_news": (
-        "查询标的结构化新闻。检索关键词：新闻、资讯。"
-    ),
-    "research.web_search": (
-        "检索外部公开资料并带来源返回。检索关键词：公开检索、网页来源。"
-    ),
-    "research.deep_search": (
-        "对公开资料做多步交叉核验并带回证据链。检索关键词：深度研究、证据链。"
-    ),
+    "market.get_financial_statements": ("查询一只证券的标准化财务报表。用于「营收多少」。检索关键词：财报、三大报表。"),
+    "market.get_valuation": ("查询一只证券的估值指标。用于「估值高不高」。检索关键词：估值、市盈率、市净率。"),
+    "market.get_industry_context": ("查询标的所属行业与行业背景。检索关键词：行业、板块。"),
+    "market.get_money_flow": ("查询标的资金流向摘要。检索关键词：资金流。"),
+    "market.get_news": ("查询标的结构化新闻。检索关键词：新闻、资讯。"),
+    "research.web_search": ("检索外部公开资料并带来源返回。检索关键词：公开检索、网页来源。"),
+    "research.deep_search": ("对公开资料做多步交叉核验并带回证据链。检索关键词：深度研究、证据链。"),
     "analysis.run_analysis": (
-        "对已标准化的结构化数据执行确定性分析，返回类型化结果。"
-        "检索关键词：分析引擎、诊断、评分。"
+        "对已标准化的结构化数据执行确定性分析，返回类型化结果。检索关键词：分析引擎、诊断、评分。"
     ),
-    "portfolio.get_current_positions": (
-        "读取当前登录用户的持仓列表（需登录）。检索关键词：持仓、仓位。"
-    ),
-    "portfolio.get_account_snapshot": (
-        "读取当前登录用户的账户快照（需登录）。检索关键词：账户、现金、资产。"
-    ),
-    "portfolio.get_transaction_history": (
-        "读取已发生交易的历史记录（只读，需登录）。检索关键词：成交历史。"
-    ),
-    "portfolio.build_current_valuation": (
-        "基于最新报价对当前持仓做确定性估值重算（需登录）。检索关键词：估值重算。"
-    ),
-    "user.get_risk_profile": (
-        "读取当前登录用户的风险画像（需登录）。检索关键词：风险画像、风险偏好。"
-    ),
+    "portfolio.get_current_positions": ("读取当前登录用户的持仓列表（需登录）。检索关键词：持仓、仓位。"),
+    "portfolio.get_account_snapshot": ("读取当前登录用户的账户快照（需登录）。检索关键词：账户、现金、资产。"),
+    "portfolio.get_transaction_history": ("读取已发生交易的历史记录（只读，需登录）。检索关键词：成交历史。"),
+    "portfolio.build_current_valuation": ("基于最新报价对当前持仓做确定性估值重算（需登录）。检索关键词：估值重算。"),
+    "user.get_risk_profile": ("读取当前登录用户的风险画像（需登录）。检索关键词：风险画像、风险偏好。"),
 }
 
 _OUTPUT_KEYWORDS_C1 = (

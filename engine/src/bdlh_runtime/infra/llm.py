@@ -82,10 +82,10 @@ def capabilities_of(llm: Any) -> ModelCapability:
     if isinstance(declared, ModelCapability):
         return declared
     if isinstance(declared, Mapping):
-        return replace(adapter_default_capability(), **{
-            key: bool(value) for key, value in declared.items()
-            if key in ModelCapability.__dataclass_fields__
-        })
+        return replace(
+            adapter_default_capability(),
+            **{key: bool(value) for key, value in declared.items() if key in ModelCapability.__dataclass_fields__},
+        )
     if llm is None:
         return replace(
             adapter_default_capability(),

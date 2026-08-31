@@ -94,9 +94,7 @@ class CallDependency:
             from_tool, from_path = _longest_tool_prefix(str(payload["from"]), tools)
             to_tool, to_argument = _longest_tool_prefix(str(payload["to"]), tools)
             if not to_argument:
-                raise DependencyFormatError(
-                    f"旧格式目标缺少参数名,无法转换:{payload.get('to')!r}"
-                )
+                raise DependencyFormatError(f"旧格式目标缺少参数名,无法转换:{payload.get('to')!r}")
             return cls(
                 from_tool=from_tool,
                 from_path=from_path,
@@ -222,9 +220,7 @@ class CallRelationSpec:
             optional_calls=tuple(str(name) for name in payload.get("optional_calls") or ()),
             forbidden_calls=tuple(str(name) for name in payload.get("forbidden_calls") or ()),
             confirmation_required=tuple(str(name) for name in payload.get("confirmation_required") or ()),
-            stop_when_facts_available=tuple(
-                str(fact) for fact in payload.get("stop_when_facts_available") or ()
-            ),
+            stop_when_facts_available=tuple(str(fact) for fact in payload.get("stop_when_facts_available") or ()),
         )
 
 
@@ -336,9 +332,7 @@ def judge_run(
     for dep in spec.required_dependencies:
         label = f"{dep.from_ref} -> {dep.to_ref}"
         judgment.dependencies[label] = False
-        from_calls = [
-            call for call in calls if call.tool == dep.from_tool and call.status in _SOURCE_OK_STATUSES
-        ]
+        from_calls = [call for call in calls if call.tool == dep.from_tool and call.status in _SOURCE_OK_STATUSES]
         for from_call in from_calls:
             source_value = _lookup_path(from_call.result, dep.from_path)
             if source_value is None:
@@ -358,18 +352,13 @@ def judge_run(
     # 3) acceptable_alternatives:至少一组全部命中(参数正确即可,状态同上)
     for index, group in enumerate(spec.acceptable_alternatives):
         if all(
-            any(
-                call.tool == required.tool and _arguments_match(required.arguments, call.arguments)
-                for call in calls
-            )
+            any(call.tool == required.tool and _arguments_match(required.arguments, call.arguments) for call in calls)
             for required in group
         ):
             judgment.alternatives_satisfied.append(index)
 
     # 4) forbidden_calls
-    judgment.forbidden_violations = sorted(
-        {call.tool for call in calls if call.tool in set(spec.forbidden_calls)}
-    )
+    judgment.forbidden_violations = sorted({call.tool for call in calls if call.tool in set(spec.forbidden_calls)})
 
     # 5) confirmation_required:自主运行中调用 = 未经确认执行
     judgment.confirmation_violations = sorted(

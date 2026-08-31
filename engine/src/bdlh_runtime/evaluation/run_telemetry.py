@@ -441,7 +441,7 @@ class RunRecorder:
         context_strategy: str = "full",
         config_hash: str = "",
         template_id: str = "",
-    ) -> "RunRecorder":
+    ) -> RunRecorder:
         """正式模板/实验组运行的 per-run recorder(与 eval 链路同一落库协议)。
 
         RunRecord 的 case 维度字段按模板语义填充(case_id=template_id、
@@ -571,7 +571,11 @@ class RunRecorder:
         for call in calls:
             if call.get("name"):
                 self._pending_tool_calls.append(
-                    {"name": str(call["name"]), "callId": call.get("callId"), "modelCallSequence": self._last_model_sequence}
+                    {
+                        "name": str(call["name"]),
+                        "callId": call.get("callId"),
+                        "modelCallSequence": self._last_model_sequence,
+                    }
                 )
 
     def pop_pending_tool_call(self, tool_name: str) -> dict[str, Any]:
@@ -781,7 +785,9 @@ class _RecordingBoundModel(Runnable):
         try:
             response = self._inner.invoke(messages, config=config, **kwargs)
         except Exception as exc:  # noqa: BLE001 —— 异常记录后原样抛出
-            _record_failed_model_call(self._recorder, self._model, input_rows, started, exc, tool_specs=self._tool_specs)
+            _record_failed_model_call(
+                self._recorder, self._model, input_rows, started, exc, tool_specs=self._tool_specs
+            )
             raise
         _record_model_response(
             response,
@@ -801,7 +807,9 @@ class _RecordingBoundModel(Runnable):
         try:
             response = await self._inner.ainvoke(messages, config=config, **kwargs)
         except Exception as exc:  # noqa: BLE001 —— 异常记录后原样抛出,由调用方决定重试
-            _record_failed_model_call(self._recorder, self._model, input_rows, started, exc, tool_specs=self._tool_specs)
+            _record_failed_model_call(
+                self._recorder, self._model, input_rows, started, exc, tool_specs=self._tool_specs
+            )
             raise
         _record_model_response(
             response,
@@ -1142,7 +1150,9 @@ def record_governance_audits(recorder: RunRecorder, audits: list[Any], observati
         # 防队列泄漏;发起序号以 stash 时固定值为准,不用当前最近一次冒充
         pending = recorder.pop_pending_tool_call(str(audit.tool_name or ""))
         denied_model_call_sequence = (
-            pending["modelCallSequence"] if pending.get("modelCallSequence") is not None else recorder.last_model_call_sequence
+            pending["modelCallSequence"]
+            if pending.get("modelCallSequence") is not None
+            else recorder.last_model_call_sequence
         )
         tool_row = ToolCallRow(
             sequence=recorder.next_tool_sequence(),
@@ -1245,9 +1255,8 @@ def context_build_payload(
                 "reason": decision.reason,
                 "inputTokens": decision.input_tokens,
                 "outputTokens": decision.output_tokens,
-                # 构建器不保留逐条渲染文本;压缩产物聚合在产出消息(working context)中
-                "outputContent": None,
-                "outputHash": None,
+                "outputContent": decision.output_content,
+                "outputHash": payload_hash(decision.output_content) if decision.output_content else None,
                 "referenceId": decision.source_id or (source_item.source_id if source_item else None),
                 "decisionOrder": order,
             }

@@ -111,12 +111,8 @@ def test_all_applies_exclusions():
 def test_search_and_all_share_eligible_catalog():
     catalog, _ = build_template_catalog(_VISIBLE)
     all_loader = ToolLoader(catalog, tool_loading="all")
-    search_loader = ToolLoader(
-        catalog, tool_loading="search", encoder=BigramEncoder(), search_base="catalog"
-    )
-    assert [card.name for card in search_loader.eligible_catalog()] == [
-        card.name for card in all_loader.load_all()
-    ]
+    search_loader = ToolLoader(catalog, tool_loading="search", encoder=BigramEncoder(), search_base="catalog")
+    assert [card.name for card in search_loader.eligible_catalog()] == [card.name for card in all_loader.load_all()]
     assert search_loader.fallback_policy == "none"  # 新正式口径不回退
 
 
@@ -143,11 +139,13 @@ async def test_excluded_tool_not_in_search_results_nor_executed():
         run_config=_search_config(**{"tools.excluded_tools": ["weather.get_forecast"]}),
         message="查上海天气",
         visible_tools=_VISIBLE,
-        llm=FakeChatModel([
-            _call(SEARCH_TOOLS_NAME, {"query": "天气 预报", "top_k": 3}, "c0"),
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),  # 已排除 → 拒绝
-            AIMessage(content="抱歉,当前没有可用的天气工具。"),
-        ]),
+        llm=FakeChatModel(
+            [
+                _call(SEARCH_TOOLS_NAME, {"query": "天气 预报", "top_k": 3}, "c0"),
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),  # 已排除 → 拒绝
+                AIMessage(content="抱歉,当前没有可用的天气工具。"),
+            ]
+        ),
         fixtures=[_SEARCH_FIXTURE],
         encoder=BigramEncoder(),
         timeout_seconds=30,
@@ -166,11 +164,13 @@ async def test_search_returns_ranked_candidates_then_loads_and_calls():
         run_config=_search_config(),
         message="查上海天气",
         visible_tools=_VISIBLE,
-        llm=FakeChatModel([
-            _call(SEARCH_TOOLS_NAME, {"query": "查询天气 预报", "top_k": 3}, "c0"),
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海今天多云,25℃。"),
-        ]),
+        llm=FakeChatModel(
+            [
+                _call(SEARCH_TOOLS_NAME, {"query": "查询天气 预报", "top_k": 3}, "c0"),
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海今天多云,25℃。"),
+            ]
+        ),
         fixtures=[_WEATHER_FIXTURE],
         encoder=BigramEncoder(),
         timeout_seconds=30,
@@ -202,12 +202,14 @@ async def test_tool_not_visible_then_recover_by_searching_again():
         run_config=_search_config(),
         message="查上海天气",
         visible_tools=_VISIBLE,
-        llm=FakeChatModel([
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),  # 未装载 → 拒绝
-            _call(SEARCH_TOOLS_NAME, {"query": "查询天气", "top_k": 3}, "c2"),  # 再搜索恢复
-            _call("weather.get_forecast", {"location": "上海"}, "c3"),
-            AIMessage(content="上海今天多云,25℃。"),
-        ]),
+        llm=FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),  # 未装载 → 拒绝
+                _call(SEARCH_TOOLS_NAME, {"query": "查询天气", "top_k": 3}, "c2"),  # 再搜索恢复
+                _call("weather.get_forecast", {"location": "上海"}, "c3"),
+                AIMessage(content="上海今天多云,25℃。"),
+            ]
+        ),
         fixtures=[_WEATHER_FIXTURE],
         encoder=BigramEncoder(),
         timeout_seconds=30,
@@ -215,8 +217,7 @@ async def test_tool_not_visible_then_recover_by_searching_again():
     events = record.tool_not_visible_events
     assert events and events[0]["tool"] == "weather.get_forecast"
     assert events[0]["recovered"] is True  # 再次搜索装载后成功调用
-    assert any(row["toolName"] == "weather.get_forecast" and row["status"] == "SUCCESS"
-               for row in record.tool_calls)
+    assert any(row["toolName"] == "weather.get_forecast" and row["status"] == "SUCCESS" for row in record.tool_calls)
 
 
 # ── C3:三段(四类)错误归因 ─────────────────────────────────────────────────
@@ -265,9 +266,7 @@ def test_three_availability_conditions_different_expectations():
     full = acceptable_paths_for(list(_VISIBLE), WEATHER_AVAILABILITY_SPEC)
     assert full["expectation"] == "preferred"
     assert full["acceptable_calls"] == ["weather.get_forecast"]
-    degraded = acceptable_paths_for(
-        sorted(set(_VISIBLE) - {"weather.get_forecast"}), WEATHER_AVAILABILITY_SPEC
-    )
+    degraded = acceptable_paths_for(sorted(set(_VISIBLE) - {"weather.get_forecast"}), WEATHER_AVAILABILITY_SPEC)
     assert degraded["expectation"] == "degraded-alternative"
     assert degraded["acceptable_calls"] == ["web.search"]
     honest = acceptable_paths_for(

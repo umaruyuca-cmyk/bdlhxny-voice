@@ -119,8 +119,7 @@ def test_template_plan_endpoint_rejects_invalid_requests(owner_client):
     # 匿名不可用的高级字段同样被拒(所有者角色 + 非白名单路径)
     rogue_advanced = owner_client.post(
         "/api/v1/template-batches/plan",
-        json={"template_id": "governance-on-off", "repeat_count": 1,
-              "advanced": {"context.token_budget": 999}},
+        json={"template_id": "governance-on-off", "repeat_count": 1, "advanced": {"context.token_budget": 999}},
     )
     assert rogue_advanced.status_code == 400
 
@@ -141,9 +140,7 @@ def test_template_launch_endpoint_retires_multi_run_batches(owner_client, monkey
     """退役闸(方案 13.13):除压缩方法对照外,/template-batches 一律 410,指向实验组接口。"""
     from bdlh_runtime.experiments import public_case_repository
 
-    monkeypatch.setattr(
-        public_case_repository, "get_case_repository", lambda: _MemoryRepo([_case()])
-    )
+    monkeypatch.setattr(public_case_repository, "get_case_repository", lambda: _MemoryRepo([_case()]))
     retired_governance = owner_client.post(
         "/api/v1/template-batches",
         json={"template_id": "governance-on-off", "repeat_count": 1, "case_id": "cmp-tpl-01"},
@@ -169,8 +166,12 @@ def test_template_launch_endpoint_retires_multi_run_batches(owner_client, monkey
     assert "实验组" in method_cmp_agent.json()["detail"]
     method_cmp_context = owner_client.post(
         "/api/v1/template-batches",
-        json={"template_id": "compression-method-comparison", "repeat_count": 1,
-              "session_id": "no-such", "context_only": True},
+        json={
+            "template_id": "compression-method-comparison",
+            "repeat_count": 1,
+            "session_id": "no-such",
+            "context_only": True,
+        },
     )
     assert method_cmp_context.status_code == 400
     assert "未知压缩 Session" in method_cmp_context.json()["detail"]
@@ -192,11 +193,16 @@ def test_execute_template_batch_wiring_with_fake_llm():
 
     plan = plan_template_batch("governance-on-off", repeat_count=1)
     report = run_api._execute_template_batch(
-        plan, _case(), model="fake-model",
-        llm=FakeChatModel([
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海今天多云,25℃。"),
-        ] * 2),
+        plan,
+        _case(),
+        model="fake-model",
+        llm=FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海今天多云,25℃。"),
+            ]
+            * 2
+        ),
     )
     assert report["template_id"] == "governance-on-off"
     assert len(report["runs"]) == 2
@@ -213,8 +219,12 @@ def test_template_run_model_config_carries_template_fields():
         "repeat_index": 0,
         "config_hash": "hash-abc",
         "governance_profile": "off",
-        "run_config": {"execution_engine": "native-tool-calling", "tool_delivery": "all",
-                       "governance_profile": "off", "config_hash": "hash-abc"},
+        "run_config": {
+            "execution_engine": "native-tool-calling",
+            "tool_delivery": "all",
+            "governance_profile": "off",
+            "config_hash": "hash-abc",
+        },
         "tool_schema_hash": "schema-hash",
         "eligible_catalog_hash": "eligible-hash",
     }
@@ -233,11 +243,16 @@ def test_persist_template_runs_builds_create_run_payloads(monkeypatch):
 
     plan = plan_template_batch("governance-on-off", repeat_count=1)
     report = run_api._execute_template_batch(
-        plan, _case(), model="fake-model",
-        llm=FakeChatModel([
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海今天多云,25℃。"),
-        ] * 2),
+        plan,
+        _case(),
+        model="fake-model",
+        llm=FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海今天多云,25℃。"),
+            ]
+            * 2
+        ),
     )
     created: list[dict] = []
     completed: list[tuple[str, dict]] = []
@@ -293,8 +308,7 @@ def test_persist_template_runs_builds_create_run_payloads(monkeypatch):
     assert len(saved_tool_calls) == 2
     for _, calls in saved_tool_calls:
         assert calls and all(
-            row["status"] == "SUCCESS" and row["modelCallSequence"] == 1 and row["callId"] == "c1"
-            for row in calls
+            row["status"] == "SUCCESS" and row["modelCallSequence"] == 1 and row["callId"] == "c1" for row in calls
         )
     assert len(saved_guardrails) == 2
 
@@ -312,16 +326,26 @@ def _fake_template_executor(job, *, should_stop=lambda: False):
         "fixed_conditions_hash": job.template_plan_hash,
         "by_variant": {"off": {"total_runs": 1}, "standard": {"total_runs": 1}},
         "runs": [
-            {"run_id": unit.unit_id, "unit_id": unit.unit_id, "variant_label": unit.context_variant,
-             "repeat_index": unit.repeat_index, "answer": "ok", "tool_calls": [],
-             "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5,
-             "validity": "VALID"}
+            {
+                "run_id": unit.unit_id,
+                "unit_id": unit.unit_id,
+                "variant_label": unit.context_variant,
+                "repeat_index": unit.repeat_index,
+                "answer": "ok",
+                "tool_calls": [],
+                "stop_reason": "FINAL_ANSWER",
+                "actual_agent_steps": 1,
+                "duration_ms": 5,
+                "validity": "VALID",
+            }
             for unit in job.units
         ],
     }
 
 
-def test_anonymous_template_job_creates_and_applies(tmp_path):
+def test_anonymous_template_job_rejects_multi_run_expansion(tmp_path):
+    """一次只运行一个 Agent(P0-1):匿名模板任务即使 repeat=1 也展开 2 个变体,
+    多运行入口明确关闭,不创建任务。"""
     store = JobStore(tmp_path / "jobs")
     service = AnonymousJobService(
         store,
@@ -330,26 +354,62 @@ def test_anonymous_template_job_creates_and_applies(tmp_path):
         template_executor=_fake_template_executor,
         thread_factory=lambda target: (target(), None)[1],  # 同步执行
     )
-    job = service.create_job(
-        {
-            "test_type": "COMPARISON_CASE",
-            "template_id": "governance-on-off",
-            "case_id": "cmp-tpl-01",
-            "repeat_count": 1,
-        },
-        anonymous_id_hash="sha256:anon",
+    with pytest.raises(PublicTestError) as exc:
+        service.create_job(
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": "governance-on-off",
+                "case_id": "cmp-tpl-01",
+                "repeat_count": 1,
+            },
+            anonymous_id_hash="sha256:anon",
+        )
+    assert "入口已关闭" in str(exc.value)
+    assert store.list_for_anonymous("sha256:anon") == []
+
+
+def test_default_template_executor_restricts_to_registered_variants(monkeypatch):
+    """执行器重建计划必须携带登记的变体子集:单变体任务只执行该变体。
+
+    回归背景:漏传 variant_labels 时,登记 1 个单元(off)的任务实际
+    展开全部变体(2 个运行),登记与执行不一致。
+    """
+
+    from bdlh_runtime.experiments import public_case_repository
+    from bdlh_runtime.experiments.job_store import JobRecord, JobUnit
+    from bdlh_runtime.experiments.public_service import _default_template_executor
+
+    monkeypatch.setattr(public_case_repository, "get_case_repository", lambda: _MemoryRepo([_case()]))
+    captured: dict = {}
+
+    async def fake_run_template_batch(plan, **kwargs):
+        captured["plan"] = plan
+        return {"runs": [], "test_type": "COMPARISON_CASE"}
+
+    import bdlh_runtime.experiments.template_runner as template_runner
+
+    monkeypatch.setattr(template_runner, "run_template_batch", fake_run_template_batch)
+
+    job = JobRecord(
+        job_id="job-restrict-01",
+        test_type="COMPARISON_CASE",
+        execution_scope="template-batch",
+        template_id="governance-on-off",
+        case_id="cmp-tpl-01",
+        repeat_count=1,
+        units=[
+            JobUnit(
+                seq=1,
+                unit_id="governance-on-off:off:r0",
+                agent_mode_id="native-tool-calling",
+                repeat_index=0,
+                context_variant="off",
+            )
+        ],
     )
-    assert job.template_id == "governance-on-off"
-    assert job.execution_scope == "template-batch"
-    assert job.publishable is False
-    assert len(job.units) == 2
-    assert {u.agent_mode_id for u in job.units} == {"native-tool-calling"}
-    # 同步线程工厂已执行完毕;create_job 返回的是执行前快照,状态从存储重读
-    reloaded = store.get(job.job_id)
-    assert reloaded is not None and reloaded.status == "COMPLETE"
-    assert reloaded.result["template_id"] == "governance-on-off"
-    assert reloaded.result["by_variant"]
-    assert all(u.status == "COMPLETE" for u in reloaded.units)
+    _default_template_executor(job)
+    plan = captured["plan"]
+    assert [run.variant_label for run in plan.runs] == ["off"]  # 只执行登记的变体
 
 
 def test_anonymous_template_job_rejects_owner_only_or_unknown(tmp_path):
@@ -363,21 +423,33 @@ def test_anonymous_template_job_rejects_owner_only_or_unknown(tmp_path):
     )
     with pytest.raises(PublicTestError):
         service.create_job(
-            {"test_type": "COMPARISON_CASE", "template_id": "temperature-stability",
-             "case_id": "cmp-tpl-01", "repeat_count": 3},  # 匿名不可用 + 无能力
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": "temperature-stability",
+                "case_id": "cmp-tpl-01",
+                "repeat_count": 3,
+            },  # 匿名不可用 + 无能力
             anonymous_id_hash="sha256:anon",
         )
     with pytest.raises(PublicTestError):
         service.create_job(
-            {"test_type": "COMPARISON_CASE", "template_id": "governance-on-off",
-             "case_id": "cmp-tpl-01", "repeat_count": 1,
-             "advanced": {"model.seed_requested": 1}},  # 匿名不能提交高级设置(未知字段)
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": "governance-on-off",
+                "case_id": "cmp-tpl-01",
+                "repeat_count": 1,
+                "advanced": {"model.seed_requested": 1},
+            },  # 匿名不能提交高级设置(未知字段)
             anonymous_id_hash="sha256:anon",
         )
     with pytest.raises(PublicTestError):
         service.create_job(
-            {"test_type": "COMPARISON_CASE", "template_id": "no-such-template",
-             "case_id": "cmp-tpl-01", "repeat_count": 1},
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": "no-such-template",
+                "case_id": "cmp-tpl-01",
+                "repeat_count": 1,
+            },
             anonymous_id_hash="sha256:anon",
         )
 
@@ -392,8 +464,13 @@ def test_anonymous_template_preset_flow(tmp_path):
         thread_factory=lambda target: (target(), None)[1],
     )
     job = service.create_job(
-        {"test_type": "COMPARISON_CASE", "template_id": "tool-availability-degradation",
-         "case_id": "cmp-tpl-01", "repeat_count": 1, "preset_id": "remove-preferred"},
+        {
+            "test_type": "COMPARISON_CASE",
+            "template_id": "tool-availability-degradation",
+            "case_id": "cmp-tpl-01",
+            "repeat_count": 1,
+            "preset_id": "remove-preferred",
+        },
         anonymous_id_hash="sha256:anon",
     )
     assert job.template_preset_id == "remove-preferred"
@@ -412,7 +489,9 @@ def test_all_mode_grants_scene_scopes_not_tool_union():
     scoped_loader = ToolLoader(catalog, tool_loading="scoped")
     # 可见性:all 对游客也展示需登录工具(可见≠授权,执行由 G3 裁决)
     assert {card.name for card in all_loader.load_for_turn("general", authenticated=False)} == {
-        "weather.get_forecast", "web.search", "document.summarize"
+        "weather.get_forecast",
+        "web.search",
+        "document.summarize",
     }
     # 执行授权口径一致:all 不合并工具 scope
     assert all_loader.granted_scopes("general", authenticated=False) == scoped_loader.granted_scopes(
@@ -432,10 +511,12 @@ async def test_all_mode_restricted_tool_visible_but_blocked_for_guest():
         run_config=TEMPLATES["governance-on-off"].base_config,
         message="总结报告",
         visible_tools=("document.summarize",),
-        llm=FakeChatModel([
-            _call("document.summarize", {"path": "/tmp/r.md"}, "c1"),
-            AIMessage(content="无权调用。"),
-        ]),
+        llm=FakeChatModel(
+            [
+                _call("document.summarize", {"path": "/tmp/r.md"}, "c1"),
+                AIMessage(content="无权调用。"),
+            ]
+        ),
         fixtures=[],
         authenticated=False,
         user_id="guest",
@@ -446,7 +527,9 @@ async def test_all_mode_restricted_tool_visible_but_blocked_for_guest():
     # 未命中冻结数据,并关联发起模型调用与模型生成的 call_id
     denied = [row for row in record.tool_calls if row["toolName"] == "document.summarize"]
     assert denied and all(
-        row["status"] == "DENIED" and row["fixtureHit"] is False and row["callId"] == "c1"
+        row["status"] == "DENIED"
+        and row["fixtureHit"] is False
+        and row["callId"] == "c1"
         and row["modelCallSequence"] == 1
         for row in denied
     )
@@ -478,16 +561,24 @@ async def test_evidence_records_actual_loaded_tools_search_mode():
         ),
         message="查上海天气",
         visible_tools=("weather.get_forecast", "web.search", "calculator.evaluate", "document.summarize"),
-        llm=FakeChatModel([
-            _call("search_tools", {"query": "查询天气 预报", "top_k": 3}, "c0"),
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海多云。"),
-        ]),
-        fixtures=[{
-            "tool": "weather.get_forecast", "match_mode": "subset",
-            "match_arguments": {"location": "上海"}, "status": "success",
-            "result": {"forecast": "多云"}, "fixture_id": "fx", "fixture_version": 1,
-        }],
+        llm=FakeChatModel(
+            [
+                _call("search_tools", {"query": "查询天气 预报", "top_k": 3}, "c0"),
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海多云。"),
+            ]
+        ),
+        fixtures=[
+            {
+                "tool": "weather.get_forecast",
+                "match_mode": "subset",
+                "match_arguments": {"location": "上海"},
+                "status": "success",
+                "result": {"forecast": "多云"},
+                "fixture_id": "fx",
+                "fixture_version": 1,
+            }
+        ],
         encoder=BigramEncoder(),
         timeout_seconds=30,
     )
@@ -508,15 +599,23 @@ async def test_evidence_records_actual_loaded_tools_exclusion():
         ),
         message="查上海天气",
         visible_tools=("weather.get_forecast", "web.search"),
-        llm=FakeChatModel([
-            _call("web.search", {"query": "上海 天气"}, "c1"),
-            AIMessage(content="根据检索:上海多云。"),
-        ]),
-        fixtures=[{
-            "tool": "web.search", "match_mode": "subset",
-            "match_arguments": {"query": "上海 天气"}, "status": "success",
-            "result": {"results": ["上海多云"]}, "fixture_id": "fx2", "fixture_version": 1,
-        }],
+        llm=FakeChatModel(
+            [
+                _call("web.search", {"query": "上海 天气"}, "c1"),
+                AIMessage(content="根据检索:上海多云。"),
+            ]
+        ),
+        fixtures=[
+            {
+                "tool": "web.search",
+                "match_mode": "subset",
+                "match_arguments": {"query": "上海 天气"},
+                "status": "success",
+                "result": {"results": ["上海多云"]},
+                "fixture_id": "fx2",
+                "fixture_version": 1,
+            }
+        ],
     )
     assert record.visible_tools == ["web.search"]  # 排除项不出现在证据里
     assert "weather.get_forecast" not in record.visible_tools
@@ -545,11 +644,18 @@ async def test_evidence_text_only_run_still_records_bound_tools():
 
 def test_confirmation_upsert_payload_matches_table_columns():
     store = ConfirmationStore()
-    record = store.create(run_id="run-1", tool_name="mail.send",
-                          arguments={"to": "a@x.com"}, actor="owner")
+    record = store.create(run_id="run-1", tool_name="mail.send", arguments={"to": "a@x.com"}, actor="owner")
     payload = build_confirmation_upsert(record)
-    assert set(payload) == {"id", "run_id", "tool_name", "arguments_hash", "actor",
-                            "expires_at", "status", "consumed_at"}
+    assert set(payload) == {
+        "id",
+        "run_id",
+        "tool_name",
+        "arguments_hash",
+        "actor",
+        "expires_at",
+        "status",
+        "consumed_at",
+    }
     assert payload["id"] == record.confirmation_id
     assert payload["status"] == "GRANTED"
     assert payload["consumed_at"] is None
@@ -627,12 +733,21 @@ async def test_temperature_template_builds_distinct_llm_per_run(monkeypatch):
         "temperature-stability", repeat_count=3, model_capability=ModelCapability(supports_temperature=True)
     )
     result = await template_runner.run_template_batch(
-        plan, message="上海天气", visible_tools=("weather.get_forecast",), llm=None,
-        fixtures=[{
-            "tool": "weather.get_forecast", "match_mode": "subset",
-            "match_arguments": {"location": "上海"}, "status": "success",
-            "result": {"forecast": "多云"}, "fixture_id": "fx", "fixture_version": 1,
-        }],
+        plan,
+        message="上海天气",
+        visible_tools=("weather.get_forecast",),
+        llm=None,
+        fixtures=[
+            {
+                "tool": "weather.get_forecast",
+                "match_mode": "subset",
+                "match_arguments": {"location": "上海"},
+                "status": "success",
+                "result": {"forecast": "多云"},
+                "fixture_id": "fx",
+                "fixture_version": 1,
+            }
+        ],
     )
     assert len(captured) == 12  # 4 变体 × 3 次:每次运行独立构建
     assert {row["temperature_requested"] for row in captured} == {0.0, 0.1, 0.3, 0.7}
@@ -652,8 +767,12 @@ def test_create_llm_passes_frozen_params_to_sdk(monkeypatch):
 
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     llm = create_llm(
-        api_key="test-key", base_url="http://localhost:9", model="m",
-        temperature=0.7, max_output_tokens=1200, parallel_tool_calls=False,
+        api_key="test-key",
+        base_url="http://localhost:9",
+        model="m",
+        temperature=0.7,
+        max_output_tokens=1200,
+        parallel_tool_calls=False,
     )
     assert llm is not None
     assert llm.temperature == 0.7
@@ -663,7 +782,9 @@ def test_create_llm_passes_frozen_params_to_sdk(monkeypatch):
     from bdlh_runtime.experiments.template_runner import applied_params_of
 
     assert applied_params_of(llm) == {
-        "temperature": 0.7, "max_output_tokens": 1200, "parallel_tool_calls": False,
+        "temperature": 0.7,
+        "max_output_tokens": 1200,
+        "parallel_tool_calls": False,
     }
 
     # 缺省不传递:可选参数 None → 不进入构造(端点默认)
@@ -740,15 +861,24 @@ async def test_template_batch_reports_per_run_progress():
         plan,
         message="上海天气",
         visible_tools=("weather.get_forecast",),
-        llm=FakeChatModel([
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海多云。"),
-        ] * 2),
-        fixtures=[{
-            "tool": "weather.get_forecast", "match_mode": "subset",
-            "match_arguments": {"location": "上海"}, "status": "success",
-            "result": {"forecast": "多云"}, "fixture_id": "fx", "fixture_version": 1,
-        }],
+        llm=FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海多云。"),
+            ]
+            * 2
+        ),
+        fixtures=[
+            {
+                "tool": "weather.get_forecast",
+                "match_mode": "subset",
+                "match_arguments": {"location": "上海"},
+                "status": "success",
+                "result": {"forecast": "多云"},
+                "fixture_id": "fx",
+                "fixture_version": 1,
+            }
+        ],
         on_run_done=seen.append,
     )
     assert len(seen) == plan.run_count == 2
@@ -799,7 +929,6 @@ def test_owner_batch_list_requires_login():
 
     client = TestClient(run_api.app)
     assert client.get("/api/v1/batches").status_code == 401
-
 
 
 def test_build_llm_for_config_applies_retry_count(monkeypatch):
@@ -856,9 +985,14 @@ def test_template_batch_reports_budget(monkeypatch):
             for i in range(run_count)
         ]
         return TemplateBatchPlan(
-            template_id="t", template_version=1, classification="formal",
-            independent_variable=("v",), fixed_conditions={}, fixed_conditions_hash="h",
-            runs=tuple(runs), run_count=len(runs),
+            template_id="t",
+            template_version=1,
+            classification="formal",
+            independent_variable=("v",),
+            fixed_conditions={},
+            fixed_conditions_hash="h",
+            runs=tuple(runs),
+            run_count=len(runs),
         )
 
     from bdlh_runtime.experiments.template_runner import run_template_batch

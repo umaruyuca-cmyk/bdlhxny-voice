@@ -337,8 +337,7 @@ async def run_native_agent(
         audit_objects = list(result.audits)
         audits = [audit.model_dump() for audit in result.audits]
         observations = [
-            obs.model_dump(mode="json") if hasattr(obs, "model_dump") else dict(obs)
-            for obs in result.observations
+            obs.model_dump(mode="json") if hasattr(obs, "model_dump") else dict(obs) for obs in result.observations
         ]
         # 实际装载集合(最后一轮 bind_tools 的真源):排除项/搜索动态装载/
         # 每轮变化都以它为准,不用初始完整列表冒充(混合路线证据口径修正)
@@ -365,7 +364,6 @@ async def run_native_agent(
     if audit_objects:
         record_governance_audits(recorder, audit_objects, observations)
     recorder.complete(status=status, error_category=category or None, error_text=error)
-    call_records = list(getattr(mock_executor, "call_records", []) or [])
     model_call_rows = [row.to_payload() for row in recorder.record.model_calls]
     tool_call_rows = [row.to_payload() for row in recorder.record.tool_calls]
     guardrail_rows = [row.to_payload() for row in recorder.record.guardrail_checks]

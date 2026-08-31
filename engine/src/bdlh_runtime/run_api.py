@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import secrets
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,8 +29,10 @@ from bdlh_runtime.data_client import DataClient, DataServiceError
 from bdlh_runtime.evaluation.context_eval import COMPARISON_VARIANTS, DEFAULT_INTERLEAVE_SEED
 from bdlh_runtime.evaluation.run_event_bus import (
     RunEventPublisher,
-    get_publisher as get_run_event_publisher,
     register_publisher,
+)
+from bdlh_runtime.evaluation.run_event_bus import (
+    get_publisher as get_run_event_publisher,
 )
 from bdlh_runtime.evaluation.run_telemetry import (
     ARTIFACT_VERSION,
@@ -46,8 +49,13 @@ from bdlh_runtime.evaluation.run_telemetry import (
 )
 from bdlh_runtime.experiments.compression import public_session_overview
 from bdlh_runtime.experiments.job_store import JobStore, sha256_hex
+from bdlh_runtime.experiments.public_service import (
+    AnonymousJobService,
+    IdempotencyConflict,
+    PublicTestError,
+    _request_hash,
+)
 from bdlh_runtime.experiments.series_runner import (
-    SeriesRunError,
     execute_prepared_series_run,
     execute_series_run,
     series_run_kind,
@@ -59,13 +67,22 @@ from bdlh_runtime.experiments.series_store import (
     SeriesRecord,
     run_entry_view,
 )
-from bdlh_runtime.experiments.public_service import (
-    AnonymousJobService,
-    IdempotencyConflict,
-    PublicTestError,
-    _request_hash,
-)
 from bdlh_runtime.infra.env import load_deploy_env
+from bdlh_runtime.memory import (
+    ActiveBuildConflict,
+    BuildIdempotencyConflict,
+    BuildNotFound,
+    ContextBuildStore,
+    ContextWorkbenchService,
+    DataServiceContextBuildStore,
+    DataServiceMemorySegmentRepository,
+    ForbiddenBuild,
+    MemorySegmentStoreError,
+    SegmentSettings,
+    source_for_mode,
+)
+from bdlh_runtime.memory.agent_run import AgentRunInvalid
+from bdlh_runtime.memory.service import CurrentRequestInvalid, CurrentRequestNotFound
 
 ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", "/app/artifacts"))
 
@@ -75,6 +92,10 @@ ANON_COOKIE_NAME = "ts_anon"
 ANON_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 _job_store = JobStore()
+_context_store = ContextBuildStore(
+    Path(os.getenv("CONTEXT_BUILDS_DIR") or Path(__file__).resolve().parents[2] / "var" / "context-builds")
+)
+_context_service = ContextWorkbenchService(_context_store)
 
 app = FastAPI(
     title="Private Run API",
@@ -100,17 +121,60 @@ def recover_jobs_on_startup() -> None:
         print(f"[run_api] 服务重启:{len(interrupted)} 个未完成任务已标记为 INTERRUPTED,不自动重跑")
     audited = _job_store.audit_invalid_agent_runs()
     if audited:
-        print(f"[run_api] 历史审计:{len(audited)} 个任务含无 Agent 模型调用证据的单元,"
-              f"已标记 INVALID/LLM_UNAVAILABLE(原记录保留)")
+        print(
+            f"[run_api] 历史审计:{len(audited)} 个任务含无 Agent 模型调用证据的单元,"
+            f"已标记 INVALID/LLM_UNAVAILABLE(原记录保留)"
+        )
     try:
         orphans = _fail_orphan_batches(_data())
         if orphans:
             print(f"[run_api] 服务重启:{orphans} 个执行中的批次随上一进程中断,已标记为 FAILED(不会自愈,请重新发起)")
     except Exception as exc:  # noqa: BLE001 —— data 不可达时不阻塞启动
         print(f"[run_api] 孤儿批次清点跳过:{exc}")
+    _start_context_analysis_scheduler()
 
 
-from bdlh_runtime.experiments.public_case_repository import get_case_repository
+def _start_context_analysis_scheduler() -> None:
+    """P2 定时分析调度器:周期采样摘要段做语义评审并产出分析报告。
+
+    - `CONTEXT_ANALYSIS_INTERVAL_S<=0` 关闭(默认 6 小时);
+    - 未配置 DATA_INTERNAL_TOKEN 时静默跳过(单机 file 模式无 Segment 可采样);
+    - 单轮失败只记录,不影响后续轮次;测试(TestClient 不触发 startup)不启动。
+    """
+
+    from bdlh_runtime.memory.analysis import AnalysisConfigError, AnalysisSettings
+
+    try:
+        settings = AnalysisSettings.from_env()
+    except AnalysisConfigError as exc:
+        print(f"[run_api] 定时分析配置非法,调度器未启动:{exc}")
+        return
+    if settings.interval_s <= 0:
+        print("[run_api] 定时分析调度器已关闭(CONTEXT_ANALYSIS_INTERVAL_S<=0)")
+        return
+    if not (os.getenv("DATA_INTERNAL_TOKEN") or "").strip():
+        print("[run_api] 未配置 DATA_INTERNAL_TOKEN,定时分析调度器不启动")
+        return
+
+    def _loop() -> None:
+        time.sleep(settings.initial_delay_s)
+        while True:
+            try:
+                from bdlh_runtime.memory.analysis import LLMSegmentJudge, run_analysis
+
+                outcome = run_analysis(DataClient(), LLMSegmentJudge(), settings=settings, trigger="SCHEDULED")
+                print(
+                    f"[run_api] 定时分析完成:status={outcome.status} sampled={outcome.sampled} "
+                    f"judge_errors={outcome.judge_errors} run_id={outcome.run_id or '-'}"
+                )
+            except Exception as exc:  # noqa: BLE001 —— 调度循环永不中断
+                print(f"[run_api] 定时分析轮次异常:{type(exc).__name__}: {exc}")
+            time.sleep(settings.interval_s)
+
+    threading.Thread(target=_loop, name="context-analysis-scheduler", daemon=True).start()
+
+
+from bdlh_runtime.experiments.public_case_repository import get_case_repository  # noqa: E402 —— 依赖上面的启动装配
 
 # 生产用例仓库:data 服务映射(对比用例任务创建时读取;测试注入替身时整体替换本服务)
 _public_service = AnonymousJobService(_job_store, case_repository=get_case_repository())
@@ -173,7 +237,7 @@ def _fail_orphan_batches(data: DataClient, *, limit: int = 50) -> int:
     伴生清理:阶段二起对比用例运行在执行前建行(agent_runs 行 status=CREATED),
     孤儿批次内的未终态运行行一并置 FAILED/PROCESS_RESTART。
     """
-    rows = (data.list_batches(limit=limit).get("batches") or [])
+    rows = data.list_batches(limit=limit).get("batches") or []
     orphans = [row for row in rows if str(row.get("status")) == "RUNNING"]
     for row in orphans:
         data.complete_batch(str(row["id"]), "FAILED")
@@ -230,9 +294,39 @@ class ContextBatchRequest(BaseModel):
         max_length=100,
     )
     idempotency_key: str | None = Field(
-        default=None, min_length=8, max_length=128,
+        default=None,
+        min_length=8,
+        max_length=128,
         description="提交幂等键;同键同请求体的重试返回原批次,不同请求体返回 409",
     )
+
+
+class ContextWorkbenchBuildRequest(BaseModel):
+    """P0 上下文工件构建；不触发 Agent 运行。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_request_event_id: str = Field(min_length=1, max_length=200)
+    algorithm: str = Field(default="budgeted-hybrid-v1", pattern=r"^budgeted-hybrid-v1$")
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
+class ContextAccessGrantRequest(BaseModel):
+    """P1 细粒度 RBAC:所有者向其他账号授予工件读取权限。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    grantee_account_id: str = Field(min_length=1, max_length=64)
+    scope: str = Field(default="ARTIFACT_READ", pattern=r"^ARTIFACT_READ$")
+    build_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ContextAccessAuditRequest(BaseModel):
+    """P1:前端复制等客户端动作的审计申报(服务端校验访问权)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = Field(pattern=r"^CONTEXT_CONTENT_COPY$")
 
 
 @app.get("/health")
@@ -386,6 +480,655 @@ def cancel_job(job_id: str, account: Annotated[dict[str, Any], Depends(require_l
     }
 
 
+def _context_lookup_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ForbiddenBuild):
+        return HTTPException(status_code=403, detail={"error_code": "FORBIDDEN", "message": "无权访问该构建"})
+    return HTTPException(
+        status_code=404,
+        detail={"error_code": "CONTEXT_BUILD_NOT_FOUND", "message": "上下文构建或工件不存在"},
+    )
+
+
+def require_ops(account: Annotated[dict[str, Any], Depends(require_login)]) -> dict[str, Any]:
+    """P1 跨所有者运维名单:CONTEXT_OPS_ACCOUNTS(accountId 或用户名,逗号分隔)。
+
+    名单为空即无人可访问(默认关闭);名单内账号也只能看脱敏元数据,
+    不能以运维身份读取任何所有者的原文(需求 §5.3/§5.4)。
+    """
+
+    allowed = {part.strip() for part in os.getenv("CONTEXT_OPS_ACCOUNTS", "").split(",") if part.strip()}
+    identifiers = {str(account.get("accountId") or ""), str(account.get("username") or "")}
+    if not allowed or not (identifiers & allowed):
+        raise HTTPException(
+            status_code=403,
+            detail={"error_code": "OPS_FORBIDDEN", "message": "该账号不在上下文运维名单"},
+        )
+    return account
+
+
+def _context_audit(
+    account_id: str | None,
+    action: str,
+    *,
+    succeeded: bool = True,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    """写上下文工作台审计(复用 audit_log,CONTEXT_ 前缀动作);失败即拒绝操作。"""
+
+    try:
+        _data().write_context_audit(account_id, action, succeeded=succeeded, detail=detail or {})
+    except DataServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_AUDIT_UNAVAILABLE", "message": "审计写入失败,操作未放行"},
+        ) from exc
+
+
+def _owner_ref(owner_id: str) -> str:
+    """运维视图的所有者脱敏引用:sha256 前 12 位,不可逆且不暴露账号 ID。"""
+
+    return hashlib.sha256(str(owner_id or "").encode("utf-8")).hexdigest()[:12]
+
+
+_OPS_USAGE_FIELDS = (
+    "classification_calls",
+    "summary_calls",
+    "cache_hits",
+    "summary_call_cap",
+    "segment_cache_hits",
+    "segment_generated",
+    "segment_invalidated",
+    "segment_fallbacks",
+    "segment_model_calls",
+    "agent_calls",
+    "agent_tool_calls",
+)
+_OPS_BUDGET_FIELDS = (
+    "history_input_tokens",
+    "final_context_tokens",
+    "current_request_tokens",
+    "context_budget_tokens",
+)
+
+
+def _sanitize_ops_build(row: dict[str, Any]) -> dict[str, Any]:
+    """运维脱敏元数据(需求 §5.3):只保留状态/计量/错误码;不含任何正文与自由文本错误。"""
+
+    usage = row.get("llm_usage") if isinstance(row.get("llm_usage"), dict) else {}
+    budget = row.get("budget") if isinstance(row.get("budget"), dict) else {}
+    agent_run = row.get("agent_run") if isinstance(row.get("agent_run"), dict) else {}
+    return {
+        "build_id": row.get("build_id"),
+        "session_id": row.get("session_id"),
+        "owner_ref": _owner_ref(str(row.get("owner_id") or "")),
+        "status": row.get("status"),
+        "current_phase": row.get("current_phase"),
+        "algorithm_version": row.get("algorithm_version"),
+        "error_code": row.get("error_code"),
+        "budget": {key: budget[key] for key in _OPS_BUDGET_FIELDS if key in budget},
+        "llm_usage": {key: usage[key] for key in _OPS_USAGE_FIELDS if key in usage},
+        "agent_run": {
+            "status": agent_run.get("status"),
+            "steps": agent_run.get("steps"),
+            "stop_reason": agent_run.get("stop_reason"),
+            "error_code": agent_run.get("error_code"),
+        }
+        if agent_run
+        else {},
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
+
+
+def _grant_artifact_access(build_id: str, account: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """跨所有者工件访问判定:所有者直通;否则查活跃授权,无授权 fail closed。"""
+
+    store = _context_service_for(account).store
+    caller_id = _account_id(account)
+    via = "owner"
+    try:
+        return store.artifact(build_id, caller_id), via
+    except ForbiddenBuild:
+        pass
+    except BuildNotFound as exc:
+        raise _context_lookup_error(exc) from exc
+    try:
+        granted = _data().has_context_grant_for_grantee(caller_id, build_id)
+    except DataServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "授权判定暂不可用,已拒绝访问"},
+        ) from exc
+    if not granted:
+        raise HTTPException(
+            status_code=403,
+            detail={"error_code": "FORBIDDEN", "message": "无该构建的访问授权"},
+        )
+    try:
+        return store.artifact_any_owner(build_id), "grant"
+    except BuildNotFound as exc:
+        raise _context_lookup_error(exc) from exc
+
+
+def _context_service_for(account: dict[str, Any]) -> ContextWorkbenchService:
+    """按登录所有者装配来源与 Store；数据库 Store 必须显式启用。"""
+
+    mode = os.getenv("CONTEXT_MEMORY_MODE", "legacy").strip().lower()
+    store_mode = os.getenv("CONTEXT_BUILD_STORE", "file").strip().lower()
+    if mode == "legacy" and store_mode == "file":
+        return _context_service
+    owner_id = _account_id(account)
+    source = source_for_mode(owner_id, mode=mode, client=_data())
+    segment_repository = None
+    if mode in {"incremental", "shadow"}:
+        # Segment 复用只在生产数据模式装配;配置非法在此快速失败,不静默采用
+        SegmentSettings.from_env()
+        segment_repository = DataServiceMemorySegmentRepository(owner_id, _data())
+    if store_mode == "file":
+        store = _context_store
+    elif store_mode == "data-service":
+        if mode != "incremental":
+            raise ValueError("CONTEXT_BUILD_STORE=data-service requires CONTEXT_MEMORY_MODE=incremental")
+        store = DataServiceContextBuildStore(owner_id, _data(), source_type=source.source_type)
+    else:
+        raise ValueError(f"unsupported CONTEXT_BUILD_STORE {store_mode!r}")
+    return ContextWorkbenchService(
+        store,
+        source=source,
+        segment_repository=segment_repository,
+    )
+
+
+def _context_session_error(exc: Exception) -> HTTPException | None:
+    from bdlh_runtime.experiments.compression import CompressionSessionError
+
+    if isinstance(exc, CompressionSessionError) or (
+        isinstance(exc, DataServiceError) and exc.status_code == 404
+    ):
+        return HTTPException(
+            status_code=404,
+            detail={"error_code": "SESSION_NOT_FOUND", "message": str(exc)},
+        )
+    if isinstance(exc, DataServiceError):
+        return HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_SOURCE_UNAVAILABLE", "message": str(exc)},
+        )
+    return None
+
+
+@app.get("/api/v1/context/sessions")
+def list_context_sessions(
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """登录所有者可用来源；由 CONTEXT_MEMORY_MODE 选择冻结、双读或生产数据。"""
+
+    try:
+        sessions = _context_service_for(account).sessions()
+    except Exception as exc:
+        error = _context_session_error(exc)
+        if error is not None:
+            raise error from exc
+        raise
+    return {"sessions": sessions, "owner_id": _account_id(account)}
+
+
+@app.get("/api/v1/context/sessions/{session_id}/overview")
+def get_context_session_overview(
+    session_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    service = _context_service_for(account)
+    try:
+        return service.overview(session_id, owner_id=_account_id(account))
+    except Exception as exc:
+        error = _context_session_error(exc)
+        if error is not None:
+            raise error from exc
+        raise
+
+
+@app.get("/api/v1/context/sessions/{session_id}/segments")
+def get_context_session_segments(
+    session_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """会话级冻结 Segment 摘要库;legacy 模式 enabled=false 返回空列表。"""
+
+    service = _context_service_for(account)
+    try:
+        return service.segments(session_id)
+    except MemorySegmentStoreError as exc:
+        status = 403 if exc.code == "SEGMENT_FORBIDDEN" else 503
+        raise HTTPException(
+            status_code=status,
+            detail={"error_code": exc.code, "message": "历史摘要库暂不可用"},
+        ) from exc
+    except Exception as exc:
+        error = _context_session_error(exc)
+        if error is not None:
+            raise error from exc
+        raise
+
+
+@app.get("/api/v1/context/sessions/{session_id}/build-trend")
+def get_context_session_build_trend(
+    session_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+    limit: int = 20,
+) -> dict[str, Any]:
+    """跨构建趋势(P2):该会话最近 N 次构建的真实计量演进(仅本人构建)。"""
+
+    service = _context_service_for(account)
+    try:
+        session, _variants = service.source.get_session(session_id)
+    except Exception as exc:
+        error = _context_session_error(exc)
+        if error is not None:
+            raise error from exc
+        raise
+    return service.build_trends(session.session_id, _account_id(account), limit=limit)
+
+
+@app.get("/api/v1/context/sessions/{session_id}/segment-quality")
+def get_context_session_segment_quality(
+    session_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+    limit: int = 20,
+) -> dict[str, Any]:
+    """摘要质量抽检(P2):规则级实时校验 + 语义级持久化结果(定时任务产出)。"""
+
+    service = _context_service_for(account)
+    semantic_checks: list[dict[str, Any]] | None = None
+    try:
+        semantic_checks = _data().list_context_quality_checks(
+            _account_id(account), session_id=session_id, limit=limit
+        )
+    except DataServiceError:
+        semantic_checks = None  # 语义结果暂不可用:如实返回 None,不阻塞规则级结果
+    try:
+        return service.segment_quality(session_id, limit=limit, semantic_checks=semantic_checks)
+    except MemorySegmentStoreError as exc:
+        status = 403 if exc.code == "SEGMENT_FORBIDDEN" else 503
+        raise HTTPException(
+            status_code=status,
+            detail={"error_code": exc.code, "message": "摘要质量抽检暂不可用"},
+        ) from exc
+
+
+@app.post("/api/v1/context/ops/analysis/run", status_code=202)
+def trigger_context_analysis(
+    background_tasks: BackgroundTasks,
+    account: Annotated[dict[str, Any], Depends(require_ops)],
+) -> dict[str, Any]:
+    """运维手动触发一轮分析(与定时任务同一编排;会产生评审 LLM 调用)。"""
+
+    def _run() -> None:
+        from bdlh_runtime.memory.analysis import LLMSegmentJudge, run_analysis
+
+        run_analysis(DataClient(), LLMSegmentJudge(), trigger="MANUAL")
+
+    background_tasks.add_task(_run)
+    with contextlib.suppress(HTTPException):
+        _context_audit(_account_id(account), "CONTEXT_ANALYSIS_RUN", detail={"trigger": "MANUAL"})
+    return {"status": "ACCEPTED", "trigger": "MANUAL"}
+
+
+@app.get("/api/v1/context/ops/analysis")
+def list_context_analysis_runs(
+    account: Annotated[dict[str, Any], Depends(require_ops)],
+    limit: int = 5,
+) -> dict[str, Any]:
+    """分析运行历史与最新报告(运维;报告只含聚合指标,无任何正文)。"""
+
+    safe_limit = min(max(limit, 1), 50)
+    try:
+        runs = _data().list_context_analysis_runs(safe_limit)
+    except DataServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "分析服务暂不可用"},
+        ) from exc
+    return {
+        "runs": [
+            {
+                "run_id": row.get("runId"),
+                "status": row.get("status"),
+                "trigger_source": row.get("triggerSource"),
+                "sampled_segments": row.get("sampledSegments"),
+                "judge_calls": row.get("judgeCalls"),
+                "judge_errors": row.get("judgeErrors"),
+                "report": row.get("report"),
+                "error_code": row.get("errorCode"),
+                "started_at": row.get("startedAt"),
+                "finished_at": row.get("finishedAt"),
+            }
+            for row in runs
+        ]
+    }
+
+
+@app.get("/api/v1/context/sessions/{session_id}/events")
+def get_context_session_events(
+    session_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+    limit: int = 100,
+    cursor: int = 0,
+) -> dict[str, Any]:
+    service = _context_service_for(account)
+    safe_limit = min(max(limit, 1), 200)
+    safe_cursor = max(cursor, 0)
+    try:
+        events = service.events(session_id)
+    except Exception as exc:
+        error = _context_session_error(exc)
+        if error is not None:
+            raise error from exc
+        raise
+    page = events[safe_cursor : safe_cursor + safe_limit]
+    next_cursor = safe_cursor + len(page) if safe_cursor + len(page) < len(events) else None
+    return {"events": page, "next_cursor": next_cursor, "total": len(events)}
+
+
+@app.post("/api/v1/context/sessions/{session_id}/builds", status_code=202)
+def create_context_build(
+    session_id: str,
+    request: ContextWorkbenchBuildRequest,
+    background_tasks: BackgroundTasks,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    owner_id = _account_id(account)
+    service = _context_service_for(account)
+    try:
+        build, replay = service.create_build(
+            owner_id=owner_id,
+            session_id=session_id,
+            current_request_event_id=request.current_request_event_id,
+            algorithm=request.algorithm,
+            idempotency_key=request.idempotency_key,
+        )
+    except CurrentRequestNotFound as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={"error_code": "CURRENT_REQUEST_NOT_FOUND", "message": str(exc)},
+        ) from exc
+    except CurrentRequestInvalid as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "CURRENT_REQUEST_INVALID", "message": str(exc)},
+        ) from exc
+    except BuildIdempotencyConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"error_code": "IDEMPOTENCY_KEY_CONFLICT", "message": str(exc)},
+        ) from exc
+    except ActiveBuildConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "CONTEXT_BUILD_ALREADY_ACTIVE",
+                "message": "该 Session 已有活跃构建",
+                "active_build_id": exc.build_id,
+            },
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "ALGORITHM_INVALID", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        error = _context_session_error(exc)
+        if error is not None:
+            raise error from exc
+        raise
+    if not replay and build["status"] == "PENDING":
+        background_tasks.add_task(service.execute_build, build["build_id"], owner_id)
+    # 手动重建写审计(需求 §18.2);审计不可用时构建仍可创建,失败只记录不阻塞
+    with contextlib.suppress(HTTPException):
+        _context_audit(
+            owner_id,
+            "CONTEXT_BUILD_CREATED",
+            detail={"build_id": build["build_id"], "session_id": session_id, "replay": replay},
+        )
+    return {**build, "idempotent_replay": replay}
+
+
+@app.get("/api/v1/context/builds/{build_id}")
+def get_context_build(
+    build_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    store = _context_service_for(account).store
+    try:
+        return store.get(build_id, _account_id(account))
+    except (BuildNotFound, ForbiddenBuild) as exc:
+        raise _context_lookup_error(exc) from exc
+    except DataServiceError as exc:
+        raise HTTPException(status_code=503, detail={"error_code": "CONTEXT_STORE_UNAVAILABLE"}) from exc
+
+
+@app.get("/api/v1/context/builds/{build_id}/decisions")
+def get_context_build_decisions(
+    build_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    store = _context_service_for(account).store
+    try:
+        build = store.get(build_id, _account_id(account))
+    except (BuildNotFound, ForbiddenBuild) as exc:
+        raise _context_lookup_error(exc) from exc
+    return {"build_id": build_id, "decisions": build.get("decisions") or []}
+
+
+@app.get("/api/v1/context/builds/{build_id}/artifact")
+def get_context_build_artifact(
+    build_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """冻结工件读取(P1 细粒度 RBAC):所有者直通;跨所有者需活跃 ARTIFACT_READ
+    授权;任何成功的正文访问都写审计(需求 §11.2/§18.2)。"""
+
+    artifact, via = _grant_artifact_access(build_id, account)
+    _context_audit(
+        _account_id(account),
+        "CONTEXT_ARTIFACT_DOWNLOAD",
+        detail={"build_id": build_id, "via": via},
+    )
+    return artifact
+
+
+@app.post("/api/v1/context/builds/{build_id}/agent-runs")
+def start_context_agent_run(
+    build_id: str,
+    background_tasks: BackgroundTasks,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """P1:对冻结工件原样运行一次模型;一次构建一次运行,压缩/Agent 分项计量。"""
+
+    owner_id = _account_id(account)
+    service = _context_service_for(account)
+    try:
+        snapshot, started = service.start_agent_run(build_id, owner_id)
+    except AgentRunInvalid as exc:
+        status = 409 if exc.code in {"AGENT_RUN_ALREADY_ACTIVE", "ARTIFACT_INVALIDATED"} else 400
+        if exc.code == "BUILD_NOT_COMPLETED":
+            status = 409
+        raise HTTPException(
+            status_code=status,
+            detail={"error_code": exc.code, "message": str(exc)},
+        ) from exc
+    except (BuildNotFound, ForbiddenBuild) as exc:
+        raise _context_lookup_error(exc) from exc
+    if started:
+        background_tasks.add_task(service.execute_agent_run, build_id, owner_id)
+        # P1 Agent 运行审计(需求 §18.2);审计不可用时运行仍可启动,失败只记录
+        with contextlib.suppress(HTTPException):
+            _context_audit(owner_id, "CONTEXT_AGENT_RUN_STARTED", detail={"build_id": build_id})
+    return {"agent_run": snapshot, "idempotent_replay": not started}
+
+
+@app.post("/api/v1/context/builds/{build_id}/access-audit", status_code=204)
+def report_context_access_audit(
+    build_id: str,
+    request: ContextAccessAuditRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> Response:
+    """复制等客户端动作的审计申报:服务端先校验调用者确有该工件访问权。"""
+
+    _grant_artifact_access(build_id, account)
+    _context_audit(
+        _account_id(account),
+        request.action,
+        detail={"build_id": build_id, "declared": True},
+    )
+    return Response(status_code=204)
+
+
+@app.get("/api/v1/context/access-grants")
+def list_context_access_grants(
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """所有者查看自己授出的工件读取授权。"""
+
+    owner_id = _account_id(account)
+    try:
+        grants = _data().list_context_access_grants(owner_id)
+    except DataServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "授权服务暂不可用"},
+        ) from exc
+    return {"grants": grants}
+
+
+@app.post("/api/v1/context/access-grants", status_code=201)
+def create_context_access_grant(
+    request: ContextAccessGrantRequest,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """所有者授予/撤销细粒度工件读取权限;授予与撤销均写审计。"""
+
+    owner_id = _account_id(account)
+    if request.grantee_account_id == owner_id:
+        raise HTTPException(
+            status_code=400,
+            detail={"error_code": "GRANT_SELF_FORBIDDEN", "message": "不能向自己授予访问权限"},
+        )
+    try:
+        grant = _data().create_context_access_grant(
+            owner_id,
+            request.grantee_account_id,
+            scope=request.scope,
+            build_id=request.build_id,
+        )
+    except DataServiceError as exc:
+        if exc.status_code == 409:
+            raise HTTPException(
+                status_code=409,
+                detail={"error_code": "GRANT_ALREADY_ACTIVE", "message": "同样的活跃授权已存在"},
+            ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "授权服务暂不可用"},
+        ) from exc
+    _context_audit(
+        owner_id,
+        "CONTEXT_GRANT_CREATED",
+        detail={"grant_id": grant.get("grantId"), "build_id": request.build_id},
+    )
+    return grant
+
+
+@app.delete("/api/v1/context/access-grants/{grant_id}", status_code=204)
+def revoke_context_access_grant(
+    grant_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> Response:
+    """所有者撤销授权(只能撤销自己授出的)。"""
+
+    owner_id = _account_id(account)
+    try:
+        _data().revoke_context_access_grant(owner_id, grant_id)
+    except DataServiceError as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail={"error_code": "GRANT_NOT_FOUND", "message": "授权不存在或已撤销"},
+            ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "授权服务暂不可用"},
+        ) from exc
+    _context_audit(owner_id, "CONTEXT_GRANT_REVOKED", detail={"grant_id": grant_id})
+    return Response(status_code=204)
+
+
+@app.get("/api/v1/context/audit")
+def list_context_audit(
+    account: Annotated[dict[str, Any], Depends(require_login)],
+    limit: int = 50,
+) -> dict[str, Any]:
+    """所有者查看自己的上下文操作审计(下载/复制/重建/授权/Agent 运行)。"""
+
+    safe_limit = min(max(limit, 1), 200)
+    try:
+        events = _data().list_context_audit(_account_id(account), limit=safe_limit)
+    except DataServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "审计服务暂不可用"},
+        ) from exc
+    return {"events": events}
+
+
+@app.get("/api/v1/context/ops/builds")
+def list_context_ops_builds(
+    account: Annotated[dict[str, Any], Depends(require_ops)],
+    limit: int = 50,
+    cursor: int = 0,
+) -> dict[str, Any]:
+    """跨所有者运维视图(需求 §5.3):只返回脱敏元数据,无任何正文。"""
+
+    store = _context_service_for(account).store
+    safe_limit = min(max(limit, 1), 200)
+    safe_cursor = max(cursor, 0)
+    payload = store.list_builds_cross_owner(safe_limit, safe_cursor)
+    return {
+        "builds": [_sanitize_ops_build(row) for row in payload.get("builds") or []],
+        "total": payload.get("total"),
+        "next_cursor": payload.get("next_cursor"),
+    }
+
+
+@app.get("/api/v1/context/ops/audit")
+def list_context_ops_audit(
+    account: Annotated[dict[str, Any], Depends(require_ops)],
+    limit: int = 50,
+) -> dict[str, Any]:
+    """跨所有者审计视图(运维):动作/成败/时间与脱敏所有者引用,不含正文。"""
+
+    safe_limit = min(max(limit, 1), 200)
+    try:
+        events = _data().list_context_audit(None, limit=safe_limit)
+    except DataServiceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"error_code": "CONTEXT_STORE_UNAVAILABLE", "message": "审计服务暂不可用"},
+        ) from exc
+    return {
+        "events": [
+            {
+                "action": row.get("action"),
+                "succeeded": row.get("succeeded"),
+                "owner_ref": _owner_ref(str(row.get("accountId") or "")),
+                "detail": row.get("detail"),
+                "created_at": row.get("createdAt"),
+            }
+            for row in events
+        ]
+    }
+
+
 @app.post("/api/v1/context-batches")
 def start_context_batch(
     request: ContextBatchRequest,
@@ -412,17 +1155,19 @@ def start_context_batch(
         batch_id = data.create_batch(
             name=f"上下文压缩对照 {datetime.now().astimezone().isoformat(timespec='seconds')}",
             experiment_type="context-strategy",
-            fixed_conditions=_with_conditions_hash({
-                "caseIds": selected,
-                "runsPerVariant": request.runs,
-                "variants": list(COMPARISON_VARIANTS),
-                "model": request.model,
-                "toolData": "frozen",
-                # 门槛配置随批次记录(结果在工件 validity_threshold;任务五消费)
-                "minValidSamples": int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5")),
-                "interleaveSeed": DEFAULT_INTERLEAVE_SEED,
-                "maxTotalTokens": _max_total_tokens(request),
-            }),
+            fixed_conditions=_with_conditions_hash(
+                {
+                    "caseIds": selected,
+                    "runsPerVariant": request.runs,
+                    "variants": list(COMPARISON_VARIANTS),
+                    "model": request.model,
+                    "toolData": "frozen",
+                    # 门槛配置随批次记录(结果在工件 validity_threshold;任务五消费)
+                    "minValidSamples": int(os.getenv("EVAL_MIN_VALID_SAMPLES", "5")),
+                    "interleaveSeed": DEFAULT_INTERLEAVE_SEED,
+                    "maxTotalTokens": _max_total_tokens(request),
+                }
+            ),
         )
     except DataServiceError as exc:
         with contextlib.suppress(ValueError):
@@ -536,10 +1281,17 @@ def get_batch_statistics(batch_id: str, account: Annotated[dict[str, Any], Depen
     from bdlh_runtime.statistics import build_snapshot
 
     conditions = report.get("fixed_conditions")
-    formal_min = (
-        conditions.get("formal_min_repeat_count") if isinstance(conditions, dict) else None
-    )
-    return build_snapshot(batch_id, report=report, formal_min_repeat_count=formal_min)
+    if isinstance(conditions, dict) and "formal_min_repeat_count" in conditions:
+        formal_min = conditions.get("formal_min_repeat_count")
+    else:
+        # 旧报告未冻结门槛(修复方案 P1-4 前的数据):兼容默认值 3,并在快照中明示
+        formal_min = None
+    snapshot = build_snapshot(batch_id, report=report, formal_min_repeat_count=formal_min)
+    if formal_min is None:
+        snapshot["notes"] = list(snapshot.get("notes") or []) + [
+            "报告冻结条件缺少 formal_min_repeat_count(旧口径数据),正式最小样本门槛回退兼容默认值 3"
+        ]
+    return snapshot
 
 
 @app.get("/api/v1/runs/{run_id}/detail")
@@ -763,7 +1515,7 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
         cases = get_case_repository().public_projection()  # type: ignore[attr-defined]
     except Exception:  # noqa: BLE001
         cases = []
-    from bdlh_runtime.experiments import NATIVE_AGENT_MODE_ID, native_context_run_count
+    from bdlh_runtime.experiments import NATIVE_AGENT_MODE_ID
     from bdlh_runtime.experiments.templates import tool_exclusion_presets
 
     return {
@@ -788,9 +1540,8 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
             "repeat_options": list(quota.repeat_options),
             "compression_repeat_count": 1,
             "max_agent_steps": quota.max_agent_steps,
-            "run_counts": {
-                "compression_native_matrix": native_context_run_count(),
-            },
+            # 一次只运行一个 Agent(P0-1):一次四运行的 native-matrix 入口已关闭,
+            # 不再向页面下发该口径;Agent 运行数逐次 +1,单次运行内允许多步 LLM 循环
         },
         "quota": quota.as_dict(),
         # 调用上限说明(§11.3):发起前展示;是上限口径,不冒充实际费用
@@ -804,13 +1555,9 @@ def public_test_options(request: Request, response: Response) -> dict[str, Any]:
 
 
 def _summary_max_calls() -> int:
-    from bdlh_runtime.session.llm_summary import LLMSummarizer
+    from bdlh_runtime.session.llm_summary import summary_call_cap
 
-    raw = (os.getenv("LLM_SUMMARY_MAX_CALLS_PER_BUILD") or "").strip()
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        return LLMSummarizer.MAX_CALLS_PER_BUILD_DEFAULT
+    return summary_call_cap()
 
 
 def _env_limit_int(name: str, *, fallback: int = 0) -> int:
@@ -876,7 +1623,9 @@ class TemplateBatchPlanRequest(BaseModel):
     session_id: str | None = Field(default=None, max_length=100, description="压缩类模板作用于的 Session 编号")
     advanced: dict[str, Any] | None = Field(default=None, description="高级设置;键必须落在模板白名单内")
     idempotency_key: str | None = Field(
-        default=None, min_length=8, max_length=128,
+        default=None,
+        min_length=8,
+        max_length=128,
         description="提交幂等键;同键同请求体的重试返回原批次,不同请求体返回 409",
     )
 
@@ -1053,7 +1802,9 @@ def _persist_template_runs(data: DataClient, batch_id: str, plan: Any, case: Any
                 "caseId": case.case_id,
                 "caseVersion": case.case_version,
                 "variantId": str(registered["variant_id"]) if registered else "default",
-                "snapshotId": str(registered["snapshot_id"]) if registered else f"{case.case_id}:default:{case.fixture_set_id}",
+                "snapshotId": str(registered["snapshot_id"])
+                if registered
+                else f"{case.case_id}:default:{case.fixture_set_id}",
                 "agentMode": "native-tool-calling",
                 "contextStrategy": str((row.get("run_config") or {}).get("context_strategy") or "full"),
                 "model": str(((row.get("run_config") or {}).get("model") or {}).get("model_id") or ""),
@@ -1383,6 +2134,7 @@ def _start_compression_method_batch(
 
     def task() -> None:
         try:
+
             def bump_cell(row: dict[str, Any]) -> None:
                 progress = job.get("progress") or {}
                 progress["done"] = int(progress.get("done") or 0) + 1
@@ -1574,7 +2326,8 @@ class ExperimentSeriesCreateRequest(BaseModel):
     template_id: str = Field(min_length=1, max_length=100)
     case_id: str = Field(default="", max_length=100)
     session_id: str | None = Field(
-        default=None, max_length=100,
+        default=None,
+        max_length=100,
         description="压缩类模板(compression-method-comparison)作用于的 Session 编号",
     )
     variant_labels: list[str] | None = Field(
@@ -1591,7 +2344,9 @@ class SeriesRunRequest(BaseModel):
 
     variant_id: str = Field(min_length=1, max_length=100)
     idempotency_key: str | None = Field(
-        default=None, min_length=8, max_length=128,
+        default=None,
+        min_length=8,
+        max_length=128,
         description="同键同请求体重试返回原运行;同键不同变体返回 409",
     )
 
@@ -1622,8 +2377,7 @@ def create_experiment_series(
     except TemplatePlanError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     if template.classification != CLASSIFICATION_FORMAL or not (
-        "COMPARISON_CASE" in template.allowed_test_types
-        or "COMPRESSION_CASE" in template.allowed_test_types
+        "COMPARISON_CASE" in template.allowed_test_types or "COMPRESSION_CASE" in template.allowed_test_types
     ):
         raise HTTPException(
             status_code=400,
@@ -1656,14 +2410,20 @@ def create_experiment_series(
         raise HTTPException(status_code=400, detail=str(exc)) from None
     planned_labels = {run.variant_label for run in plan.runs}
     # 冻结每变体预期 config_hash(统计模块正式口径的配置一致性锚点):
-    # repeat_count=1 时每变体恰好展开一个运行单元。仅对比用例冻结——
-    # 压缩用例的实际运行不经过模板计划链路(压缩 runner 自建 RunConfig),
-    # 计划哈希与运行哈希不可比,保持观察主导值兼容口径。
-    expected_config_hashes = (
-        {}
-        if compression_session
-        else {run.variant_label: run.config_hash for run in plan.runs}
-    )
+    # 对比用例 repeat_count=1 时每变体恰好展开一个运行单元;压缩方法对照的
+    # RunConfig 由 Session 变体定义确定性决定(token_budget 不依赖工件编译),
+    # 同样在创建时冻结(修复方案 P1-2,不再退回观察主导值兼容口径)。
+    if compression_session:
+        from bdlh_runtime.experiments.compression import (
+            expected_compression_method_config_hashes,
+        )
+
+        try:
+            expected_config_hashes = expected_compression_method_config_hashes(case_ref)
+        except Exception as exc:  # noqa: BLE001 —— Session 数据异常时明确拒绝,不静默降级口径
+            raise HTTPException(status_code=400, detail=f"无法冻结压缩方法预期配置哈希:{exc}") from None
+    else:
+        expected_config_hashes = {run.variant_label: run.config_hash for run in plan.runs}
     record = SeriesRecord(
         series_id=f"series-{uuid4().hex[:12]}",  # DB 版以 create_batch 生成的 batch_id 为准
         template_id=plan.template_id,
@@ -1742,9 +2502,7 @@ def create_series_run(
                 # 阶段二(设计 §10):执行前创建 agent_runs 行并注册实时发布器,
                 # 事件增量落库与 SSE 都以真实 run_id 为键;失败也诚实落 FAILED 行
                 live = _prepare_live_series_run(record, entry, request.variant_id)
-                payload = execute_prepared_series_run(
-                    live["prepared"], event_sink=live["publisher"]
-                )
+                payload = execute_prepared_series_run(live["prepared"], event_sink=live["publisher"])
             else:
                 payload = execute_series_run(
                     record,
@@ -1801,7 +2559,8 @@ def get_experiment_series(
         "variant_labels": record.variant_labels,
         "formal_min_repeat_count": record.formal_min_repeat_count,
         "expected_config_hashes": record.expected_config_hashes,
-        "counts_by_variant": record.counts_by_variant(),
+        # done 口径的登记计数(每变体已完成运行);有效样本口径在统计快照
+        "completed_counts_by_variant": record.completed_counts_by_variant(),
         "total_runs": sum(1 for row in record.runs if row.get("status") == "done"),
         "active_run": _series_run_entry_view(active, series_id) if active else None,
         "created_at": record.created_at,
@@ -1823,22 +2582,15 @@ def list_series_runs(
     }
 
 
-@app.get("/api/v1/statistics/experiment-series/{series_id}")
-def get_series_statistics(
-    series_id: str,
-    account: Annotated[dict[str, Any], Depends(require_login)],
-) -> dict[str, Any]:
-    """实验组累计统计快照(P0-7):纯代码从已完成 Run 全量重算,不产生任何 LLM 请求。
+def _series_statistics_payload(series_id: str, record: SeriesRecord) -> dict[str, Any]:
+    """实验组统计快照重算(纯代码):owner 端点与公开只读端点共用同一口径。
 
     失败运行以无效证据身份进入 excluded_runs,保持排除口径透明。
     统计输入的 run_id 使用登记簿唯一物理身份(series_id:run_key):
     运行 payload 内的计划 run_id 同变体恒同值,不满足"每次物理运行
     全局唯一"的统计输入契约(修复方案 P0-1);登记条目才是物理运行的
-    身份真源。原始记录不做任何修改。
+    身份真源。原始记录不做任何修改,重算不产生任何 LLM 请求。
     """
-    record = _SERIES_STORE.get(series_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="实验组不存在")
     runs: list[dict[str, Any]] = []
     for row in record.runs:
         if row.get("status") == "done" and isinstance(row.get("payload"), dict):
@@ -1878,6 +2630,32 @@ def get_series_statistics(
         formal_min_repeat_count=record.formal_min_repeat_count,
         expected_config_hashes=record.expected_config_hashes or None,
     )
+
+
+@app.get("/api/v1/statistics/experiment-series/{series_id}")
+def get_series_statistics(
+    series_id: str,
+    account: Annotated[dict[str, Any], Depends(require_login)],
+) -> dict[str, Any]:
+    """实验组累计统计快照(P0-7):纯代码从已完成 Run 全量重算,不产生任何 LLM 请求。"""
+    record = _SERIES_STORE.get(series_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="实验组不存在")
+    return _series_statistics_payload(series_id, record)
+
+
+@app.get("/api/v1/public/experiment-series/{series_id}/statistics")
+def get_public_series_statistics(series_id: str) -> dict[str, Any]:
+    """公开只读统计快照(无需登录):实验组链接可分享,任何人可看聚合口径。
+
+    只暴露聚合统计(计数/等级/中位数/对比/质量警告/排除原因),
+    不暴露逐次运行明细、回答正文与任何发起能力;发起与明细仍在
+    所有者通道。实验组编号为随机标识。
+    """
+    record = _SERIES_STORE.get(series_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="实验组不存在")
+    return _series_statistics_payload(series_id, record)
 
 
 @app.post("/api/v1/public/test-jobs")
@@ -2038,9 +2816,7 @@ def _persist_runs(
             row["run_id"] = run_id
 
 
-def _persist_one_run(
-    data: DataClient, batch_id: str, request: ContextBatchRequest, record: RunRecord
-) -> str:
+def _persist_one_run(data: DataClient, batch_id: str, request: ContextBatchRequest, record: RunRecord) -> str:
     run_id = data.create_run(
         {
             "batchId": batch_id,
@@ -2145,9 +2921,7 @@ def _report_run_payload(row: dict[str, Any]) -> dict[str, Any]:
     报告只保留计量摘要与快照元信息;request_hash 足以与明细表对账。
     """
     calls = [
-        {key: value for key, value in call.items() if key != "messages"}
-        if isinstance(call, dict)
-        else call
+        {key: value for key, value in call.items() if key != "messages"} if isinstance(call, dict) else call
         for call in row.get("model_calls") or []
     ]
     light = {key: value for key, value in row.items() if key != "model_calls"}

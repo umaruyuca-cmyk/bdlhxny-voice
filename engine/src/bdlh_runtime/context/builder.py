@@ -143,9 +143,7 @@ class ContextBuilder:
 
         required = [item for item in items if item.classification is ContextClassification.REQUIRED]
         selected, decisions, remaining = self._keep_required(required, request.token_budget)
-        optional = [
-            item for item in items if item.classification is not ContextClassification.REQUIRED
-        ]
+        optional = [item for item in items if item.classification is not ContextClassification.REQUIRED]
         ordered = self._ordered(optional)
 
         window: list[ContextItem] = []
@@ -181,9 +179,7 @@ class ContextBuilder:
 
         required = [item for item in items if item.classification is ContextClassification.REQUIRED]
         selected, decisions, remaining = self._keep_required(required, request.token_budget)
-        optional = self._ordered(
-            item for item in items if item.classification is not ContextClassification.REQUIRED
-        )
+        optional = self._ordered(item for item in items if item.classification is not ContextClassification.REQUIRED)
 
         recent: list[ContextItem] = []
         recent_used = 0
@@ -195,7 +191,6 @@ class ContextBuilder:
             recent.insert(0, item)
             recent_used += tokens
         earlier = optional[: len(optional) - len(recent)]
-        recent_ids = {item.item_id for item in recent}
 
         summary_item: ContextItem | None = None
         if earlier:
@@ -334,9 +329,7 @@ class ContextBuilder:
             full = self._counter.count(self._render(item, item.content))
             full_tokens[item.item_id] = full
             if item.classification is ContextClassification.COMPRESSIBLE and full > 0:
-                pairs.append(
-                    (self._scorer.selection_value(priority, full), item.sequence, item.item_id, "full", item)
-                )
+                pairs.append((self._scorer.selection_value(priority, full), item.sequence, item.item_id, "full", item))
                 header = self._counter.count(self._render(item, ""))
                 target = min(
                     full,
@@ -351,7 +344,13 @@ class ContextBuilder:
                     # 排序用估算 token(header+目标长度);接受时按实际压缩结果复核
                     estimate = max(1, header + target)
                     pairs.append(
-                        (self._scorer.selection_value(priority, estimate), item.sequence, item.item_id, "compressed", item)
+                        (
+                            self._scorer.selection_value(priority, estimate),
+                            item.sequence,
+                            item.item_id,
+                            "compressed",
+                            item,
+                        )
                     )
             # 引用表示是兜底,排序键恒 -1.0:只在该条目完整/压缩都放不下时才会轮到
             pairs.append((-1.0, item.sequence, item.item_id, "reference", item))
@@ -388,9 +387,7 @@ class ContextBuilder:
                 and item.item_id in chosen
             ):
                 source_item = next(row for row in candidates if row.item_id == target)
-                rendered = self._render(
-                    source_item, self._reference(source_item, full_tokens[source_item.item_id])
-                )
+                rendered = self._render(source_item, self._reference(source_item, full_tokens[source_item.item_id]))
                 tokens = self._counter.count(rendered)
                 if tokens <= remaining:
                     selected.append((source_item, rendered))
@@ -410,24 +407,31 @@ class ContextBuilder:
         for item in candidates:
             if item.item_id in chosen:
                 representation = chosen[item.item_id][0]
-                action = ContextAction.KEPT if representation == "full" else (
-                    ContextAction.COMPRESSED if representation == "compressed" else ContextAction.REFERENCED
+                action = (
+                    ContextAction.KEPT
+                    if representation == "full"
+                    else (ContextAction.COMPRESSED if representation == "compressed" else ContextAction.REFERENCED)
                 )
                 score = next(row for row in score_rows if row.item_id == item.item_id)
                 decisions.append(
                     self._decision(
                         item,
                         action,
-                        f"v2 {representation} selection_value={score.selection_value:.6f} priority={score.priority:.4f}",
+                        f"v2 {representation} selection_value={score.selection_value:.6f} "
+                        f"priority={score.priority:.4f}",
                         chosen[item.item_id][1],
                     )
                 )
             else:
-                decisions.append(self._decision(item, ContextAction.OMITTED, "v2 no representation fits remaining budget", ""))
+                decisions.append(
+                    self._decision(item, ContextAction.OMITTED, "v2 no representation fits remaining budget", "")
+                )
         for item in items:
             if item.classification is ContextClassification.DISTRACTOR:
                 decisions.append(
-                    self._decision(item, ContextAction.ISOLATED, "distractor excluded from budgeted working context", "")
+                    self._decision(
+                        item, ContextAction.ISOLATED, "distractor excluded from budgeted working context", ""
+                    )
                 )
 
         selected.sort(key=lambda pair: (pair[0].sequence, pair[0].item_id))
@@ -462,6 +466,7 @@ class ContextBuilder:
             input_tokens=self._counter.count(self._render(item, item.content)),
             output_tokens=self._counter.count(output),
             source_id=item.source_id,
+            output_content=output or None,
         )
 
     def _render(self, item: ContextItem, content: str) -> str:

@@ -55,6 +55,10 @@ jobs:
           node-version: "20"
       - name: Test
         run: npm test
+      - name: Generator idempotency (generate:site 前后无差异)
+        run: |
+          npm run generate:site
+          git diff --exit-code
 
   compose-config:
     name: Docker Compose configuration

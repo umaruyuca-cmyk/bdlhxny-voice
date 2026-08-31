@@ -15,11 +15,7 @@ from bdlh_runtime.experiments.comparison_cases_data import (
 )
 
 OUT = (
-    Path(__file__).resolve().parents[2]
-    / "db"
-    / "postgresql"
-    / "changes"
-    / "20260826-fix-comparison-mock-and-deps.sql"
+    Path(__file__).resolve().parents[2] / "db" / "postgresql" / "changes" / "20260826-fix-comparison-mock-and-deps.sql"
 )
 
 _STATUS_MAP = {
@@ -54,7 +50,9 @@ def main() -> None:
     lines.append("SET LOCAL lock_timeout = '5s';")
     lines.append("SET LOCAL statement_timeout = '10min';")
     lines.append("")
-    lines.append("INSERT INTO touchstone.fixture_sets (id, version, title, fixture_type, source_hash, captured_at, public)")
+    lines.append(
+        "INSERT INTO touchstone.fixture_sets (id, version, title, fixture_type, source_hash, captured_at, public)"
+    )
     lines.append("VALUES (")
     lines.append(f"  {sql_quote(FIXTURE_SET_ID)}, {FIXTURE_SET_VERSION},")
     lines.append("  '对比用例冻结 Mock 集(20条,显式匹配与依赖)',")
@@ -66,9 +64,7 @@ def main() -> None:
     lines.append("  captured_at = EXCLUDED.captured_at;")
     lines.append("")
     lines.append("DELETE FROM touchstone.fixture_tool_responses")
-    lines.append(
-        f"WHERE fixture_set_id = {sql_quote(FIXTURE_SET_ID)} AND fixture_set_version = {FIXTURE_SET_VERSION};"
-    )
+    lines.append(f"WHERE fixture_set_id = {sql_quote(FIXTURE_SET_ID)} AND fixture_set_version = {FIXTURE_SET_VERSION};")
     lines.append("")
     lines.append("ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN arguments_hash DROP NOT NULL;")
     lines.append("ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN response_hash DROP NOT NULL;")
@@ -90,22 +86,16 @@ def main() -> None:
             " response_status, response, simulated_latency_ms, sequence)"
         )
         lines.append("VALUES (")
-        lines.append(
-            f"  {sql_quote(FIXTURE_SET_ID)}, {FIXTURE_SET_VERSION}, {sql_quote(call_key)},"
-        )
+        lines.append(f"  {sql_quote(FIXTURE_SET_ID)}, {FIXTURE_SET_VERSION}, {sql_quote(call_key)},")
         lines.append(f"  {sql_quote(str(fx['tool']))}, {sql_quote(args_json)}::jsonb,")
         lines.append(f"  {sql_quote(db_status)}, {sql_quote(resp_json)}::jsonb, 0, {index}")
         lines.append(");")
         lines.append("")
 
     lines.append("UPDATE touchstone.fixture_tool_responses")
-    lines.append(
-        "SET arguments_hash = 'sha256:' || encode(digest(arguments::text, 'sha256'), 'hex'),"
-    )
+    lines.append("SET arguments_hash = 'sha256:' || encode(digest(arguments::text, 'sha256'), 'hex'),")
     lines.append("    response_hash  = 'sha256:' || encode(digest(response::text, 'sha256'), 'hex')")
-    lines.append(
-        f"WHERE fixture_set_id = {sql_quote(FIXTURE_SET_ID)} AND fixture_set_version = {FIXTURE_SET_VERSION};"
-    )
+    lines.append(f"WHERE fixture_set_id = {sql_quote(FIXTURE_SET_ID)} AND fixture_set_version = {FIXTURE_SET_VERSION};")
     lines.append("ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN arguments_hash SET NOT NULL;")
     lines.append("ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN response_hash SET NOT NULL;")
     lines.append("")
@@ -132,9 +122,7 @@ def main() -> None:
     lines.append(f"  fixture_set_id = {sql_quote(FIXTURE_SET_ID)},")
     lines.append(f"  fixture_set_version = {FIXTURE_SET_VERSION},")
     lines.append(
-        "  content = jsonb_build_object('note', "
-        + sql_quote(f"对比用例标准条件;冻结 Mock 集 {FIXTURE_SET_ID}")
-        + "),"
+        "  content = jsonb_build_object('note', " + sql_quote(f"对比用例标准条件;冻结 Mock 集 {FIXTURE_SET_ID}") + "),"
     )
     lines.append(f"  source_hash = {sql_quote(source_hash)}")
     lines.append("WHERE case_id LIKE 'cmp-%';")

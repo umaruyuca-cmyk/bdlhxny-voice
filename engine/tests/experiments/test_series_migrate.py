@@ -79,12 +79,8 @@ def test_migrate_is_idempotent(tmp_path):
 def test_migrate_force_overwrites(tmp_path):
     store = SeriesStore(root=tmp_path / "series")
     migrate_batch("batch-m3", _template_report(), store=store, statistics_root=tmp_path / "stats")
-    bigger = _template_report(
-        runs=[_run("r-a-0", "t0.1", 0), _run("r-a-1", "t0.1", 1), _run("r-b-0", "t0.7", 0)]
-    )
-    result = migrate_batch(
-        "batch-m3", bigger, store=store, statistics_root=tmp_path / "stats", force=True
-    )
+    bigger = _template_report(runs=[_run("r-a-0", "t0.1", 0), _run("r-a-1", "t0.1", 1), _run("r-b-0", "t0.7", 0)])
+    result = migrate_batch("batch-m3", bigger, store=store, statistics_root=tmp_path / "stats", force=True)
     assert result["status"] == "migrated"
     assert result["migrated_runs"] == 3
     assert store.get("batch-m3").variant_labels == ["t0.1", "t0.7"]
@@ -115,14 +111,32 @@ def test_migrate_maps_compression_cells(tmp_path):
         },
         "fixed_conditions_hash": "sha256:cmp",
         "cells": [
-            {"unit_id": "s1:budgeted:native", "context_variant": "budgeted", "repeat_index": 0,
-             "config_hash": "cfg-b", "validity": "VALID", "stop_reason": "FINAL_ANSWER",
-             "actual_agent_steps": 3, "duration_ms": 700, "tool_calls": [], "error": None,
-             "answer": "ok"},
-            {"unit_id": "s1:budgeted-llm:native", "context_variant": "budgeted-llm", "repeat_index": 0,
-             "config_hash": "cfg-c", "validity": "INVALID", "stop_reason": "ERROR",
-             "actual_agent_steps": 0, "duration_ms": 0, "tool_calls": [],
-             "error": "LLM_UNAVAILABLE", "answer": ""},
+            {
+                "unit_id": "s1:budgeted:native",
+                "context_variant": "budgeted",
+                "repeat_index": 0,
+                "config_hash": "cfg-b",
+                "validity": "VALID",
+                "stop_reason": "FINAL_ANSWER",
+                "actual_agent_steps": 3,
+                "duration_ms": 700,
+                "tool_calls": [],
+                "error": None,
+                "answer": "ok",
+            },
+            {
+                "unit_id": "s1:budgeted-llm:native",
+                "context_variant": "budgeted-llm",
+                "repeat_index": 0,
+                "config_hash": "cfg-c",
+                "validity": "INVALID",
+                "stop_reason": "ERROR",
+                "actual_agent_steps": 0,
+                "duration_ms": 0,
+                "tool_calls": [],
+                "error": "LLM_UNAVAILABLE",
+                "answer": "",
+            },
         ],
     }
     result = migrate_batch("batch-c1", report, store=store, statistics_root=tmp_path / "stats")

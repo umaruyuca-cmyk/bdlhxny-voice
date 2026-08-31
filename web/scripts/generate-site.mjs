@@ -304,7 +304,7 @@ const ABOUT_REPO = {
       title: "复现三步",
       html: `<ol>
   <li>本地启动(见 <code>deploy/本地启动说明.md</code>);</li>
-  <li>登录后进入实验中心 <code>/experiment/</code>:按模板发起正式批次,亦可发起上下文压缩对照;</li>
+  <li>登录后进入实验中心 <code>/experiment/</code>:创建实验组并在实验组页逐样本发起(一次点击一个 Agent 运行),亦可生成上下文压缩对照;</li>
   <li><code>npm run publish:showcase -- --git-commit &lt;sha&gt;</code> 投影到公开层。</li>
 </ol>`,
     },
@@ -465,7 +465,7 @@ const CONTEXT_DESIGN = {
     {
       id: "launch",
       title: "如何发起",
-      html: `<p>登录所有者进入<a href="/experiment/">实验中心</a>选择模板 <code>context-strategy-comparison</code>(或压缩方法对照 <code>compression-method-comparison</code>)按模板发起;匿名访客可经<a href="/experiment/compression">压缩用例</a>页发起公开测试(生成上下文 / 单组合运行 / 原生 4×1)。正式数字经维护者审核发布后出现在<a href="/">公告页</a>。</p>`,
+      html: `<p>登录所有者进入<a href="/experiment/">实验中心</a>选择模板 <code>context-strategy-comparison</code>(或压缩方法对照 <code>compression-method-comparison</code>)创建实验组,并在实验组页逐样本发起 Agent 运行(一次点击一个运行);匿名访客可经<a href="/experiment/compression">压缩用例</a>页发起公开测试(生成上下文 / 单组合运行,一次点击一个运行)。正式数字经维护者审核发布后出现在<a href="/">公告页</a>。</p>`,
     },
   ],
 };
@@ -775,7 +775,11 @@ const OPS_RUNAPI = {
   <li><code>GET /api/v1/cases</code> — 固定题库(题号/版本/变体);</li>
   <li><code>GET /api/v1/experiment-templates</code> — 实验模板清单(目的/唯一自变量/变体/冻结条件/权限与上限);</li>
   <li><code>POST /api/v1/template-batches/plan</code> — 模板批次预估(精确运行数与变体 config_hash,不创建运行);</li>
-  <li><code>POST /api/v1/template-batches</code> — 按模板发起正式批次(固定用例 × 模板变体,统一原生底座);</li>
+  <li><code>POST /api/v1/template-batches</code> — <b>已退役(410)</b>:一次请求隐式展开多个 Agent 运行的路径停止创建任务;仅保留压缩方法对照的「生成上下文工件」(<code>context_only</code>,0 个 Agent 运行)兼容;</li>
+  <li><code>POST /api/v1/experiment-series</code> — 创建实验组(对比用例带 <code>case_id</code>,压缩对照带 <code>session_id</code>;只保存定义与冻结条件,不运行 Agent);</li>
+  <li><code>POST /api/v1/experiment-series/{id}/runs</code> — 创建<b>一个且仅一个</b> Agent 运行(幂等键查重、单活跃运行约束、repeat_index 自动分配);</li>
+  <li><code>GET /api/v1/experiment-series/{id}</code> 与 <code>GET /api/v1/experiment-series/{id}/runs</code> — 实验组定义、样本积累状态与独立运行记录;</li>
+  <li><code>GET /api/v1/statistics/batches/{id}</code> 与 <code>GET /api/v1/statistics/experiment-series/{id}</code> — 纯代码统计快照(可重建,不产生任何 LLM 请求);</li>
   <li><code>POST /api/v1/context-batches</code> — 发起上下文压缩对照批次(三 Session × 四种上下文方式口径);</li>
   <li><code>GET /api/v1/jobs/{id}</code> 与 <code>POST /api/v1/jobs/{id}/cancel</code> — 作业状态与协作取消(幂等);</li>
   <li><code>GET /api/v1/batches/{id}</code> / <code>GET /api/v1/runs/{id}/detail</code> — 批次运行列表与单次运行逐步明细;</li>

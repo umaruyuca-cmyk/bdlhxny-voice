@@ -73,3 +73,34 @@ BEGIN/COMMIT，失败整体回滚）。统一规范：执行前备份，执行�
 - `20260827-remove-legacy-agent-modes.sql`：删除停用的多 Agent 实现目录、版本外键和
   旧实验范围，只保留当前统一原生 Tool Calling 底座需要的模板实验数据。执行前备份，
   建议低峰期运行；脚本完成后按末尾核验 SQL 确认旧目录表不存在。
+
+## 2026-08-28 批次报告持久化
+
+- `20260828-batch-report-column.sql`：`run_batches` 增加 `report JSONB NOT NULL
+  DEFAULT '{}'`。**注意:脚本本体无 BEGIN/COMMIT 与 database_changes 登记**
+  (早于目录规范收紧),执行时应在外层单事务中包裹并补登记。
+  本地开发库于 2026-08-31 补执行补登记(此前 `RunRepository` 的报告读写
+  在该库一直走本地工件兜底路径)。
+
+## 2026-08-30 上下文记忆工作台
+
+- `20260830-context-memory-workbench.sql`：新增 `context_sessions`、`session_events`、
+  `context_memory_segments`、`context_artifacts`，并扩展既有 `context_builds` 支持
+  “先构建上下文、后关联 Agent 运行”。包含每账号/Session 单活跃构建和幂等唯一索引。
+  脚本不导入冻结 JSON；固定实验继续走文件只读适配器，生产会话走数据库。
+- `20260830-context-artifact-memory-segments.sql`：`context_artifacts` 增加
+  `memory_segments` 明细快照列(JSONB 数组,不回填),Data Service Store 下工件重读
+  可还原"历史摘要复用"明细。依赖主脚本已执行。
+- `20260830-context-build-agent-run.sql`：`context_builds` 增加 `agent_run_snapshot`
+  (JSONB),承载"一次构建一次 Agent 运行"的运行快照终态。依赖主脚本已执行。
+- `20260830-context-access-grants.sql`：P1 细粒度 RBAC——新增
+  `context_access_grants` 跨所有者工件读取授权表(scope 仅 ARTIFACT_READ,
+  可选绑定单个 build_id,NULL=全部构建;禁止自我授权;撤销后可重授);
+  审计复用既有 `audit_log`,本脚本不建审计表。
+- `20260830-context-access-grants-nulls-unique.sql`：**修正上一脚本的唯一索引**
+  (PostgreSQL 默认把 NULL 视为互异,build_id 为空的重复全局授权不会被拒);
+  以 `NULLS NOT DISTINCT` 重建活跃授权索引(PG 15+)。必须在授权脚本之后执行。
+- `20260830-context-analysis-jobs.sql`：P2 定时分析——新增
+  `context_segment_quality_checks`(摘要段语义评审结果,verdict 含 ERROR=
+  评审失败不伪造通过)与 `context_analysis_runs`(每次分析运行的状态与报告
+  JSONB:阈值分组对照/成本收益/相关性)。依赖授权脚本的账号外键,任意时间执行。

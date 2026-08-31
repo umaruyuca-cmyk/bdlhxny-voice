@@ -31,7 +31,6 @@ from bdlh_runtime.experiments.templates import (
     ExperimentTemplate,
     TemplatePlanError,
     VariantSpec,
-    get_template,
     get_tool_exclusion_preset,
     plan_template_batch,
     tool_exclusion_preset_hash,
@@ -140,9 +139,7 @@ def test_client_cannot_upload_arbitrary_variants():
 
 def test_anonymous_cannot_submit_advanced_settings():
     with pytest.raises(TemplatePlanError):
-        plan_template_batch(
-            "max-agent-steps-stability", repeat_count=1, role=ROLE_ANONYMOUS
-        )  # 模板本身不匿名开放
+        plan_template_batch("max-agent-steps-stability", repeat_count=1, role=ROLE_ANONYMOUS)  # 模板本身不匿名开放
     with pytest.raises(TemplatePlanError):
         plan_template_batch(
             "governance-on-off",
@@ -182,10 +179,7 @@ def test_tool_exclusion_presets_versioned_and_hashed():
     preset = get_tool_exclusion_preset("remove-preferred")
     assert preset.excluded_tools == ("weather.get_forecast",)
     assert tool_exclusion_preset_hash(preset) == tool_exclusion_preset_hash(preset)
-    assert (
-        tool_exclusion_preset_hash(preset)
-        != tool_exclusion_preset_hash(get_tool_exclusion_preset("full-catalog"))
-    )
+    assert tool_exclusion_preset_hash(preset) != tool_exclusion_preset_hash(get_tool_exclusion_preset("full-catalog"))
     plan = plan_template_batch(
         "tool-availability-degradation", repeat_count=3, role=ROLE_ANONYMOUS, preset_id="remove-preferred"
     )
@@ -244,10 +238,13 @@ async def test_governance_variants_share_same_loop_tools_and_input():
         plan,
         message="上海今天天气如何?",
         visible_tools=_VISIBLE,
-        llm=FakeChatModel([
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海今天多云,25℃。"),
-        ] * 2),  # 两个变体各消耗一组(调用+回答)
+        llm=FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海今天多云,25℃。"),
+            ]
+            * 2
+        ),  # 两个变体各消耗一组(调用+回答)
         fixtures=_FIXTURES,
     )
     assert result["template_id"] == "governance-on-off"
@@ -268,15 +265,15 @@ async def test_governance_variants_share_same_loop_tools_and_input():
 async def test_governance_off_bypass_visible_but_mock_only():
     """治理关闭:权限拦截被旁路(记录 bypassed 与原规则),但只执行 Mock。"""
     record = await run_native_agent(
-        run_config=TEMPLATES["governance-on-off"].base_config.with_overrides(
-            {"governance_profile": GOVERNANCE_OFF}
-        ),
+        run_config=TEMPLATES["governance-on-off"].base_config.with_overrides({"governance_profile": GOVERNANCE_OFF}),
         message="帮我查天气",
         visible_tools=("weather.get_forecast",),
-        llm=FakeChatModel([
-            _call("weather.get_forecast", {"location": "上海"}, "c1"),
-            AIMessage(content="上海多云。"),
-        ]),
+        llm=FakeChatModel(
+            [
+                _call("weather.get_forecast", {"location": "上海"}, "c1"),
+                AIMessage(content="上海多云。"),
+            ]
+        ),
         fixtures=_FIXTURES,
         authenticated=False,  # 游客:weather 工具无需登录,但用受限工具验证旁路
         user_id="guest",
@@ -288,10 +285,12 @@ async def test_governance_off_bypass_visible_but_mock_only():
 @pytest.mark.asyncio
 async def test_governance_off_bypasses_permission_for_restricted_tool():
     """off 档:需登录工具仍可见,权限规则被旁路并记录,Mock 仍执行。"""
-    llm = FakeChatModel([
-        _call("document.summarize", {"path": "/tmp/report.md"}, "c1"),
-        AIMessage(content="已总结。"),
-    ])
+    llm = FakeChatModel(
+        [
+            _call("document.summarize", {"path": "/tmp/report.md"}, "c1"),
+            AIMessage(content="已总结。"),
+        ]
+    )
     fixtures = [
         {
             "tool": "document.summarize",
@@ -304,9 +303,7 @@ async def test_governance_off_bypasses_permission_for_restricted_tool():
         }
     ]
     record = await run_native_agent(
-        run_config=TEMPLATES["governance-on-off"].base_config.with_overrides(
-            {"governance_profile": GOVERNANCE_OFF}
-        ),
+        run_config=TEMPLATES["governance-on-off"].base_config.with_overrides({"governance_profile": GOVERNANCE_OFF}),
         message="总结这份报告",
         visible_tools=("document.summarize",),
         llm=llm,
@@ -332,10 +329,12 @@ async def test_governance_standard_blocks_restricted_tool_for_guest():
         run_config=TEMPLATES["governance-on-off"].base_config,  # standard
         message="总结这份报告",
         visible_tools=("document.summarize",),
-        llm=FakeChatModel([
-            _call("document.summarize", {"path": "/tmp/report.md"}, "c1"),
-            AIMessage(content="抱歉,我无权访问该工具。"),
-        ]),
+        llm=FakeChatModel(
+            [
+                _call("document.summarize", {"path": "/tmp/report.md"}, "c1"),
+                AIMessage(content="抱歉,我无权访问该工具。"),
+            ]
+        ),
         fixtures=[],
         authenticated=False,
         user_id="guest",
@@ -583,9 +582,20 @@ def test_metrics_distinguish_correct_false_and_bypassed():
             _probe("permission-denied"),
             blocked=False,
             executed=True,
-            audits=[{"audit_code": None, "status": "SUCCESS", "bypassed": True,
-                     "bypassed_rules": [{"rule_id": "G3-AUTH-001", "audit_code": "AUTHENTICATION_REQUIRED",
-                                          "reason": "该工具仅机主可调用"}]}],
+            audits=[
+                {
+                    "audit_code": None,
+                    "status": "SUCCESS",
+                    "bypassed": True,
+                    "bypassed_rules": [
+                        {
+                            "rule_id": "G3-AUTH-001",
+                            "audit_code": "AUTHENTICATION_REQUIRED",
+                            "reason": "该工具仅机主可调用",
+                        }
+                    ],
+                }
+            ],
         ),
     )
     assert bypassed["missed_block"] is True
@@ -617,14 +627,23 @@ def test_unconfirmed_write_mock_execution_counted():
     write_probe = _probe("confirmation-write")
     row = evaluate_governance_probe(
         write_probe,
-        _observation(write_probe, blocked=False, executed=True,
-                     audits=[{"audit_code": None, "status": "SUCCESS", "bypassed": False}]),
+        _observation(
+            write_probe,
+            blocked=False,
+            executed=True,
+            audits=[{"audit_code": None, "status": "SUCCESS", "bypassed": False}],
+        ),
     )
     assert row["unconfirmed_write_mock_execution"] == 1
     confirmed = evaluate_governance_probe(
         write_probe,
-        _observation(write_probe, blocked=False, executed=True, confirmation=True,
-                     audits=[{"audit_code": None, "status": "SUCCESS", "bypassed": False}]),
+        _observation(
+            write_probe,
+            blocked=False,
+            executed=True,
+            confirmation=True,
+            audits=[{"audit_code": None, "status": "SUCCESS", "bypassed": False}],
+        ),
     )
     assert confirmed["unconfirmed_write_mock_execution"] == 0
 
@@ -638,10 +657,12 @@ def test_governance_metrics_from_real_loop_run():
             run_config=TEMPLATES["governance-on-off"].base_config,
             message="总结这份报告",
             visible_tools=("document.summarize",),
-            llm=FakeChatModel([
-                _call("document.summarize", {"path": "/tmp/report.md"}, "c1"),
-                AIMessage(content="抱歉,当前身份无权调用该工具。"),
-            ]),
+            llm=FakeChatModel(
+                [
+                    _call("document.summarize", {"path": "/tmp/report.md"}, "c1"),
+                    AIMessage(content="抱歉,当前身份无权调用该工具。"),
+                ]
+            ),
             fixtures=[],
             authenticated=False,
             user_id="guest",

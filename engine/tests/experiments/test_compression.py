@@ -62,9 +62,7 @@ def test_current_input_not_in_history_twice(compiled_once):
         contents = [row["content"] for row in payload["compiled_messages"]]
         joined = "\n".join(contents)
         occurrences = joined.count(question)
-        assert occurrences == 1, (
-            f"{variant_id}: 当前问题出现 {occurrences} 次(应为 1:不进入历史也不重复追加)"
-        )
+        assert occurrences == 1, f"{variant_id}: 当前问题出现 {occurrences} 次(应为 1:不进入历史也不重复追加)"
 
 
 def test_current_event_is_latest_user_message():
@@ -228,8 +226,12 @@ def test_build_compression_details_counts_and_excerpts():
 
     artifacts = {
         "budgeted-session": {
-            "strategy": "budgeted", "original_tokens": 1000, "working_tokens": 300,
-            "token_budget": 512, "required_retained": True, "budget_fit": True,
+            "strategy": "budgeted",
+            "original_tokens": 1000,
+            "working_tokens": 300,
+            "token_budget": 512,
+            "required_retained": True,
+            "budget_fit": True,
             "kept_event_ids": ["evt-1", "evt-2"],
             "compressed_event_ids": ["evt-3"],
             "referenced_event_ids": ["evt-4"],
@@ -298,9 +300,7 @@ def test_generate_compression_method_contexts_two_artifacts():
     不走真实 LLM:from_env(llm_summary=True) 在有 env 的环境会产生真实调用,
     单测一律注入替身;真实差异由私有台试跑验证。
     """
-    result = compression.generate_compression_method_contexts(
-        SESSION_ID, llm_summarizer=_FakeLLMSummarizer()
-    )
+    result = compression.generate_compression_method_contexts(SESSION_ID, llm_summarizer=_FakeLLMSummarizer())
     assert result["test_type"] == "COMPRESSION_CASE"
     assert set(result["stats"]["original_tokens"]) == {"budgeted", "budgeted-llm"}
     # 同一输入:压缩前 token 必然一致
@@ -325,13 +325,17 @@ def test_compression_method_on_phase_reports_steps():
 
     async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
         return {
-            "answer": "按最终决定执行。", "error": None, "tool_calls": [],
-            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5,
+            "answer": "按最终决定执行。",
+            "error": None,
+            "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER",
+            "actual_agent_steps": 1,
+            "duration_ms": 5,
         }
 
-    from bdlh_runtime.experiments.compression import run_compression_method_comparison
-
     import asyncio
+
+    from bdlh_runtime.experiments.compression import run_compression_method_comparison
 
     asyncio.run(
         run_compression_method_comparison(
@@ -357,8 +361,12 @@ async def test_run_compression_method_comparison_two_cells():
     async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
         spy.append(run_key)
         return {
-            "answer": "按最终决定执行。", "error": None, "tool_calls": [],
-            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5,
+            "answer": "按最终决定执行。",
+            "error": None,
+            "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER",
+            "actual_agent_steps": 1,
+            "duration_ms": 5,
         }
 
     fake_summarizer = _FakeLLMSummarizer()
@@ -381,14 +389,13 @@ async def test_run_compression_method_comparison_two_cells():
     assert result["frozen_artifact_hashes"]["budgeted"] != result["frozen_artifact_hashes"]["budgeted-llm"]
 
 
-
-
 class _BatchCapSummarizer:
     """带批量分块摘要的替身:统计 chunk 请求次数,校验 P0-1 上限生效。"""
 
     def __init__(self) -> None:
         self.batch_calls = 0
         self.item_calls = 0
+        self.batch_item_ids: list[str] = []
 
     def summarize(self, texts, max_tokens, counter):  # noqa: ANN001
         self.item_calls += 1
@@ -396,6 +403,7 @@ class _BatchCapSummarizer:
 
     def summarize_batch(self, items, *, max_tokens_per_item, counter):  # noqa: ANN001
         self.batch_calls += 1
+        self.batch_item_ids.extend(item_id for item_id, _text in items)
         return {item_id: f"【批量摘要】{text[:16]}" for item_id, text in items}
 
 
@@ -405,9 +413,7 @@ def test_generative_compile_caps_summary_calls_via_batch(monkeypatch):
 
     monkeypatch.setenv("LLM_SUMMARY_MAX_CALLS_PER_BUILD", "4")
     session, variants, _ = compression._load_session_bundle("ctx-session-product-evolution-01")
-    budgeted_def = next(
-        v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"
-    )
+    budgeted_def = next(v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session")
     fake = _BatchCapSummarizer()
     compiled = SessionCompiler(summarizer=fake).compile(session, budgeted_def, common_rules="规则")
     assert fake.batch_calls <= 4  # 分块请求数受硬上限约束
@@ -416,21 +422,64 @@ def test_generative_compile_caps_summary_calls_via_batch(monkeypatch):
     assert compiled.build_model_calls <= 4  # 工件计量与真实请求数一致
 
 
+def test_generative_prebuild_summarizes_only_budget_candidates():
+    """预算放不下的历史不得先送 LLM,避免“先全量总结、后丢弃”。"""
+    from bdlh_runtime.context import (
+        ContextBuildRequest,
+        ContextClassification,
+        ContextItem,
+        ContextRole,
+        ContextStrategy,
+    )
+    from bdlh_runtime.session import SessionCompiler
+
+    fake = _BatchCapSummarizer()
+    compiler = SessionCompiler(summarizer=fake)
+    items = [
+        ContextItem(
+            item_id="system-prompt",
+            content="必须遵守规则。",
+            classification=ContextClassification.REQUIRED,
+            role=ContextRole.SYSTEM,
+            priority=100000,
+            sequence=-1,
+        )
+    ]
+    items.extend(
+        ContextItem(
+            item_id=f"history-{index}",
+            content=(f"第 {index} 条历史内容。" * 80),
+            classification=ContextClassification.COMPRESSIBLE,
+            role=ContextRole.USER_DATA,
+            priority=20 - index,
+            sequence=index,
+        )
+        for index in range(20)
+    )
+    request = ContextBuildRequest(
+        items=tuple(items),
+        token_budget=420,
+        strategy=ContextStrategy.BUDGETED,
+    )
+
+    compiler._prebuild_summary_map(items, request)
+
+    assert fake.batch_calls == 1
+    assert 0 < len(fake.batch_item_ids) < 20
+    assert fake.batch_item_ids == [f"history-{index}" for index in range(len(fake.batch_item_ids))]
+
+
 @pytest.mark.asyncio
 async def test_default_cell_runner_llm_unavailable_marks_invalid(monkeypatch):
     """P0-5:llm=None 且 env 未配置 → 按 env 构建失败,单元诚实标记 LLM_UNAVAILABLE。"""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     session, variants, _ = compression._load_session_bundle(SESSION_ID)
-    budgeted_def = next(
-        v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"
-    )
+    budgeted_def = next(v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session")
     from bdlh_runtime.session import SessionCompiler
 
     artifact = SessionCompiler().compile(session, budgeted_def, common_rules="规则")
-    raw = await compression._default_cell_runner(
-        session, artifact, "native-tool-calling", "run-key", 4, llm=None
-    )
+    raw = await compression._default_cell_runner(session, artifact, "native-tool-calling", "run-key", 4, llm=None)
     assert raw["error"] and "LLM_UNAVAILABLE" in raw["error"]  # 不伪装为成功
     assert raw["actual_agent_steps"] == 0  # 未进入 Agent 模型循环
 
@@ -443,13 +492,15 @@ async def test_native_matrix_budget_terminates_remaining_units(monkeypatch):
 
     async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
         return {
-            "answer": "按最终决定执行。", "error": None, "tool_calls": [],
-            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 2, "duration_ms": 5,
+            "answer": "按最终决定执行。",
+            "error": None,
+            "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER",
+            "actual_agent_steps": 2,
+            "duration_ms": 5,
         }
 
-    result = await compression.run_native_context_matrix(
-        SESSION_ID, cell_runner=fake_runner, max_agent_steps=4
-    )
+    result = await compression.run_native_context_matrix(SESSION_ID, cell_runner=fake_runner, max_agent_steps=4)
     assert result["budget_terminated"]  # 2 步/格 × 2 格 > 上限 2
     assert len(result["cells"]) == 2  # 第三格前已超限
     assert len(result["skipped_unit_ids"]) == 2  # 剩余两格跳过
@@ -476,8 +527,12 @@ async def test_method_comparison_budget_counts_build_requests(monkeypatch):
     async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
         ran.append(run_key)
         return {
-            "answer": "ok", "error": None, "tool_calls": [],
-            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 2, "duration_ms": 5,
+            "answer": "ok",
+            "error": None,
+            "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER",
+            "actual_agent_steps": 2,
+            "duration_ms": 5,
         }
 
     result = await compression.run_compression_method_comparison(

@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from bdlh_runtime.registry import RegistrySnapshot
 from bdlh_runtime.scenarios.dangerous_actions import (
     is_dangerous_action_semantic,
-    is_trading_semantic,  # 兼容旧测试导入路径
+    is_trading_semantic,  # noqa: F401 —— 兼容旧测试导入路径
 )
 
 from .capabilities import CapabilityRegistry, CapabilitySpec, registry_from_snapshot

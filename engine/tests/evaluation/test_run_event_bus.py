@@ -48,9 +48,7 @@ def test_publisher_replays_existing_events_then_subscribes():
 def test_publisher_flushes_in_batches_and_on_completion():
     flushed: list[list[dict]] = []
     recorder = _recorder()
-    publisher = RunEventPublisher(
-        "run-1", flush=lambda events: flushed.append(list(events)), flush_batch=3
-    )
+    publisher = RunEventPublisher("run-1", flush=lambda events: flushed.append(list(events)), flush_batch=3)
     publisher.attach(recorder)  # 1 条(run.started 补投)
     for index in range(4):
         recorder.emit("context.completed", {"index": index})  # 累计 5 条
@@ -62,21 +60,46 @@ def test_publisher_flushes_in_batches_and_on_completion():
     assert publisher.backlog_after(0) and publisher.last_sequence == 5
 
 
-def test_flush_failure_is_suppressed_and_events_retained():
-    attempts: list[int] = []
+def test_flush_failure_keeps_pending_and_retries_next_flush():
+    """首次保存失败、第二次成功(修复方案 P1-5):失败批次保留在 pending,
+    下一批 flush 时重试;重复投递由数据服务 (run_id, sequence) 幂等去重。"""
+    calls: list[list[str]] = []
 
-    def bad_flush(events):
-        attempts.append(len(events))
-        raise RuntimeError("data 服务不可达")
+    def flaky_flush(events):
+        calls.append([event["eventType"] for event in events])
+        if len(calls) == 1:
+            raise RuntimeError("data 服务暂时不可达")
 
     recorder = _recorder()
-    publisher = RunEventPublisher("run-1", flush=bad_flush, flush_batch=1)
-    publisher.attach(recorder)
-    recorder.emit("context.completed", {})  # 每条事件(含补投)都达到阈值 → 异常被抑制,不影响执行
-    assert attempts == [1, 1]  # run.started(补投) + context.completed 各触发一次失败 flush
-    assert publisher.backlog_after(0)  # 事件仍在缓冲,后续可重试
-    publisher.complete()  # 已全部 flush 过 → 无新增回调;done 置位
-    assert publisher.done and attempts == [1, 1]
+    publisher = RunEventPublisher("run-1", flush=flaky_flush, flush_batch=2)
+    publisher.attach(recorder)  # 1 条(run.started 补投):不足一批,不触发 flush
+    recorder.emit("context.completed", {})  # 累计 2 条 → 首次 flush 失败
+    assert calls == [["run.started", "context.completed"]]
+    recorder.emit("context.completed", {"index": 1})  # 累计 3 条 → 再次 flush:重试成功
+    # 重试批次包含首次失败的全部事件,不是只投递新事件
+    assert calls[1] == ["run.started", "context.completed", "context.completed"]
+    publisher.complete()  # 游标已推进到全部事件:终态 flush 无新增批次
+    assert publisher.done
+    assert len(calls) == 2
+
+
+def test_flush_failure_at_completion_retries_on_final_flush():
+    """complete() 前失败:终态 flush 重试全部未落库事件(至少一次投递)。"""
+    calls: list[list[str]] = []
+
+    def fail_then_succeed(events):
+        calls.append([event["eventType"] for event in events])
+        if len(calls) == 1:
+            raise RuntimeError("data 服务暂时不可达")
+
+    recorder = _recorder()
+    publisher = RunEventPublisher("run-1", flush=fail_then_succeed, flush_batch=1)
+    publisher.attach(recorder)  # 1 条 → 首次 flush 失败,游标不推进
+    assert len(calls) == 1
+    publisher.complete()  # 终态 flush 重试同一批事件(接收方按 sequence 幂等)
+    assert calls[1] == calls[0]
+    assert publisher.done
+    assert len(calls) == 2
 
 
 def test_registry_evicts_done_publishers_when_full():

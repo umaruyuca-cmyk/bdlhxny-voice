@@ -83,6 +83,12 @@ ORDER BY applied_at;
 | 7 | `../changes/20260826-run-config-snapshot.sql` | 运行配置快照与模板标识 | 必需，依赖 6 |
 | 8 | `../changes/20260826-fix-comparison-mock-and-deps.sql` | 修正对比用例 Mock 和依赖关系 | 必需，依赖 6 |
 | 9 | `../changes/20260827-remove-legacy-agent-modes.sql` | 删除停用的多实现目录和约束 | 必需，最后执行 |
+| 10 | `../changes/20260830-context-memory-workbench.sql` | 上下文工作台会话事件、增量摘要与冻结工件表 | 启用上下文工作台时必需 |
+| 11 | `../changes/20260830-context-artifact-memory-segments.sql` | 工件 Segment 明细快照列 | 启用工作台 data-service 存储时，依赖 10 |
+| 12 | `../changes/20260830-context-build-agent-run.sql` | 构建行 Agent 运行快照列 | 启用工作台"运行一次 Agent"时，依赖 10 |
+| 13 | `../changes/20260830-context-access-grants.sql` 与 `20260830-context-access-grants-nulls-unique.sql` | 跨所有者工件读取授权表(P1 RBAC) | 启用跨所有者授权/运维视图时，依赖 10；两脚本按序执行 |
+| 14 | `../changes/20260830-context-analysis-jobs.sql` | P2 定时分析(语义抽检结果与分析运行表) | 启用定时分析任务时，依赖 10 |
+| 15 | `../changes/20260828-batch-report-column.sql` | 批次执行报告落库(`run_batches.report`) | 需要批次报告数据库持久化时；独立脚本，任意时间执行(需在外层事务中补登记) |
 
 不执行第 1 项时，题库只有 18 道基础用例、冻结集只有 `ab-eval`，
 `/lab` 的通用工具勾选页与 `gt8-*` 用例均不可用。

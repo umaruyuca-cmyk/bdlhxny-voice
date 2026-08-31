@@ -506,9 +506,7 @@ async def run_context_eval(
             executor = RecordingExecutor(FrozenToolExecutor(frozen), recorder)
             # AgentTurn.token_budget 口径含工具 Schema 预留;变体预算为纯工作
             # 上下文预算,补偿 Schema(循环内会重新预留并复核)
-            scoped_cards = ToolLoader(catalog).load_for_turn(
-                case.scene_tag, authenticated=case.authenticated
-            )
+            scoped_cards = ToolLoader(catalog).load_for_turn(case.scene_tag, authenticated=case.authenticated)
             schema_tokens = _tool_schema_tokens(scoped_cards, counter)
             turn = AgentTurn(
                 user_id=_OWNER_ID if case.authenticated else "guest",
@@ -685,9 +683,7 @@ def _aggregate_judgments(judgments: list[ContextJudgment]) -> dict[str, Any]:
         "valid_runs": len(valid),
         "invalid_runs": len(judgments) - len(valid),
         "required_retained_runs": sum(1 for j in valid if j.required_retained),
-        "mean_required_retention_rate": (
-            statistics.mean(j.required_retention_rate for j in valid) if valid else 0.0
-        ),
+        "mean_required_retention_rate": (statistics.mean(j.required_retention_rate for j in valid) if valid else 0.0),
         "missing_required_fact_runs": sum(1 for j in valid if j.missing_required_facts),
         "forbidden_fact_leak_runs": sum(1 for j in valid if j.forbidden_facts_in_answer),
         "injection_isolated_runs": sum(1 for j in valid if j.injection_isolated),

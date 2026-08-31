@@ -14,7 +14,8 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from bdlh_runtime.evaluation.run_telemetry import EVENT_RUN_COMPLETED
 
@@ -91,18 +92,27 @@ class RunEventPublisher:
     # -- 增量持久化 -----------------------------------------------------------
 
     def flush(self) -> None:
-        """把未落库事件交给注入回调(失败只打日志;完成后的全量落库会重写)。"""
+        """把未落库事件交给注入回调(至少一次投递,修复方案 P1-5)。
+
+        仅在持久化成功后推进 ``_flushed_count``:回调失败时这批事件保留在
+        pending 队列,下一次 flush(新事件触发或终态)时重试;重复投递由
+        数据服务 ``(run_id, sequence)`` 幂等去重,不会产生重复行。
+        """
         if self._flush is None:
             return
         with self._cond:
-            pending = [dict(event) for event in self._events[self._flushed_count :]]
-            self._flushed_count = len(self._events)
+            up_to = len(self._events)
+            pending = [dict(event) for event in self._events[self._flushed_count : up_to]]
         if not pending:
             return
         try:
             self._flush(pending)
         except Exception as exc:  # noqa: BLE001 —— 增量落库失败不阻断执行
             print(f"[run_event_bus] 事件增量落库失败(run={self.run_id}):{type(exc).__name__}: {exc}")
+            return  # 失败:游标不推进,pending 保留待下次(或终态)重试
+        with self._cond:
+            if up_to > self._flushed_count:
+                self._flushed_count = up_to
 
 
 class RunEventPublisherRegistry:

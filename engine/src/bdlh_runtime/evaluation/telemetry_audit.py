@@ -32,7 +32,12 @@ def _int(value: Any) -> int | None:
         return None
 
 
-def _sequence_issues(events: list[dict[str, Any]], model_seqs: set[int], tool_seqs: set[int], guard_seqs: set[int]) -> list[str]:
+def _sequence_issues(
+    events: list[dict[str, Any]],
+    model_seqs: set[int],
+    tool_seqs: set[int],
+    guard_seqs: set[int],
+) -> list[str]:
     issues: list[str] = []
     sequences = [_int(event.get("sequence")) for event in events]
     if any(seq is None for seq in sequences):
@@ -42,7 +47,8 @@ def _sequence_issues(events: list[dict[str, Any]], model_seqs: set[int], tool_se
         unique = sorted(set(sequences))
         expected = list(range(unique[0], unique[0] + len(unique)))
         if unique != expected:
-            issues.append(f"事件序号不连续:期望 {expected[0]}..{expected[-1]},实际缺失 {sorted(set(expected) - set(unique))}")
+            missing = sorted(set(expected) - set(unique))
+            issues.append(f"事件序号不连续:期望 {expected[0]}..{expected[-1]},实际缺失 {missing}")
         duplicated = len(sequences) - len(unique)
         if duplicated:
             issues.append(f"存在 {duplicated} 条重复序号事件")

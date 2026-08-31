@@ -13,7 +13,7 @@ import { REDIRECTS, redirectFor } from "../scripts/redirect-map.mjs";
 
 const NAV_HREFS = ["/", "/experiment/", "/test/", "/assets/", "/docs/"];
 
-/** P1-2 薄页合并 + P1-3 运行记录统一后的页面清单(27 页)。 */
+/** P1-2 薄页合并 + P1-3 运行记录统一后的页面清单；含上下文工作台两页。 */
 const SITE_PAGES = [
   "/index.html",
   "/assets/index.html",
@@ -21,7 +21,8 @@ const SITE_PAGES = [
   "/about/index.html", "/about/banks.html", "/about/repo.html",
   "/showcase/index.html", "/showcase/tools.html",
   "/experiment/index.html", "/experiment/compression.html",
-  "/experiment/run.html", "/experiment/batch.html",
+  "/experiment/run.html", "/experiment/batch.html", "/experiment/series.html",
+  "/experiment/context-workbench.html", "/experiment/context-build.html",
   "/test/index.html",
   "/context/index.html", "/context/library.html", "/context/design.html", "/context/results.html",
   "/judging/index.html", "/judging/judge.html", "/judging/invalid.html",
@@ -32,10 +33,11 @@ const SITE_PAGES = [
 /** 实验模块页:允许匿名公开接口 + 同源所有者通道白名单(与 nginx/dev-server 反代同口径)。 */
 const EXPERIMENT_PAGES = [
   "/experiment/index.html", "/experiment/compression.html",
-  "/experiment/run.html", "/experiment/batch.html",
+  "/experiment/run.html", "/experiment/batch.html", "/experiment/series.html",
+  "/experiment/context-workbench.html", "/experiment/context-build.html",
   "/test/index.html",
 ];
-const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|experiment-series|batches|jobs|runs)(\/|\?|["'`]|$))/;
+const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|experiment-series|statistics|batches|jobs|runs|context)(\/|\?|["'`]|$))/;
 
 async function readPage(page) {
   return readFile(new URL(`../public${page}`, import.meta.url), "utf8");
@@ -57,7 +59,7 @@ test("旧展示地址保留跳转页(不重复公告内容)", async () => {
 });
 
 test("模块页齐备,共享静态外壳(顶栏 wordmark + 构建期静态五导航 + 角色标签)", async () => {
-  assert.equal(SITE_PAGES.length, 27);
+  assert.equal(SITE_PAGES.length, 30);
   const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
   for (const label of ["公告", "实验", "我的测试", "数据资产", "文档"]) {
     assert.ok(sharedJs.includes(`"${label}"`), `docs.js 高亮逻辑缺少模块标签「${label}」`);
@@ -82,6 +84,7 @@ test("二级页面提供返回上级入口,无导航死胡同(IA §二.8)", asyn
   const backLinks = {
     "/experiment/run.html": 'class="crumb" href="/experiment/"',
     "/experiment/batch.html": 'class="crumb" href="/test/"', // P1-3:批次详情返回运行记录
+    "/experiment/series.html": 'class="crumb" href="/experiment/"',
   };
   for (const [page, probe] of Object.entries(backLinks)) {
     const html = await readPage(page);
@@ -267,6 +270,12 @@ test("实验模块:模板中心为唯一入口;发起与详情为二级页(原�
   assert.match(batch, /无模板/, "无模板批次挂中性标记");
   // 单次运行明细时间线(可观测性设计 §8):摘要 + 筛选页签 + 折叠证据
   assert.match(batch, /renderRunDetail/, "单次运行明细走时间线渲染函数");
+  // 匿名任务详情页:逐步明细(模型调用 LLM 返回 + 工具调用交织)
+  assert.match(batch, /runStepTimelineHtml/, "匿名任务详情页渲染逐步时间线");
+  assert.match(batch, /model_calls/, "逐步时间线消费 model_calls(模型调用证据)");
+  assert.match(batch, /responseSummary/, "逐步时间线展示 LLM 返回摘录(responseSummary)");
+  assert.match(batch, /resultSummary/, "工具步骤展示模型所见的工具返回摘要");
+  assert.match(batch, /早于逐步明细功能/, "旧任务无逐步数据时如实说明,不显示空白");
   assert.match(batch, /run-timeline/, "明细含时间线容器");
   assert.match(batch, /detail\.timeline/, "时间线优先消费 detail.timeline(全局事件序号交织)");
   assert.match(batch, /detail-tabs/, "明细含筛选页签(全部/模型/工具/治理/上下文)");
@@ -328,6 +337,10 @@ test("实验组统计展示(统计模块修复方案 §9):有效样本唯一口�
   // 排除记录带说明列;定义区展示预期配置哈希
   assert.match(series, /row\.detail/, "排除记录展示简短说明");
   assert.match(series, /expected_config_hashes/, "实验定义区展示每变体预期配置哈希");
+  // 匿名只读视图:未登录走公开统计接口,仅展示定义与聚合统计
+  assert.match(series, /public\/experiment-series/, "匿名视图读取公开统计端点");
+  assert.match(series, /loadPublicStatistics/, "匿名视图独立加载路径(不触碰所有者明细接口)");
+  assert.match(series, /publicReadonly/, "匿名视图隐藏样本积累与运行记录面板");
 });
 
 test("运行记录页(P1-3):三 Tab 统一历史运行,匿名任务走公开接口", async () => {
@@ -566,6 +579,62 @@ test("docs 目录:静态资产保留,index 为文档模块首页(原型 v2)", as
       () => readFile(new URL(`../public/docs/${legacy}.html`, import.meta.url)),
       `${legacy}.html 应已迁移删除`,
     );
+  }
+});
+
+
+test("同源所有者通道白名单三处同源:共享常量 = dev-server = nginx(P0-2)", async () => {
+  const { OWNER_API_SEGMENTS, ownerApiRegExp } = await import("../scripts/owner-api-allowlist.mjs");
+  // 关键段落在清单内:实验组与统计是 P0-2 的修复点
+  for (const required of ["experiment-series", "statistics", "template-batches", "context"]) {
+    assert.ok(OWNER_API_SEGMENTS.includes(required), `共享白名单缺少 ${required}`);
+  }
+  // 正则可构建且锚定 /api/v1/ 前缀
+  const pattern = ownerApiRegExp();
+  assert.ok(pattern.test("/api/v1/experiment-series/series-1"));
+  assert.ok(pattern.test("/api/v1/statistics/experiment-series/series-1"));
+  assert.ok(pattern.test("/api/v1/context/builds/build-1"));
+  assert.ok(!pattern.test("/api/v1/no-such/segment"));
+
+  // dev-server 引入共享常量构建反代正则,不再维护第二份清单
+  const devServer = await readFile(new URL("../dev-server.js", import.meta.url), "utf8");
+  assert.match(devServer, /owner-api-allowlist\.mjs/, "dev-server 必须复用共享白名单常量");
+  assert.doesNotMatch(
+    devServer,
+    /login\|logout\|llm-config/,
+    "dev-server 不得再内联白名单正则(以共享常量为事实来源)",
+  );
+  // dev-server 服务 /experiment/series/<id> → series.html(与 nginx 同口径)
+  assert.match(devServer, /\/experiment\/series\//, "dev-server 需服务实验组详情路由");
+  assert.match(devServer, /experiment\/series\.html/, "dev-server 需回退到 series.html");
+  assert.match(devServer, /\/experiment\/context-builds\//, "dev-server 需服务上下文构建详情路由");
+  assert.match(devServer, /experiment\/context-build\.html/, "dev-server 需回退到 context-build.html");
+
+  // nginx 的反代 location 覆盖共享清单的每一个段落
+  const nginx = await readFile(new URL("../nginx.conf", import.meta.url), "utf8");
+  const locationMatch = nginx.match(/location ~ \^\/api\/v1\/\(([^)]+)\)/);
+  assert.ok(locationMatch, "nginx 需有所有者通道反代 location");
+  for (const segment of OWNER_API_SEGMENTS) {
+    assert.ok(
+      locationMatch[1].includes(segment.replace("/", "/")),
+      `nginx 反代白名单缺少共享清单中的 ${segment}`,
+    );
+  }
+  // 实验组详情页路由:nginx 与 dev-server 都回落到 series.html
+  assert.match(nginx, /location ~ \^\/experiment\/series\/ \{[\s\S]*?try_files \/experiment\/series\.html/);
+  assert.match(nginx, /location ~ \^\/experiment\/context-builds\/ \{[\s\S]*?try_files \/experiment\/context-build\.html/);
+});
+
+test("静态产物与生成器同源:重跑 generate:site 不产生差异(P1-6)", async () => {
+  // 生成器内的 ops/run-api 端点清单必须与当前产物一致(实验组/统计/退役口径)
+  const generator = await readFile(new URL("../scripts/generate-site.mjs", import.meta.url), "utf8");
+  const artifact = await readPage("/ops/run-api.html");
+  for (const stale of ["— 按模板发起正式批次(固定用例 × 模板变体,统一原生底座)"]) {
+    assert.ok(!generator.includes(stale), `generate-site.mjs 不得保留已退役口径:${stale}`);
+  }
+  for (const current of ["已退役(410)", "experiment-series", "statistics/experiment-series"]) {
+    assert.ok(generator.includes(current), `generate-site.mjs 缺少当前端点口径:${current}`);
+    assert.ok(artifact.includes(current), `产物 ops/run-api.html 缺少当前端点口径:${current}`);
   }
 });
 

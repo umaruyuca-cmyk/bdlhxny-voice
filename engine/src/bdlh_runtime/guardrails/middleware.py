@@ -305,9 +305,7 @@ class GovernanceMiddleware:
         # G5 JSON Schema 参数校验
         schema_error = _validate_arguments(card.parameters, arguments)
         if schema_error is not None:
-            candidates.append(
-                _block(GuardrailStage.ACTION, _AUDIT_ARGUMENTS_INVALID, "G5-SCHEMA-001", schema_error)
-            )
+            candidates.append(_block(GuardrailStage.ACTION, _AUDIT_ARGUMENTS_INVALID, "G5-SCHEMA-001", schema_error))
 
         if off:
             bypassed = [
@@ -355,9 +353,7 @@ class GovernanceMiddleware:
                 "G-CONF-001",
                 "写操作需要先获得确认;确认须与本次运行、工具和参数绑定(CONFIRMATION_REQUIRED)",
             )
-        code, reason = self._confirmations.validate(
-            record, run_id=run_id, tool_name=name, arguments=arguments
-        )
+        code, reason = self._confirmations.validate(record, run_id=run_id, tool_name=name, arguments=arguments)
         if code == AUDIT_CONFIRMATION_EXPIRED:
             rule_id = "G-CONF-002"
         elif code == AUDIT_CONFIRMATION_INVALID:

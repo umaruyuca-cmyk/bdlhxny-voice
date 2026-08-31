@@ -37,14 +37,23 @@ def build_snapshot(
     *,
     report: dict[str, Any] | None = None,
     planned_variants: list[str] | tuple[str, ...] | None = None,
+    formal_min_repeat_count: int | None = None,
+    expected_config_hashes: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """从批次报告(或注入的运行记录)重算统计快照并返回 payload。"""
+    """从批次报告(或注入的运行记录)重算统计快照并返回 payload。
+
+    ``formal_min_repeat_count``/``expected_config_hashes`` 由 API 适配层
+    从实验组冻结定义传入;缺省时样本门槛按 3、配置一致性按观察主导值
+    (历史兼容)。
+    """
     runs = runs_from_report(report)
     snapshot = build_series_statistics(
         series_id,
         report=report,
         runs=runs,
         planned_variants=planned_variants,
+        formal_min_repeat_count=formal_min_repeat_count,
+        expected_config_hashes=expected_config_hashes,
     )
     return snapshot.to_payload()
 

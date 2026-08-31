@@ -11,18 +11,18 @@ from datetime import datetime, timedelta
 import pytest
 
 from bdlh_runtime.context import (
+    SCENE_WEIGHTS,
     ContextAction,
-    ContextBuildRequest,
     ContextBuilder,
+    ContextBuildRequest,
     ContextClassification,
     ContextItem,
     ContextReport,
     ContextRole,
     ContextStrategy,
     MultiFactorScorer,
-    SCENE_WEIGHTS,
-    ScoringWeights,
     ScoringContext,
+    ScoringWeights,
     scorer_from_env,
 )
 from bdlh_runtime.context.scoring import SCORING_VERSION
@@ -108,9 +108,7 @@ def test_factor_typical_values() -> None:
     assert scorer.priority(_scored_item(item_type="data_quality"))[1]["source_quality"] == 0.1
 
     # task_impact:清单优先,其次会话语义(用户消息 0.5 > 助手 0.4 > 工具 0.3)
-    listed = MultiFactorScorer(
-        context=ScoringContext(preferred_ids=frozenset({"it-1"}))
-    )
+    listed = MultiFactorScorer(context=ScoringContext(preferred_ids=frozenset({"it-1"})))
     assert listed.priority(_scored_item())[1]["task_impact"] == 0.5
     omitted = MultiFactorScorer(context=ScoringContext(omit_ids=frozenset({"it-1"})))
     assert omitted.priority(_scored_item())[1]["task_impact"] == 0.2
@@ -159,7 +157,13 @@ def _v2_items() -> tuple[ContextItem, ...]:
     return (
         ContextItem("rule", "系统规则。", ContextClassification.REQUIRED, role=ContextRole.SYSTEM, sequence=0),
         ContextItem("q", "当前问题。", ContextClassification.REQUIRED, sequence=99),
-        ContextItem("short-key", "关键约束:必须使用 PostgreSQL。", ContextClassification.COMPRESSIBLE, sequence=1, relevance=0.9),
+        ContextItem(
+            "short-key",
+            "关键约束:必须使用 PostgreSQL。",
+            ContextClassification.COMPRESSIBLE,
+            sequence=1,
+            relevance=0.9,
+        ),
         ContextItem("long-news", long_news, ContextClassification.COMPRESSIBLE, sequence=2, relevance=0.3),
         ContextItem("ref-only", "参考材料。", ContextClassification.REFERENCE_ONLY, sequence=3),
         ContextItem("noise", "干扰条目。", ContextClassification.DISTRACTOR, sequence=4),
@@ -251,7 +255,14 @@ def test_v2_dependency_closure_adds_reference_for_cited_source() -> None:
         ContextItem("rule", "规则。", ContextClassification.REQUIRED, role=ContextRole.SYSTEM, sequence=0),
         # c-2 的 source_id 指向 c-1(c-1 被 c-2 引用)
         ContextItem("c-1", "基础事实。" * 60, ContextClassification.COMPRESSIBLE, sequence=1, relevance=0.2),
-        ContextItem("c-2", "结论引用基础事实。" * 10, ContextClassification.COMPRESSIBLE, sequence=2, relevance=0.9, source_id="c-1"),
+        ContextItem(
+            "c-2",
+            "结论引用基础事实。" * 10,
+            ContextClassification.COMPRESSIBLE,
+            sequence=2,
+            relevance=0.9,
+            source_id="c-1",
+        ),
     )
     result = ContextBuilder(scorer=MultiFactorScorer()).build(
         ContextBuildRequest(items=items, token_budget=260, strategy=ContextStrategy.BUDGETED)

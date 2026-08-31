@@ -12,7 +12,11 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage
 
-from bdlh_runtime.experiments.series_store import SeriesConflictError, SeriesStore
+from bdlh_runtime.experiments.series_store import (
+    SeriesConflictError,
+    SeriesRecord,
+    SeriesStore,
+)
 
 
 class FakeChatModel:
@@ -155,7 +159,7 @@ def test_create_series_only_saves_definition(series_env):
     assert payload["definition_hash"]
     detail = client.get(f"/api/v1/experiment-series/{payload['series_id']}").json()
     assert detail["total_runs"] == 0
-    assert detail["counts_by_variant"] == {"off": 0, "standard": 0}
+    assert detail["completed_counts_by_variant"] == {"off": 0, "standard": 0}
     assert detail["active_run"] is None
 
 
@@ -200,7 +204,7 @@ def test_single_run_creates_exactly_one_run(series_env, monkeypatch):
 
     detail = client.get(f"/api/v1/experiment-series/{series_id}").json()
     assert detail["total_runs"] == 1
-    assert detail["counts_by_variant"] == {"off": 1, "standard": 0}
+    assert detail["completed_counts_by_variant"] == {"off": 1, "standard": 0}
 
 
 def test_idempotency_replay_and_conflict(series_env, monkeypatch):
@@ -243,7 +247,8 @@ def test_single_active_run_constraint_and_repeat_allocation(series_env, monkeypa
 
     def blocking_executor(prepared, **kwargs):
         release.wait(timeout=10)
-        return _fake_payload(variant_id, 1)
+        # 阻塞执行器必须返回正确变体的 payload(P0-3:未定义变量是假阳性根源)
+        return _fake_payload(prepared.planned.variant_label, 1)
 
     monkeypatch.setattr(run_api, "execute_prepared_series_run", blocking_executor)
     first = client.post(
@@ -256,11 +261,14 @@ def test_single_active_run_constraint_and_repeat_allocation(series_env, monkeypa
     )
     assert second.status_code == 409  # 单活跃运行约束
     release.set()
-    _wait_for_run(client, series_id, first["run_key"])
+    row = _wait_for_run(client, series_id, first["run_key"])
+    # 断言成功状态、变体归属与运行身份,而不是只等待"终态"
+    assert row["status"] == "done"
+    assert row["variant_id"] == "off"
+    assert row["result"]["variant_label"] == "off"
+    assert row["run_key"] == first["run_key"]
 
-    monkeypatch.setattr(
-        run_api, "execute_prepared_series_run", lambda prepared, **kwargs: _fake_payload("off", 2)
-    )
+    monkeypatch.setattr(run_api, "execute_prepared_series_run", lambda prepared, **kwargs: _fake_payload("off", 2))
     third = client.post(
         f"/api/v1/experiment-series/{series_id}/runs",
         json={"variant_id": "off"},
@@ -347,6 +355,91 @@ def test_series_statistics_endpoint(series_env, monkeypatch):
     excluded_reasons = {row["run_id"]: row["reason"] for row in snapshot["excluded_runs"]}
     assert excluded_reasons[f"{series_id}:{failed['run_key']}"] == "LLM_UNAVAILABLE"
 
+    # 获取统计接口不创建 Agent 运行、不改变登记簿(纯代码重算)
+    before = client.get(f"/api/v1/experiment-series/{series_id}/runs").json()["runs"]
+    client.get(f"/api/v1/statistics/experiment-series/{series_id}")
+    after = client.get(f"/api/v1/experiment-series/{series_id}/runs").json()["runs"]
+    assert [row["run_key"] for row in before] == [row["run_key"] for row in after]
+    assert len(after) == 2
+
+
+def test_public_series_statistics_readonly(series_env, monkeypatch):
+    """公开只读统计端点:未登录可看聚合口径,明细与发起仍在所有者通道。"""
+    client, _store, run_api = series_env
+    series_id = client.post(
+        "/api/v1/experiment-series",
+        json={"template_id": "governance-on-off", "case_id": "cmp-series-01"},
+    ).json()["series_id"]
+    monkeypatch.setattr(
+        run_api,
+        "execute_prepared_series_run",
+        lambda prepared, **kwargs: {
+            **_fake_payload(prepared.planned.variant_label, 1),
+            "config_hash": prepared.planned.config_hash,
+        },
+    )
+    first = _post_run(client, series_id, {"variant_id": "off", "idempotency_key": "key-pub-0001"}).json()
+    _wait_for_run(client, series_id, first["run_key"])
+
+    from fastapi.testclient import TestClient
+
+    stranger = TestClient(run_api.app)
+    # series_env 夹具带 require_login 覆盖(所有者);匿名检查前恢复真实鉴权
+    run_api.app.dependency_overrides.pop(run_api.require_login, None)
+    # 未登录可读公开统计(聚合口径:计数/等级/对比/警告)
+    response = stranger.get(f"/api/v1/public/experiment-series/{series_id}/statistics")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["template_id"] == "governance-on-off"
+    assert payload["by_variant"]["off"]["included_count"] == 1
+    assert payload["included_run_ids"] == [f"{series_id}:run-001"]
+    # 快照是聚合口径:不含运行明细数组与回答正文,也无任何发起入口字段
+    assert "runs" not in payload
+    # 未知实验组按 404 处理;所有者明细端点对匿名仍 401
+    assert stranger.get("/api/v1/public/experiment-series/no-such/statistics").status_code == 404
+    assert stranger.get(f"/api/v1/experiment-series/{series_id}").status_code == 401
+    assert stranger.get(f"/api/v1/experiment-series/{series_id}/runs").status_code == 401
+
+
+def test_series_accumulates_multiple_samples_per_variant(series_env, monkeypatch):
+    """P0-1 验收:同一变体多个独立样本全部纳入,不因计划 run_id 恒同被判重。
+
+    统计输入的 run_id 是登记簿物理身份(series_id:run_key),同一变体
+    连续三个样本都有效计入;无数据质量警告。
+    """
+    client, _store, run_api = series_env
+    series_id = client.post(
+        "/api/v1/experiment-series",
+        json={"template_id": "governance-on-off", "case_id": "cmp-series-01"},
+    ).json()["series_id"]
+
+    monkeypatch.setattr(
+        run_api,
+        "execute_prepared_series_run",
+        lambda prepared, **kwargs: {
+            **_fake_payload(prepared.planned.variant_label, 1),
+            "config_hash": prepared.planned.config_hash,
+        },
+    )
+    for _ in range(3):
+        entry = client.post(
+            f"/api/v1/experiment-series/{series_id}/runs",
+            json={"variant_id": "off"},
+        ).json()
+        _wait_for_run(client, series_id, entry["run_key"])
+
+    snapshot = client.get(f"/api/v1/statistics/experiment-series/{series_id}").json()
+    off = snapshot["by_variant"]["off"]
+    assert off["completed_count"] == 3
+    assert off["included_count"] == 3
+    assert off["included_run_ids"] == [
+        f"{series_id}:run-001",
+        f"{series_id}:run-002",
+        f"{series_id}:run-003",
+    ]
+    assert snapshot["data_quality_warnings"] == []
+    assert snapshot["included_run_count"] == 3 and snapshot["excluded_run_count"] == 0
+
 
 def test_execute_series_run_with_fake_llm(series_env, monkeypatch):
     """执行器直连测试:复用模板执行链路,产出统计模块可消费的运行 payload。"""
@@ -415,6 +508,8 @@ def test_compression_series_flow_via_api(series_env, monkeypatch):
 
     def stub_executor(series, variant_id, **kwargs):
         row = _fake_payload(variant_id, 1)
+        # 正式口径:运行 config_hash 必须与创建时冻结的预期哈希一致才纳入统计
+        row["config_hash"] = series.expected_config_hashes[variant_id]
         row["task_success"] = True
         row["judgment"] = {"tool_correct": True}
         return row
@@ -438,8 +533,12 @@ def test_run_single_compression_method_shape():
 
     async def fake_runner(session, artifact, agent_mode_id, run_key, max_agent_steps, *, llm=None):
         return {
-            "answer": "按最终决定执行。", "error": None, "tool_calls": [],
-            "stop_reason": "FINAL_ANSWER", "actual_agent_steps": 1, "duration_ms": 5,
+            "answer": "按最终决定执行。",
+            "error": None,
+            "tool_calls": [],
+            "stop_reason": "FINAL_ANSWER",
+            "actual_agent_steps": 1,
+            "duration_ms": 5,
         }
 
     first = asyncio.run(
@@ -456,8 +555,11 @@ def test_run_single_compression_method_shape():
 
     llm_variant = asyncio.run(
         run_single_compression_method(
-            SESSION_ID, "budgeted-llm",
-            cell_runner=fake_runner, max_agent_steps=4, llm_summarizer=_FakeLLMSummarizer(),
+            SESSION_ID,
+            "budgeted-llm",
+            cell_runner=fake_runner,
+            max_agent_steps=4,
+            llm_summarizer=_FakeLLMSummarizer(),
         )
     )
     assert llm_variant["variant_label"] == "budgeted-llm"
@@ -478,7 +580,9 @@ class _FakeDataClient:
         self._seq += 1
         batch_id = f"batch-{self._seq:03d}"
         self.batches[batch_id] = {
-            "name": name, "experiment_type": experiment_type, "fixed_conditions": fixed_conditions,
+            "name": name,
+            "experiment_type": experiment_type,
+            "fixed_conditions": fixed_conditions,
         }
         return batch_id
 
@@ -505,9 +609,7 @@ class _FakeDataClient:
         self.runs[run_id]["output"] = output
 
 
-def _series_record() -> "SeriesRecord":
-    from bdlh_runtime.experiments.series_store import SeriesRecord
-
+def _series_record() -> SeriesRecord:
     return SeriesRecord(
         series_id="provisional",
         template_id="governance-on-off",
@@ -529,13 +631,9 @@ def test_db_series_store_uses_batch_id_and_persists_state():
     assert stored.series_id == "batch-001"  # series_id 以数据服务生成的 batch_id 为准
     assert data.batches["batch-001"]["experiment_type"] == "series:governance-on-off"
 
-    entry, replayed = store.begin_run(
-        stored.series_id, variant_id="off", idempotency_key="k1", request_hash="h1"
-    )
+    entry, replayed = store.begin_run(stored.series_id, variant_id="off", idempotency_key="k1", request_hash="h1")
     assert not replayed and entry["run_key"] == "run-001"
-    again, replayed2 = store.begin_run(
-        stored.series_id, variant_id="off", idempotency_key="k1", request_hash="h1"
-    )
+    again, replayed2 = store.begin_run(stored.series_id, variant_id="off", idempotency_key="k1", request_hash="h1")
     assert replayed2 and again["run_key"] == "run-001"  # 幂等重放
 
     with pytest.raises(SeriesConflictError):
@@ -544,7 +642,7 @@ def test_db_series_store_uses_batch_id_and_persists_state():
     store.complete_run(stored.series_id, "run-001", {"run_id": "r1", "answer": "ok"})
     record = store.get(stored.series_id)
     assert record.runs[0]["status"] == "done"
-    assert record.counts_by_variant() == {"off": 1, "standard": 0}
+    assert record.completed_counts_by_variant() == {"off": 1, "standard": 0}
 
     # 全部状态在数据库报告列,无本地文件参与;数据服务不可达时 get 如实返回 None
     assert data.reports["batch-001"]["series_state_version"] == DbSeriesStore.STATE_VERSION
@@ -560,14 +658,10 @@ def test_db_series_store_cancel_removes_queued_entry():
     data = _FakeDataClient()
     store = DbSeriesStore(lambda: data)
     stored = store.create(_series_record())
-    entry, replayed = store.begin_run(
-        stored.series_id, variant_id="off", idempotency_key=None, request_hash="h"
-    )
+    entry, replayed = store.begin_run(stored.series_id, variant_id="off", idempotency_key=None, request_hash="h")
     assert not replayed
     store.cancel_run(stored.series_id, entry["run_key"])
     record = store.get(stored.series_id)
     assert record.runs == []  # 排队条目已回滚,同键重试可重新发起
-    entry2, _ = store.begin_run(
-        stored.series_id, variant_id="off", idempotency_key=None, request_hash="h"
-    )
+    entry2, _ = store.begin_run(stored.series_id, variant_id="off", idempotency_key=None, request_hash="h")
     assert entry2["run_key"] == "run-001"  # 序号不因回滚而跳号

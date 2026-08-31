@@ -150,9 +150,12 @@ def test_dependency_fails_when_source_after_target_or_bad_status():
 
 
 def test_successful_run_passes_all_dimensions():
-    judgment = judge_run(_spec(), _good_calls(), "订单 ORD-2049 已发货", visible_tools=[
-        "crm.search_customer", "order.get_status", "support.search_tickets", "policy.search"
-    ])
+    judgment = judge_run(
+        _spec(),
+        _good_calls(),
+        "订单 ORD-2049 已发货",
+        visible_tools=["crm.search_customer", "order.get_status", "support.search_tickets", "policy.search"],
+    )
     assert judgment.required_hit == 3
     assert judgment.dependencies_satisfied
     assert judgment.alternatives_satisfied == [0]
@@ -237,9 +240,7 @@ def test_redundant_calls_after_facts_available():
 
 
 def test_duplicate_calls_recorded():
-    calls = _good_calls() + [
-        JudgedCall(seq=5, tool="order.get_status", arguments={"order_id": "ORD-2049"}, result={})
-    ]
+    calls = _good_calls() + [JudgedCall(seq=5, tool="order.get_status", arguments={"order_id": "ORD-2049"}, result={})]
     judgment = judge_run(_spec(), calls, "ORD-2049 已发货")
     assert judgment.duplicate_calls == ["order.get_status(#5)"]
 
@@ -257,9 +258,12 @@ def test_argument_mismatch_vs_missed():
 
 def test_unknown_tool_calls_flagged():
     calls = _good_calls() + [JudgedCall(seq=5, tool="made.up_tool", arguments={})]
-    judgment = judge_run(_spec(), calls, "ORD-2049 已发货", visible_tools=[
-        "crm.search_customer", "order.get_status", "support.search_tickets", "policy.search"
-    ])
+    judgment = judge_run(
+        _spec(),
+        calls,
+        "ORD-2049 已发货",
+        visible_tools=["crm.search_customer", "order.get_status", "support.search_tickets", "policy.search"],
+    )
     assert judgment.unknown_tool_calls == ["made.up_tool"]
 
 

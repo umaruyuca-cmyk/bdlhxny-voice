@@ -202,8 +202,24 @@ class AgentLoop:
         self._confirmation_store = confirmation_store or getattr(confirmation_provider, "store", None)
         self._max_calls_per_tool = max(0, max_calls_per_tool)
 
-    async def run(self, turn: AgentTurn, *, stream: StreamSink | None = None) -> AgentResult:
-        if self._router is not None:
+    async def run(
+        self,
+        turn: AgentTurn,
+        *,
+        stream: StreamSink | None = None,
+        initial_messages: Sequence[Any] | None = None,
+    ) -> AgentResult:
+        """执行一次运行。
+
+        ``initial_messages``(可选):以冻结工件消息序列作为首轮模型输入,
+        原样发送,不经 ``assemble_model_context`` 重组,也不做循环内 refit
+        (冻结工件是唯一事实源,增长由 max_agent_steps/max_tool_calls 约束)。
+        其余行为与常规路径完全一致:每轮装载可见工具、bind_tools、治理
+        中间件分发与 Observation 回填、停止原因口径。快路径路由仅对常规
+        路径生效(冻结重放不重新路由)。
+        """
+
+        if initial_messages is None and self._router is not None:
             choice = self._router.route(turn.message)
             name = str(getattr(choice, "name", "") or "") if choice is not None else ""
             if name in _FASTPATH_SKIP_LOOP:
@@ -243,26 +259,35 @@ class AgentLoop:
         if self._visible_override is not None:
             initial_cards = [card for card in initial_cards if card.name in self._visible_override]
         initial_schema_tokens = _tool_schema_tokens(initial_cards, self._counter)
-        try:
-            assembly = assemble_model_context(
-                self._context_builder,
-                system_prompt=load_prompt("system_base.md", "scene_chat.md"),
-                turn=turn,
-                history_turns=self._session_history_turns,
-                tool_schema_tokens=initial_schema_tokens,
-            )
-        except ValueError as exc:  # ContextBudgetError/ContextWindowError:不静默降级
-            logger.warning("上下文构建失败,运行不进入循环:%s", exc)
-            return AgentResult(
-                answer="",
-                entered_loop=False,
-                degraded=True,
-                context_error=str(exc),
-                stop_reason=STOP_REASON_CONTEXT_ERROR,
-                actual_steps=0,
-            )
-        messages = assembly.messages
-        context_report = assembly.report
+        assembly: ContextAssembly | None = None
+        if initial_messages is not None:
+            # 冻结工件原样进入循环:消息即事实源,报告/条目/构建产物如实为空
+            messages = list(initial_messages)
+            context_report = None
+        else:
+            try:
+                assembly = assemble_model_context(
+                    self._context_builder,
+                    system_prompt=load_prompt("system_base.md", "scene_chat.md"),
+                    turn=turn,
+                    history_turns=self._session_history_turns,
+                    tool_schema_tokens=initial_schema_tokens,
+                )
+            except ValueError as exc:  # ContextBudgetError/ContextWindowError:不静默降级
+                logger.warning("上下文构建失败,运行不进入循环:%s", exc)
+                return AgentResult(
+                    answer="",
+                    entered_loop=False,
+                    degraded=True,
+                    context_error=str(exc),
+                    stop_reason=STOP_REASON_CONTEXT_ERROR,
+                    actual_steps=0,
+                )
+            messages = assembly.messages
+            context_report = assembly.report
+        frozen_build_result = assembly.result if assembly is not None else None
+        frozen_items = assembly.items if assembly is not None else ()
+        frozen_build_ms = assembly.duration_ms if assembly is not None else 0
         # 新口径 max_agent_steps 精确限制单次运行的模型往返步数;
         # 未设置时保持旧口径(max_tool_calls + 2)不变。
         max_rounds = self._max_agent_steps if self._max_agent_steps is not None else self._max_tool_calls + 2
@@ -270,7 +295,7 @@ class AgentLoop:
         loaded_names: tuple[str, ...] = ()
         observations: list[Any] = []
         # 循环内预算再检查状态:基础条目、工具轮消息与已折叠轮数
-        base_items = assembly.items
+        base_items = frozen_items
         tool_round_messages: list[Any] = []
         folded_rounds = 0
         context_rebuilds = 0
@@ -292,37 +317,39 @@ class AgentLoop:
             loaded_names = tuple(card.name for card in cards)
             granted = self._loader.granted_scopes(turn.scene_tag, authenticated=turn.authenticated)
             schema_tokens = _tool_schema_tokens(cards, self._counter)
-            try:
-                messages, rebuilt, rebuild_count, folded_rounds = self._refit_working_context(
-                    turn=turn,
-                    base_items=base_items,
-                    tool_round_messages=tool_round_messages,
-                    current=messages,
-                    schema_tokens=schema_tokens,
-                    folded_rounds=folded_rounds,
-                )
-            except ValueError as exc:  # 循环内超预算:诚实停止,不静默截断
-                logger.warning("循环内上下文超预算,运行停止:%s", exc)
-                return AgentResult(
-                    answer=last_text,
-                    entered_loop=True,
-                    loaded_tools=loaded_names,
-                    audits=middleware.audits,
-                    observations=list(observations),
-                    messages=list(messages),
-                    context_report=context_report,
-                    context_build_result=assembly.result,
-                    context_items_used=assembly.items,
-                    context_build_ms=assembly.duration_ms,
-                    degraded=True,
-                    context_error=str(exc),
-                    context_rebuilds=context_rebuilds,
-                    stop_reason=STOP_REASON_CONTEXT_ERROR,
-                    actual_steps=step - 1,
-                )
-            if rebuilt is not None:
-                context_report = rebuilt.report
-                context_rebuilds += rebuild_count
+            if initial_messages is None:
+                try:
+                    messages, rebuilt, rebuild_count, folded_rounds = self._refit_working_context(
+                        turn=turn,
+                        base_items=base_items,
+                        tool_round_messages=tool_round_messages,
+                        current=messages,
+                        schema_tokens=schema_tokens,
+                        folded_rounds=folded_rounds,
+                    )
+                except ValueError as exc:  # 循环内超预算:诚实停止,不静默截断
+                    logger.warning("循环内上下文超预算,运行停止:%s", exc)
+                    return AgentResult(
+                        answer=last_text,
+                        entered_loop=True,
+                        loaded_tools=loaded_names,
+                        audits=middleware.audits,
+                        observations=list(observations),
+                        messages=list(messages),
+                        context_report=context_report,
+                        context_build_result=frozen_build_result,
+                        context_items_used=frozen_items,
+                        context_build_ms=frozen_build_ms,
+                        degraded=True,
+                        context_error=str(exc),
+                        context_rebuilds=context_rebuilds,
+                        stop_reason=STOP_REASON_CONTEXT_ERROR,
+                        actual_steps=step - 1,
+                    )
+                if rebuilt is not None:
+                    context_report = rebuilt.report
+                    context_rebuilds += rebuild_count
+            # 冻结工件路径不做 refit:工件消息即事实源,增长由步数/调用上限约束
             bound = self._llm.bind_tools([_tool_spec(card) for card in cards])
             response = await _complete_from_model(bound, messages, stream=stream, emit_tokens=True)
             messages.append(response)
@@ -338,9 +365,9 @@ class AgentLoop:
                     observations=list(observations),
                     messages=list(messages),
                     context_report=context_report,
-                    context_build_result=assembly.result,
-                    context_items_used=assembly.items,
-                    context_build_ms=assembly.duration_ms,
+                    context_build_result=frozen_build_result,
+                    context_items_used=frozen_items,
+                    context_build_ms=frozen_build_ms,
                     context_rebuilds=context_rebuilds,
                     # 得到最终回答立即结束,不为达到步数上限继续调用
                     stop_reason=STOP_REASON_FINAL_ANSWER,
@@ -374,9 +401,9 @@ class AgentLoop:
             observations=list(observations),
             messages=list(messages),
             context_report=context_report,
-            context_build_result=assembly.result,
-            context_items_used=assembly.items,
-            context_build_ms=assembly.duration_ms,
+            context_build_result=frozen_build_result,
+            context_items_used=frozen_items,
+            context_build_ms=frozen_build_ms,
             context_rebuilds=context_rebuilds,
             stop_reason=STOP_REASON_MAX_AGENT_STEPS,
             actual_steps=max_rounds,
@@ -419,8 +446,7 @@ class AgentLoop:
         recent_rounds = unfolded[len(unfolded) - keep :] if keep else []
         recent_raw = [message for round_messages in recent_rounds for message in round_messages]
         extra_items = tuple(
-            _tool_round_item(round_messages, index)
-            for index, round_messages in enumerate(older, start=folded_rounds)
+            _tool_round_item(round_messages, index) for index, round_messages in enumerate(older, start=folded_rounds)
         )
         # 重建预算先扣除保留轮(原文不压缩),保证 重建结果+保留轮 ≤ 有效预算
         recent_tokens = _messages_tokens(recent_raw, self._counter)
@@ -690,7 +716,7 @@ def _tool_round_item(round_messages: list[Any], index: int) -> ContextItem:
     lead_text = _message_text(lead).strip()
     if lead_text:
         parts.append(f"assistant: {lead_text}")
-    for call_id, name, arguments in _tool_calls_of(lead):
+    for _call_id, name, arguments in _tool_calls_of(lead):
         rendered_args = json.dumps(arguments, ensure_ascii=False, default=str)
         parts.append(f"tool_call {name}({rendered_args})")
     for message in round_messages[1:]:

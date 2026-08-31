@@ -13,9 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-_ALLOWED_EVENT_TYPES = frozenset(
-    {"user_message", "assistant_message", "tool_call", "tool_result"}
-)
+_ALLOWED_EVENT_TYPES = frozenset({"user_message", "assistant_message", "tool_call", "tool_result"})
 
 
 class SessionValidationError(ValueError):
@@ -145,9 +143,7 @@ def load_session(path: str | Path) -> SessionCase:
                 continue
             call_event = next(item for item in events if item.event_id == call_id)
             if event.seq != call_event.seq + 1:
-                raise SessionValidationError(
-                    f"tool_result {event.event_id} 未紧跟其 tool_call {call_id}"
-                )
+                raise SessionValidationError(f"tool_result {event.event_id} 未紧跟其 tool_call {call_id}")
 
     return SessionCase(
         session_id=str(raw["session_id"]),
@@ -155,9 +151,7 @@ def load_session(path: str | Path) -> SessionCase:
         title=str(raw.get("title") or raw["session_id"]),
         owner_id=(str(raw["owner_id"]) if raw.get("owner_id") else None),
         fixture_set_id=(str(raw.get("fixture_set_id")) if raw.get("fixture_set_id") else None),
-        tool_catalog_version=(
-            str(raw["tool_catalog_version"]) if raw.get("tool_catalog_version") else None
-        ),
+        tool_catalog_version=(str(raw["tool_catalog_version"]) if raw.get("tool_catalog_version") else None),
         current_question=question,
         visible_tools=tuple(str(item) for item in runtime.get("visible_tools") or ()),
         context_target_tokens=int(runtime.get("context_target_tokens") or 0),

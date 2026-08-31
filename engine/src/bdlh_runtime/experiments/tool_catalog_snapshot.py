@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from bdlh_runtime.tools.catalog import (
+    _ARGUMENT_TYPES,
     ToolCard,
     ToolCatalog,
-    _ARGUMENT_TYPES,
     _description_for,
     _parameters_for,
 )
@@ -109,7 +109,13 @@ _SNAPSHOT_TOOLS: tuple[SnapshotTool, ...] = (
         operations=("READ_PUBLIC_CONTENT",),
         toolsets=("web_read",),
     ),
-    SnapshotTool("web.check_freshness", "检查网页或信息更新时间", ("url",), operations=("READ_PUBLIC_CONTENT",), toolsets=("web_read",)),
+    SnapshotTool(
+        "web.check_freshness",
+        "检查网页或信息更新时间",
+        ("url",),
+        operations=("READ_PUBLIC_CONTENT",),
+        toolsets=("web_read",),
+    ),
     SnapshotTool(
         "document.summarize",
         "总结文档",
@@ -285,7 +291,14 @@ _SNAPSHOT_TOOLS: tuple[SnapshotTool, ...] = (
         operations=("READ_PRIVATE_WORKSPACE",),
         toolsets=("code_git_ci",),
     ),
-    SnapshotTool("weather.get_forecast", "查询天气", ("location",), optional_arguments=("date",), operations=("READ_PUBLIC_CONTENT",), toolsets=("geo_travel",)),
+    SnapshotTool(
+        "weather.get_forecast",
+        "查询天气",
+        ("location",),
+        optional_arguments=("date",),
+        operations=("READ_PUBLIC_CONTENT",),
+        toolsets=("geo_travel",),
+    ),
     SnapshotTool(
         "maps.search_places",
         "搜索地点",
@@ -340,7 +353,13 @@ _SNAPSHOT_TOOLS: tuple[SnapshotTool, ...] = (
         operations=("READ_PUBLIC_CONTENT",),
         toolsets=("commerce",),
     ),
-    SnapshotTool("product.get_price", "查询价格", ("product_id",), operations=("READ_PUBLIC_CONTENT",), toolsets=("commerce",)),
+    SnapshotTool(
+        "product.get_price",
+        "查询价格",
+        ("product_id",),
+        operations=("READ_PUBLIC_CONTENT",),
+        toolsets=("commerce",),
+    ),
     SnapshotTool(
         "cart.add_item",
         "加入购物车(Mock,需确认,不产生真实订单)",
@@ -395,8 +414,20 @@ _SNAPSHOT_TOOLS: tuple[SnapshotTool, ...] = (
         operations=("READ_PRIVATE_WORKSPACE",),
         toolsets=("personal_utils",),
     ),
-    SnapshotTool("calculator.evaluate", "执行普通计算", ("expression",), operations=("READ_PUBLIC_CONTENT",), toolsets=("personal_utils",)),
-    SnapshotTool("citation.lookup", "查询论文或引用信息", ("identifier",), operations=("READ_PUBLIC_CONTENT",), toolsets=("education",)),
+    SnapshotTool(
+        "calculator.evaluate",
+        "执行普通计算",
+        ("expression",),
+        operations=("READ_PUBLIC_CONTENT",),
+        toolsets=("personal_utils",),
+    ),
+    SnapshotTool(
+        "citation.lookup",
+        "查询论文或引用信息",
+        ("identifier",),
+        operations=("READ_PUBLIC_CONTENT",),
+        toolsets=("education",),
+    ),
     SnapshotTool(
         "research.web_search",
         "检索外部公开资料并带来源返回",

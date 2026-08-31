@@ -36,6 +36,16 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 
 Engine 端口默认只绑定 `127.0.0.1`。如果通过网关提供私有运行页面，网关仍需做项目所有者登录；运行接口本身已要求账号会话令牌，不应暴露给浏览器或公开站。
 
+上下文工作台默认使用 `CONTEXT_MEMORY_MODE=legacy` 和
+`CONTEXT_BUILD_STORE=file`，因此不会读取或写入生产上下文表。代码支持以下显式切换：
+
+- `shadow + file`：生产 Session 优先读取，缺失或不可用时回退冻结 Session；构建工件仍写本地文件。
+- `incremental + file`：只读取生产 Session；构建工件仍写本地文件。
+- `incremental + data-service`：Session、构建状态和工件均经过 Data Service；只有数据库结构已经准备好后才能启用。
+
+`data-service` Store 与 `legacy`/`shadow` 组合会拒绝运行，避免把冻结 Session
+误写入生产数据库。
+
 ## 云环境
 
 `docker-compose.cloud.yml` 使用已经发布的三个镜像，并连接托管 PostgreSQL。先使用

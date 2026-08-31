@@ -17,7 +17,7 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +33,7 @@ class SeriesIdempotencyConflict(SeriesConflictError):
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 @dataclass
@@ -51,6 +51,9 @@ class SeriesRecord:
     advanced: dict[str, Any] = field(default_factory=dict)
     preset_id: str | None = None
     formal_min_repeat_count: int = 3
+    #: 每变体预期 config_hash(创建时由模板计划冻结;统计模块按正式口径
+    #: 直接比较。旧数据无此字段时统计退回观察主导值兼容口径)
+    expected_config_hashes: dict[str, str] = field(default_factory=dict)
     status: str = "active"  # active | closed
     created_at: str = field(default_factory=_now)
     runs: list[dict[str, Any]] = field(default_factory=list)
@@ -58,8 +61,12 @@ class SeriesRecord:
     def to_payload(self) -> dict[str, Any]:
         return dict(self.__dict__)
 
-    def counts_by_variant(self) -> dict[str, int]:
-        """每变体已完成(有效证据)运行数;排队/失败不计入样本。"""
+    def completed_counts_by_variant(self) -> dict[str, int]:
+        """每变体已完成(done)运行数;排队/失败不计入。
+
+        命名说明(P1-3):这是 done 口径的登记计数,不等于统计模块的
+        "有效证据"(有效样本以统计快照 included_count 为准)。
+        """
         counts = {label: 0 for label in self.variant_labels}
         for row in self.runs:
             label = str(row.get("variant_id") or "")
@@ -148,17 +155,11 @@ class SeriesStore:
                 for row in record.runs:
                     if row.get("idempotency_key") == idempotency_key:
                         if str(row.get("request_hash") or "") != request_hash:
-                            raise SeriesIdempotencyConflict(
-                                f"幂等键 {idempotency_key!r} 已绑定不同的运行请求"
-                            )
+                            raise SeriesIdempotencyConflict(f"幂等键 {idempotency_key!r} 已绑定不同的运行请求")
                         return row, True
             if record.active_run() is not None:
-                raise SeriesConflictError(
-                    "该实验组已有运行进行中;等待完成后再发起下一个样本"
-                )
-            repeat_index = 1 + sum(
-                1 for row in record.runs if str(row.get("variant_id") or "") == variant_id
-            )
+                raise SeriesConflictError("该实验组已有运行进行中;等待完成后再发起下一个样本")
+            repeat_index = 1 + sum(1 for row in record.runs if str(row.get("variant_id") or "") == variant_id)
             entry = {
                 "run_key": f"run-{len(record.runs) + 1:03d}",
                 "variant_id": variant_id,
@@ -195,9 +196,7 @@ class SeriesStore:
                 return
             before = len(record.runs)
             record.runs = [
-                row
-                for row in record.runs
-                if not (row.get("run_key") == run_key and row.get("status") == "queued")
+                row for row in record.runs if not (row.get("run_key") == run_key and row.get("status") == "queued")
             ]
             if len(record.runs) != before:
                 self._write(record)
@@ -326,15 +325,11 @@ class DbSeriesStore:
                 for row in record.runs:
                     if row.get("idempotency_key") == idempotency_key:
                         if str(row.get("request_hash") or "") != request_hash:
-                            raise SeriesIdempotencyConflict(
-                                f"幂等键 {idempotency_key!r} 已绑定不同的运行请求"
-                            )
+                            raise SeriesIdempotencyConflict(f"幂等键 {idempotency_key!r} 已绑定不同的运行请求")
                         return row, True
             if record.active_run() is not None:
                 raise SeriesConflictError("该实验组已有运行进行中;等待完成后再发起下一个样本")
-            repeat_index = 1 + sum(
-                1 for row in record.runs if str(row.get("variant_id") or "") == variant_id
-            )
+            repeat_index = 1 + sum(1 for row in record.runs if str(row.get("variant_id") or "") == variant_id)
             entry = {
                 "run_key": f"run-{len(record.runs) + 1:03d}",
                 "variant_id": variant_id,
@@ -370,9 +365,7 @@ class DbSeriesStore:
                 return
             before = len(record.runs)
             record.runs = [
-                row
-                for row in record.runs
-                if not (row.get("run_key") == run_key and row.get("status") == "queued")
+                row for row in record.runs if not (row.get("run_key") == run_key and row.get("status") == "queued")
             ]
             if len(record.runs) != before:
                 self._save(record)

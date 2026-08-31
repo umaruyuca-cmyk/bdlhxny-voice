@@ -37,6 +37,7 @@ from bdlh_runtime.experiments import (
     plan_native_context_runs,
     validate_repeat_count,
 )
+from bdlh_runtime.experiments.budget import JobBudget
 from bdlh_runtime.experiments.run_config import (
     EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
     GOVERNANCE_STANDARD,
@@ -48,7 +49,6 @@ from bdlh_runtime.experiments.run_config import (
     ToolsConfig,
     hash_of,
 )
-from bdlh_runtime.experiments.budget import JobBudget
 from bdlh_runtime.session import (
     CompiledContext,
     SessionCompiler,
@@ -294,17 +294,19 @@ def _load_frozen_batch(session_id: str) -> tuple[SessionCase, dict[str, Any], di
     compiled_dir = case_dir / "compiled"
     fingerprint_path = compiled_dir / "fingerprint.json"
     if not fingerprint_path.is_file():
-        raise StaleContextArtifactError(
-            f"Session {session_id} 尚未生成四份上下文工件,请先执行「生成四份上下文」"
-        )
+        raise StaleContextArtifactError(f"Session {session_id} 尚未生成四份上下文工件,请先执行「生成四份上下文」")
     stored_fingerprint = json.loads(fingerprint_path.read_text(encoding="utf-8"))
     instance = SessionCompiler.from_env()
     current_fingerprint = compute_fingerprint(session, variants, instance.tokenizer_version)
     differing = [
         key
         for key in (
-            "source_session_hash", "session_version", "current_event_id",
-            "current_message_hash", "tokenizer_version", "algo_version",
+            "source_session_hash",
+            "session_version",
+            "current_event_id",
+            "current_message_hash",
+            "tokenizer_version",
+            "algo_version",
         )
         if stored_fingerprint.get(key) != current_fingerprint.get(key)
     ]
@@ -391,6 +393,46 @@ def build_compression_run_configs(
     return configs
 
 
+def expected_compression_method_config_hashes(
+    session_id: str,
+    *,
+    max_agent_steps: int | None = None,
+) -> dict[str, str]:
+    """压缩方法对照每变体的预期 RunConfig 哈希(创建实验组时冻结;纯代码,无 LLM 调用)。
+
+    与 ``run_single_compression_method`` 构建同一 RunConfig:两种方法编译同一
+    ``budgeted-session`` 变体定义,``token_budget`` 直接取自变体定义(同预算),
+    因此哈希可以在不编译工件、不调用摘要模型的前提下确定性冻结。运行 payload
+    携带的 ``config_hash`` 与冻结值一致,统计模块按正式口径直接比较(修复方案 P1-2)。
+    """
+    from bdlh_runtime.experiments import default_max_agent_steps
+
+    steps = max_agent_steps or default_max_agent_steps()
+    session, variants, _ = _load_session_bundle(session_id)
+    budgeted_def = next(
+        (v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"),
+        None,
+    )
+    if budgeted_def is None:
+        raise CompressionSessionError("Session 变体定义缺少 budgeted-session,不能做压缩方法对照")
+    token_budget = int(budgeted_def["token_budget"])
+    hashes: dict[str, str] = {}
+    for method in COMPRESSION_METHODS:
+        config = RunConfig(
+            execution_engine=EXECUTION_ENGINE_NATIVE_TOOL_CALLING,
+            tool_delivery=TOOL_DELIVERY_ALL,
+            governance_profile=GOVERNANCE_STANDARD,
+            context_strategy=method,
+            model=ModelParams(model_id="configured-model"),
+            limits=LimitsConfig(max_agent_steps=steps, max_tool_calls=max(0, steps + 2)),
+            tools=ToolsConfig(catalog_version="session-mock-v1"),
+            context=ContextParams(token_budget=token_budget),
+            fixture_version=str(session.fixture_set_id or "session-gold-v1"),
+        )
+        hashes[method] = config.config_hash
+    return hashes
+
+
 #: 单元执行器协议:async (session, artifact, agent_mode_id, run_key, max_agent_steps) -> raw dict
 CellRunner = Callable[..., Any]
 
@@ -425,11 +467,7 @@ async def _default_cell_runner(
         from bdlh_runtime.experiments.template_runner import build_llm_for_config
 
         llm = build_llm_for_config(
-            RunConfig(
-                limits=LimitsConfig(
-                    max_agent_steps=max_agent_steps, max_tool_calls=max(0, max_agent_steps + 2)
-                )
-            )
+            RunConfig(limits=LimitsConfig(max_agent_steps=max_agent_steps, max_tool_calls=max(0, max_agent_steps + 2)))
         )
         llm_missing = llm is None
 
@@ -463,11 +501,7 @@ async def _default_cell_runner(
             token_budget=artifact.token_budget + schema_tokens,
             owner_id=None,
         )
-        frozen_ids = (
-            ("system-prompt",)
-            + tuple(item.item_id for item in turn.context_entries)
-            + ("current-question",)
-        )
+        frozen_ids = ("system-prompt",) + tuple(item.item_id for item in turn.context_entries) + ("current-question",)
         loop = AgentLoop(
             llm=llm,
             catalog=catalog,
@@ -482,8 +516,7 @@ async def _default_cell_runner(
         error = agent_result.context_error if agent_result.degraded else None
         if llm_missing:
             error = error or (
-                "LLM_UNAVAILABLE: api key 或 base_url 未配置(create_llm 返回 None),"
-                "本单元未执行任何 Agent 模型调用"
+                "LLM_UNAVAILABLE: api key 或 base_url 未配置(create_llm 返回 None),本单元未执行任何 Agent 模型调用"
             )
         stop_reason = agent_result.stop_reason or ""
         actual_steps = agent_result.actual_steps
@@ -521,20 +554,21 @@ async def run_current_combo(
     else:
         session, variants, compiled = _load_frozen_batch(session_id)
     if context_variant not in compiled:
-        raise CompressionSessionError(
-            f"未知上下文方式 {context_variant!r};可用:{sorted(compiled)}"
-        )
+        raise CompressionSessionError(f"未知上下文方式 {context_variant!r};可用:{sorted(compiled)}")
     if agent_mode_id != NATIVE_AGENT_MODE_ID:
-        raise CompressionSessionError(
-            f"未知 Agent 实现编号:{agent_mode_id!r};可用:{NATIVE_AGENT_MODE_ID}"
-        )
+        raise CompressionSessionError(f"未知 Agent 实现编号:{agent_mode_id!r};可用:{NATIVE_AGENT_MODE_ID}")
     artifact = compiled[context_variant]
     runner = cell_runner or _default_cell_runner
     run_key = f"{session_id}:{context_variant}:{agent_mode_id}"
     configs = build_compression_run_configs(session, compiled, steps)
     raw = await runner(session, artifact, agent_mode_id, run_key, steps, llm=llm)
     return _assemble_cell_result(
-        session, artifact, context_variant, agent_mode_id, raw, compiled,
+        session,
+        artifact,
+        context_variant,
+        agent_mode_id,
+        raw,
+        compiled,
         config_hash=configs[run_key].config_hash,
     )
 
@@ -567,9 +601,7 @@ async def run_native_context_matrix(
     cells: list[CellRunResult] = []
     skipped: list[str] = []
     runner = cell_runner or _default_cell_runner
-    run_configs = build_compression_run_configs(
-        session, compiled, steps, agent_mode_ids=(NATIVE_AGENT_MODE_ID,)
-    )
+    run_configs = build_compression_run_configs(session, compiled, steps, agent_mode_ids=(NATIVE_AGENT_MODE_ID,))
     budget = JobBudget.from_env()
     for unit in units:
         if should_stop is not None and should_stop():
@@ -579,13 +611,16 @@ async def run_native_context_matrix(
             skipped.append(unit.unit_id)  # 预算终止:不再发起新调用,已完成单元保留
             continue
         artifact = compiled[unit.context_variant or ""]
-        raw = await runner(
-            session, artifact, unit.agent_mode_id, unit.unit_id, steps, llm=llm
-        )
+        raw = await runner(session, artifact, unit.agent_mode_id, unit.unit_id, steps, llm=llm)
         budget.record(llm_requests=int(raw.get("actual_agent_steps") or 0))
         cells.append(
             _assemble_cell_result(
-                session, artifact, unit.context_variant or "", unit.agent_mode_id, raw, compiled,
+                session,
+                artifact,
+                unit.context_variant or "",
+                unit.agent_mode_id,
+                raw,
+                compiled,
                 config_hash=run_configs[unit.unit_id].config_hash,
             )
         )
@@ -810,7 +845,12 @@ async def run_compression_method_comparison(
         raw = await runner(session, compiled[method], NATIVE_AGENT_MODE_ID, unit_id, steps, llm=llm)
         budget.record(llm_requests=int(raw.get("actual_agent_steps") or 0))
         cell = _assemble_cell_result(
-            session, compiled[method], method, NATIVE_AGENT_MODE_ID, raw, compiled,
+            session,
+            compiled[method],
+            method,
+            NATIVE_AGENT_MODE_ID,
+            raw,
+            compiled,
             config_hash=configs[method].config_hash,
         )
         cells.append(cell)
@@ -849,8 +889,7 @@ async def run_compression_method_comparison(
         "skipped_unit_ids": skipped,
         "frozen_artifact_hashes": {m: c.compiled_context_hash for m, c in compiled.items()},
         "run_configs": {
-            f"{session_id}:{m}:{NATIVE_AGENT_MODE_ID}": cfg.config_payload_with_hash()
-            for m, cfg in configs.items()
+            f"{session_id}:{m}:{NATIVE_AGENT_MODE_ID}": cfg.config_payload_with_hash() for m, cfg in configs.items()
         },
         "fixed_conditions": fixed_conditions,
         "fixed_conditions_hash": hash_of(fixed_conditions),

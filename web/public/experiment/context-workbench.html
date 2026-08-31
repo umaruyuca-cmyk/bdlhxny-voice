@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>上下文工作台 · 实验</title>
+<meta name="description" content="查看旧对话、压缩决策、LLM 历史总结与冻结上下文工件。">
+<link rel="stylesheet" href="/docs/docs.css">
+<link rel="stylesheet" href="/experiment/context-workbench.css">
+</head>
+<body data-context-view="workbench">
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
+  <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
+  <div class="topbar-actions"><a class="topbar-login" href="/">登录</a><a class="topbar-logout" href="/">退出登录</a><a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库">GitHub</a></div>
+</div></header>
+<main class="docs-main context-shell">
+  <div class="eyebrow">Context Workbench · P0</div>
+  <h1>上下文压缩工作台</h1>
+  <p class="page-sub">从旧对话到冻结目标消息序列的完整追溯。当前阶段接入冻结 Session 只读来源，构建不会运行 Agent。</p>
+  <div id="authNotice" class="placeholder-block" hidden>该页面需要登录所有者。登录后可读取来源并创建上下文构建。</div>
+
+  <section class="context-controls" aria-labelledby="build-title">
+    <h2 id="build-title">选择构建输入</h2>
+    <div class="context-form-row">
+      <label>会话来源<select id="sessionSelect"><option>正在读取…</option></select></label>
+      <label class="request-field">当前请求<select id="requestSelect"><option>请先选择会话</option></select></label>
+      <button class="btn" type="button" id="buildButton">构建当前上下文</button>
+      <a class="btn" id="latestBuildLink" href="#" hidden>查看最近构建</a>
+    </div>
+    <p class="note" id="buildHint">页面加载只读取数据，不调用 LLM。每个 Session 同时只允许一个活跃构建。</p>
+  </section>
+
+  <section aria-labelledby="overview-title">
+    <h2 id="overview-title">会话概览</h2>
+    <div class="context-metrics" id="overviewMetrics"><div class="placeholder-block">请选择会话。</div></div>
+  </section>
+
+  <section aria-labelledby="history-title">
+    <h2 id="history-title">旧对话记录</h2>
+    <div class="context-events" id="eventList"><div class="placeholder-block">尚未读取事件。</div></div>
+    <div class="context-pager" id="eventPager" hidden></div>
+  </section>
+
+  <section aria-labelledby="segments-title">
+    <h2 id="segments-title">历史摘要库</h2>
+    <p class="note">当前会话已冻结、可跨构建复用的历史轮摘要段;legacy 模式未启用增量记忆时不展示。</p>
+    <div id="segmentLibrary"><div class="placeholder-block">请选择会话。</div></div>
+  </section>
+
+  <section aria-labelledby="trend-title" id="trendPanel" hidden>
+    <h2 id="trend-title">跨构建趋势</h2>
+    <p class="note">该会话最近构建的真实计量演进;压缩率 = 1 - 最终/原始 Token,均为构建快照计数。</p>
+    <div id="buildTrend" class="context-events"></div>
+  </section>
+
+  <section aria-labelledby="quality-title" id="qualityPanel" hidden>
+    <h2 id="quality-title">摘要质量抽检</h2>
+    <p class="note">对最近冻结摘要段做确定性代码校验(非空/来源完整/未超段预算/状态可用),不调用 LLM。</p>
+    <div id="segmentQuality" class="context-events"></div>
+  </section>
+
+  <section aria-labelledby="audit-title" id="auditPanel" hidden>
+    <h2 id="audit-title">访问与审计</h2>
+    <p class="note">本人账号在上下文工作台的下载、复制、重建与授权操作记录。</p>
+    <div id="ownerAuditList" class="context-events"></div>
+  </section>
+
+  <section aria-labelledby="ops-title" id="opsPanel" hidden>
+    <h2 id="ops-title">跨所有者运维视图(脱敏元数据)</h2>
+    <p class="note">仅状态、阶段、计量与错误码;运维身份不能读取任何所有者原文(需求 §5.3)。</p>
+    <div id="opsBuilds" class="context-events"></div>
+  </section>
+
+  <section aria-labelledby="ops-analysis-title" id="opsAnalysisPanel" hidden>
+    <h2 id="ops-analysis-title">定时分析报告(运维)</h2>
+    <p class="note">后台定时任务产出:摘要段语义抽检汇总、阈值/预算分组对照、成本收益与相关性;点击触发会产生评审 LLM 调用。</p>
+    <div class="context-form-row context-analysis-actions">
+      <button class="btn" type="button" id="analysisRunButton">立即运行一轮分析</button>
+      <span class="note" id="analysisRunHint"></span>
+    </div>
+    <div id="opsAnalysis" class="context-events"></div>
+  </section>
+
+  <section class="context-chain" aria-label="上下文处理四阶段">
+    <article><b>① 旧对话记录</b><span>按统一 turn_id 组织</span></article>
+    <article><b>② 压缩算法决策</b><span>分类、选择与预算</span></article>
+    <article><b>③ LLM 历史总结</b><span>调用、缓存与回退</span></article>
+    <article><b>④ 冻结上下文工件</b><span>P0 不运行 Agent</span></article>
+  </section>
+</main>
+<script src="/docs/docs.js"></script>
+<script src="/docs/experiment.js"></script>
+<script src="/experiment/context-workbench.js"></script>
+</body>
+</html>

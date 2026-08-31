@@ -91,9 +91,7 @@ class AnonymousJobService:
         self._compression_executor = compression_executor or _default_compression_executor
         # 模板化匿名任务执行器(模板不只可看,也能发起)
         self._template_executor = template_executor or _default_template_executor
-        self._thread_factory = thread_factory or (
-            lambda target: threading.Thread(target=target, daemon=True)
-        )
+        self._thread_factory = thread_factory or (lambda target: threading.Thread(target=target, daemon=True))
         self._running_lock = threading.Lock()
 
     # ------------------------------------------------------------------ 创建
@@ -118,9 +116,7 @@ class AnonymousJobService:
 
         with self._running_lock:
             if idempotency_key is not None:
-                existing = self.store.find_by_idempotency_key(
-                    idempotency_key, anonymous_id_hash=anonymous_id_hash
-                )
+                existing = self.store.find_by_idempotency_key(idempotency_key, anonymous_id_hash=anonymous_id_hash)
                 if existing is not None:
                     if existing.request_hash and existing.request_hash != _request_hash(request):
                         raise IdempotencyConflict() from None
@@ -138,8 +134,7 @@ class AnonymousJobService:
                 job = self._create_template_job(request, job_id=new_job_id())
             elif test_type is TestType.COMPARISON_CASE:
                 raise PublicTestError(
-                    "对比用例必须经实验模板发起:请在请求中提供 template_id"
-                    "(请在请求中提供 template_id)"
+                    "对比用例必须经实验模板发起:请在请求中提供 template_id(请在请求中提供 template_id)"
                 )
             else:
                 job = self._create_compression_job(request, job_id=new_job_id())
@@ -171,7 +166,9 @@ class AnonymousJobService:
           context-only 零单元或原生 4×1),任务记录保留模板口径;
         - 对比模板(COMPARISON_CASE):只允许「允许匿名」的模板,计划全部在创建时
           经 plan_template_batch 校验(权限/区间/上限/预设),单元 = 计划内的
-          每次运行(unit_id 即模板 run_id),执行走统一原生底座。
+          每次运行(unit_id 即模板 run_id),执行走统一原生底座;一次只运行一个
+          Agent——匿名可用 variant_label 选单个变体发起 1 次运行,其余多运行
+          展开一律拒绝(不保留隐式批量执行)。
         """
         from bdlh_runtime.experiments.templates import (
             ROLE_ANONYMOUS,
@@ -209,17 +206,31 @@ class AnonymousJobService:
         except (TypeError, ValueError):
             raise PublicTestError(f"repeat_count 必须是整数,收到 {repeat_raw!r}") from None
         preset_id = request.get("preset_id")
+        # 匿名单变体口径:variant_label 在模板既有变体中做子集选择,发起恰好 1 次
+        # 运行;变体定义仍由模板冻结,不接受任意变体定义或变体数组
+        variant_label = str(request.get("variant_label") or "").strip() or None
+        if variant_label and repeat_count != 1:
+            raise PublicTestError("匿名单变体运行固定 1 次(repeat_count=1);多次重复请登录后从实验组流程逐样本追加")
         try:
             plan = plan_template_batch(
                 template_id,
                 repeat_count=repeat_count,
                 role=ROLE_ANONYMOUS,
                 preset_id=str(preset_id) if preset_id else None,
+                variant_labels=[variant_label] if variant_label else None,
             )
         except TemplatePlanError as exc:
             raise PublicTestError(str(exc)) from None
         if plan.context_only or not plan.runs:
             raise PublicTestError("该模板不产生 Agent 运行(仅上下文生成),请使用压缩用例入口")
+        # 一次只运行一个 Agent(P0-1):匿名模板任务不再把计划内的全部变体 ×
+        # 重复展开为多个单元;多运行入口明确关闭,不保留隐式批量执行。
+        if len(plan.runs) > 1:
+            raise PublicTestError(
+                f"该模板一次会展开 {len(plan.runs)} 个 Agent 运行;匿名模板多运行入口已关闭,"
+                "可用 variant_label 选择单个变体发起 1 次运行,"
+                "或登录后从实验组流程逐样本发起(每次点击只创建一个运行)"
+            )
         return JobRecord(
             job_id=job_id,
             test_type=TestType.COMPARISON_CASE.value,
@@ -250,12 +261,15 @@ class AnonymousJobService:
 
         session_id = str(request.get("session_id") or "")
         if session_id not in {row[0] for row in COMPRESSION_SESSIONS}:
-            raise PublicTestError(
-                f"未知压缩 Session:{session_id!r};可用:{[row[0] for row in COMPRESSION_SESSIONS]}"
-            )
+            raise PublicTestError(f"未知压缩 Session:{session_id!r};可用:{[row[0] for row in COMPRESSION_SESSIONS]}")
         scope = str(request.get("execution_scope") or COMPRESSION_SCOPE_CONTEXT_ONLY)
         if scope not in COMPRESSION_SCOPES:
             raise PublicTestError(f"压缩用例 execution_scope 只能是 {list(COMPRESSION_SCOPES)}")
+        # 一次只运行一个 Agent(P0-1 修复):原生 4×1 一次创建 4 个运行,入口明确关闭
+        if scope == COMPRESSION_SCOPE_NATIVE_MATRIX:
+            raise PublicTestError(
+                "原生 4×1 一次创建多个 Agent 运行,该入口已关闭;请逐个发起「运行当前组合」(一次一个运行)"
+            )
         repeat_count = request.get("repeat_count", 1)
         try:
             validate_repeat_count(TestType.COMPRESSION_CASE, int(repeat_count))
@@ -273,16 +287,25 @@ class AnonymousJobService:
                     f"运行当前组合的 agent_mode_id 只能是 {NATIVE_AGENT_MODE_ID},收到 {agent_mode_id!r}"
                 )
             units = [
-                JobUnit(seq=1, unit_id=f"{session_id}:{context_variant}:{agent_mode_id}",
-                        agent_mode_id=str(agent_mode_id), repeat_index=0,
-                        context_variant=str(context_variant))
+                JobUnit(
+                    seq=1,
+                    unit_id=f"{session_id}:{context_variant}:{agent_mode_id}",
+                    agent_mode_id=str(agent_mode_id),
+                    repeat_index=0,
+                    context_variant=str(context_variant),
+                )
             ]
         elif scope == COMPRESSION_SCOPE_NATIVE_MATRIX:
             # 新默认上下文运行计划:4 种上下文 × 1 种固定原生配置(4×1)
             native_units: list[RunUnit] = plan_native_context_runs(session_id)
             units = [
-                JobUnit(seq=index + 1, unit_id=unit.unit_id, agent_mode_id=unit.agent_mode_id,
-                        repeat_index=0, context_variant=unit.context_variant)
+                JobUnit(
+                    seq=index + 1,
+                    unit_id=unit.unit_id,
+                    agent_mode_id=unit.agent_mode_id,
+                    repeat_index=0,
+                    context_variant=unit.context_variant,
+                )
                 for index, unit in enumerate(native_units)
             ]
         return JobRecord(
@@ -310,18 +333,11 @@ class AnonymousJobService:
         if job.test_type == TestType.COMPARISON_CASE.value:
             used = sum(1 for row in todays if row.test_type == TestType.COMPARISON_CASE.value)
             if used >= self.quota.comparison_daily_jobs:
-                raise PublicTestError(
-                    f"今日对比用例测试次数已达上限({self.quota.comparison_daily_jobs}),请明天再试"
-                )
+                raise PublicTestError(f"今日对比用例测试次数已达上限({self.quota.comparison_daily_jobs}),请明天再试")
         else:
-            context_used = sum(
-                1 for row in todays
-                if row.test_type == TestType.COMPRESSION_CASE.value
-            )
+            context_used = sum(1 for row in todays if row.test_type == TestType.COMPRESSION_CASE.value)
             if context_used >= self.quota.compression_context_daily_jobs:
-                raise PublicTestError(
-                    f"今日压缩上下文生成次数已达上限({self.quota.compression_context_daily_jobs})"
-                )
+                raise PublicTestError(f"今日压缩上下文生成次数已达上限({self.quota.compression_context_daily_jobs})")
 
     # ------------------------------------------------------------------ 执行
 
@@ -392,22 +408,51 @@ class AnonymousJobService:
         job.result = {
             key: value
             for key, value in result.items()
-            if key in {"test_type", "case_id", "case_version", "session_id", "session_version",
-                       "repeat_count", "max_agent_steps", "total_runs", "unit_count",
-                       "by_agent", "invalid_runs", "custom_conditions", "selected_tool_ids",
-                       "fixture_set_id", "execution_order", "frozen_artifact_hashes",
-                       "skipped_unit_ids", "stats", "fingerprint",
-                       # 压缩决策摘要(context-only 公开口径;不含正文)
-                       "compression_details",
-                       # 运行配置快照(阶段A3):配置体不含 gold,可进公开摘要
-                       "run_configs", "fixed_conditions", "fixed_conditions_hash",
-                       # 模板批次摘要(混合路线):模板标识/分类/自变量/按变体聚合
-                       "template_id", "template_version", "classification",
-                       "independent_variable", "by_variant", "run_count",
-                       "skipped_run_ids",
-                       # 作业级预算口径(§11.2):真实请求累计与终止原因
-                       "budget", "budget_terminated"}
+            if key
+            in {
+                "test_type",
+                "case_id",
+                "case_version",
+                "session_id",
+                "session_version",
+                "repeat_count",
+                "max_agent_steps",
+                "total_runs",
+                "unit_count",
+                "by_agent",
+                "invalid_runs",
+                "custom_conditions",
+                "selected_tool_ids",
+                "fixture_set_id",
+                "execution_order",
+                "frozen_artifact_hashes",
+                "skipped_unit_ids",
+                "stats",
+                "fingerprint",
+                # 压缩决策摘要(context-only 公开口径;不含正文)
+                "compression_details",
+                # 运行配置快照(阶段A3):配置体不含 gold,可进公开摘要
+                "run_configs",
+                "fixed_conditions",
+                "fixed_conditions_hash",
+                # 模板批次摘要(混合路线):模板标识/分类/自变量/按变体聚合
+                "template_id",
+                "template_version",
+                "classification",
+                "independent_variable",
+                "by_variant",
+                "run_count",
+                "skipped_run_ids",
+                # 作业级预算口径(§11.2):真实请求累计与终止原因
+                "budget",
+                "budget_terminated",
+            }
         }
+        # 逐次运行明细(脱敏投影):answer/tool_calls(工具名+参数+状态)/
+        # 步数/停止原因;不含逐轮消息正文、Mock 返回摘要与 gold
+        runs = result.get("runs")
+        if isinstance(runs, list):
+            job.result["runs"] = [_public_run_row(row) for row in runs if isinstance(row, dict)]
         self.store.save(job)
 
     # ------------------------------------------------------------------ 查询/取消
@@ -434,6 +479,73 @@ class AnonymousJobService:
         return job
 
 
+#: 逐次运行行的公开字段(脱敏口径):不含逐轮输入消息正文(系统提示/完整上下文)、
+#: 治理审计全量与请求参数快照;逐步证据以 model_calls.responseSummary(模型
+#: 自身的决策与返回摘录)与 tool_calls.resultSummary(模型当时看到的世界返回)
+#: 呈现——均为模型自身接收/产出的内容,不含 gold 与评判配置
+_RUN_ROW_PUBLIC_FIELDS = (
+    "unit_id",
+    "run_id",
+    "variant_label",
+    "repeat_index",
+    "config_hash",
+    "governance_profile",
+    "answer",
+    "stop_reason",
+    "actual_agent_steps",
+    "duration_ms",
+    "validity",
+    "error",
+)
+_TOOL_ROW_PUBLIC_FIELDS = (
+    "sequence",
+    "toolName",
+    "arguments",
+    "status",
+    "durationMs",
+    "auditCode",
+    "fixtureHit",
+    "modelCallSequence",
+    "resultSummary",
+)
+#: 模型调用行的公开字段:responseSummary 含 decision/toolCalls/textExcerpt
+#: (模型自己的返回),不含 messages 输入快照与请求参数三态(所有者下钻)
+_MODEL_CALL_PUBLIC_FIELDS = (
+    "sequence",
+    "decision",
+    "status",
+    "durationMs",
+    "inputTokens",
+    "outputTokens",
+    "responseSummary",
+)
+
+
+def _public_run_row(row: dict[str, Any]) -> dict[str, Any]:
+    base = {key: row.get(key) for key in _RUN_ROW_PUBLIC_FIELDS if key in row}
+    tools = row.get("tool_calls")
+    base["tool_calls"] = (
+        [
+            {key: item.get(key) for key in _TOOL_ROW_PUBLIC_FIELDS if key in item}
+            for item in tools
+            if isinstance(item, dict)
+        ]
+        if isinstance(tools, list)
+        else []
+    )
+    model_calls = row.get("model_calls")
+    base["model_calls"] = (
+        [
+            {key: item.get(key) for key in _MODEL_CALL_PUBLIC_FIELDS if key in item}
+            for item in model_calls
+            if isinstance(item, dict)
+        ]
+        if isinstance(model_calls, list)
+        else []
+    )
+    return base
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -452,16 +564,16 @@ _ALLOWED_REQUEST_FIELDS = frozenset(
         "selected_tool_ids",
         "idempotency_key",
         # 模板化匿名任务(混合路线):只接受模板编号与预设编号,
-        # 变体数组/高级设置仍不可提交(由模板常量决定)
+        # 变体数组/高级设置仍不可提交(由模板常量决定);
+        # variant_label 允许在模板既有变体中选一个,发起恰好 1 次运行(单运行口径)
         "template_id",
         "preset_id",
+        "variant_label",
     }
 )
 
 
-def _default_template_executor(
-    job: JobRecord, *, should_stop: Callable[[], bool] = lambda: False
-) -> dict[str, Any]:
+def _default_template_executor(job: JobRecord, *, should_stop: Callable[[], bool] = lambda: False) -> dict[str, Any]:
     """生产模板执行器(同步包装):重建计划并在统一原生底座上运行。
 
     LLM 配置唯一真源是服务端 env(与旧入口一致);测试注入 template_executor
@@ -479,11 +591,15 @@ def _default_template_executor(
     case = repository.get_public_case(job.case_id)
     if case is None:
         raise PublicTestError(f"未知或非公开对比用例:{job.case_id}")
+    # 按登记单元重建计划(修复:漏传 variant_labels 会导致单变体任务
+    # 展开全部变体执行——登记与实际运行不一致)
+    variant_labels = [unit.context_variant for unit in job.units if unit.context_variant] or None
     plan = plan_template_batch(
         job.template_id,
         repeat_count=job.repeat_count,
         role=ROLE_ANONYMOUS,
         preset_id=job.template_preset_id,
+        variant_labels=variant_labels,
     )
     result = asyncio.run(
         run_template_batch(
@@ -535,8 +651,11 @@ def _default_compression_executor(job: JobRecord, *, should_stop: Callable[[], b
                 max_agent_steps=steps,
             )
         )
-        return {"cells": [cell.__dict__], "session_id": job.session_id,
-                "frozen_artifact_hashes": {cell.context_variant: cell.context_artifact_hash}}
+        return {
+            "cells": [cell.__dict__],
+            "session_id": job.session_id,
+            "frozen_artifact_hashes": {cell.context_variant: cell.context_artifact_hash},
+        }
     if job.execution_scope == COMPRESSION_SCOPE_NATIVE_MATRIX:
         return asyncio.run(
             compression_module.run_native_context_matrix(

@@ -263,10 +263,7 @@ class ToolLoader:
                 self._cache[card.name] = card
         else:
             self._miss_streak += 1
-            if (
-                self._fallback_policy == "legacy"
-                and self._miss_streak >= self._miss_fallback_limit
-            ):
+            if self._fallback_policy == "legacy" and self._miss_streak >= self._miss_fallback_limit:
                 self._fallback = True
         ranked_candidates = [
             {"name": card.name, "description": card.description, "score": round(score, 4), "rank": rank}

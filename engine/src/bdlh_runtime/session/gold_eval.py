@@ -94,15 +94,14 @@ def grade_tool_calls(
         if name in unnecessary:
             judgment.unnecessary_calls.append(name)
 
-    for index, required_call in enumerate(required):
+    for _index, required_call in enumerate(required):
         expected_name = str(required_call.get("tool_name"))
         expected_args = dict(required_call.get("arguments") or {})
         name_matches = [pos for pos, (name, _args) in enumerate(calls) if name == expected_name]
         exact = [
             pos
             for pos, (name, args) in enumerate(calls)
-            if name == expected_name
-            and all(args.get(key) == value for key, value in expected_args.items())
+            if name == expected_name and all(args.get(key) == value for key, value in expected_args.items())
         ]
         if exact:
             judgment.required_hit += 1
@@ -114,25 +113,25 @@ def grade_tool_calls(
             judgment.missing_calls.append(expected_name)
 
     known = {str(row.get("tool_name")) for row in required} | allowed_optional
-    for name, arguments in calls:
+    for name, _arguments in calls:
         if name not in known:
             judgment.extra_calls.append(name)
-    for (name, args_json), count in seen_counts.items():
+    for (name, _args_json), count in seen_counts.items():
         if count > 1:
             judgment.repeated_calls.append(f"{name}x{count}")
     judgment.ordering_ok = hit_positions == sorted(hit_positions)
     return judgment
 
 
-def grade_compiled_constraints(
-    compiled: CompiledContext, gold: dict[str, Any]
-) -> tuple[float, list[str]]:
+def grade_compiled_constraints(compiled: CompiledContext, gold: dict[str, Any]) -> tuple[float, list[str]]:
     """约束保留率:约束的任一证据事件被保留(kept/compressed/referenced)即视为保留。"""
 
     checks = (gold.get("evaluation_checks") or {}).get("current_constraint_retention") or {}
     required_ids = list(checks.get("required_ids") or [])
     constraints = {row.get("id"): row for row in gold.get("current_active_constraints") or []}
-    retained_ids = set(compiled.kept_event_ids) | set(compiled.compressed_event_ids) | set(compiled.referenced_event_ids)
+    retained_ids = (
+        set(compiled.kept_event_ids) | set(compiled.compressed_event_ids) | set(compiled.referenced_event_ids)
+    )
     missing: list[str] = []
     for constraint_id in required_ids:
         row = constraints.get(constraint_id) or {}

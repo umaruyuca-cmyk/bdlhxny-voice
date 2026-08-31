@@ -82,3 +82,53 @@ def test_statistics_endpoint_404_when_no_report(owner_client, tmp_path, monkeypa
     monkeypatch.setattr(run_api, "_data", lambda: None)
     response = owner_client.get("/api/v1/statistics/batches/missing")
     assert response.status_code == 404
+
+
+def test_batch_statistics_reads_frozen_formal_min(owner_client, tmp_path, monkeypatch):
+    """批次口径:正式样本门槛从报告冻结条件读取(缺省 3)。"""
+    from bdlh_runtime import run_api
+
+    batch_id = "batch-stat-formal"
+    report = _write_report(tmp_path, batch_id)
+    report["fixed_conditions"] = {"formal_min_repeat_count": 1}
+    (tmp_path / f"{batch_id}.json").write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(run_api, "_data", lambda: None)
+
+    payload = owner_client.get(f"/api/v1/statistics/batches/{batch_id}").json()
+    # 门槛 1:批次口径无预期配置哈希(观察主导值兼容口径),样本量达标也
+    # 只标"观察结果",不冒充"最小正式样本"(修复方案 P1-2)
+    assert payload["formal_min_repeat_count"] == 1
+    assert payload["config_hash_mode"] == "observed-dominant"
+    assert payload["by_variant"]["t0.0"]["sample_level"]["level"] == "observed-compat"
+    assert payload["comparison"]["formal_available"] is False
+
+    # 无冻结条件的旧报告回退缺省 3,1 个样本保持单次观察,并在 notes 中明示回退
+    del report["fixed_conditions"]
+    (tmp_path / f"{batch_id}.json").write_text(json.dumps(report), encoding="utf-8")
+    legacy = owner_client.get(f"/api/v1/statistics/batches/{batch_id}").json()
+    assert legacy["formal_min_repeat_count"] == 3
+    assert legacy["by_variant"]["t0.0"]["sample_level"]["level"] == "single-observation"
+    assert any("formal_min_repeat_count" in note for note in legacy["notes"])
+
+
+def test_batch_statistics_reads_threshold_from_real_template_plan(owner_client, tmp_path, monkeypatch):
+    """P1-4:门槛随真实模板计划冻结进报告,统计端读到的就是模板冻结值。"""
+    from bdlh_runtime import run_api
+    from bdlh_runtime.experiments.templates import ROLE_OWNER, plan_template_batch
+
+    # governance-on-off:formal_min_repeat_count=3 的正式单变量模板(无能力门槛)
+    plan = plan_template_batch("governance-on-off", repeat_count=1, role=ROLE_OWNER)
+    assert plan.fixed_conditions["formal_min_repeat_count"] == 3
+    batch_id = "batch-stat-real-plan"
+    report = _write_report(tmp_path, batch_id)
+    report["template_id"] = plan.template_id
+    report["fixed_conditions"] = plan.fixed_conditions
+    (tmp_path / f"{batch_id}.json").write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(run_api, "_data", lambda: None)
+
+    payload = owner_client.get(f"/api/v1/statistics/batches/{batch_id}").json()
+    assert payload["formal_min_repeat_count"] == 3
+    # 真实计划不再触发兼容回退提示
+    assert not any("回退兼容默认值" in note for note in payload["notes"])

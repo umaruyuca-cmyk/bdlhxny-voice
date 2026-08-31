@@ -136,6 +136,9 @@ class ContextDecision:
     input_tokens: int
     output_tokens: int
     source_id: str | None = None
+    #: 该条目最终采用的渲染文本；省略/隔离时为 None。
+    #: 用于工作台逐条追溯和 context_decisions.output_content 落库。
+    output_content: str | None = None
 
 
 @dataclass(frozen=True)
@@ -167,7 +170,7 @@ class ContextReport:
     decisions: tuple[ContextDecision, ...]
     warnings: tuple[str, ...] = field(default_factory=tuple)
     #: 多因子评分明细(公式五/六启用时逐条目记录;v1 排序时为空)
-    scores: tuple["ItemScore", ...] = field(default_factory=tuple)
+    scores: tuple[ItemScore, ...] = field(default_factory=tuple)
     #: 评分权重版本(进入缓存键;未启用评分时为空串)
     scoring_version: str = ""
 

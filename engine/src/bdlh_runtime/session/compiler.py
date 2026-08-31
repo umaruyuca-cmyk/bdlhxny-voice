@@ -16,25 +16,26 @@ from pathlib import Path
 from typing import Any
 
 from bdlh_runtime.context import (
+    QWEN_TIKTOKEN_VERSION,
+    TIKTOKEN_TOKENIZER_VERSION,
+    ContextBuilder,
     ContextBuildRequest,
     ContextBuildResult,
-    ContextBuilder,
     ContextClassification,
     ContextItem,
     ContextMessage,
     ContextRole,
     ContextStrategy,
+    HistorySummarizer,
     ItemScore,
     MultiFactorScorer,
-    HistorySummarizer,
-    QWEN_TIKTOKEN_VERSION,
     TokenCounter,
-    TIKTOKEN_TOKENIZER_VERSION,
     counter_from_env,
 )
 
+from .history_segments import HistorySegmentLike, SegmentUsage, inject_history_segments
 from .loader import SessionCase, canonical_json_hash
-from .serializer import SerializedItem, serialize_session
+from .serializer import serialize_session
 
 #: variants 配置中的 strategy 名 → 构建器策略
 STRATEGY_BY_NAME: dict[str, ContextStrategy] = {
@@ -109,6 +110,11 @@ class CompiledContext:
     scoring_version: str = ""
     #: 底层构建结果(冻结喂入用;不进入机器可读工件)
     build_result: ContextBuildResult | None = None
+    #: 历史轮 Segment(已注入 Compiler 的冻结摘要)追溯与计量(§6.4)
+    memory_segment_ids: tuple[str, ...] = ()
+    segment_cache_hits: int = 0
+    segment_generated: int = 0
+    segment_invalidated: int = 0
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -120,8 +126,7 @@ class CompiledContext:
             "strategy_version": self.strategy_version,
             "token_budget": self.token_budget,
             "compiled_messages": [
-                {"role": message.role, "content": message.content}
-                for message in self.compiled_messages
+                {"role": message.role, "content": message.content} for message in self.compiled_messages
             ],
             "compiled_context_hash": self.compiled_context_hash,
             "input_event_ids": list(self.input_event_ids),
@@ -145,6 +150,10 @@ class CompiledContext:
             "tokenizer_version": self.tokenizer_version,
             "scores": [_score_payload(row) for row in self.scores],
             "scoring_version": self.scoring_version,
+            "memory_segment_ids": list(self.memory_segment_ids),
+            "segment_cache_hits": self.segment_cache_hits,
+            "segment_generated": self.segment_generated,
+            "segment_invalidated": self.segment_invalidated,
         }
 
 
@@ -204,7 +213,7 @@ class SessionCompiler:
             self._builder = ContextBuilder(counter=self._counter, scorer=scorer)
 
     @classmethod
-    def from_env(cls, *, llm_summary: bool = False) -> "SessionCompiler":
+    def from_env(cls, *, llm_summary: bool = False) -> SessionCompiler:
         """按环境变量装配:BUDGETED_SCORING(v2 评分)、LLM_SUMMARY(LLM 摘要)。
 
         未设置的开关保持既有基准行为(v1 排序、抽取式摘要),
@@ -231,6 +240,8 @@ class SessionCompiler:
         *,
         common_rules: str,
         build_metrics: BuildMetrics | None = None,
+        history_segments: tuple[HistorySegmentLike, ...] = (),
+        segment_usage: SegmentUsage | None = None,
     ) -> CompiledContext:
         strategy = STRATEGY_BY_NAME.get(str(variant.get("strategy") or ""))
         if strategy is None:
@@ -238,8 +249,14 @@ class SessionCompiler:
         variant_id = str(variant["variant_id"])
         token_budget = int(variant["token_budget"])
 
-        serialized: tuple[SerializedItem, ...] = serialize_session(session)
-        question_sequence = session.events[-1].seq + 1
+        serialized_source = serialize_session(session)
+        # 历史轮 Segment 注入:被完整覆盖的连续条目替换为合成摘要条目;
+        # 非法 Segment 拒绝注入并保留原文(warning 记入工件)
+        injection = inject_history_segments(serialized_source, history_segments)
+        serialized = injection.items
+        # 生产工作台允许“首条用户消息”为当前请求，此时历史事件为空；
+        # 当前问题仍作为 REQUIRED 条目构建，不应因无历史而崩溃。
+        question_sequence = session.events[-1].seq + 1 if session.events else 1
         items: list[ContextItem] = [
             ContextItem(
                 # item id 与 loop.assemble_model_context 对齐,冻结喂入可按 id 命中
@@ -278,13 +295,15 @@ class SessionCompiler:
             # recent-window 由预算主导,条数上限取全部条目(说明 §3.2)
             recent_n=len(items),
             summary_recent_tokens=int(
-                reserved.get("recent_session_events")
-                or reserved.get("recent_session_events_max")
-                or 1024
+                reserved.get("recent_session_events") or reserved.get("recent_session_events_max") or 1024
             ),
             summary_max_tokens=int(reserved.get("history_summary_max") or 2560),
         )
-        self._prebuild_summary_map(items, build_request)
+        self._prebuild_summary_map(
+            items,
+            build_request,
+            precompressed_item_ids=frozenset(injection.precompressed_item_ids),
+        )
         started = time.perf_counter()
         built = self._builder.build(build_request)
         duration_ms = round((time.perf_counter() - started) * 1000)
@@ -309,9 +328,7 @@ class SessionCompiler:
                 omitted.extend(ids)
 
         metrics, usage_warnings = self._collect_metrics(build_metrics, take_usage)
-        payload_messages = [
-            {"role": message.role, "content": message.content} for message in built.messages
-        ]
+        payload_messages = [{"role": message.role, "content": message.content} for message in built.messages]
         # v2 评分启用时,strategy_version 升级为评分版本,保证受控对照口径可辨
         strategy_version = str(variant.get("strategy_version") or strategy.value)
         if built.report.scoring_version:
@@ -332,15 +349,15 @@ class SessionCompiler:
             }
         )
         warnings = list(built.report.warnings)
+        warnings.extend(injection.warnings)
         warnings.extend(f"summary: {row}" for row in usage_warnings)
         warnings.append(f"algo_version={STRUCTURED_TEXT_ALGO_VERSION}")
         if self.tokenizer_version == TIKTOKEN_TOKENIZER_VERSION:
-            warnings.append(
-                "tokenizer=cl100k_base 为 OpenAI 词表近似口径(非 Qwen 词表),跨口径数据不可直接比较"
-            )
+            warnings.append("tokenizer=cl100k_base 为 OpenAI 词表近似口径(非 Qwen 词表),跨口径数据不可直接比较")
         elif self.tokenizer_version == QWEN_TIKTOKEN_VERSION:
             warnings.append(
-                "tokenizer=qwen 官方词表精确口径(与模型实际切分高度一致;若模型带扩展词表略有偏差),跨口径数据不可直接比较"
+                "tokenizer=qwen 官方词表精确口径(与模型实际切分高度一致;若模型带扩展词表略有偏差),"
+                "跨口径数据不可直接比较"
             )
         return CompiledContext(
             case_id=session.session_id,
@@ -374,15 +391,34 @@ class SessionCompiler:
             scores=tuple(built.report.scores),
             scoring_version=built.report.scoring_version,
             build_result=built,
+            memory_segment_ids=tuple(injection.injected_segment_ids),
+            segment_cache_hits=segment_usage.cache_hits if segment_usage is not None else 0,
+            segment_generated=segment_usage.generated if segment_usage is not None else 0,
+            segment_invalidated=segment_usage.invalidated if segment_usage is not None else 0,
         )
 
-    def _prebuild_summary_map(self, items: list[ContextItem], request: ContextBuildRequest) -> None:
-        """生成式压缩预处理(P0-1):构建前用有限分块摘要生成冻结映射。
+    def _prebuild_summary_map(
+        self,
+        items: list[ContextItem],
+        request: ContextBuildRequest,
+        *,
+        precompressed_item_ids: frozenset[str] = frozenset(),
+    ) -> None:
+        """生成式压缩预处理:先按预算收窄候选,再批量生成冻结摘要。
 
         只在压缩器是 SummarizerCompressor 且摘要器支持批量分块
-        (``summarize_batch``)时启用;每条摘要目标 = 该条目按压缩比
-        估算的目标 token(与构建器 fair-share 上限同源,映射值超出
-        实际预算时由压缩器回退抽取式)。构建阶段从此零网络调用。
+        (``summarize_batch``)时启用。过去这里会把全部 COMPRESSIBLE
+        条目先发给 LLM,再由 ContextBuilder 丢弃未入预算的条目；长 Session
+        因而会为最终不用的内容付费。现在先执行与 budgeted v1 同口径的
+        确定性预算预选,只为可能采用 compressed 表示的条目生成摘要。
+
+        注入的历史 Segment 条目(``precompressed_item_ids``)本身已是
+        摘要,不得再进入 LLM 候选;即使剩余候选为空也把压缩器置为
+        「冻结映射已设置」状态,避免逐条摘要路径对 Segment 二次调用 LLM。
+        Segment 超出最终预算时只允许确定性结构化收缩或引用。
+
+        最终是否采用仍由 ContextBuilder 依据真实摘要长度复核；预选只是
+        LLM 调用上界,不会提升条目分类或绕过 REQUIRED/owner 安全规则。
         """
         compressor = getattr(self._builder, "_compressor", None)
         summarizer = self._builder.summarizer
@@ -392,35 +428,75 @@ class SessionCompiler:
         set_map = getattr(compressor, "set_summary_map", None)
         if not callable(summarize_batch) or not callable(set_map):
             return
+        selected = [
+            row
+            for row in self._select_summary_candidates(items, request)
+            if row[0].item_id not in precompressed_item_ids
+        ]
+        if selected:
+            entries = [(item.item_id, item.content.strip()) for item, _target in selected]
+            targets = [target for _item, target in selected]
+            target = max(min(targets), 1)
+            mapping = summarize_batch(entries, max_tokens_per_item=target, counter=self._counter)
+            set_map({item_id: text for item_id, text in mapping.items() if text.strip()})
+        elif precompressed_item_ids:
+            # 冻结映射已设置(空映射):Segment 条目若超预算只走结构化收缩
+            set_map({})
+
+    def _select_summary_candidates(
+        self,
+        items: list[ContextItem],
+        request: ContextBuildRequest,
+    ) -> list[tuple[ContextItem, int]]:
+        """确定性估算 budgeted 可接纳的压缩条目,不调用摘要器。
+
+        REQUIRED 先占预算；候选按 ContextBuilder v1 的 priority/sequence/id
+        顺序处理。REFERENCE_ONLY 只占引用预算且不需要 LLM。可压缩条目按
+        fair-share 估算表示长度；估算放不下的条目不会进入摘要批次。
+        """
+
+        render = self._builder._render
+        reference = self._builder._reference
+        required = [item for item in items if item.classification is ContextClassification.REQUIRED]
+        required_tokens = sum(self._counter.count(render(item, item.content)) for item in required)
+        remaining = max(0, request.token_budget - required_tokens)
         candidates = [
             item
             for item in items
-            if item.classification is ContextClassification.COMPRESSIBLE and item.content.strip()
+            if item.classification in {ContextClassification.COMPRESSIBLE, ContextClassification.REFERENCE_ONLY}
         ]
-        if not candidates:
-            return
-        entries = [(item.item_id, item.content.strip()) for item in candidates]
-        targets = [
-            max(
-                1,
-                min(
-                    self._counter.count(text),
-                    max(
-                        request.minimum_compressed_tokens,
-                        int(self._counter.count(text) * request.compression_ratio),
-                    ),
+        candidates.sort(key=lambda item: (-item.priority, item.sequence, item.item_id))
+        selected: list[tuple[ContextItem, int]] = []
+        for index, item in enumerate(candidates):
+            if remaining <= 0:
+                break
+            original_rendered = render(item, item.content)
+            original_tokens = self._counter.count(original_rendered)
+            if item.classification is ContextClassification.REFERENCE_ONLY:
+                referenced = render(item, reference(item, original_tokens))
+                referenced_tokens = self._counter.count(referenced)
+                if referenced_tokens <= remaining:
+                    remaining -= referenced_tokens
+                continue
+            remaining_candidates = max(1, len(candidates) - index)
+            fair_share = max(request.minimum_compressed_tokens, remaining // remaining_candidates)
+            header_tokens = self._counter.count(render(item, ""))
+            target = min(
+                original_tokens,
+                max(
+                    request.minimum_compressed_tokens,
+                    int(original_tokens * request.compression_ratio),
                 ),
+                max(0, fair_share - header_tokens),
             )
-            for _item_id, text in entries
-        ]
-        target = max(min(targets), 1)
-        mapping = summarize_batch(entries, max_tokens_per_item=target, counter=self._counter)
-        set_map({item_id: text for item_id, text in mapping.items() if text.strip()})
+            estimated_tokens = header_tokens + target
+            if target > 0 and estimated_tokens <= remaining:
+                selected.append((item, target))
+                remaining -= estimated_tokens
+        return selected
 
     @staticmethod
-    def _collect_metrics(
-        build_metrics: BuildMetrics | None, take_usage: Any
-    ) -> tuple[BuildMetrics, list[str]]:
+    def _collect_metrics(build_metrics: BuildMetrics | None, take_usage: Any) -> tuple[BuildMetrics, list[str]]:
         """优先显式 build_metrics;否则取摘要器自记用量(LLM 摘要降级事件一并入 warnings)。"""
 
         if build_metrics is not None:

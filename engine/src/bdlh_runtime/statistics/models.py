@@ -12,20 +12,22 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-STATISTICS_VERSION = "experiment-stats-v1"
+STATISTICS_VERSION = "experiment-stats-v2"
 
 #: ── 样本量结果等级(方案 13.9):按每变体有效样本数诚实分级, ──────────────
 #: 不把单次观察的成功率 0%/100% 描述为稳定结论
 SAMPLE_LEVEL_NONE = "no-data"  # 0:无数据,不计算结论
 SAMPLE_LEVEL_SINGLE = "single-observation"  # 1:单次观察,只展示原始结果
 SAMPLE_LEVEL_TREND = "preliminary-trend"  # 2:初步趋势,明确样本不足
-SAMPLE_LEVEL_FORMAL = "formal-minimum"  # 3~4:最小正式样本,区间较宽
-SAMPLE_LEVEL_EXTENDED = "extended"  # ≥5:扩展样本
+SAMPLE_LEVEL_OBSERVATION = "observed-compat"  # 兼容口径:样本量达标但未冻结预期配置哈希
+SAMPLE_LEVEL_FORMAL = "formal-minimum"  # ≥ formal_min_repeat_count:最小正式样本
+SAMPLE_LEVEL_EXTENDED = "extended"  # ≥ extended_threshold:扩展样本
 
 SAMPLE_LEVEL_LABELS: dict[str, str] = {
     SAMPLE_LEVEL_NONE: "无数据",
     SAMPLE_LEVEL_SINGLE: "单次观察",
     SAMPLE_LEVEL_TREND: "初步趋势",
+    SAMPLE_LEVEL_OBSERVATION: "观察结果(兼容口径)",
     SAMPLE_LEVEL_FORMAL: "最小正式样本",
     SAMPLE_LEVEL_EXTENDED: "扩展样本",
 }
@@ -35,23 +37,35 @@ SAMPLE_LEVEL_RANK: dict[str, int] = {
     SAMPLE_LEVEL_NONE: 0,
     SAMPLE_LEVEL_SINGLE: 1,
     SAMPLE_LEVEL_TREND: 2,
-    SAMPLE_LEVEL_FORMAL: 3,
-    SAMPLE_LEVEL_EXTENDED: 4,
+    SAMPLE_LEVEL_OBSERVATION: 3,
+    SAMPLE_LEVEL_FORMAL: 4,
+    SAMPLE_LEVEL_EXTENDED: 5,
 }
 
 
-def sample_level_for(valid_samples: int) -> dict[str, str]:
-    """有效样本数 → 结果等级;分级规则固定,不引入任何模型判断。"""
+def extended_threshold_for(formal_min_repeat_count: int) -> int:
+    """扩展样本门槛:max(formal_min + 2, 5);模板可显式冻结,统计模块不写死。"""
+    return max(int(formal_min_repeat_count) + 2, 5)
+
+
+def sample_level_for(valid_samples: int, formal_min_repeat_count: int = 3) -> dict[str, str]:
+    """有效样本数 → 结果等级;分级尊重模板冻结的正式最小样本门槛。
+
+    0 → no-data;1 且 formal_min>1 → single-observation;
+    ≥ extended_threshold → extended;≥ formal_min → formal-minimum;
+    2..formal_min-1 → preliminary-trend。formal_min=1 时 1 个样本即正式。
+    """
+    formal_min = max(int(formal_min_repeat_count or 1), 1)
     if valid_samples <= 0:
         level = SAMPLE_LEVEL_NONE
-    elif valid_samples == 1:
+    elif valid_samples == 1 and formal_min > 1:
         level = SAMPLE_LEVEL_SINGLE
-    elif valid_samples == 2:
-        level = SAMPLE_LEVEL_TREND
-    elif valid_samples <= 4:
+    elif valid_samples >= extended_threshold_for(formal_min):
+        level = SAMPLE_LEVEL_EXTENDED
+    elif valid_samples >= formal_min:
         level = SAMPLE_LEVEL_FORMAL
     else:
-        level = SAMPLE_LEVEL_EXTENDED
+        level = SAMPLE_LEVEL_TREND
     return {"level": level, "label": SAMPLE_LEVEL_LABELS[level]}
 
 
@@ -61,7 +75,9 @@ EXCLUDE_DUPLICATE_RUN_ID = "DUPLICATE_RUN_ID"  # 同一 run_id 只统计一次
 EXCLUDE_INVALID = "INVALID"  # validity 判定为无效
 EXCLUDE_LLM_UNAVAILABLE = "LLM_UNAVAILABLE"  # 无效且错误文本指向模型不可用
 EXCLUDE_NO_AGENT_LOOP = "NO_AGENT_LOOP"  # actual_agent_steps=0,未进入模型循环
-EXCLUDE_CONFIG_MISMATCH = "CONFIG_HASH_MISMATCH"  # 同变体内冻结配置与主导值不一致
+EXCLUDE_UNKNOWN_VARIANT = "UNKNOWN_VARIANT"  # 运行不属于实验组计划变体
+EXCLUDE_EMPTY_CONFIG_HASH = "EMPTY_CONFIG_HASH"  # 正式样本缺少配置哈希
+EXCLUDE_CONFIG_MISMATCH = "CONFIG_HASH_MISMATCH"  # 同变体内冻结配置与预期/主导值不一致
 
 
 @dataclass
@@ -70,7 +86,13 @@ class VariantStatistics:
 
     variant_id: str
     included_run_ids: list[str] = field(default_factory=list)
+    included_count: int = 0
+    #: 完成登记的物理运行数(done;含执行完成但被判无效的运行)
+    completed_count: int = 0
+    #: 失败物理运行数(执行未完成;是 excluded_count 的子集)
+    failed_count: int = 0
     excluded_count: int = 0
+    exclusion_reasons: dict[str, int] = field(default_factory=dict)
     config_hashes: list[str] = field(default_factory=list)
     actual_agent_steps: dict[str, Any] = field(default_factory=dict)
     duration_ms: dict[str, Any] = field(default_factory=dict)
@@ -96,9 +118,20 @@ class StatisticsSnapshot:
     template_id: str = ""
     template_version: int | None = None
     definition_hash: str = ""
+    #: 本快照使用的正式最小样本门槛(实验组冻结定义;批次口径缺省 3)
+    formal_min_repeat_count: int | None = None
+    #: 参与本次统计的预期配置哈希(实验组冻结;兼容模式下为空)
+    expected_config_hashes: dict[str, str] = field(default_factory=dict)
+    #: 配置一致性口径:"expected"(与冻结哈希直接比较) / "observed-dominant"(历史兼容)
+    config_hash_mode: str = ""
     generated_at: str = ""
+    input_run_count: int = 0
+    included_run_count: int = 0
+    excluded_run_count: int = 0
     included_run_ids: list[str] = field(default_factory=list)
     excluded_runs: list[dict[str, Any]] = field(default_factory=list)
+    #: 输入数据质量提示(如 DUPLICATE_RUN_IDS_DETECTED);进入快照哈希
+    data_quality_warnings: list[dict[str, Any]] = field(default_factory=list)
     by_variant: dict[str, dict[str, Any]] = field(default_factory=dict)
     comparison: dict[str, Any] = field(default_factory=dict)
     sample_sufficiency: dict[str, Any] = field(default_factory=dict)

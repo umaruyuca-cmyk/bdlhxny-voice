@@ -22,8 +22,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from bdlh_runtime.experiments.series_store import SeriesRecord, SeriesStore
 from bdlh_runtime.statistics.aggregators import build_series_statistics
@@ -194,6 +195,8 @@ def migrate_batch(
             "runs": [entry["payload"] for entry in entries],
         },
         planned_variants=planned,
+        formal_min_repeat_count=record.formal_min_repeat_count,
+        # 迁移数据无冻结预期配置哈希,配置一致性按观察主导值(历史兼容)
     )
     snapshot_path = persist_snapshot(snapshot.to_payload(), root=statistics_root)
     if duplicates:
@@ -206,7 +209,7 @@ def migrate_batch(
         duplicates=duplicates,
         snapshot_path=str(snapshot_path),
         snapshot_hash=snapshot.snapshot_hash,
-        by_variant=record.counts_by_variant(),
+        by_variant=record.completed_counts_by_variant(),
     )
     return result
 

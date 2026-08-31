@@ -23,7 +23,7 @@ from bdlh_runtime.experiments.fixture_hash import (
     fixture_content_hash,
     normalize_fixture,
 )
-from bdlh_runtime.experiments.judge import CallDependency, CallRelationSpec, DependencyFormatError, _lookup_path
+from bdlh_runtime.experiments.judge import CallRelationSpec, DependencyFormatError, _lookup_path
 from bdlh_runtime.experiments.tool_catalog_snapshot import (
     get_snapshot_tool,
     snapshot_tool_names,

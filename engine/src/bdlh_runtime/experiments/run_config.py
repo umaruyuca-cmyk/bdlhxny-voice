@@ -396,11 +396,7 @@ def _differing_paths(left: RunConfig, right: RunConfig, *, skip: Sequence[str]) 
     flat_left = left.to_payload_flat()
     flat_right = right.to_payload_flat()
     skip_set = set(skip)
-    return sorted(
-        key
-        for key in flat_left
-        if key not in skip_set and flat_left.get(key) != flat_right.get(key)
-    )
+    return sorted(key for key in flat_left if key not in skip_set and flat_left.get(key) != flat_right.get(key))
 
 
 def assert_temperature_top_p_isolation(variable_paths: Sequence[str]) -> None:

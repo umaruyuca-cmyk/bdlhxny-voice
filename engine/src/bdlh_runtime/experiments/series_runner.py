@@ -73,9 +73,7 @@ def prepare_series_run(
         model_capability=model_capability,
     )
     if len(plan.runs) != 1:
-        raise SeriesRunError(
-            f"单次运行计划应恰好展开 1 个运行单元,实际 {len(plan.runs)};拒绝执行"
-        )
+        raise SeriesRunError(f"单次运行计划应恰好展开 1 个运行单元,实际 {len(plan.runs)};拒绝执行")
     return PreparedSeriesRun(
         plan=plan,
         case=case,
@@ -130,9 +128,7 @@ def execute_series_run(
         from bdlh_runtime.experiments.compression import run_single_compression_method
 
         return asyncio.run(
-            run_single_compression_method(
-                series.case_id, variant_id, llm=llm, max_agent_steps=max_agent_steps
-            )
+            run_single_compression_method(series.case_id, variant_id, llm=llm, max_agent_steps=max_agent_steps)
         )
     prepared = prepare_series_run(series, variant_id, model_capability=model_capability)
     return execute_prepared_series_run(prepared, llm=llm)

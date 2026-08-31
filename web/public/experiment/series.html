@@ -44,7 +44,7 @@
         <ul class="def-list" id="defList"></ul>
       </div>
 
-      <div class="exp-panel" style="margin-bottom:16px">
+      <div class="exp-panel" id="accumulatePanel" style="margin-bottom:16px">
         <h2 style="font-size:15px;margin-top:0">样本积累</h2>
         <div id="accumulateBox"></div>
         <p class="note-line" style="margin-bottom:0">
@@ -58,7 +58,7 @@
         <div id="activeRunBox" style="margin-top:10px"></div>
       </div>
 
-      <div class="exp-panel" style="margin-bottom:16px">
+      <div class="exp-panel" id="runsPanel" style="margin-bottom:16px">
         <h2 style="font-size:15px;margin-top:0">独立运行记录</h2>
         <div id="runsBox"><div class="placeholder-block">尚无运行。</div></div>
         <div id="liveRunPanel" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #e3e8f0;border-radius:8px;background:#fff"></div>
@@ -79,8 +79,21 @@
   var seriesId = decodeURIComponent(location.pathname.replace(/^\/experiment\/series\/?/, "").replace(/\/+$/, ""))
     || new URLSearchParams(location.search).get("id") || "";
   var templateCache = {};
+  /* 统计快照状态机(修复方案 P1-1):loading / ready / failed。
+     请求开始与失败都清空快照;快照绑定当前实验组的运行集合指纹
+     (完成运行数 + 定义哈希),跨版本不复用;未 ready 时运行按钮保持禁用。 */
+  var statsState = "loading";
   var lastSnapshot = null;
+  var lastSnapshotKey = "";
   var submitting = false;
+
+  function statsKeyOf(detail) {
+    if (!detail) return "";
+    return detail.definition_hash + ":" + detail.total_runs;
+  }
+  function snapshotUsable() {
+    return statsState === "ready" && !!lastSnapshot && lastSnapshotKey === statsKeyOf(currentDetail);
+  }
 
   function fail(message) {
     document.getElementById("seriesMeta").style.display = "none";
@@ -104,14 +117,17 @@
     }).catch(function () { templateCache.done = true; return templateCache; });
   }
 
-  function suggestVariant(detail) {
-    // 轮次交错建议:取已完成样本最少的变体(并列取模板定义顺序靠前者)
-    var labels = detail.variant_labels || [];
-    var counts = detail.counts_by_variant || {};
+  function suggestVariant() {
+    // 下一建议变体以统计模块的纳入数为唯一口径(修复方案 P0-2);
+    // 统计快照不可用(未到达/失败/已过期)时不给建议,也不回退 done 计数
+    if (!currentDetail || !snapshotUsable()) return "";
+    var labels = currentDetail.variant_labels || [];
+    var byVariant = lastSnapshot.by_variant || {};
     var min = null;
     var pick = "";
     labels.forEach(function (label) {
-      var count = counts[label] || 0;
+      var v = byVariant[label] || {};
+      var count = v.included_count != null ? v.included_count : (v.included_run_ids || []).length;
       if (min === null || count < min) { min = count; pick = label; }
     });
     return pick;
@@ -121,6 +137,12 @@
     var t = templateCache[detail.template_id] || {};
     document.getElementById("seriesTitle").textContent =
       "实验组 · " + (E.title(t) || detail.template_id);
+    var expectedHashes = detail.expected_config_hashes || {};
+    var expectedText = Object.keys(expectedHashes).length
+      ? (detail.variant_labels || []).map(function (label) {
+          return E.esc(E.variantLabel(t, label)) + " " + (expectedHashes[label] ? E.hashChip(expectedHashes[label]) : "—");
+        }).join(" · ")
+      : "未冻结(统计按观察主导值口径)";
     var items = [
       ["实验目的", E.esc(t.purpose || detail.title || "")],
       ["受控变量", E.esc(E.varLabel(t) || "")],
@@ -128,45 +150,98 @@
       ["对比用例", E.esc(detail.case_id || "")],
       ["定义哈希", E.hashChip(detail.definition_hash)],
       ["正式最小样本", "每变体 " + E.esc(detail.formal_min_repeat_count != null ? detail.formal_min_repeat_count : 3) + " 次"],
-      ["创建时间", E.esc(E.fmtTime(detail.created_at))],
+      ["预期配置哈希", expectedText],
+      ["创建时间", E.esc(detail.created_at ? E.fmtTime(detail.created_at) : "—")],
     ];
     document.getElementById("defList").innerHTML = items.map(function (pair) {
       return "<li><b>" + pair[0] + "</b><span>" + pair[1] + "</span></li>";
     }).join("");
   }
 
+  /* 匿名只读视图:实验组链接可直接分享,未登录也可见聚合统计。
+     数据来自公开统计接口(纯聚合口径);不加载运行明细,不提供发起能力。 */
+  function loadPublicStatistics() {
+    return E.get("/api/v1/public/experiment-series/" + encodeURIComponent(seriesId) + "/statistics")
+      .then(function (snap) {
+        // 统计快照自带定义要素:变体标签/门槛/定义哈希;运行明细不在此接口
+        var minimal = {
+          template_id: snap.template_id,
+          variant_labels: Object.keys(snap.by_variant || {}),
+          definition_hash: snap.definition_hash,
+          formal_min_repeat_count: snap.formal_min_repeat_count,
+          expected_config_hashes: snap.expected_config_hashes || {},
+          case_id: "",
+          created_at: null,
+        };
+        currentDetail = minimal;
+        renderDefinition(minimal);
+        renderStatistics(snap);
+      });
+  }
+
   function renderAccumulate(detail) {
+    // 样本累计区唯一口径 = 统计模块输出(修复方案 P0-2/§9):
+    // 有效 = included_count,排除 = excluded_count,完成 = completed_count;
+    // 结果等级直接读取统计快照,前端不再按数字重复推导;
+    // 快照仅在 ready 且绑定当前运行集合时可用(P1-1),否则按钮保持禁用
     var t = templateCache[detail.template_id] || {};
-    var counts = detail.counts_by_variant || {};
     var formalMin = detail.formal_min_repeat_count != null ? detail.formal_min_repeat_count : 3;
+    var statsReady = snapshotUsable();
+    var snap = lastSnapshot;
+    var byVariant = (statsReady && snap.by_variant) || {};
     var rows = (detail.variant_labels || []).map(function (label) {
-      var count = counts[label] || 0;
-      var level = count <= 0 ? "无数据" : count === 1 ? "单次观察" : count === 2 ? "初步趋势"
-        : count <= formalMin + 1 ? "最小正式样本" : "扩展样本";
-      var mark = count >= formalMin ? "b-green" : count > 0 ? "b-orange" : "b-gray";
+      var v = byVariant[label] || {};
+      var included = v.included_count != null ? v.included_count : (v.included_run_ids || []).length;
+      var excluded = v.excluded_count || 0;
+      var completed = v.completed_count || 0;
+      var failed = v.failed_count || 0;
+      var level = (v.sample_level || {}).label || (statsReady ? "无数据" : "…");
+      var mark = !statsReady ? "b-gray" : included >= formalMin ? "b-green" : included > 0 ? "b-orange" : "b-gray";
+      var stateText = statsReady ? "" : (statsState === "failed" ? "统计请求失败" : "统计加载中…");
+      var countText = statsReady
+        ? "有效 " + included + " · 排除 " + excluded + " · 完成 " + completed
+          + (failed > 0 ? "(失败 " + failed + ")" : "")
+        : stateText + "…";
+      var policy = !statsReady ? "—"
+        : included >= formalMin ? "已达正式最小口径"
+        : included > 0 ? "样本不足,建议继续追加"
+        : "尚无有效样本";
       return "<tr><td>" + E.esc(E.variantLabel(t, label)) + ' <span class="mono" style="opacity:.6">'
         + E.esc(label) + "</span></td>"
-        + "<td>" + E.badge(mark, count + " 个有效样本") + "</td>"
+        + "<td>" + E.badge(mark, countText) + "</td>"
         + "<td>" + E.esc(level) + "</td>"
-        + "<td>" + (count >= formalMin ? "已达正式最小口径" : "建议继续追加") + "</td></tr>";
+        + "<td>" + policy + "</td></tr>";
     }).join("");
-    var overall = (function () {
-      var values = (detail.variant_labels || []).map(function (label) { return counts[label] || 0; });
-      if (!values.length) return "无数据";
-      var min = Math.min.apply(null, values);
-      return min <= 0 ? "无数据" : min === 1 ? "单次观察" : min === 2 ? "初步趋势"
-        : min <= formalMin + 1 ? "最小正式样本" : "扩展样本";
-    })();
+    var overall = statsReady ? ((snap.sample_sufficiency || {}).overall_label || "无数据") : "…";
+    var totals = statsReady
+      ? "累计纳入 " + E.esc(snap.included_run_count != null ? snap.included_run_count : 0)
+        + " · 排除 " + E.esc(snap.excluded_run_count || 0)
+        + " · 完成运行 " + E.esc(detail.total_runs) + " 个"
+      : (statsState === "failed" ? "统计请求失败:旧快照已失效" : "等待统计快照…");
     document.getElementById("accumulateBox").innerHTML =
-      '<table class="exp-table"><tr><th>变体</th><th>有效样本</th><th>结果等级</th><th>口径</th></tr>' + rows
+      '<table class="exp-table"><tr><th>变体</th><th>样本(有效 · 排除 · 完成)</th><th>结果等级</th><th>口径</th></tr>' + rows
       + '<tr><td><b>整体</b></td><td colspan="3">' + E.badge("b-gray", overall)
-      + ' · 累计有效运行 ' + E.esc(detail.total_runs) + " 个</td></tr></table>";
+      + " · " + totals + "</td></tr></table>"
+      + (statsReady ? "" : '<p class="note-line" style="margin:6px 0 0">'
+        + (statsState === "failed"
+          ? "统计快照请求失败:旧快照已立即失效,有效样本数暂不可用,发起运行按钮保持禁用。"
+          : "统计快照未加载:有效样本数暂不可用,发起运行按钮已暂停。")
+        + "</p>");
 
-    var next = suggestVariant(detail);
+    var next = suggestVariant();
     var hint = document.getElementById("nextRunHint");
-    hint.textContent = next
-      ? "下一建议:" + E.esc(E.variantLabel(t, next)) + " / 第 " + ((counts[next] || 0) + 1) + " 次"
-      : "";
+    var nextRunBtn = document.getElementById("nextRunBtn");
+    if (!statsReady) {
+      hint.textContent = statsState === "failed"
+        ? "统计请求失败,旧快照已失效,无法按有效样本口径给出建议"
+        : "统计暂不可用,无法按有效样本口径给出建议";
+    } else if (next) {
+      var byNext = (snap.by_variant || {})[next] || {};
+      var nextIncluded = byNext.included_count != null ? byNext.included_count : (byNext.included_run_ids || []).length;
+      hint.textContent = "下一建议:" + E.esc(E.variantLabel(t, next)) + "(当前有效 " + nextIncluded + ",补足该变体)";
+    } else {
+      hint.textContent = "";
+    }
     var active = detail.active_run;
     var activeBox = document.getElementById("activeRunBox");
     if (active) {
@@ -176,7 +251,7 @@
     } else {
       activeBox.innerHTML = "";
     }
-    document.getElementById("nextRunBtn").disabled = !!active || submitting;
+    nextRunBtn.disabled = !!active || submitting || !statsReady;
   }
 
   function renderRuns(payload) {
@@ -300,37 +375,64 @@
   }
 
   function renderStatistics(snap) {
-    lastSnapshot = snap || lastSnapshot;
+    // P1-1:只在请求成功时更新快照;失败时 renderStatistics(null) 必须清空
+    // 旧快照(snap 不可用即失效),不得沿用上一次的数据参与推荐
     var box = document.getElementById("statsBox");
+    if (snap) {
+      lastSnapshot = snap;
+      statsState = "ready";
+      lastSnapshotKey = statsKeyOf(currentDetail);
+    } else {
+      lastSnapshot = null;
+      lastSnapshotKey = "";
+      statsState = "failed";
+    }
     var snap2 = lastSnapshot;
-    if (!snap2) { box.innerHTML = '<div class="placeholder-block">尚未生成。</div>'; return; }
+    if (!snap2) {
+      box.innerHTML = '<div class="placeholder-block">'
+        + (statsState === "failed" ? "统计快照请求失败;旧快照已失效,不会参与推荐。" : "尚未生成。")
+        + "</div>";
+      return;
+    }
     var t = templateCache[currentDetail && currentDetail.template_id] || {};
     var labels = Object.keys(snap2.by_variant || {});
     var rows = labels.map(function (label) {
       var v = snap2.by_variant[label];
       var steps = v.actual_agent_steps || {};
       var dur = v.duration_ms || {};
+      var included = v.included_count != null ? v.included_count : (v.included_run_ids || []).length;
       return "<tr>"
         + "<td>" + E.esc(E.variantLabel(t, label)) + ' <span class="mono" style="opacity:.6">' + E.esc(label) + "</span></td>"
-        + "<td>" + (v.included_run_ids || []).length + (v.excluded_count ? " <span style=\"opacity:.6\">(排除 " + E.esc(v.excluded_count) + ")</span>" : "") + "</td>"
+        + "<td>" + included + (v.excluded_count ? " <span style=\"opacity:.6\">(排除 " + E.esc(v.excluded_count) + ")</span>" : "") + "</td>"
         + "<td>" + E.esc((v.sample_level || {}).label || "—") + "</td>"
         + "<td>" + (steps.median != null ? E.esc(steps.median) : "—") + "</td>"
         + "<td>" + (dur.median != null ? E.esc(dur.median) + " ms" : "—") + "</td>"
         + "<td>" + (v.success_rate != null ? Math.round(v.success_rate * 100) + "%" : "—") + "</td>"
         + "</tr>";
     }).join("");
+    var warnings = (snap2.data_quality_warnings || []).map(function (w) {
+      return '<div class="warn-bar" style="margin:0 0 8px">' + E.esc(w.message || w.code) + "</div>";
+    }).join("");
+    var cmp = snap2.comparison || {};
+    var cmpText = cmp.available
+      ? (cmp.formal_available
+        ? "可对比 · 两个及以上变体已达到正式最小样本"
+        : "初步对比可用;正式对比不可用(" + E.esc(cmp.reason || "部分变体尚未达到正式最小样本") + ")")
+      : "对比不可用:" + E.esc(cmp.reason || "至少两个变体需要有效样本");
     var excludedRows = (snap2.excluded_runs || []).map(function (row) {
       return "<tr><td class=\"mono\">" + E.esc(row.run_id) + "</td><td>" + E.esc(row.variant_id || "—")
-        + "</td><td>" + E.esc(row.reason) + "</td></tr>";
+        + "</td><td>" + E.esc(row.reason) + "</td><td>" + (row.detail ? E.esc(row.detail) : '<span class="null-cell">—</span>') + "</td></tr>";
     }).join("");
     var notes = (snap2.notes || []).map(function (note) { return "<li>" + E.esc(note) + "</li>"; }).join("");
     box.innerHTML =
-      (rows
+      warnings
+      + '<p class="note-line" style="margin:0 0 6px">变体对比:' + cmpText + "</p>"
+      + (rows
         ? '<div style="overflow-x:auto"><table class="exp-table"><tr><th>变体</th><th>有效样本</th><th>结果等级</th><th>步数中位</th><th>耗时中位</th><th>成功率</th></tr>' + rows + "</table></div>"
         : '<div class="placeholder-block">暂无有效样本;统计为空。</div>')
       + (excludedRows
         ? "<h3 style=\"font-size:13px;margin:14px 0 6px\">排除的运行</h3>"
-          + '<table class="exp-table"><tr><th>运行</th><th>变体</th><th>排除原因</th></tr>' + excludedRows + "</table>"
+          + '<table class="exp-table"><tr><th>运行</th><th>变体</th><th>排除原因</th><th>说明</th></tr>' + excludedRows + "</table>"
         : "")
       + (notes ? '<ul class="def-list" style="margin-top:10px">' + notes + "</ul>" : "")
       + '<p class="note-line" style="margin-bottom:0">统计快照 '
@@ -342,8 +444,21 @@
     return E.get("/api/v1/experiment-series/" + encodeURIComponent(seriesId) + "/runs").then(renderRuns);
   }
   function loadStatistics() {
-    return E.get("/api/v1/statistics/experiment-series/" + encodeURIComponent(seriesId)).then(renderStatistics)
-      .catch(function () { renderStatistics(null); });
+    // P1-1:请求开始即置 loading 并清空旧快照,统计未 ready 前运行按钮保持禁用
+    statsState = "loading";
+    lastSnapshot = null;
+    lastSnapshotKey = "";
+    if (currentDetail) renderAccumulate(currentDetail);
+    return E.get("/api/v1/statistics/experiment-series/" + encodeURIComponent(seriesId))
+      .then(function (snap) {
+        renderStatistics(snap);
+        // 统计到达后重绘样本累计区(唯一有效样本口径在统计快照)
+        if (currentDetail) renderAccumulate(currentDetail);
+      })
+      .catch(function () {
+        renderStatistics(null);
+        if (currentDetail) renderAccumulate(currentDetail);
+      });
   }
 
   var currentDetail = null;
@@ -356,7 +471,7 @@
 
   function runNextSample() {
     if (!currentDetail) return;
-    var variant = suggestVariant(currentDetail);
+    var variant = suggestVariant();
     if (!variant) return;
     var button = document.getElementById("nextRunBtn");
     submitting = true;
@@ -376,7 +491,9 @@
       })
       .then(function () {
         submitting = false;
-        button.disabled = false;
+        // 重新加载详情与统计;按钮的可用性由 renderAccumulate 依据
+        // 统计快照 ready 与否决定(P1-1),此处先保持禁用
+        button.disabled = true;
         button.textContent = "运行下一个建议样本";
         return loadDetail();
       });
@@ -406,19 +523,37 @@
     });
   }
 
+  var publicReadonly = !E.isOwner();
   if (!seriesId) {
     fail("未提供实验组标识。");
-  } else if (!E.isOwner()) {
-    fail("实验组页仅登录所有者可用;请先登录。");
+  } else if (publicReadonly) {
+    // 匿名只读视图:仅展示实验定义与聚合统计(公开接口),无运行明细与发起能力
+    document.getElementById("accumulatePanel").style.display = "none";
+    document.getElementById("runsPanel").style.display = "none";
+    document.getElementById("seriesMeta").textContent = "匿名只读视图 · 实验组 " + seriesId
+      + "(仅展示聚合统计;登录所有者可查看运行明细并发起样本)";
+    templateMap().then(loadPublicStatistics).then(function () {
+      document.getElementById("seriesBody").style.display = "block";
+    }).catch(function (err) {
+      fail("统计读取失败:" + (err && err.message ? err.message : "服务不可达")
+        + ";该实验组可能不存在或链接不完整。");
+    });
   } else {
     templateMap().then(loadDetail).then(function () {
       document.getElementById("seriesBody").style.display = "block";
       document.getElementById("nextRunBtn").addEventListener("click", runNextSample);
       showWarn(new URLSearchParams(location.search).get("warning") || "");
-      // 活跃运行期间持续刷新(5s);空闲时停止,不产生任何模型调用
+      // 活跃运行期间持续刷新(5s);空闲时停止,不产生任何模型调用。
+      // 统计一并刷新:纯代码重算,保证样本累计区口径始终来自统计快照
       E.poll(
         function () { return E.get("/api/v1/experiment-series/" + encodeURIComponent(seriesId)); },
-        function (detail) { currentDetail = detail; renderDefinition(detail); renderAccumulate(detail); loadRuns(); },
+        function (detail) {
+          currentDetail = detail;
+          renderDefinition(detail);
+          renderAccumulate(detail);
+          loadRuns();
+          loadStatistics();
+        },
         function (detail) { return !!(detail && detail.active_run); },
         5000
       );

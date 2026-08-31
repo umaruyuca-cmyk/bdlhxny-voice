@@ -46,9 +46,7 @@ class ComparisonCase:
             raise ComparisonCaseError(f"用例 {self.case_id} 未定义标准工具范围")
         missing = set(self.default_visible_tools) - set(self.allowed_tools)
         if missing:
-            raise ComparisonCaseError(
-                f"用例 {self.case_id} 默认可见工具越出允许范围:{sorted(missing)}"
-            )
+            raise ComparisonCaseError(f"用例 {self.case_id} 默认可见工具越出允许范围:{sorted(missing)}")
 
 
 class CaseRepository(Protocol):
@@ -72,9 +70,7 @@ def resolve_visible_tools(
         requested = tuple(dict.fromkeys(str(name) for name in selected_tool_ids))
         unknown = [name for name in requested if name not in set(case.allowed_tools)]
         if unknown:
-            raise ComparisonCaseError(
-                f"工具越出用例允许范围:{sorted(set(unknown))};允许:{list(case.allowed_tools)}"
-            )
+            raise ComparisonCaseError(f"工具越出用例允许范围:{sorted(set(unknown))};允许:{list(case.allowed_tools)}")
         selected = requested
     custom = selected != case.default_visible_tools
     return selected, custom

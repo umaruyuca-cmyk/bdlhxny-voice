@@ -5,8 +5,8 @@ from __future__ import annotations
 from bdlh_runtime.context import (
     ConservativeTokenCounter,
     ContextAction,
-    ContextBuildRequest,
     ContextBuilder,
+    ContextBuildRequest,
     ContextClassification,
     ContextItem,
     ContextRole,
@@ -62,10 +62,7 @@ def test_single_summary_uses_injected_summarizer_not_rule_compressor() -> None:
             classification=ContextClassification.REQUIRED,
             role=ContextRole.SYSTEM,
         ),
-    ) + tuple(
-        _history_item(f"h-{index}", f"历史事件{index}" + "的详细经过。" * 20, index + 1)
-        for index in range(1, 6)
-    )
+    ) + tuple(_history_item(f"h-{index}", f"历史事件{index}" + "的详细经过。" * 20, index + 1) for index in range(1, 6))
     builder = ContextBuilder(summarizer=MarkerSummarizer())
     result = builder.build(
         ContextBuildRequest(

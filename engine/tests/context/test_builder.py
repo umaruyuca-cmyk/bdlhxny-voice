@@ -270,9 +270,7 @@ def test_conversation_items_render_as_individual_messages() -> None:
             conversation=True,
         ),
     )
-    result = ContextBuilder().build(
-        ContextBuildRequest(items=items, token_budget=100, strategy=ContextStrategy.FULL)
-    )
+    result = ContextBuilder().build(ContextBuildRequest(items=items, token_budget=100, strategy=ContextStrategy.FULL))
     assert [(m.role, m.content) for m in result.messages] == [
         ("system", "系统提示。"),
         ("user", "用户提问。"),

@@ -25,10 +25,14 @@ window.EXP = (function () {
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (!res.ok) {
-          var message = data && data.detail ? String(data.detail) : "HTTP " + res.status;
+          var detail = data && data.detail;
+          var message = detail && typeof detail === "object"
+            ? String(detail.message || detail.error_code || "HTTP " + res.status)
+            : (detail ? String(detail) : "HTTP " + res.status);
           var error = new Error(message);
           error.status = res.status;
-          error.detail = message;
+          error.detail = detail || message;
+          error.payload = data;
           throw error;
         }
         return data;

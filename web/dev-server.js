@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { redirectFor } from "./scripts/redirect-map.mjs";
+import { ownerApiRegExp } from "./scripts/owner-api-allowlist.mjs";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8082", 10);
@@ -41,9 +42,10 @@ const server = http.createServer(async (request, response) => {
 });
 
 async function serveStatic(requestPath, request, response) {
-  // 开发代理(可选):匿名公共接口 + 实验页所有者通道(登录/模板/plan/批次/作业),
-  // 与 nginx.conf 的反代白名单同口径;仅显式配置 RUN_API_PROXY 时启用
-  const ownerApiPattern = /^\/api\/v1\/(login|logout|llm-config\/test|experiment-templates|template-batches|batches|jobs|runs)(\/|$)/;
+  // 开发代理(可选):匿名公共接口 + 实验页所有者通道(登录/模板/plan/批次/作业/
+  // 实验组/统计),与 nginx.conf 的反代白名单共用同一份常量(scripts/owner-api-allowlist.mjs);
+  // 仅显式配置 RUN_API_PROXY 时启用
+  const ownerApiPattern = ownerApiRegExp();
   if (runApiProxy && (requestPath.startsWith("/api/v1/public/") || ownerApiPattern.test(requestPath))) {
     const target = new URL(runApiProxy + request.url);
     const proxied = http.request(
@@ -65,6 +67,17 @@ async function serveStatic(requestPath, request, response) {
   // (与 nginx 的 try_files 同口径;批次标识由页面从 pathname 解析)
   if (requestPath.startsWith("/experiment/batch/")) {
     await serveStaticFile("/experiment/batch.html", response);
+    return;
+  }
+  // 实验组详情 /experiment/series/<id>:同 nginx,统一落到 series.html
+  // (样本积累 + 统计快照 + 逐样本追加;修复方案 P0-2 本地路由对齐)
+  if (requestPath.startsWith("/experiment/series/")) {
+    await serveStaticFile("/experiment/series.html", response);
+    return;
+  }
+  // 上下文构建详情 /experiment/context-builds/<id>:落到 context-build.html
+  if (requestPath.startsWith("/experiment/context-builds/")) {
+    await serveStaticFile("/experiment/context-build.html", response);
     return;
   }
   // 旧路径 301(任务六 §11:/docs/* 页面与 /showcase/context 迁至七模块新位置;

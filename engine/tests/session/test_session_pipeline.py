@@ -10,7 +10,6 @@ import pytest
 from bdlh_runtime.context import ContextStrategy
 from bdlh_runtime.session import (
     SessionCompiler,
-    SessionMockDispatcher,
     SessionValidationError,
     dispatcher_from_gold,
     grade_compiled_constraints,
@@ -236,7 +235,7 @@ def test_grade_tool_calls_full_plan_hit() -> None:
         ("code.read", {"path": "engine/src/bdlh_runtime/context/builder.py"}),
         ("code.read", {"path": "engine/src/bdlh_runtime/engine/loop.py"}),
     ]
-    judgment = grade_tool_calls(calls, gold["expected_tool_plan"], gold_visible := _visible(gold))
+    judgment = grade_tool_calls(calls, gold["expected_tool_plan"], _visible(gold))
     assert judgment.required_total == 3
     assert judgment.required_hit == 3
     assert judgment.missing_calls == []
@@ -312,10 +311,24 @@ def test_grade_compiled_constraints_full_session_keeps_all() -> None:
 def test_serializer_marks_superseded_for_same_source_later_observed_at(tmp_path: Path) -> None:
     payload = _minimal_session()
     payload["events"] = [
-        {"seq": 1, "event_id": "evt-1", "type": "user_message", "role": "user", "content": "旧决定",
-         "source_id": "dec-a", "occurred_at": "2026-08-20T10:00:00"},
-        {"seq": 2, "event_id": "evt-2", "type": "user_message", "role": "user", "content": "新决定",
-         "source_id": "dec-a", "occurred_at": "2026-08-21T10:00:00"},
+        {
+            "seq": 1,
+            "event_id": "evt-1",
+            "type": "user_message",
+            "role": "user",
+            "content": "旧决定",
+            "source_id": "dec-a",
+            "occurred_at": "2026-08-20T10:00:00",
+        },
+        {
+            "seq": 2,
+            "event_id": "evt-2",
+            "type": "user_message",
+            "role": "user",
+            "content": "新决定",
+            "source_id": "dec-a",
+            "occurred_at": "2026-08-21T10:00:00",
+        },
     ]
     path = tmp_path / "superseded.session.json"
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -328,10 +341,23 @@ def test_serializer_marks_superseded_for_same_source_later_observed_at(tmp_path:
 def test_serializer_builds_cited_by_from_source_pointing_to_item_id(tmp_path: Path) -> None:
     payload = _minimal_session()
     payload["events"] = [
-        {"seq": 1, "event_id": "evt-1", "type": "user_message", "role": "user", "content": "基础事实",
-         "occurred_at": "2026-08-20T10:00:00"},
-        {"seq": 2, "event_id": "evt-2", "type": "assistant_message", "role": "assistant", "content": "引用基础事实的结论",
-         "source_id": "evt-1", "occurred_at": "2026-08-20T11:00:00"},
+        {
+            "seq": 1,
+            "event_id": "evt-1",
+            "type": "user_message",
+            "role": "user",
+            "content": "基础事实",
+            "occurred_at": "2026-08-20T10:00:00",
+        },
+        {
+            "seq": 2,
+            "event_id": "evt-2",
+            "type": "assistant_message",
+            "role": "assistant",
+            "content": "引用基础事实的结论",
+            "source_id": "evt-1",
+            "occurred_at": "2026-08-20T11:00:00",
+        },
     ]
     path = tmp_path / "cited.session.json"
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

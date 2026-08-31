@@ -15,7 +15,6 @@ from datetime import datetime
 from typing import Any
 
 from .models import ContextItem, ContextRole, ItemScore
-from .token_count import TokenCounter
 
 SCORING_VERSION = "multi-factor-v2"
 

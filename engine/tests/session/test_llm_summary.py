@@ -6,7 +6,8 @@ import pytest
 
 from bdlh_runtime.context import ConservativeTokenCounter
 from bdlh_runtime.session import LLMSummarizer, load_summary_system_prompt
-from bdlh_runtime.session.llm_summary import SummaryUsage, load_summary_system_prompt as _load
+from bdlh_runtime.session.llm_summary import SummaryUsage
+from bdlh_runtime.session.llm_summary import load_summary_system_prompt as _load
 
 
 class FakeMessage:
@@ -364,11 +365,15 @@ def test_summarize_batch_rejects_unknown_and_duplicate_ids(tmp_path) -> None:
     class DupLLM(FakeLLM):
         def invoke(self, messages, **kwargs):
             return FakeMessage(
-                _json.dumps({"items": [
-                    {"item_id": "event-000", "summary": "a"},
-                    {"item_id": "event-000", "summary": "b"},
-                    {"item_id": "ghost", "summary": "c"},
-                ]}),
+                _json.dumps(
+                    {
+                        "items": [
+                            {"item_id": "event-000", "summary": "a"},
+                            {"item_id": "event-000", "summary": "b"},
+                            {"item_id": "ghost", "summary": "c"},
+                        ]
+                    }
+                ),
                 usage_metadata={"input_tokens": 1, "output_tokens": 1},
             )
 

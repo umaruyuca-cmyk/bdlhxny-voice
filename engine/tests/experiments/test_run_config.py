@@ -114,9 +114,7 @@ def test_formal_template_rules():
 def test_single_variable_consistency_pass_and_fail():
     base = RunConfig(governance_profile="standard")
     variant = base.with_overrides({"governance_profile": GOVERNANCE_OFF})
-    assert_single_variable(
-        [base, variant], variable_paths=["governance_profile"], label="治理实验"
-    )
+    assert_single_variable([base, variant], variable_paths=["governance_profile"], label="治理实验")
     rogue = base.with_overrides({"governance_profile": GOVERNANCE_OFF, "limits.max_agent_steps": 9})
     with pytest.raises(FixedConditionViolation) as excinfo:
         assert_single_variable([base, rogue], variable_paths=["governance_profile"])
@@ -127,9 +125,7 @@ def test_temperature_top_p_isolation():
     assert_temperature_top_p_isolation(["model.temperature_effective"])
     assert_temperature_top_p_isolation(["model.top_p_effective"])
     with pytest.raises(RunConfigError):
-        assert_temperature_top_p_isolation(
-            ["model.temperature_effective", "model.top_p_effective"]
-        )
+        assert_temperature_top_p_isolation(["model.temperature_effective", "model.top_p_effective"])
 
 
 # ── 入口 + 后台任务保存同一结构 ────────────────────────────────────────────

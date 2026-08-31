@@ -95,7 +95,7 @@
   ],
   "original_tokens": 29902,
   "working_tokens": 6605,
-  "build_duration_ms": 79,
+  "build_duration_ms": 51,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
@@ -112,5 +112,5 @@
   "scores": [],
   "scoring_version": "",
   "status": "COMPLETE",
-  "compile_wall_ms": 79
+  "compile_wall_ms": 51
 }

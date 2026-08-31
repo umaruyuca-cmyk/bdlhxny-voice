@@ -74,9 +74,7 @@ def test_account_config_endpoints_removed(client: TestClient) -> None:
     )
 
 
-def test_probe_endpoint_uses_env_only(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_probe_endpoint_uses_env_only(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """连通性测试只读 env:配置体即使传入也不改变探测目标。"""
 
     monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.internal/v1")
@@ -105,9 +103,7 @@ def test_probe_endpoint_uses_env_only(
     assert SECRET not in resp.text
 
 
-def test_probe_endpoint_reports_missing_env(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_probe_endpoint_reports_missing_env(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     body = client.post("/api/v1/llm-config/test", headers=_auth()).json()

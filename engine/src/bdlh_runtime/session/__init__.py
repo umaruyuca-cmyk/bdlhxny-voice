@@ -7,7 +7,7 @@
   冻结 Mock 返回,后者在运行结束后做评测。
 """
 
-from .compiler import BuildMetrics, CompiledContext, SessionCompiler, STRATEGY_BY_NAME
+from .compiler import STRATEGY_BY_NAME, BuildMetrics, CompiledContext, SessionCompiler
 from .gold_eval import (
     SessionRunJudgment,
     ToolPlanJudgment,
@@ -16,6 +16,7 @@ from .gold_eval import (
     grade_tool_calls,
     judge_session_run,
 )
+from .history_segments import SegmentInjection, SegmentUsage, inject_history_segments
 from .llm_summary import LLM_SUMMARY_VERSION, LLMSummarizer, SummaryUsage, load_summary_system_prompt
 from .loader import SessionCase, SessionEvent, SessionValidationError, load_session, load_variants
 from .mock_dispatcher import SessionMockDispatcher, dispatcher_from_gold, load_gold
@@ -26,6 +27,8 @@ __all__ = [
     "CompiledContext",
     "LLM_SUMMARY_VERSION",
     "LLMSummarizer",
+    "SegmentInjection",
+    "SegmentUsage",
     "SessionCase",
     "SessionCompiler",
     "SessionEvent",
@@ -39,6 +42,7 @@ __all__ = [
     "grade_answer",
     "grade_compiled_constraints",
     "grade_tool_calls",
+    "inject_history_segments",
     "judge_session_run",
     "load_gold",
     "load_session",

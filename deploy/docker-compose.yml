@@ -48,6 +48,8 @@ services:
       GIT_COMMIT: ${GIT_COMMIT:-local}
       ARTIFACTS_DIR: /app/artifacts
       MAX_CONCURRENT_BATCHES: ${MAX_CONCURRENT_BATCHES:-1}
+      CONTEXT_MEMORY_MODE: ${CONTEXT_MEMORY_MODE:-legacy}
+      CONTEXT_BUILD_STORE: ${CONTEXT_BUILD_STORE:-file}
       RUN_API_ALLOWED_ORIGINS: ${RUN_API_ALLOWED_ORIGINS:-}
     depends_on:
       data:

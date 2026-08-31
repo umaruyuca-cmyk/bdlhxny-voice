@@ -83,6 +83,12 @@ def load_summary_system_prompt() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def summary_call_cap() -> int:
+    """当前生效的单次构建摘要调用上限(写入构建快照的口径,需求 §10.3)。"""
+
+    return LLMSummarizer._env_int("LLM_SUMMARY_MAX_CALLS_PER_BUILD", LLMSummarizer.MAX_CALLS_PER_BUILD_DEFAULT)
+
+
 def _leading_sentences(text: str, max_tokens: int, counter: TokenCounter) -> str:
     """按完整句子从头填充;单句超预算时跳过该句,不截断半句。"""
 
@@ -173,9 +179,7 @@ class LLMSummarizer:
 
         self._usage.logical_calls += 1
         system = self._system_prompt if self._system_prompt is not None else load_summary_system_prompt()
-        materials = "\n\n".join(
-            f"[材料 {index}]\n{text}" for index, text in enumerate(usable, start=1)
-        )
+        materials = "\n\n".join(f"[材料 {index}]\n{text}" for index, text in enumerate(usable, start=1))
         frozen = self._cache_hit(system, materials, max_tokens)
         if frozen is not None:
             self._replay_usage(frozen)
@@ -228,8 +232,8 @@ class LLMSummarizer:
 
     # ── 批量分块摘要(P0-1:一次 Session 的摘要请求数有硬上限)──────────
 
-    #: 生成式压缩的调用上限与分块预算(env 可覆盖;默认 4 次请求/构建)
-    MAX_CALLS_PER_BUILD_DEFAULT = 4
+    #: 生成式压缩的调用上限与分块预算(env 可覆盖;默认 2 次/构建,需求 §10.3)
+    MAX_CALLS_PER_BUILD_DEFAULT = 2
     MAX_INPUT_TOKENS_PER_CALL_DEFAULT = 24_000
 
     @staticmethod
@@ -250,7 +254,7 @@ class LLMSummarizer:
         """有限分块摘要:候选条目 → 少量 chunk → 每 chunk 一次结构化 LLM 请求。
 
         纪律(修复方案 §5):
-        - 单次构建的摘要请求数 ≤ ``LLM_SUMMARY_MAX_CALLS_PER_BUILD``(默认 4);
+        - 单次构建的摘要请求数 ≤ ``LLM_SUMMARY_MAX_CALLS_PER_BUILD``(默认 2);
         - chunk 按 ``LLM_SUMMARY_MAX_INPUT_TOKENS_PER_CALL`` 切分;
         - 响应为 ``{"items":[{"item_id","summary"}]}`` JSON:不接受请求外的
           item_id,重复 id 视为整 chunk 无效;缺失项用抽取式补足,不为单项再调 LLM;
@@ -377,9 +381,7 @@ class LLMSummarizer:
                         self._warn(f"条目 {item_id} 的 LLM 摘要缺失或超预算,回退抽取式")
                     summary = self._extractive.summarize([text], max_tokens_per_item, counter)
             results[item_id] = summary
-            self._cache_store(
-                system, text, max_tokens_per_item, summary, kind="batch-item", generation_usage={}
-            )
+            self._cache_store(system, text, max_tokens_per_item, summary, kind="batch-item", generation_usage={})
         unknown = [item_id for item_id in mapping or {} if item_id not in requested]
         if unknown:
             self._warn(f"批量摘要响应包含请求外的 item_id,已忽略:{unknown[:5]}")
@@ -403,7 +405,9 @@ class LLMSummarizer:
         except (OSError, ValueError):
             return {}
 
-    def _cache_hit(self, system: str, materials: str, max_tokens: int, *, kind: str = "single") -> dict[str, Any] | None:
+    def _cache_hit(
+        self, system: str, materials: str, max_tokens: int, *, kind: str = "single"
+    ) -> dict[str, Any] | None:
         if self._cache_path is None:
             return None
         if (os.getenv("LLM_SUMMARY_FREEZE") or "").strip() == "0":
@@ -453,9 +457,7 @@ class LLMSummarizer:
             entry["untrusted_legacy_usage"] = True
             entry.pop("usage", None)
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self._cache_path.write_text(
-            json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        self._cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _replay_usage(self, frozen: dict[str, Any]) -> None:
         """缓存命中:不计入本轮模型调用/Token/费用,只计 cache_hits。
@@ -481,10 +483,7 @@ class LLMSummarizer:
 
     def _usage_delta(self, before: dict[str, Any]) -> dict[str, Any]:
         after = self._usage_snapshot()
-        return {
-            key: after[key] - before[key] if isinstance(after[key], (int, float)) else after[key]
-            for key in after
-        }
+        return {key: after[key] - before[key] if isinstance(after[key], (int, float)) else after[key] for key in after}
 
     # ── 用量记录 ──────────────────────────────────────────────────────────
 
@@ -529,9 +528,7 @@ class LLMSummarizer:
             return "".join(parts).strip()
         return str(content).strip()
 
-    def _record_usage(
-        self, response: Any, system: str, materials: str, output: str, duration_ms: int
-    ) -> None:
+    def _record_usage(self, response: Any, system: str, materials: str, output: str, duration_ms: int) -> None:
         input_tokens: int | None = None
         output_tokens: int | None = None
         usage_meta = getattr(response, "usage_metadata", None) or {}
@@ -554,8 +551,7 @@ class LLMSummarizer:
         price_output = os.environ.get("LLM_PRICE_OUTPUT_PER_MTOK")
         if price_input and price_output:
             cost = (
-                input_tokens * float(price_input) / 1_000_000
-                + (output_tokens or 0) * float(price_output) / 1_000_000
+                input_tokens * float(price_input) / 1_000_000 + (output_tokens or 0) * float(price_output) / 1_000_000
             )
         else:
             cost = 0.0

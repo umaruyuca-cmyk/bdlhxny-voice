@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from bdlh_runtime.context import ConservativeTokenCounter, ContextBuilder, ContextWindowError
 from bdlh_runtime.engine.loop import (
@@ -60,9 +60,7 @@ async def _blob_executor(name: str, arguments: dict) -> dict:
 def _tool_call(index: int) -> AIMessage:
     return AIMessage(
         content="",
-        tool_calls=[
-            {"name": "demo.read", "args": {"key": f"k{index}"}, "id": f"call-{index}", "type": "tool_call"}
-        ],
+        tool_calls=[{"name": "demo.read", "args": {"key": f"k{index}"}, "id": f"call-{index}", "type": "tool_call"}],
     )
 
 
@@ -105,14 +103,10 @@ def test_tool_schema_reservation_shrinks_builder_budget() -> None:
 
     turn = AgentTurn(user_id="u1", message="问题", context_strategy="full", token_budget=900)
     prompt = load_prompt("system_base.md", "scene_chat.md")
-    assembly = assemble_model_context(
-        ContextBuilder(), system_prompt=prompt, turn=turn, tool_schema_tokens=0
-    )
+    assembly = assemble_model_context(ContextBuilder(), system_prompt=prompt, turn=turn, tool_schema_tokens=0)
     assert assembly.report.budget_fit
     with pytest.raises(ContextWindowError):
-        assemble_model_context(
-            ContextBuilder(), system_prompt=prompt, turn=turn, tool_schema_tokens=200
-        )
+        assemble_model_context(ContextBuilder(), system_prompt=prompt, turn=turn, tool_schema_tokens=200)
 
 
 @pytest.mark.asyncio
@@ -142,9 +136,7 @@ async def test_per_round_refit_folds_older_tool_rounds_within_budget() -> None:
     # round_tokens = [R1..R4];预算放行前三轮,第四轮后的最终调用触发折叠
     budget = base_tokens + round_tokens[0] + round_tokens[1] + round_tokens[2] + 10 + schema_tokens
 
-    loop = AgentLoop(
-        llm=FakeChatModel(list(responses)), catalog=catalog, executor=_blob_executor
-    )
+    loop = AgentLoop(llm=FakeChatModel(list(responses)), catalog=catalog, executor=_blob_executor)
     result = await loop.run(
         AgentTurn(
             user_id="u1",

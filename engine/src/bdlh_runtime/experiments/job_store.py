@@ -200,16 +200,12 @@ class JobStore:
                 break
         return jobs
 
-    def find_by_idempotency_key(
-        self, key: str, *, anonymous_id_hash: str | None = None
-    ) -> JobRecord | None:
+    def find_by_idempotency_key(self, key: str, *, anonymous_id_hash: str | None = None) -> JobRecord | None:
         """按幂等键查找任务;给出 ``anonymous_id_hash`` 时限定同一匿名身份,
         防止一个匿名身份复用另一个身份的幂等结果。"""
         for path in sorted(self._root.glob("job-*.json"), reverse=True)[:200]:
             job = self._load(path)
-            if job.idempotency_key == key and (
-                anonymous_id_hash is None or job.anonymous_id_hash == anonymous_id_hash
-            ):
+            if job.idempotency_key == key and (anonymous_id_hash is None or job.anonymous_id_hash == anonymous_id_hash):
                 return job
         return None
 
@@ -230,9 +226,7 @@ class JobStore:
             if job.result.get("measurement_invalid"):
                 continue
             suspects = [
-                unit
-                for unit in job.units
-                if unit.status == UNIT_STATUS_COMPLETE and unit.actual_agent_steps == 0
+                unit for unit in job.units if unit.status == UNIT_STATUS_COMPLETE and unit.actual_agent_steps == 0
             ]
             if not suspects:
                 continue

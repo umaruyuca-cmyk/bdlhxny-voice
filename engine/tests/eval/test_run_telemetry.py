@@ -234,9 +234,7 @@ def test_governance_audits_block_and_output_guardrail_rows() -> None:
     assert check.stage == "action"
     assert check.decision == "block"
 
-    report = OutputGuardrail(checks=[C1ComplianceCheck(("买入", "卖出", "建议买入"))]).check(
-        "建议买入宁德时代", []
-    )
+    report = OutputGuardrail(checks=[C1ComplianceCheck(("买入", "卖出", "建议买入"))]).check("建议买入宁德时代", [])
     assert report.violations  # 危险执行语义命中
     record_output_guardrail(recorder, report)
     response_checks = [row for row in recorder.record.guardrail_checks if row.stage == "response"]
@@ -296,8 +294,10 @@ async def test_recording_captures_bound_tool_schemas_and_param_states() -> None:
             },
         }
     ]
-    await RecordingLLM(ScriptedToolModel(), recorder, "glm-4.7-flash").bind_tools(specs).ainvoke(
-        [SystemMessage(content="s"), HumanMessage(content="q")]
+    await (
+        RecordingLLM(ScriptedToolModel(), recorder, "glm-4.7-flash")
+        .bind_tools(specs)
+        .ainvoke([SystemMessage(content="s"), HumanMessage(content="q")])
     )
     row = recorder.record.model_calls[0]
     assert row.tool_schemas == specs
@@ -321,11 +321,19 @@ def test_request_fingerprint_changes_when_schema_or_params_change() -> None:
     specs_a = [{"type": "function", "function": {"name": "a"}}]
     specs_b = [{"type": "function", "function": {"name": "b"}}]
     base = request_fingerprint(model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1})
-    assert base != request_fingerprint(model="m", messages=messages, tool_schemas=specs_b, sent_params={"temperature": 0.1})
-    assert base != request_fingerprint(model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.2})
-    assert base != request_fingerprint(model="other", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1})
+    assert base != request_fingerprint(
+        model="m", messages=messages, tool_schemas=specs_b, sent_params={"temperature": 0.1}
+    )
+    assert base != request_fingerprint(
+        model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.2}
+    )
+    assert base != request_fingerprint(
+        model="other", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1}
+    )
     # 全量相同 → 指纹稳定复算
-    assert base == request_fingerprint(model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1})
+    assert base == request_fingerprint(
+        model="m", messages=messages, tool_schemas=specs_a, sent_params={"temperature": 0.1}
+    )
 
 
 class NotInFixtureExecutor:
@@ -343,9 +351,7 @@ async def test_tool_call_rows_link_model_call_and_mark_not_in_fixture() -> None:
     recorder = _recorder()
     bound = RecordingLLM(ScriptedToolModel(), recorder, "glm-4.7-flash").bind_tools([])
     await bound.ainvoke([HumanMessage(content="q")])
-    await RecordingExecutor(NotInFixtureExecutor(), recorder)(
-        "market.get_realtime_quote", {"symbol": "300750"}
-    )
+    await RecordingExecutor(NotInFixtureExecutor(), recorder)("market.get_realtime_quote", {"symbol": "300750"})
     row = recorder.record.tool_calls[0]
     assert row.fixture_hit is False
     assert row.status == "SUCCESS"  # 未命中冻结不冒充 FAILED;命中状态经 fixture_hit 区分

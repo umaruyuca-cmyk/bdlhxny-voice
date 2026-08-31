@@ -52,10 +52,7 @@ class FrozenFixtureExecutor:
             if status not in ALLOWED_MOCK_STATUSES:
                 status = "error"
             raw_result = matched.get("result")
-            if isinstance(raw_result, dict):
-                payload = dict(raw_result)
-            else:
-                payload = {"value": raw_result}
+            payload = dict(raw_result) if isinstance(raw_result, dict) else {"value": raw_result}
             payload["status"] = status
             payload["simulated"] = True
             if matched.get("fixture_id"):

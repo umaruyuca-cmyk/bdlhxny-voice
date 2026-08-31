@@ -82,9 +82,7 @@ def _case_from_view(view: dict[str, Any]) -> ComparisonCase | None:
     allowed = tuple(str(name) for name in view.get("allowedTools") or ())
     if not allowed:
         return None
-    default_visible = tuple(
-        str(name) for name in checks.get("default_visible_tools") or allowed
-    )
+    default_visible = tuple(str(name) for name in checks.get("default_visible_tools") or allowed)
     try:
         return ComparisonCase(
             case_id=case_id,

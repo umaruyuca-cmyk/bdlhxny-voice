@@ -54,15 +54,20 @@
           <div class="field" id="fModeWrap" style="display:none">
             <label>运行方式</label>
             <select id="fMode">
-              <option value="context-only">只生成四份上下文工件(不运行 Agent)</option>
-              <option value="native-matrix">运行原生 4×1(四种上下文方式 × 1,共 4 个运行)</option>
+              <option value="context-only">只生成上下文工件(不运行 Agent)</option>
+              <option value="agent-series">创建实验组,在实验组页逐样本发起 Agent 运行</option>
             </select>
-            <div class="hint">生成与运行互不自动触发;该入口为公开测试通道,任务保留在「我的测试」。</div>
+            <div class="hint">生成与运行互不自动触发;一次点击最多创建一个 Agent 运行,该入口为公开测试通道,任务保留在「我的测试」。</div>
           </div>
           <div class="field" id="fRepeatWrap">
             <label>重复次数(范围由模板限定)</label>
             <select id="fRepeat"></select>
             <div class="hint">重复运行用于评估结果稳定性,每次运行相互独立。</div>
+          </div>
+          <div class="field" id="fVariantWrap" style="display:none">
+            <label>受控变体(匿名单样本口径:选一个变体运行 1 次)</label>
+            <select id="fVariant"></select>
+            <div class="hint">变体定义由模板冻结,这里只选择本次运行哪个变体;要逐变体积累正式样本,请登录后使用实验组流程。</div>
           </div>
           <details class="adv" id="advBox" style="display:none">
             <summary>高级设置(仅所有者,字段白名单内)</summary>
@@ -221,31 +226,20 @@
       );
     }
 
-    var lo = (t.repeat_count_range || [1, 1])[0];
-    var hi = (t.repeat_count_range || [1, 1])[1];
-    var repeatValues = [];
-    if (isComparison) {
-      if (owner) {
-        for (var i = lo; i <= hi; i++) repeatValues.push(i);
-      } else {
-        var allowed = ((options.quota || {}).repeat_options) || [];
-        allowed.forEach(function (value) { if (value >= lo && value <= hi) repeatValues.push(value); });
-      }
-      var repeatSelect = document.getElementById("fRepeat");
-      repeatSelect.innerHTML = "";
-      if (!repeatValues.length) {
-        var option = document.createElement("option");
-        option.value = "";
-        option.textContent = "无可用档位";
-        repeatSelect.appendChild(option);
-      } else {
-        repeatValues.forEach(function (value) {
-          var o = document.createElement("option");
-          o.value = value;
-          o.textContent = value + " 次";
-          repeatSelect.appendChild(o);
-        });
-      }
+    // 重复次数选择已退役:所有者走实验组逐样本追加,匿名固定 1 次(单运行口径)
+    document.getElementById("fRepeatWrap").style.display = "none";
+
+    // 匿名 + 对比模板:单变体选择器(一次点击 = 1 个变体 × 1 次运行)
+    if (isComparison && !owner) {
+      var variantWrap = document.getElementById("fVariantWrap");
+      variantWrap.style.display = "block";
+      fillSelect(
+        document.getElementById("fVariant"),
+        t.variants || [],
+        function (v) { return v.label; },
+        function (v) { return E.variantLabel(t, v.label) + "(" + v.label + ")"; },
+        params.get("variant") || ""
+      );
     }
 
     if (owner && (t.advanced_allowed_paths || []).length) {
@@ -286,11 +280,15 @@
     var request = { template_id: t.template_id };
     if (isComparison) {
       request.case_id = document.getElementById("fCase").value;
-      var repeat = document.getElementById("fRepeat").value;
-      if (repeat) request.repeat_count = Number(repeat);
+      request.repeat_count = 1; // 单运行口径:所有者逐样本追加,匿名固定 1 次
       var preset = document.getElementById("fPresetWrap").style.display !== "none" ? document.getElementById("fPreset").value : "";
       if (preset) request.preset_id = preset;
-      if (owner) request.advanced = advancedPayload();
+      if (owner) {
+        request.advanced = advancedPayload();
+      } else {
+        // 匿名单变体:选择模板既有变体之一发起恰好 1 次运行
+        request.variant_label = document.getElementById("fVariant").value;
+      }
     } else {
       request.test_type = "COMPRESSION_CASE";
       request.session_id = document.getElementById("fSession").value;
@@ -342,20 +340,26 @@
         if (scope === "context-only") {
           setEstimate("生成 2 种压缩上下文(0 个 Agent 运行)", "抽取式 vs 生成式摘要,同一预算;LLM 摘要按服务端模型真实调用。", "", "");
         } else {
-          setEstimate("2 方法 × 1 次 = 2 个 Agent 运行", "两种压缩上下文各自运行同一次 Agent;唯一自变量是压缩方法。", "", "");
+          setEstimate("创建实验组(0 个自动运行)", "创建后跳转实验组页,由你逐样本点击发起;每次点击只创建 1 个 Agent 运行(单次运行内可含多步 LLM 循环)。", "", "");
         }
         return;
       }
-      if (scope === "context-only") {
-        setEstimate("生成 4 份上下文工件(不执行 Agent 运行)", "四份工件 = 四种上下文策略各构建一次;生成完成不自动运行。", "", "");
-      } else {
-        setEstimate("4 组 × 1 次 = 4 次运行", "四种上下文方式 × 统一原生底座;每格 1 次。", "", "");
-      }
+      setEstimate("生成 4 份上下文工件(不执行 Agent 运行)", "四份工件 = 四种上下文策略各构建一次;生成完成不自动运行。", "", "");
       return;
     }
     var request = currentRequest();
     if (!request.case_id) { setEstimate("—", "请选择考题。", "", "未选择考题"); return; }
-    if (!request.repeat_count) { setEstimate("—", "当前无可用重复档位。", "模板区间与匿名配额没有交集,请登录后发起。", "无重复档位"); return; }
+    if (!owner) {
+      var variantLabels = (t.variants || []).map(function (v) { return v.label; });
+      if (!request.variant_label || variantLabels.indexOf(request.variant_label) < 0) {
+        setEstimate("—", "请选择受控变体。", "", "未选择变体");
+        return;
+      }
+      setEstimate("1 个变体(" + E.esc(E.variantLabel(t, request.variant_label)) + ") × 1 次 = 1 个 Agent 运行",
+        "匿名单样本口径:一次点击只创建 1 个运行(单次运行内可含多步 LLM 循环,步数即 LLM 请求次数);"
+        + "结果保留在「我的测试」。要逐变体积累正式样本并查看统计对比,请登录后使用实验组流程。", "", "");
+      return;
+    }
     if (owner) {
       var planRequest = { template_id: request.template_id, repeat_count: request.repeat_count };
       if (request.preset_id) planRequest.preset_id = request.preset_id;
@@ -364,66 +368,20 @@
         state.plan = plan;
         var groups = (plan.fixed_conditions && plan.fixed_conditions.variant_labels || []).length || 1;
         var formalMin = (t.formal_min_repeat_count != null) ? t.formal_min_repeat_count : 3;
-        setEstimate("首轮 " + groups + " 个样本(每变体 1 次)",
-          "实验组流程:创建实验组后逐样本发起,每次请求只创建一个运行(方案 13.4);"
-          + "已完成样本保留,追加样本在实验组页逐次进行,正式最小样本每变体 " + formalMin + " 次。", "", "");
+        setEstimate("创建实验组(" + groups + " 个变体 · 0 个自动运行)",
+          "创建后跳转实验组页,由你逐样本点击「运行下一个建议样本」;"
+          + "每次点击只创建 1 个 Agent 运行(单次运行内可含多步 LLM 循环,步数即 LLM 请求次数),"
+          + "正式最小样本每变体 " + formalMin + " 次。", "", "");
       }).catch(function (err) {
         state.plan = null;
         setEstimate("预估失败", "预估接口返回错误;", err.message, err.message);
       });
-    } else {
-      var groups = request.preset_id ? 1 : (t.variants || []).length;
-      var count = groups * request.repeat_count;
-      if (count > E.ANON_RUN_CAP) {
-        setEstimate(count + " 次运行", "匿名上限 " + E.ANON_RUN_CAP + " 次/批次。", "计划运行数 " + count + " 超过匿名上限 " + E.ANON_RUN_CAP + ",请减少重复次数或登录后发起。", "超上限");
-      } else {
-        setEstimate(groups + " 组 × " + request.repeat_count + " 次 = " + count + " 次运行", "关闭页面不影响运行;结果保留在「我的测试」。", "", "");
-      }
     }
   }
 
-  /* 实验组单样本请求(P0-7 13.5):一次 POST 只创建一个 Agent 运行;
-     等待完成后调用方才发下一个,失败即停(熔断),已完成结果保留。 */
-  function newRunKey() {
-    return (window.crypto && window.crypto.randomUUID)
-      ? window.crypto.randomUUID()
-      : "run-" + Date.now() + "-" + Math.random().toString(16).slice(2);
-  }
-
-  function waitSeriesRun(seriesId, runKey) {
-    return new Promise(function (resolve) {
-      var deadline = Date.now() + 180000; // 单运行等待上限 3 分钟(agent 超时 60s + 余量)
-      (function tick() {
-        E.get("/api/v1/experiment-series/" + encodeURIComponent(seriesId) + "/runs").then(function (data) {
-          var row = (data.runs || []).filter(function (r) { return r.run_key === runKey; })[0];
-          if (row && row.status === "done") { resolve(""); return; }
-          if (row && row.status === "failed") {
-            resolve("样本 " + (row.variant_id || runKey) + " 失败:" + (row.error || "未知原因")
-              + ";已停止后续样本(熔断),已完成结果保留。");
-            return;
-          }
-          if (Date.now() > deadline) {
-            resolve("样本等待超时;运行仍在后台进行,可稍后在实验组页刷新查看。");
-            return;
-          }
-          setTimeout(tick, 2000);
-        }).catch(function () {
-          if (Date.now() > deadline) { resolve("轮询中断;可稍后在实验组页查看。"); return; }
-          setTimeout(tick, 4000);
-        });
-      })();
-    });
-  }
-
-  function runSingleSample(seriesId, variantId) {
-    setEstimate("运行样本:" + variantId, "实验组 " + seriesId + " · 一次请求一个运行;完成后自动继续下一个变体。", "", "");
-    return E.post("/api/v1/experiment-series/" + encodeURIComponent(seriesId) + "/runs",
-      { variant_id: variantId, idempotency_key: newRunKey() }).then(function (entry) {
-      return waitSeriesRun(seriesId, entry.run_key);
-    });
-  }
-
-  /* 创建实验组 → 首轮每个变体各发一次单样本请求(顺序,失败熔断)。
+  /* 创建实验组(P0-1 修复):一次提交只创建实验组定义(0 个运行),
+     成功后立即跳转实验组页;第一个样本也必须由用户在实验组页点击
+     「运行下一个建议样本」后创建,页面不再自动串行调用任何运行。
      bodyPatch 用于压缩用例(session_id);对比用例默认带 case_id/预设/高级设置。 */
   function startSeriesFlow(bodyPatch) {
     var request = currentRequest();
@@ -436,21 +394,7 @@
       if (request.advanced) body.advanced = request.advanced;
     }
     return E.post("/api/v1/experiment-series", body).then(function (series) {
-      var seriesId = series.series_id;
-      var variants = series.variant_labels || [];
-      var stopped = "";
-      var chain = Promise.resolve();
-      variants.forEach(function (variantId) {
-        chain = chain.then(function () {
-          if (stopped) return null;
-          return runSingleSample(seriesId, variantId).then(function (message) {
-            if (message) stopped = message;
-          });
-        });
-      });
-      return chain.then(function () {
-        return { seriesId: seriesId, warning: stopped };
-      });
+      return { seriesId: series.series_id, warning: "" };
     });
   }
 
@@ -474,19 +418,28 @@
             + "?job=" + encodeURIComponent(result.job_id || ""), warning: "" };
         });
       } else {
-        // Agent 运行已迁移实验组(13.4/13.5):两个压缩方法各发一次单样本请求
+        // 创建实验组(0 个运行);两种压缩方法在实验组页逐样本发起
         flow = startSeriesFlow({ session_id: methodRequest.session_id }).then(function (acc) {
           return { target: "/experiment/series/" + encodeURIComponent(acc.seriesId), warning: acc.warning };
         });
       }
     } else if (owner && isComparison) {
-      // 模板批次发起已退役(13.13):走实验组 + 单次运行
+      // 创建实验组(0 个运行);样本在实验组页逐次点击发起(13.4/13.5)
       flow = startSeriesFlow().then(function (acc) {
         return { target: "/experiment/series/" + encodeURIComponent(acc.seriesId), warning: acc.warning };
       });
     } else {
+      // 匿名:压缩上下文生成(0 运行)或单变体 1 次运行(1 运行),走公开测试接口
       var payload = currentRequest();
-      if (isComparison) payload.test_type = "COMPARISON_CASE";
+      if (isComparison) {
+        payload.test_type = "COMPARISON_CASE";
+        if (!payload.variant_label) {
+          button.disabled = false;
+          button.textContent = "提交批次";
+          setEstimate("—", "请选择受控变体。", "", "未选择变体");
+          return;
+        }
+      }
       payload.idempotency_key = ensureIdempotencyKey();
       flow = E.post("/api/v1/public/test-jobs", payload).then(function (result) {
         return { target: "/experiment/batch/" + encodeURIComponent(result.job_id), warning: "" };
@@ -537,13 +490,17 @@
       renderCallLimits();
     if (t.template_id === "compression-method-comparison") {
       var mOnly = document.querySelector('#fMode option[value="context-only"]');
-      var mFull = document.querySelector('#fMode option[value="native-matrix"]');
+      var mSeries = document.querySelector('#fMode option[value="agent-series"]');
       if (mOnly) mOnly.textContent = "生成两种压缩上下文(0 个 Agent 运行;含 LLM 摘要调用)";
-      if (mFull) mFull.textContent = "运行压缩方法对照(2 个样本,逐次单请求发起)";
+      if (mSeries) mSeries.textContent = "创建实验组,逐样本运行两种压缩方法(每次点击 1 个运行)";
+    } else {
+      // 一次只运行一个 Agent(P0-1):非方法对照的压缩模板只保留上下文生成入口
+      var mSeriesOnly = document.querySelector('#fMode option[value="agent-series"]');
+      if (mSeriesOnly) mSeriesOnly.remove();
     }
       renderDefinition();
       renderConfig();
-      ["fCase", "fSession", "fPreset", "fMode", "fRepeat"].forEach(function (id) {
+      ["fCase", "fSession", "fPreset", "fMode", "fRepeat", "fVariant"].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener("change", refreshEstimate);
       });

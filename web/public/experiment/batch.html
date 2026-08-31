@@ -264,6 +264,67 @@
     });
   }
 
+  /* 逐步明细(匿名模板任务):模型调用(LLM 返回)与工具调用按序交织。
+     数据来自公开投影的 model_calls.responseSummary(模型自己的决策与返回摘录)
+     和 tool_calls.resultSummary(模型当时看到的世界返回)。 */
+  function runStepTimelineHtml(run) {
+    var steps = [];
+    (run.model_calls || []).forEach(function (call) {
+      var rs = call.responseSummary || {};
+      var tools = (rs.toolCalls || []).map(function (t) {
+        return E.esc(t.name) + "(" + E.esc(JSON.stringify(t.arguments || {})) + ")";
+      }).join("、");
+      var text = String(rs.textExcerpt || "").trim();
+      steps.push({
+        kind: "model",
+        seq: call.sequence,
+        title: "模型调用 #" + E.esc(call.sequence) + " · " +
+          (call.decision === "answer" ? "给出最终回答" : call.decision === "call_tool" ? "决定调用工具" : E.esc(call.decision || "—")) +
+          " · " + E.esc(call.durationMs != null ? call.durationMs + " ms" : "—") +
+          (call.outputTokens != null ? " · 输出 " + E.esc(call.outputTokens) + " tok" : ""),
+        body: (tools ? '<p><small>请求工具:' + tools + "</small></p>" : "") +
+          (text ? "<p><small><b>LLM 返回:</b>" + E.esc(text.slice(0, 800)) + "</small></p>"
+            : '<p><small style="opacity:.6">(本轮无文字输出)</small></p>'),
+      });
+    });
+    (run.tool_calls || []).forEach(function (t) {
+      var hit = t.fixtureHit === true ? "命中冻结数据" : t.fixtureHit === false ? "未命中冻结数据" : "—";
+      var rs = t.resultSummary;
+      var rsText = rs ? JSON.stringify(rs) : "";
+      steps.push({
+        kind: "tool",
+        seq: (t.sequence != null ? t.sequence : 900) + 0.5,
+        title: "工具 " + E.esc(t.toolName || "?") + " · " + E.esc(t.status || "—") + " · " + hit +
+          " · " + E.esc(t.durationMs != null ? t.durationMs + " ms" : "—") +
+          (t.auditCode ? " · 审计 " + E.esc(t.auditCode) : ""),
+        body: "<p><small><b>调用参数:</b>" + E.esc(JSON.stringify(t.arguments || {})) + "</small></p>" +
+          (rsText ? '<p><small><b>工具返回(模型所见):</b>' + E.esc(rsText.slice(0, 500)) + "</small></p>" : ""),
+      });
+    });
+    steps.sort(function (a, b) { return a.seq - b.seq; });
+    if (!steps.length) {
+      return '<p class="note-line">该任务早于逐步明细功能,无逐步数据;重新发起一次即可看到完整过程。</p>';
+    }
+    return '<div class="run-timeline">' + steps.map(function (s, i) {
+      var cls = s.kind === "model" ? "step-model" : "step-tool";
+      return '<details class="metric-def ' + cls + '"' + (i === 0 ? " open" : "") + '><summary>#'
+        + E.esc(s.seq) + " · " + s.title + "</summary>" + s.body + "</details>";
+    }).join("") + "</div>";
+  }
+
+  function runStepsSection(job) {
+    var runs = (job.result || {}).runs || [];
+    if (!runs.length) return "";
+    return runs.map(function (r) {
+      var label = E.esc(r.variant_label || "运行") + " · 第 " + E.esc((r.repeat_index || 0) + 1) + " 次";
+      return '<details class="metric-def"><summary>步骤明细 · ' + label + " · "
+        + E.esc(r.actual_agent_steps || 0) + " 步</summary>"
+        + runStepTimelineHtml(r)
+        + (r.answer ? '<p><small><b>最终回答:</b>' + E.esc(String(r.answer).slice(0, 1000)) + "</small></p>" : "")
+        + "</details>";
+    }).join("");
+  }
+
   function renderJobResult(job) {
     var box = document.getElementById("resultBox");
     var result = job.result || {};
@@ -293,6 +354,7 @@
       box.innerHTML = '<table class="exp-table"><tr><th>分组</th><th>运行数</th><th>有效</th><th>旁路事件</th><th>停止原因</th></tr>' + rows + "</table>" +
         '<h3 style="font-size:14px;margin:18px 0 6px">逐次运行(' + (result.runs || []).length + ")</h3>" +
         '<table class="exp-table"><tr><th>运行</th><th>有效性</th><th>步数</th><th>停止原因</th><th>耗时</th><th>config_hash</th></tr>' + runsHtml + "</table>" +
+        '<h3 style="font-size:14px;margin:18px 0 6px">逐步明细(模型调用与工具调用)</h3>' + runStepsSection(job) +
         ((result.skipped_run_ids || []).length ? '<p class="note-line">取消后未执行的运行:' + E.esc(result.skipped_run_ids.join("、")) + "</p>" : "");
       return;
     }

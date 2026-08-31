@@ -14,9 +14,16 @@ import httpx
 class DataServiceError(RuntimeError):
     """数据服务不可用或拒绝请求。"""
 
-    def __init__(self, message: str, *, status_code: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        payload: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
+        self.payload = payload or {}
 
 
 class DataClient:
@@ -41,6 +48,250 @@ class DataClient:
         if not isinstance(payload, dict):
             raise DataServiceError("data service returned an invalid tool fixture set")
         return payload
+
+    def list_context_sessions(self, owner_id: str) -> list[dict[str, Any]]:
+        """读取当前所有者的生产上下文 Session 摘要。"""
+
+        payload = self._request("GET", "/context/sessions", params={"accountId": owner_id})
+        sessions = payload.get("sessions") if isinstance(payload, dict) else None
+        if not isinstance(sessions, list):
+            raise DataServiceError("data service returned an invalid context session catalog")
+        return sessions
+
+    def get_context_session(self, owner_id: str, session_id: str) -> dict[str, Any]:
+        """读取一份生产 Session 及其只追加事件。"""
+
+        payload = self._request("GET", f"/context/sessions/{session_id}", params={"accountId": owner_id})
+        if not isinstance(payload, dict) or not isinstance(payload.get("events"), list):
+            raise DataServiceError("data service returned an invalid context session")
+        return payload
+
+    def save_context_session(self, payload: dict[str, Any]) -> None:
+        """写入或追加生产 Session；事件幂等由 session_id/event_id 保证。"""
+
+        self._request("POST", "/context/sessions", json=payload, expect_json=False)
+
+    def create_context_workbench_build(self, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._request("POST", "/context/builds", json=payload)
+        if not isinstance(result, dict):
+            raise DataServiceError("data service returned an invalid context build")
+        return result
+
+    def update_context_workbench_build(self, build_id: str, payload: dict[str, Any]) -> None:
+        self._request("PUT", f"/context/builds/{build_id}", json=payload, expect_json=False)
+
+    def get_context_workbench_build(self, owner_id: str, build_id: str) -> dict[str, Any]:
+        payload = self._request("GET", f"/context/builds/{build_id}", params={"accountId": owner_id})
+        if not isinstance(payload, dict):
+            raise DataServiceError("data service returned an invalid context build")
+        return payload
+
+    def get_latest_context_build(self, owner_id: str, session_id: str) -> dict[str, Any] | None:
+        """某 Session 最近一次构建;无构建(404)返回 None,不抛错。"""
+
+        try:
+            payload = self._request(
+                "GET",
+                f"/context/sessions/{session_id}/latest-build",
+                params={"accountId": owner_id},
+            )
+        except DataServiceError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        if not isinstance(payload, dict):
+            raise DataServiceError("data service returned an invalid context build")
+        return payload
+
+    def save_context_artifact(self, build_id: str, payload: dict[str, Any]) -> str:
+        result = self._request("POST", f"/context/builds/{build_id}/artifact", json=payload)
+        if not isinstance(result, dict) or not result.get("artifactId"):
+            raise DataServiceError("data service returned an invalid context artifact id")
+        return str(result["artifactId"])
+
+    def get_context_artifact(self, owner_id: str, build_id: str) -> dict[str, Any]:
+        payload = self._request(
+            "GET",
+            f"/context/builds/{build_id}/artifact",
+            params={"accountId": owner_id},
+        )
+        if not isinstance(payload, dict):
+            raise DataServiceError("data service returned an invalid context artifact")
+        return payload
+
+    def list_memory_segments(self, owner_id: str, session_id: str) -> list[dict[str, Any]]:
+        payload = self._request(
+            "GET",
+            f"/context/sessions/{session_id}/memory-segments",
+            params={"accountId": owner_id},
+        )
+        segments = payload.get("segments") if isinstance(payload, dict) else None
+        if not isinstance(segments, list):
+            raise DataServiceError("data service returned an invalid memory segment list")
+        return segments
+
+    def save_memory_segment(self, session_id: str, payload: dict[str, Any]) -> str:
+        result = self._request("POST", f"/context/sessions/{session_id}/memory-segments", json=payload)
+        if not isinstance(result, dict) or not result.get("segmentId"):
+            raise DataServiceError("data service returned an invalid memory segment id")
+        return str(result["segmentId"])
+
+    # ── 上下文细粒度 RBAC(授权/审计/跨所有者运维视图,内部接口) ──
+
+    def create_context_access_grant(
+        self,
+        owner_id: str,
+        grantee_id: str,
+        *,
+        scope: str = "ARTIFACT_READ",
+        build_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._request(
+            "POST",
+            "/context/ops/access-grants",
+            json={
+                "ownerAccountId": owner_id,
+                "granteeAccountId": grantee_id,
+                "scope": scope,
+                "buildId": build_id,
+            },
+        )
+        if not isinstance(result, dict):
+            raise DataServiceError("data service returned an invalid access grant")
+        return result
+
+    def list_context_access_grants(self, owner_id: str) -> list[dict[str, Any]]:
+        payload = self._request("GET", "/context/ops/access-grants", params={"ownerAccountId": owner_id})
+        grants = payload.get("grants") if isinstance(payload, dict) else None
+        if not isinstance(grants, list):
+            raise DataServiceError("data service returned an invalid access grant list")
+        return grants
+
+    def revoke_context_access_grant(self, owner_id: str, grant_id: str) -> None:
+        self._request(
+            "DELETE",
+            f"/context/ops/access-grants/{grant_id}",
+            params={"ownerAccountId": owner_id},
+            expect_json=False,
+        )
+
+    def has_context_grant(self, owner_id: str, grantee_id: str, build_id: str) -> bool:
+        payload = self._request(
+            "GET",
+            "/context/ops/access-grants/active",
+            params={
+                "ownerAccountId": owner_id,
+                "granteeAccountId": grantee_id,
+                "buildId": build_id,
+            },
+        )
+        return bool(payload.get("granted")) if isinstance(payload, dict) else False
+
+    def has_context_grant_for_grantee(self, grantee_id: str, build_id: str) -> bool:
+        """被授权方视角的跨所有者下载权限判定(无需指明 owner)。"""
+
+        payload = self._request(
+            "GET",
+            "/context/ops/access-grants/active-for-grantee",
+            params={"granteeAccountId": grantee_id, "buildId": build_id},
+        )
+        return bool(payload.get("granted")) if isinstance(payload, dict) else False
+
+    def get_context_artifact_cross_owner(self, build_id: str) -> dict[str, Any]:
+        """跨所有者工件读取(调用前必须已通过授权判定)。"""
+
+        payload = self._request("GET", f"/context/ops/builds/{build_id}/artifact")
+        if not isinstance(payload, dict):
+            raise DataServiceError("data service returned an invalid context artifact")
+        return payload
+
+    def write_context_audit(
+        self,
+        account_id: str | None,
+        action: str,
+        *,
+        succeeded: bool = True,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        self._request(
+            "POST",
+            "/context/ops/audit",
+            json={
+                "accountId": account_id,
+                "action": action,
+                "succeeded": succeeded,
+                "detail": detail or {},
+            },
+            expect_json=False,
+        )
+
+    def list_context_audit(
+        self,
+        account_id: str | None = None,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        if account_id is not None:
+            params["accountId"] = account_id
+        payload = self._request("GET", "/context/ops/audit", params=params)
+        events = payload.get("events") if isinstance(payload, dict) else None
+        if not isinstance(events, list):
+            raise DataServiceError("data service returned an invalid audit list")
+        return events
+
+    def list_context_builds_cross_owner(self, limit: int = 50, cursor: int = 0) -> dict[str, Any]:
+        payload = self._request("GET", "/context/ops/builds", params={"limit": limit, "cursor": cursor})
+        if not isinstance(payload, dict) or not isinstance(payload.get("builds"), list):
+            raise DataServiceError("data service returned an invalid cross-owner build list")
+        return payload
+
+    # ── P2 定时分析(采样源、抽检结果、分析运行) ──
+
+    def list_recent_context_segments(self, limit: int = 5) -> list[dict[str, Any]]:
+        payload = self._request("GET", "/context/ops/segments/recent", params={"limit": limit})
+        segments = payload.get("segments") if isinstance(payload, dict) else None
+        if not isinstance(segments, list):
+            raise DataServiceError("data service returned an invalid segment sample list")
+        return segments
+
+    def save_context_quality_check(self, payload: dict[str, Any]) -> None:
+        self._request("POST", "/context/ops/segment-quality-checks", json=payload, expect_json=False)
+
+    def list_context_quality_checks(
+        self,
+        account_id: str | None = None,
+        *,
+        session_id: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        if account_id is not None:
+            params["accountId"] = account_id
+        if session_id is not None:
+            params["sessionId"] = session_id
+        payload = self._request("GET", "/context/ops/segment-quality-checks", params=params)
+        checks = payload.get("checks") if isinstance(payload, dict) else None
+        if not isinstance(checks, list):
+            raise DataServiceError("data service returned an invalid quality check list")
+        return checks
+
+    def start_context_analysis_run(self, trigger: str) -> str:
+        result = self._request("POST", "/context/ops/analysis-runs", json={"triggerSource": trigger})
+        if not isinstance(result, dict) or not result.get("runId"):
+            raise DataServiceError("data service returned an invalid analysis run id")
+        return str(result["runId"])
+
+    def finish_context_analysis_run(self, run_id: str, payload: dict[str, Any]) -> None:
+        self._request("PUT", f"/context/ops/analysis-runs/{run_id}", json=payload, expect_json=False)
+
+    def list_context_analysis_runs(self, limit: int = 5) -> list[dict[str, Any]]:
+        payload = self._request("GET", "/context/ops/analysis-runs", params={"limit": limit})
+        runs = payload.get("runs") if isinstance(payload, dict) else None
+        if not isinstance(runs, list):
+            raise DataServiceError("data service returned an invalid analysis run list")
+        return runs
+
 
     def get_case_variant_context(self, case_id: str, version: int, variant_id: str) -> dict[str, Any]:
         """变体上下文条目(压缩对照输入):优先 fixture_context_items,兼容 data_fixture。"""
@@ -308,10 +559,22 @@ class DataClient:
         path: str,
         *,
         json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
         expect_json: bool = True,
     ) -> Any:
-        status, response = self._request_raw(method, path, json=json)
-        response.raise_for_status()
+        status, response = self._request_raw(method, path, json=json, params=params)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            try:
+                error_payload = response.json()
+            except ValueError:
+                error_payload = None
+            raise DataServiceError(
+                _error_message(response, f"data service returned HTTP {response.status_code}"),
+                status_code=response.status_code,
+                payload=error_payload if isinstance(error_payload, dict) else None,
+            ) from exc
         return response.json() if expect_json else None
 
     def _request_raw(
@@ -320,6 +583,7 @@ class DataClient:
         path: str,
         *,
         json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> tuple[int, httpx.Response]:
         if not self._token.strip():
             raise DataServiceError("DATA_INTERNAL_TOKEN is not configured")
@@ -329,6 +593,7 @@ class DataClient:
                 f"{self._base_url}{path}",
                 headers={"X-Internal-Token": self._token},
                 json=json,
+                params=params,
                 timeout=10.0,
             )
             return response.status_code, response
@@ -339,8 +604,13 @@ class DataClient:
 def _error_message(response: httpx.Response, default: str) -> str:
     try:
         body = response.json()
-        if isinstance(body, dict) and body.get("error"):
-            return str(body["error"])
+        if isinstance(body, dict):
+            if body.get("error"):
+                return str(body["error"])
+            if body.get("message"):
+                return str(body["message"])
+            if body.get("errorCode"):
+                return str(body["errorCode"])
     except (ValueError, AttributeError):
         pass
     return default

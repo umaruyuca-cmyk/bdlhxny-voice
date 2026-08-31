@@ -93,12 +93,31 @@
   var SCOPE_LABEL = {
     "context-only": "生成四份上下文(0 个 Agent 运行)",
     "current-combo": "运行当前组合(1 个运行)",
-    "native-matrix": "原生 4×1 上下文实验(4 个运行)",
+    "native-matrix": "原生 4×1 上下文实验(已停用的一次多运行入口)",
+    "template-batch": "对比模板单样本(1 个 Agent 运行)",
   };
   var ACTIVE = { QUEUED: 1, RUNNING: 1 };
   var listEl = document.getElementById("jobList");
   var stateEl = document.getElementById("jobLoadState");
   var openDetails = {}; // job_id -> true(展开态,重渲染后保持)
+  var loadedDetails = {}; // job_id -> true:详情已成功加载,不随列表轮询重复拉取(P2-1)
+  var detailCache = {}; // job_id -> 已渲染详情 HTML:列表重渲染时原样恢复,避免"读取中"卡死
+
+  /* 轮询治理(P2-1):存在排队/运行中任务时 5s 一轮;空闲降为 45s 低频;
+     页面转入后台时暂停,回前台立即刷新。全部请求是查询,不产生模型调用。 */
+  var pollTimer = null;
+  var IDLE_POLL_MS = 45000;
+  var ACTIVE_POLL_MS = 5000;
+  function scheduleNext(jobs) {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    if (document.visibilityState !== "visible") return; // 后台暂停
+    var active = (jobs || []).some(function (j) { return ACTIVE[j.status]; });
+    pollTimer = setTimeout(load, active ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") load();
+    // 转入后台:scheduleNext 里的下一次定时不再排程,当前定时到点后自然停止
+  });
 
   function check(res) {
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -121,6 +140,11 @@
     }
     actions += ' <button type="button" data-toggle="' + esc(j.job_id) + '">' +
       (openDetails[j.job_id] ? "收起结果" : "查看结果") + "</button>";
+    actions += ' <a href="/experiment/batch/' + encodeURIComponent(j.job_id) + '">详情页 →</a>';
+    var detailHtml = "";
+    if (openDetails[j.job_id]) {
+      detailHtml = detailCache[j.job_id] || '<div class="placeholder-block">读取中…</div>';
+    }
     return '<div class="job-card" id="job-' + esc(j.job_id) + '">' +
       '<div class="job-head">' + statusBadge(j.status) +
       "<b>" + esc(SCOPE_LABEL[j.execution_scope] || j.execution_scope) + "</b>" + custom +
@@ -128,8 +152,7 @@
       '<div class="job-meta">' + target + " · 任务号 <code>" + esc(j.job_id) + "</code></div>" +
       E.jobProgress(j) +
       '<div class="job-actions">' + actions + "</div>" +
-      '<div class="job-detail" id="detail-' + esc(j.job_id) + '">' +
-      (openDetails[j.job_id] ? '<div class="placeholder-block">读取中…</div>' : "") + "</div>" +
+      '<div class="job-detail" id="detail-' + esc(j.job_id) + '">' + detailHtml + "</div>" +
       "</div>";
   }
 
@@ -137,10 +160,15 @@
     if (!jobs.length) {
       stateEl.textContent = "";
       listEl.innerHTML = '<div class="placeholder-block">尚未发起任何测试。到 <a href="/experiment/compression">压缩用例</a> 或 <a href="/experiment/">实验中心</a> 发起;任务在后台执行,关闭或刷新页面不会停止。</div>';
+      scheduleNext(jobs);
       return;
     }
-    stateEl.textContent = "共 " + jobs.length + " 个任务,按创建时间倒序;运行中的任务每 5 秒自动刷新。";
-    listEl.innerHTML = jobs.map(cardHtml).join("");
+    stateEl.textContent = jobs.some(function (j) { return ACTIVE[j.status]; })
+      ? "共 " + jobs.length + " 个任务,按创建时间倒序;存在排队/运行中的任务时每 5 秒自动刷新(仅查询,不调用模型)。"
+      : "共 " + jobs.length + " 个任务,按创建时间倒序;当前无运行中任务,列表保持静默,可点击「刷新」手动更新。";
+    listEl.innerHTML = jobs.map(cardHtml).join("")
+      + '<p style="margin-top:8px"><button type="button" data-refresh>刷新列表</button>'
+      + '<small style="margin-left:8px;opacity:.65">自动刷新仅在有排队/运行中任务时进行;本页全部为查询请求,不产生任何模型调用。</small></p>';
     Array.prototype.forEach.call(listEl.querySelectorAll("[data-cancel]"), function (btn) {
       btn.addEventListener("click", function () {
         btn.disabled = true;
@@ -151,11 +179,25 @@
     Array.prototype.forEach.call(listEl.querySelectorAll("[data-toggle]"), function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-toggle");
-        if (openDetails[id]) delete openDetails[id]; else openDetails[id] = true;
+        if (openDetails[id]) {
+          delete openDetails[id];
+        } else {
+          openDetails[id] = true;
+          // 每次展开都重新拉取(结果可能已更新);缓存仅用于重渲染时恢复已加载内容
+          delete loadedDetails[id];
+          delete detailCache[id];
+        }
         load();
       });
     });
-    Object.keys(openDetails).forEach(function (id) { loadDetail(id); });
+    Array.prototype.forEach.call(listEl.querySelectorAll("[data-refresh]"), function (btn) {
+      btn.addEventListener("click", function () { load(); });
+    });
+    // 展开的历史详情只在用户展开时加载一次,不随列表轮询重复加载(P2-1)
+    Object.keys(openDetails).forEach(function (id) {
+      if (!loadedDetails[id]) loadDetail(id);
+    });
+    scheduleNext(jobs);
   }
 
   function load() {
@@ -163,13 +205,16 @@
       stateEl.textContent = "";
       listEl.innerHTML = '<div class="placeholder-block">运行服务不可达(' + esc(err.message) +
         ")。纯静态部署不提供任务查询;需要 engine 服务与 <code>/api/v1/public/</code> 反代。</div>";
+      scheduleNext([]);
     });
   }
 
   function unitRow(u, label) {
-    var ok = u.task_success ? '<span class="tag ok">成功</span>' : '<span class="tag off">未成功</span>';
+    // 单元级 task_success 缺席时(模板逐次运行行)退回 validity 判定
+    var ok = (u.task_success != null) ? !!u.task_success : (u.validity === "VALID");
+    var okTag = ok ? '<span class="tag ok">成功</span>' : '<span class="tag off">未成功</span>';
     var inval = u.validity === "INVALID" ? ' <span class="tag off">无效</span>' : "";
-    return "<tr><td>" + esc(label || u.unit_id) + "</td><td>" + ok + inval + "</td><td>" +
+    return "<tr><td>" + esc(label || u.unit_id) + "</td><td>" + okTag + inval + "</td><td>" +
       esc(u.actual_agent_steps || "—") + "</td><td>" + esc(u.stop_reason || "—") + "</td><td>" +
       esc(u.duration_ms || "—") + " ms</td></tr>";
   }
@@ -194,26 +239,47 @@
       }).join(" · ") + "</small></p>";
     }
     if (payload.test_type === "COMPARISON_CASE") {
-      html += "<h4>实现结果分布</h4><table><thead><tr><th>Agent 实现</th><th>成功</th><th>有效/无效</th><th>时长 min/中位/max</th><th>离散</th></tr></thead><tbody>";
-      Object.keys(result.by_agent || {}).forEach(function (mode) {
-        var a = result.by_agent[mode];
-        html += "<tr><td>" + esc(mode) + "</td><td>" + a.success_count + "/" + a.total_runs + "</td><td>" +
-          a.valid_runs + "/" + a.invalid_runs + "</td><td>" +
-          esc(a.duration_ms_min) + " / " + esc(a.duration_ms_median) + " / " + esc(a.duration_ms_max) +
-          "</td><td>" + esc(a.duration_ms_stdev == null ? "—" : a.duration_ms_stdev) + "</td></tr>";
-      });
-      html += "</tbody></table>";
+      // 按变体汇总(模板链路结果口径:by_variant;旧批次兼容 by_agent)
+      var byVariant = result.by_variant || {};
+      var vKeys = Object.keys(byVariant);
+      if (vKeys.length) {
+        html += "<h4>按变体汇总</h4><table><thead><tr><th>变体</th><th>运行</th><th>有效/无效</th><th>成功</th><th>停止原因</th></tr></thead><tbody>";
+        vKeys.forEach(function (label) {
+          var a = byVariant[label] || {};
+          html += "<tr><td>" + esc(label) + "</td><td>" + esc(a.total_runs == null ? "—" : a.total_runs) + "</td><td>" +
+            esc((a.valid_runs || 0) + "/" + (a.invalid_runs || 0)) + "</td><td>" +
+            (a.task_success ? "是" : "否") + "</td><td>" +
+            esc((a.stop_reasons || []).join("、") || "—") + "</td></tr>";
+        });
+        html += "</tbody></table>";
+      }
       if ((result.invalid_runs || []).length) {
         html += '<p><small>无效运行(' + result.invalid_runs.length + ",不自动补跑):" +
           result.invalid_runs.map(function (r) { return esc(r.unit_id); }).join("、") + "</small></p>";
       }
-      html += "<h4>逐次运行(" + units.length + ")</h4><table><thead><tr><th>单元</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
-      units.forEach(function (u) { html += unitRow(u, u.agent_mode_id + " × 第" + (u.repeat_index + 1) + "次"); });
+      // 逐次运行与工具调用明细(优先 result.runs;旧结果退回 units)
+      var runRows = (result.runs && result.runs.length) ? result.runs : units;
+      html += "<h4>逐次运行(" + runRows.length + ")</h4><table><thead><tr><th>单元</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
+      runRows.forEach(function (u) {
+        html += unitRow(u, u.variant_label || u.agent_mode_id + " × 第" + ((u.repeat_index || 0) + 1) + "次");
+      });
       html += "</tbody></table>";
-      units.forEach(function (u) {
-        html += '<details class="metric-def"><summary>' + esc(u.unit_id) + " 回答与调用</summary>" +
-          "<p><small>回答:" + esc((u.answer || "").slice(0, 300)) + "</small></p>" +
-          '<pre class="cat-schema">' + esc(JSON.stringify(u.tool_calls || [], null, 1)) + "</pre></details>";
+      runRows.forEach(function (u, index) {
+        var label = u.variant_label || u.unit_id || ("运行 " + (index + 1));
+        var tools = u.tool_calls || [];
+        var steps = (u.model_calls || []).map(function (c, i) {
+          var rs = c.responseSummary || {};
+          return "模型#" + (i + 1) + " " + (rs.decision || c.decision || "") +
+            (rs.textExcerpt ? "(" + String(rs.textExcerpt).slice(0, 60) + "…)" : "");
+        }).join(" → ");
+        html += '<details class="metric-def"><summary>' + esc(label) + " 回答与工具调用</summary>" +
+          (steps ? "<p><small>调用序列:" + esc(steps) + ";完整逐步明细见<a href='/experiment/batch/" + encodeURIComponent(id) + "'>详情页</a></small></p>" : "") +
+          "<p><small>回答:" + esc((u.answer || "(无)").slice(0, 500)) + "</small></p>" +
+          (tools.length
+            ? "<p><small>工具调用 " + tools.length + " 次(工具名 + 模型发送的参数 + 返回摘要):</small></p>" +
+              '<pre class="cat-schema">' + esc(JSON.stringify(tools, null, 1)) + "</pre>"
+            : '<p><small>本次运行未调用工具(模型直接给出最终回答)。</small></p>') +
+          "</details>";
       });
     } else if (payload.execution_scope === "context-only") {
       var stats = result.stats || {};
@@ -222,7 +288,7 @@
         html += "<tr><td>" + esc(v) + "</td><td>" + esc((stats.original_tokens || {})[v]) +
           "</td><td>" + esc((stats.working_tokens || {})[v]) + "</td></tr>";
       });
-      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 尚未运行,需另行发起「运行当前组合」或「原生 4×1」。</small></p>";
+      html += "</tbody></table><p><small>本任务 0 个 Agent 运行;Agent 未自动运行,需另行逐个发起「运行当前组合」(一次一个运行)。</small></p>";
     } else {
       html += "<h4>矩阵单元</h4><table><thead><tr><th>上下文 × Agent</th><th>结果</th><th>步数</th><th>停止原因</th><th>耗时</th></tr></thead><tbody>";
       units.forEach(function (u) {
@@ -235,12 +301,16 @@
         "</small></p>";
     }
     if (payload.error) html += '<p><small>错误:' + esc(payload.error) + "</small></p>";
+    detailCache[id] = html; // 缓存:列表重渲染时原样恢复,不再卡在"读取中"
     box.innerHTML = html;
   }
 
   function loadDetail(id) {
     fetch("/api/v1/public/test-jobs/" + id + "/results", { cache: "no-store" }).then(check)
-      .then(function (payload) { renderDetail(id, payload); })
+      .then(function (payload) {
+        loadedDetails[id] = true; // 成功后才标记,失败可在下次重渲染时重试
+        renderDetail(id, payload);
+      })
       .catch(function (err) {
         var box = document.getElementById("detail-" + id);
         if (box) box.innerHTML = '<div class="placeholder-block">结果读取失败:' + esc(err.message) + "</div>";
@@ -248,7 +318,6 @@
   }
 
   load();
-  setInterval(load, 5000);
 
   /* ── Tab 2:我的批次(登录后;所有者 Bearer 通道) ── */
   var batchStateEl = document.getElementById("batchLoadState");
@@ -259,21 +328,43 @@
     if (!rows.length) {
       batchStateEl.textContent = "";
       batchListEl.innerHTML = '<div class="placeholder-block">登录后还没有发起过批次。到 <a href="/experiment/">实验中心</a> 按模板发起;进度与结果会同时出现在这里。</div>';
+      scheduleBatchNext(rows);
       return;
     }
-    batchStateEl.textContent = "共 " + rows.length + " 个批次,按创建时间倒序;运行中的批次每 5 秒自动刷新。";
+    var activeBatch = rows.some(function (b) { return b.status === "RUNNING" || b.status === "QUEUED" || b.status === "PENDING"; });
+    batchStateEl.textContent = activeBatch
+      ? "共 " + rows.length + " 个批次,按创建时间倒序;存在进行中的批次时每 5 秒自动刷新(仅查询,不调用模型)。"
+      : "共 " + rows.length + " 个批次,按创建时间倒序;当前无进行中的批次,列表保持静默。";
     batchListEl.innerHTML = '<table class="exp-table"><tr><th>批次</th><th>实验</th><th>规模</th><th>状态</th><th>时间</th><th></th></tr>' +
       rows.map(function (b) {
-        var scale = b.templateId
-          ? esc(b.variantCount + " 组 × " + b.repeatCount + " 次 = " + b.runCount + " 次运行")
-          : esc((b.runCount == null ? "—" : b.runCount) + " 次运行");
+        // 实验组批次(experimentType=series:*)的统计在实验组详情页,直达 series 页
+        var isSeries = String(b.experimentType || "").indexOf("series:") === 0;
+        var href = "/experiment/" + (isSeries ? "series/" : "batch/") + encodeURIComponent(b.id);
+        var scale = isSeries
+          ? esc((b.variantCount == null ? "—" : b.variantCount) + " 变体 · " + (b.runCount == null ? 0 : b.runCount) + " 个运行")
+          : (b.templateId
+            ? esc(b.variantCount + " 组 × " + b.repeatCount + " 次 = " + b.runCount + " 次运行")
+            : esc((b.runCount == null ? "—" : b.runCount) + " 次运行"));
+        var nameHtml = esc(b.name || b.templateId || "批次") + (isSeries ? ' <span class="tag run">实验组</span>' : "");
         return "<tr><td><code>" + esc(String(b.id || "").slice(0, 8)) + "…</code></td>" +
-          '<td><a href="/experiment/batch/' + encodeURIComponent(b.id) + '">' + esc(b.name || b.templateId || "批次") + "</a></td>" +
+          '<td><a href="' + href + '">' + nameHtml + "</a></td>" +
           "<td>" + scale + "</td>" +
           "<td>" + E.statusTag(b.status, "batch") + "</td>" +
           "<td>" + esc(E.fmtTime(b.createdAt)) + "</td>" +
-          '<td><a href="/experiment/batch/' + encodeURIComponent(b.id) + '">查看详情 →</a></td></tr>';
+          '<td><a href="' + href + '">' + (isSeries ? "查看统计与样本 →" : "查看详情 →") + "</a></td></tr>";
       }).join("") + "</table>";
+    scheduleBatchNext(rows);
+  }
+
+  /* 批次列表轮询治理(P2-1):仅存在进行中的批次时 5s 一轮,空闲 45s,后台暂停 */
+  var batchPollTimer = null;
+  function scheduleBatchNext(rows) {
+    if (batchPollTimer) { clearTimeout(batchPollTimer); batchPollTimer = null; }
+    if (document.visibilityState !== "visible") return;
+    var active = (rows || []).some(function (b) {
+      return b.status === "RUNNING" || b.status === "QUEUED" || b.status === "PENDING";
+    });
+    batchPollTimer = setTimeout(loadBatches, active ? 5000 : 45000);
   }
 
   function loadBatches() {
@@ -281,11 +372,11 @@
       batchStateEl.textContent = "";
       batchListEl.innerHTML = '<div class="placeholder-block">批次读取失败(' + esc(err.message || "数据服务不可用") +
         ");登录会话可能已过期,请重新登录。</div>";
+      scheduleBatchNext([]);
     });
   }
   if (E.isOwner()) {
     loadBatches();
-    setInterval(function () { if (E.isOwner()) loadBatches(); }, 5000);
   }
 
   /* ── Tab 3:公告批次(正式发布索引,所有人可读) ── */

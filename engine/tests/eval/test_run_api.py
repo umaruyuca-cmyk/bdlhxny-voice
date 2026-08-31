@@ -457,11 +457,13 @@ def test_fail_orphan_batches_marks_only_running() -> None:
             self.completed: list[tuple[str, str]] = []
 
         def list_batches(self, *, limit: int = 20, cursor=None):
-            return {"batches": [
-                {"id": "b-run", "status": "RUNNING"},
-                {"id": "b-done", "status": "COMPLETE"},
-                {"id": "b-run2", "status": "RUNNING"},
-            ]}
+            return {
+                "batches": [
+                    {"id": "b-run", "status": "RUNNING"},
+                    {"id": "b-done", "status": "COMPLETE"},
+                    {"id": "b-run2", "status": "RUNNING"},
+                ]
+            }
 
         def complete_batch(self, batch_id: str, status: str) -> None:
             self.completed.append((batch_id, status))
@@ -478,12 +480,18 @@ def test_job_lookup_by_batch(client: TestClient) -> None:
     import bdlh_runtime.run_api as run_api_module
 
     run_api_module._JOBS["job-old"] = {
-        "job_id": "job-old", "batch_id": "batch-lookup-1", "status": "done",
-        "started_at": "2026-08-27T10:00:00+08:00", "progress": {"done": 1, "total": 2},
+        "job_id": "job-old",
+        "batch_id": "batch-lookup-1",
+        "status": "done",
+        "started_at": "2026-08-27T10:00:00+08:00",
+        "progress": {"done": 1, "total": 2},
     }
     run_api_module._JOBS["job-new"] = {
-        "job_id": "job-new", "batch_id": "batch-lookup-1", "status": "running",
-        "started_at": "2026-08-27T11:00:00+08:00", "progress": {"done": 2, "total": 2},
+        "job_id": "job-new",
+        "batch_id": "batch-lookup-1",
+        "status": "running",
+        "started_at": "2026-08-27T11:00:00+08:00",
+        "progress": {"done": 2, "total": 2},
     }
     try:
         ok = client.get("/api/v1/jobs/by-batch/batch-lookup-1", headers=_auth())
@@ -627,9 +635,7 @@ def test_run_events_stream_resumes_from_last_event_id(client: TestClient) -> Non
     assert "event: run.completed" in body  # 只补发 sequence>2 的部分
 
 
-def test_run_events_stream_falls_back_to_db_history(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_events_stream_falls_back_to_db_history(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from uuid import uuid4
 
     run_id = str(uuid4())
@@ -690,14 +696,17 @@ def test_audit_package_hash_verifiable_and_downloadable(client: TestClient) -> N
     assert package["auditHash"] == payload_hash(body)
 
 
-def test_batch_tool_call_search_proxies_params(
-    client: TestClient, fake_data: FakeDataClient
-) -> None:
+def test_batch_tool_call_search_proxies_params(client: TestClient, fake_data: FakeDataClient) -> None:
     response = client.get(
         "/api/v1/batches/batch-1/tool-calls/search",
         headers=_auth(),
-        params={"tool": "market.get_realtime_quote", "status": "DENIED",
-                "audit_code": "G3-AUTH-001", "argument_key": "symbol", "limit": 50},
+        params={
+            "tool": "market.get_realtime_quote",
+            "status": "DENIED",
+            "audit_code": "G3-AUTH-001",
+            "argument_key": "symbol",
+            "limit": 50,
+        },
     )
     assert response.status_code == 200
     body = response.json()

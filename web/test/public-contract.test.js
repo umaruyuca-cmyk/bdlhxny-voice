@@ -13,7 +13,8 @@ const PUBLIC_PAGES = [
   ["about", "index"], ["about", "banks"], ["about", "repo"],
   ["showcase", "index"], ["showcase", "results"], ["showcase", "tools"], ["showcase", "runs"],
   ["experiment", "index"], ["experiment", "compression"], ["experiment", "run"],
-  ["experiment", "batches"], ["experiment", "batch"],
+  ["experiment", "batches"], ["experiment", "batch"], ["experiment", "series"],
+  ["experiment", "context-workbench"], ["experiment", "context-build"],
   ["test", "index"],
   ["context", "index"], ["context", "library"], ["context", "design"], ["context", "results"],
   ["judging", "index"], ["judging", "metrics"], ["judging", "judge"], ["judging", "invalid"],
@@ -25,10 +26,13 @@ const PUBLIC_PAGES = [
 /** 实验模块页:允许匿名公开接口 + 同源所有者通道白名单(与 nginx/dev-server 反代同口径)。 */
 const PUBLIC_API_PAGES = new Set([
   "experiment/index", "experiment/compression", "experiment/run",
-  "experiment/batches", "experiment/batch", "test/index",
+  "experiment/batches", "experiment/batch", "experiment/series", "test/index",
+  "experiment/context-workbench", "experiment/context-build",
 ]);
-/** 同源所有者通道白名单(前后端对接契约 §2);llm-config/test 供发起页连接检测。 */
-const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|batches|jobs|runs)(\/|\?|["'`]|$))/;
+/** 同源所有者通道白名单(前后端对接契约 §2);llm-config/test 供发起页连接检测;
+ * experiment-series 供发起页创建实验组与单次运行;statistics 供实验组页统计快照
+ * (与 scripts/owner-api-allowlist.mjs、site-structure 同一清单)。 */
+const EXPERIMENT_API_OK = /\/api\/v1\/(public(\/|$)|(login|logout|llm-config\/test|experiment-templates|template-batches|experiment-series|statistics|batches|jobs|runs|context)(\/|\?|["'`]|$))/;
 
 async function readPublicPage(dir, page) {
   const rel = dir ? `../public/${dir}/${page}.html` : `../public/${page}.html`;

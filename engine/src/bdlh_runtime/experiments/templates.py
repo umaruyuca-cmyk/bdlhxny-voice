@@ -201,9 +201,7 @@ def _validate_template(template: ExperimentTemplate) -> None:
     for variant in template.variants:
         for path, _value in variant.overrides:
             if path not in template.independent_variable:
-                raise RunConfigError(
-                    f"模板 {template.template_id} 变体 {variant.label} 覆盖了自变量之外的路径 {path}"
-                )
+                raise RunConfigError(f"模板 {template.template_id} 变体 {variant.label} 覆盖了自变量之外的路径 {path}")
     for variant in template.variants:
         config = template.base_config.with_overrides(dict(variant.overrides))
         config.validate_for_formal_template()
@@ -235,8 +233,16 @@ _register(
         repeat_count_range=(1, 1),
         formal_min_repeat_count=1,
         max_runs_per_batch=4,
-        result_metrics=("original_tokens", "working_tokens", "build_duration_ms", "compression_extra_tokens",
-                        "required_retained", "key_facts_retained", "omitted_items", "compiled_context_hash"),
+        result_metrics=(
+            "original_tokens",
+            "working_tokens",
+            "build_duration_ms",
+            "compression_extra_tokens",
+            "required_retained",
+            "key_facts_retained",
+            "omitted_items",
+            "compiled_context_hash",
+        ),
         allow_context_only=True,
         classification=CLASSIFICATION_FORMAL,
         notes="可以只生成四份上下文,不自动创建 Agent 运行;变体必须复用同一 Session 版本、当前事件、工具目录和 Mock",
@@ -259,9 +265,15 @@ _register(
         owner_allowed=True,
         repeat_count_range=(1, 5),
         max_runs_per_batch=10,
-        result_metrics=("interception_recall", "false_interception_rate", "unauthorized_mock_executions",
-                        "unconfirmed_write_mock_executions", "recovery_after_rejection", "bypassed_event_count",
-                        "audit_completeness"),
+        result_metrics=(
+            "interception_recall",
+            "false_interception_rate",
+            "unauthorized_mock_executions",
+            "unconfirmed_write_mock_executions",
+            "recovery_after_rejection",
+            "bypassed_event_count",
+            "audit_completeness",
+        ),
         classification=CLASSIFICATION_FORMAL,
         notes="两组使用同一个 AgentLoop 实现;off 档旁路事件可见但只执行 Mock",
     )
@@ -283,8 +295,15 @@ _register(
         owner_allowed=True,
         repeat_count_range=(1, 5),
         max_runs_per_batch=10,
-        result_metrics=("retrieval_error", "selection_error", "invocation_error", "final_answer_error",
-                        "tool_not_visible_events", "search_rounds", "tool_schema_tokens"),
+        result_metrics=(
+            "retrieval_error",
+            "selection_error",
+            "invocation_error",
+            "final_answer_error",
+            "tool_not_visible_events",
+            "search_rounds",
+            "tool_schema_tokens",
+        ),
         classification=CLASSIFICATION_FORMAL,
         notes="search 的候选范围 = 完整目录 − 同一排除项(eligible catalog);回退策略固定为 none 并记录",
     )
@@ -334,8 +353,13 @@ _register(
         owner_allowed=True,
         repeat_count_range=(1, 5),
         max_runs_per_batch=15,
-        result_metrics=("acceptable_path_hit", "honest_limitation_rate", "fabrication_rate",
-                        "excluded_tool_called", "success_claimed_without_call"),
+        result_metrics=(
+            "acceptable_path_hit",
+            "honest_limitation_rate",
+            "fabrication_rate",
+            "excluded_tool_called",
+            "success_claimed_without_call",
+        ),
         classification=CLASSIFICATION_FORMAL,
         notes="匿名用户只能选择模板预设;所有者可在允许列表内创建新预设;排除项不能加入不存在的工具",
     )
@@ -382,21 +406,26 @@ _register(
         repeat_count_range=(1, 1),
         formal_min_repeat_count=1,
         max_runs_per_batch=2,
-        result_metrics=("original_tokens", "working_tokens", "required_retained", "summary_model_calls",
-                        "task_success", "tool_correct"),
+        result_metrics=(
+            "original_tokens",
+            "working_tokens",
+            "required_retained",
+            "summary_model_calls",
+            "task_success",
+            "tool_correct",
+        ),
         allow_context_only=True,
         classification=CLASSIFICATION_FORMAL,
         notes="唯一自变量是压缩方法:共用 budgeted 预算与分类,仅摘要器不同;LLM 失败回退抽取式并如实标注",
     )
 )
 
+
 def get_template(template_id: str) -> ExperimentTemplate:
     try:
         return TEMPLATES[template_id]
     except KeyError:
-        raise TemplatePlanError(
-            f"未知实验模板:{template_id!r};可用:{sorted(TEMPLATES)}"
-        ) from None
+        raise TemplatePlanError(f"未知实验模板:{template_id!r};可用:{sorted(TEMPLATES)}") from None
 
 
 def list_templates(*, role: str | None = None) -> list[ExperimentTemplate]:
@@ -547,12 +576,13 @@ def plan_template_batch(
             unknown = [name for name in excluded if name not in known_tool_names()]
             if unknown:
                 raise TemplatePlanError(f"排除项包含不存在或不在允许列表内的工具:{unknown}")
-            selected_variants = (
-                VariantSpec("owner-custom", (("tools.excluded_tools", list(excluded)),)),
-            )
+            selected_variants = (VariantSpec("owner-custom", (("tools.excluded_tools", list(excluded)),)),)
             preset_hash = hash_of(
-                {"preset_version": TOOL_EXCLUSION_PRESET_VERSION, "preset_id": "owner-custom",
-                 "excluded_tools": list(excluded)}
+                {
+                    "preset_version": TOOL_EXCLUSION_PRESET_VERSION,
+                    "preset_id": "owner-custom",
+                    "excluded_tools": list(excluded),
+                }
             )
 
     # 温度模板:能力确认(不支持温度的模型不能创建批次)
@@ -608,6 +638,9 @@ def plan_template_batch(
         "template_classification": template.classification,
         "independent_variable": list(template.independent_variable),
         "repeat_count": repeat_count,
+        # 正式最小样本门槛随计划冻结(修复方案 P1-4):报告、统计快照与
+        # 实验组定义携带同一值;旧报告缺失时统计端才回退兼容默认值
+        "formal_min_repeat_count": template.formal_min_repeat_count,
         "role": role,
         "variant_labels": [variant.label for variant in selected_variants],
         "frozen_run_config": base.with_overrides(overrides_advanced).to_payload(),

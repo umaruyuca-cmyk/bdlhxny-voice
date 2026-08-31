@@ -52,7 +52,7 @@ class JobBudget:
     terminated_reason: str = field(default="")
 
     @classmethod
-    def from_env(cls) -> "JobBudget":
+    def from_env(cls) -> JobBudget:
         return cls(
             max_llm_requests=_env_int("MAX_LLM_REQUESTS_PER_JOB"),
             max_input_tokens=_env_int("MAX_INPUT_TOKENS_PER_JOB"),

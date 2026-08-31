@@ -68,15 +68,11 @@ def validate_repeat_count(test_type: TestType, repeat_count: int) -> int:
         raise RepeatCountError(f"repeat_count 必须是整数,收到 {repeat_count!r}")
     if test_type is TestType.COMPARISON_CASE:
         if repeat_count not in COMPARISON_REPEAT_COUNTS:
-            raise RepeatCountError(
-                f"对比用例 repeat_count 只能是 {list(COMPARISON_REPEAT_COUNTS)},收到 {repeat_count}"
-            )
+            raise RepeatCountError(f"对比用例 repeat_count 只能是 {list(COMPARISON_REPEAT_COUNTS)},收到 {repeat_count}")
         return repeat_count
     if test_type is TestType.COMPRESSION_CASE:
         if repeat_count != COMPRESSION_REPEAT_COUNT:
-            raise RepeatCountError(
-                f"压缩用例每个实验条件固定运行 {COMPRESSION_REPEAT_COUNT} 次,不接受 {repeat_count}"
-            )
+            raise RepeatCountError(f"压缩用例每个实验条件固定运行 {COMPRESSION_REPEAT_COUNT} 次,不接受 {repeat_count}")
         return repeat_count
     raise RepeatCountError(f"未知 test_type:{test_type!r}")
 

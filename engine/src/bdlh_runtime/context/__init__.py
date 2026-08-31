@@ -16,9 +16,9 @@ from .models import (
     ItemScore,
 )
 from .scoring import (
-    SCORING_VERSION,
     DEFAULT_WEIGHTS,
     SCENE_WEIGHTS,
+    SCORING_VERSION,
     MultiFactorScorer,
     ScoringContext,
     ScoringWeights,

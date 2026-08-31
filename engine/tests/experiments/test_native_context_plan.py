@@ -51,9 +51,7 @@ async def test_run_native_context_matrix_uses_frozen_artifacts_and_configs():
             "duration_ms": 1,
         }
 
-    result = await run_native_context_matrix(
-        SESSION_ID, artifacts=compiled, cell_runner=fake_runner, max_agent_steps=4
-    )
+    result = await run_native_context_matrix(SESSION_ID, artifacts=compiled, cell_runner=fake_runner, max_agent_steps=4)
     assert result["unit_count"] == 4
     assert len(result["cells"]) == 4
     assert {mode for _v, mode in spy} == {NATIVE_AGENT_MODE_ID}
@@ -75,17 +73,16 @@ async def test_run_native_context_matrix_uses_frozen_artifacts_and_configs():
 def test_native_run_configs_pass_formal_validation():
     session, variants, _ = compression_module._load_session_bundle(SESSION_ID)
     compiled = compile_variants(session, variants)
-    configs = build_compression_run_configs(
-        session, compiled, 4, agent_mode_ids=(NATIVE_AGENT_MODE_ID,)
-    )
+    configs = build_compression_run_configs(session, compiled, 4, agent_mode_ids=(NATIVE_AGENT_MODE_ID,))
     assert len(configs) == 4
     for config in configs.values():
         config.validate_for_formal_template()  # native 配置满足正式模板边界
 
 
-def test_public_service_supports_native_matrix_scope(tmp_path, monkeypatch):
+def test_public_service_closes_native_matrix_scope(tmp_path):
+    """一次只运行一个 Agent(P0-1):匿名服务的 native-matrix 一次四运行入口关闭。"""
     from bdlh_runtime.experiments.job_store import JobStore
-    from bdlh_runtime.experiments.public_service import AnonymousJobService
+    from bdlh_runtime.experiments.public_service import AnonymousJobService, PublicTestError
 
     store = JobStore(root=tmp_path)
     service = AnonymousJobService(
@@ -93,14 +90,17 @@ def test_public_service_supports_native_matrix_scope(tmp_path, monkeypatch):
         quota=_quota(),
         thread_factory=lambda target: None,  # 不真正起线程
     )
-    job = service._create_compression_job(
-        {"test_type": TestType.COMPRESSION_CASE.value, "session_id": SESSION_ID,
-         "execution_scope": COMPRESSION_SCOPE_NATIVE_MATRIX, "repeat_count": 1},
-        job_id="job-native-test",
-    )
-    assert job.execution_scope == COMPRESSION_SCOPE_NATIVE_MATRIX
-    assert len(job.units) == 4
-    assert {unit.agent_mode_id for unit in job.units} == {NATIVE_AGENT_MODE_ID}
+    with pytest.raises(PublicTestError) as excinfo:
+        service._create_compression_job(
+            {
+                "test_type": TestType.COMPRESSION_CASE.value,
+                "session_id": SESSION_ID,
+                "execution_scope": COMPRESSION_SCOPE_NATIVE_MATRIX,
+                "repeat_count": 1,
+            },
+            job_id="job-native-test",
+        )
+    assert "入口已关闭" in str(excinfo.value)
 
 
 def _quota():

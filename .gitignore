@@ -53,3 +53,8 @@ skills/**/portfolio.json
 
 # 实验任务持久化目录(运行时产物)
 engine/var/jobs/
+# Node 依赖(任何层级;web/ 维护自己的 package.json 与锁文件)
+node_modules/
+
+# 本地服务启动脚本(含密钥,不入库)
+.local-services/
