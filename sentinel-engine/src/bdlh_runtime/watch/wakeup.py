@@ -16,12 +16,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from bdlh_runtime.memory.recall import MemoryRecallResult, recall_semantic_memory
+from bdlh_runtime.memory.recall import recall_semantic_memory
 
 from .events import WatchEvent
 
@@ -76,8 +78,12 @@ class WakeupPack:
 # ── 提示加载 ─────────────────────────────────────────────────────────────────
 
 
+@functools.cache
 def load_wakeup_prompt() -> str:
-    """加载 ``prompts/scene_wakeup.md`` 文本；缺失时抛错（提示是契约真源，不得静默）。"""
+    """加载 ``prompts/scene_wakeup.md`` 文本；缺失时抛错（提示是契约真源，不得静默）。
+
+    运行期不变，缓存避免每次唤醒重复读盘；缺失抛错不会进缓存。
+    """
     if not _WAKEUP_PROMPT_FILE.is_file():
         raise FileNotFoundError(f"唤醒系统提示缺失：{_WAKEUP_PROMPT_FILE}")
     return _WAKEUP_PROMPT_FILE.read_text(encoding="utf-8")
@@ -129,32 +135,38 @@ class WakeupAssembler:
         # 1. 系统提示（加载一次，失败即抛——契约真源）
         system_prompt = load_wakeup_prompt()
 
-        # 2. 持仓快照（失败不阻断，标记降级）
-        portfolio_snapshot: dict[str, Any] | None = None
-        portfolio_degraded = False
-        if self._portfolio is not None:
+        # 2-4 三路独立远程读并行（持仓 / 画像各自失败不阻断并标记降级）；
+        # 串行等待会把唤醒延迟堆成三倍往返。降级语义与串行版一致：
+        # 分支内部吞异常记 degraded，召回失败由 recall 结果自身承载。
+        async def _portfolio_branch() -> tuple[dict[str, Any] | None, bool]:
+            if self._portfolio is None:
+                return None, False
             try:
-                portfolio_snapshot = await self._portfolio.get_snapshot(user_id)
+                return await self._portfolio.get_snapshot(user_id), False
             except Exception as exc:  # noqa: BLE001
                 logger.warning("wakeup portfolio degraded: %s", type(exc).__name__)
-                portfolio_degraded = True
+                return None, True
 
-        # 3. 风险画像（失败不阻断，标记降级）
-        risk_profile: dict[str, Any] | None = None
-        risk_profile_degraded = False
-        if self._risk_profile is not None:
+        async def _risk_profile_branch() -> tuple[dict[str, Any] | None, bool]:
+            if self._risk_profile is None:
+                return None, False
             try:
-                risk_profile = await self._risk_profile.get_profile(user_id)
+                return await self._risk_profile.get_profile(user_id), False
             except Exception as exc:  # noqa: BLE001
                 logger.warning("wakeup risk profile degraded: %s", type(exc).__name__)
-                risk_profile_degraded = True
+                return None, True
 
-        # 4. L3 目标记忆召回（失败不阻断，标 memory_degraded）
-        recall_result: MemoryRecallResult = await recall_semantic_memory(
-            self._memory_store,
-            user_id=user_id,
-            query=_memory_query_for(event),
-            limit=self._memory_limit,
+        ((portfolio_snapshot, portfolio_degraded), (risk_profile, risk_profile_degraded), recall_result) = (
+            await asyncio.gather(
+                _portfolio_branch(),
+                _risk_profile_branch(),
+                recall_semantic_memory(
+                    self._memory_store,
+                    user_id=user_id,
+                    query=_memory_query_for(event),
+                    limit=self._memory_limit,
+                ),
+            )
         )
 
         return WakeupPack(
