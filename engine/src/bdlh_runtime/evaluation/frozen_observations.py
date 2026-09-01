@@ -6,8 +6,10 @@
 与正例行同表存放、按冻结集区分：FAILED/TIMEOUT 行照常进查找表，
 失败信息进 Observation,不打 MOCK 质量标记(反 mock 防线不误伤评测组)。
 
-call_key 规则：基准返回为工具名；标的覆盖为「工具名:标的代码」（如
-``market.get_valuation:600519``）。查找先精确（带 symbol 覆盖键）再回退基准。
+call_key 规则：基准返回为工具名；覆盖键为「工具名:限定值」——symbol 类工具
+用标的代码（如 ``market.get_valuation:600519``），文件/代码类工具用 path
+参数（如 ``file.read:db/docs/01-总体设计.md``，来自各用例自带的冻结集）。
+查找依次尝试 symbol 覆盖键 → path 覆盖键 → 基准键，全部未命中回失败桩。
 """
 
 from __future__ import annotations
@@ -42,15 +44,18 @@ class FrozenObservations:
             raise ValueError("tool fixture payload has no usable responses")
 
     def get(self, tool_name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-        """按 (tool_name, symbol) 查找冻结返回；覆盖键优先，未命中回失败桩。"""
-        symbol = str((arguments or {}).get("symbol") or "")
+        """按 (tool_name, 覆盖键) 查找冻结返回；覆盖键优先，未命中回失败桩。"""
+        args = arguments or {}
         row: dict[str, Any] | None = None
-        if symbol:
-            row = self._by_key.get(f"{tool_name}:{symbol}")
+        for qualifier in (str(args.get("symbol") or ""), str(args.get("path") or "")):
+            if qualifier:
+                row = self._by_key.get(f"{tool_name}:{qualifier}")
+                if row is not None:
+                    break
         if row is None:
             row = self._by_key.get(tool_name)
         if row is None:
-            return {"status": "FAILED", "error": f"unknown tool: {tool_name}"}
+            return {"status": "FAILED", "error": f"no frozen observation for: {tool_name}"}
         if row["status"] == "SUCCESS":
             return row["response"]
         return {"status": row["status"], **row["response"]}

@@ -282,7 +282,7 @@ class LoginRequest(BaseModel):
 
 
 class ContextBatchRequest(BaseModel):
-    """长上下文压缩对照批次:六套 ctx 用例 × (full-raw / budgeted-comp) 两变体。"""
+    """长上下文压缩对照批次:ctx 用例 × (full / budgeted-hybrid-v1 / budgeted-extractive) 对照变体。"""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -53,6 +53,15 @@ class TestClassifyFailure:
     def test_balance_is_invalid(self) -> None:
         assert classify_failure("insufficient balance, please top up") == ("INVALID", "INSUFFICIENT_BALANCE")
 
+    def test_provider_402_balance_wording_is_invalid(self) -> None:
+        """provider 实测文案(zhipu 402/code 30001):语序是 balance is insufficient。"""
+        assert (
+            classify_failure(
+                "Error code: 402 - {'code': 30001, 'message': 'Sorry, your account balance is insufficient', 'data': None}"
+            )
+            == ("INVALID", "INSUFFICIENT_BALANCE")
+        )
+
     def test_service_unavailable_is_invalid(self) -> None:
         assert classify_failure("Connection error: connection refused") == ("INVALID", "MODEL_SERVICE_UNAVAILABLE")
 

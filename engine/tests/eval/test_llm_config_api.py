@@ -28,8 +28,13 @@ class FakeLlmData:
         return {"accountId": "acct-1", "username": "owner"} if token == "t" else None
 
     def list_cases(self) -> list[dict[str, Any]]:
-        # 压缩对照通道只接受带对照变体(full-raw / budgeted-comp)的 ctx 用例
-        return [{"id": "ctx-mini-port", "variants": [{"variantId": "full-raw"}, {"variantId": "budgeted-comp"}]}]
+        # 压缩对照通道只接受带对照变体(full / budgeted-*)的 ctx 用例
+        return [
+            {
+                "id": "ctx-mini-port",
+                "variants": [{"variantId": "full"}, {"variantId": "budgeted-hybrid-v1"}],
+            }
+        ]
 
     def get_tool_catalog(self) -> dict[str, Any]:
         return {"capabilities": []}

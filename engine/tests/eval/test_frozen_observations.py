@@ -33,8 +33,53 @@ def test_arguments_optional(frozen: FrozenObservations) -> None:
 def test_unknown_tool_returns_failure_stub(frozen: FrozenObservations) -> None:
     assert frozen.get("market.no_such_tool", {"symbol": "300750"}) == {
         "status": "FAILED",
-        "error": "unknown tool: market.no_such_tool",
+        "error": "no frozen observation for: market.no_such_tool",
     }
+
+
+def test_path_override_resolves_file_tool_calls() -> None:
+    """path 覆盖键:文件/代码类工具按 path 参数区分冻结返回(用例自带冻结集)。"""
+    table = FrozenObservations(
+        {
+            "responses": [
+                {
+                    "call_key": "file.read:db/docs/01-总体设计.md",
+                    "response_status": "SUCCESS",
+                    "response": {"content": "数据库总体设计……", "lines": 427},
+                },
+                {
+                    "call_key": "file.read:deploy/docker-compose.yml",
+                    "response_status": "SUCCESS",
+                    "response": {"content": "services: data/engine/web……"},
+                },
+            ]
+        }
+    )
+    assert table.get("file.read", {"path": "db/docs/01-总体设计.md"})["lines"] == 427
+    assert table.get("file.read", {"path": "deploy/docker-compose.yml"})["content"].startswith("services")
+
+
+def test_unfrozen_path_misses_to_failure_stub() -> None:
+    """path 键未冻结且无基准键:失败桩(冻结纪律:脚本外调用不编造返回)。"""
+    table = FrozenObservations(
+        {"responses": [{"call_key": "file.read:db/docs/a.md", "response_status": "SUCCESS", "response": {"ok": True}}]}
+    )
+    assert table.get("file.read", {"path": "db/docs/OTHER.md"}) == {
+        "status": "FAILED",
+        "error": "no frozen observation for: file.read",
+    }
+
+
+def test_symbol_takes_priority_over_path_when_both_present() -> None:
+    table = FrozenObservations(
+        {
+            "responses": [
+                {"call_key": "t:sym", "response_status": "SUCCESS", "response": {"k": "symbol"}},
+                {"call_key": "t:path", "response_status": "SUCCESS", "response": {"k": "path"}},
+            ]
+        }
+    )
+    assert table.get("t", {"symbol": "sym", "path": "path"})["k"] == "symbol"
 
 
 def test_success_rows_return_response_as_is(negative: FrozenObservations) -> None:

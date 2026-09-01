@@ -34,8 +34,8 @@ class FakeDataClient:
             "caseId": case_id,
             "caseVersion": version,
             "variantId": variant_id,
-            "contextStrategy": "budgeted" if variant_id == "budgeted-comp" else "full",
-            "tokenBudget": 12288 if variant_id == "budgeted-comp" else 65536,
+            "contextStrategy": "budgeted" if variant_id == "budgeted-hybrid-v1" else "full",
+            "tokenBudget": 12288 if variant_id == "budgeted-hybrid-v1" else 65536,
             "source": "data_fixture",
             "items": [
                 {
@@ -95,17 +95,17 @@ class FakeDataClient:
                 "steps": [],
                 "variants": [
                     {
-                        "variantId": "full-raw",
+                        "variantId": "full",
                         "contextStrategy": "full",
                         "tokenBudget": 65536,
-                        "snapshotId": "ctx-mini-port:full-raw:fixture-v1",
+                        "snapshotId": "ctx-mini-port:full:fixture-v1",
                         "snapshotHash": "sha256:p1",
                     },
                     {
-                        "variantId": "budgeted-comp",
+                        "variantId": "budgeted-hybrid-v1",
                         "contextStrategy": "budgeted",
                         "tokenBudget": 12288,
-                        "snapshotId": "ctx-mini-port:budgeted-comp:fixture-v1",
+                        "snapshotId": "ctx-mini-port:budgeted-hybrid-v1:fixture-v1",
                         "snapshotHash": "sha256:p2",
                     },
                 ],
@@ -318,7 +318,7 @@ def test_invalid_run_is_not_marked_valid(
     monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
     recorder = _sample_recorder("native-tool-calling", status="INVALID", error_category="RATE_LIMITED")
     recorder.record.case_id = "ctx-mini-port"
-    recorder.record.variant_id = "budgeted-comp"
+    recorder.record.variant_id = "budgeted-hybrid-v1"
 
     def fake_execute(_request: Any, _views: Any, _selected: Any) -> tuple[dict[str, Any], list[Any]]:
         return {"run_records": [{"run_key": recorder.record.run_key, "run_id": None}]}, [recorder.record]
@@ -365,8 +365,8 @@ def test_context_batch_persists_variant_runs(
     monkeypatch.setattr(run_api, "ARTIFACTS_DIR", tmp_path)
     recorder = _sample_recorder("native-tool-calling")
     recorder.record.case_id = "ctx-mini-port"
-    recorder.record.variant_id = "budgeted-comp"
-    recorder.record.snapshot_id = "ctx-mini-port:budgeted-comp:fixture-v1"
+    recorder.record.variant_id = "budgeted-hybrid-v1"
+    recorder.record.snapshot_id = "ctx-mini-port:budgeted-hybrid-v1:fixture-v1"
     recorder.record.context_strategy = "budgeted"
     recorder.attach_context_build(
         {
@@ -437,8 +437,8 @@ def test_context_batch_persists_variant_runs(
     assert job["status"] == "done", job.get("error")
 
     run_payload = fake_data.created_runs[0]
-    assert run_payload["variantId"] == "budgeted-comp"
-    assert run_payload["snapshotId"] == "ctx-mini-port:budgeted-comp:fixture-v1"
+    assert run_payload["variantId"] == "budgeted-hybrid-v1"
+    assert run_payload["snapshotId"] == "ctx-mini-port:budgeted-hybrid-v1:fixture-v1"
     assert run_payload["contextStrategy"] == "budgeted"
     assert len(fake_data.saved_context_builds) == 1
     build = fake_data.saved_context_builds[0][1]

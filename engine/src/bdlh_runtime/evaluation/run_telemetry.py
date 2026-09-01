@@ -82,7 +82,17 @@ MODE_NATIVE = "native-tool-calling"
 TOKENIZER_VERSION = "conservative-chars4-v1"
 
 _RATE_LIMIT_MARKERS = ("429", "rate limit", "ratelimit", "too many requests", "请求过于频繁", "频率限制")
-_BALANCE_MARKERS = ("余额不足", "insufficient balance", "insufficient_balance", "欠费", "arrears")
+_BALANCE_MARKERS = (
+    "余额不足",
+    "insufficient balance",
+    "balance is insufficient",
+    "insufficient_balance",
+    "欠费",
+    "arrears",
+    # provider 实测文案:Error code: 402 - {'code': 30001, 'message': 'Sorry, your account balance is insufficient'}
+    "error code: 402",
+    "30001",
+)
 _UNAVAILABLE_MARKERS = (
     "connection",
     "connect",
@@ -1403,6 +1413,8 @@ def build_run_artifact(record: RunRecord) -> dict[str, Any]:
             "git_commit": record.provenance.get("git_commit", "unknown"),
             "prompt_hash": record.provenance.get("prompt_hash", ""),
             "tool_catalog_hash": record.provenance.get("tool_catalog_hash", ""),
+            # 本运行实际使用的冻结工具集(按用例取集后与全局集区分;旧运行无此键)
+            "fixture_set_id": record.provenance.get("fixture_set_id"),
             "snapshot_hash": record.snapshot_hash,
             "snapshot_id": record.snapshot_id,
             "judge_version": record.provenance.get("judge_version", ""),

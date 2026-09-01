@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -24,11 +25,23 @@ from tests.helpers_registry import seeded_snapshot
 class FakeVariantData:
     """变体上下文读取替身:与 data 服务 /variants/{id}/context 响应同构。"""
 
-    def __init__(self, contexts: dict[tuple[str, str], dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        contexts: dict[tuple[str, str], dict[str, Any]],
+        fixture_sets: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         self.contexts = contexts
+        self.fixture_sets = fixture_sets or {}
+        self.requested_fixture_sets: list[str] = []
 
     def get_case_variant_context(self, case_id: str, version: int, variant_id: str) -> dict[str, Any]:
         return self.contexts[(case_id, variant_id)]
+
+    def get_tool_fixtures(self, fixture_set_id: str, *, version: int = 1) -> dict[str, Any]:
+        self.requested_fixture_sets.append(fixture_set_id)
+        if fixture_set_id not in self.fixture_sets:
+            raise KeyError(f"no fixture set: {fixture_set_id}")
+        return self.fixture_sets[fixture_set_id]
 
 
 class ScriptedContextModel:
@@ -177,18 +190,25 @@ def _views() -> list[dict[str, Any]]:
             },
             "variants": [
                 {
-                    "variantId": "full-raw",
+                    "variantId": "full",
                     "contextStrategy": "full",
                     "tokenBudget": 65536,
-                    "snapshotId": "ctx-mini-port:full-raw:fixture-v1",
+                    "snapshotId": "ctx-mini-port:full:fixture-v1",
                     "snapshotHash": "sha256:p1",
                 },
                 {
-                    "variantId": "budgeted-comp",
+                    "variantId": "budgeted-hybrid-v1",
                     "contextStrategy": "budgeted",
                     "tokenBudget": 3000,
-                    "snapshotId": "ctx-mini-port:budgeted-comp:fixture-v1",
+                    "snapshotId": "ctx-mini-port:budgeted-hybrid-v1:fixture-v1",
                     "snapshotHash": "sha256:p2",
+                },
+                {
+                    "variantId": "budgeted-extractive",
+                    "contextStrategy": "budgeted",
+                    "tokenBudget": 3000,
+                    "snapshotId": "ctx-mini-port:budgeted-extractive:fixture-v1",
+                    "snapshotHash": "sha256:p3",
                 },
             ],
         },
@@ -212,17 +232,17 @@ def _views() -> list[dict[str, Any]]:
             },
             "variants": [
                 {
-                    "variantId": "full-raw",
+                    "variantId": "full",
                     "contextStrategy": "full",
                     "tokenBudget": 65536,
-                    "snapshotId": "ctx-mini-manual:full-raw:fixture-v1",
+                    "snapshotId": "ctx-mini-manual:full:fixture-v1",
                     "snapshotHash": "sha256:m1",
                 },
                 {
-                    "variantId": "budgeted-comp",
+                    "variantId": "budgeted-hybrid-v1",
                     "contextStrategy": "budgeted",
                     "tokenBudget": 2500,
-                    "snapshotId": "ctx-mini-manual:budgeted-comp:fixture-v1",
+                    "snapshotId": "ctx-mini-manual:budgeted-hybrid-v1:fixture-v1",
                     "snapshotHash": "sha256:m2",
                 },
             ],
@@ -235,10 +255,11 @@ def _fake_data() -> FakeVariantData:
     manual = _manual_items()
     return FakeVariantData(
         {
-            ("ctx-mini-port", "full-raw"): _context_payload("full", 65536, portfolio),
-            ("ctx-mini-port", "budgeted-comp"): _context_payload("budgeted", 3000, portfolio),
-            ("ctx-mini-manual", "full-raw"): _context_payload("full", 65536, manual),
-            ("ctx-mini-manual", "budgeted-comp"): _context_payload("budgeted", 2500, manual),
+            ("ctx-mini-port", "full"): _context_payload("full", 65536, portfolio),
+            ("ctx-mini-port", "budgeted-hybrid-v1"): _context_payload("budgeted", 3000, portfolio),
+            ("ctx-mini-port", "budgeted-extractive"): _context_payload("budgeted", 3000, portfolio),
+            ("ctx-mini-manual", "full"): _context_payload("full", 65536, manual),
+            ("ctx-mini-manual", "budgeted-hybrid-v1"): _context_payload("budgeted", 2500, manual),
         }
     )
 
@@ -246,15 +267,18 @@ def _fake_data() -> FakeVariantData:
 def test_load_context_variant_cases_builds_case_variant_pairs(finance_pack):
     cases = load_context_variant_cases(_views(), _fake_data())
     assert [(case.case_id, case.variant_id) for case in cases] == [
-        ("ctx-mini-port", "full-raw"),
-        ("ctx-mini-port", "budgeted-comp"),
-        ("ctx-mini-manual", "full-raw"),
-        ("ctx-mini-manual", "budgeted-comp"),
+        ("ctx-mini-port", "full"),
+        ("ctx-mini-port", "budgeted-hybrid-v1"),
+        ("ctx-mini-port", "budgeted-extractive"),
+        ("ctx-mini-manual", "full"),
+        ("ctx-mini-manual", "budgeted-hybrid-v1"),
     ]
     budgeted = cases[1]
     assert budgeted.context_strategy == "budgeted"
     assert budgeted.token_budget == 3000
-    assert budgeted.snapshot_id == "ctx-mini-port:budgeted-comp:fixture-v1"
+    assert budgeted.snapshot_id == "ctx-mini-port:budgeted-hybrid-v1:fixture-v1"
+    # 合成用例无 variants.json 文件:不声明冻结集(运行时回落全局 ab-eval)
+    assert all(case.fixture_set_id is None for case in cases)
     assert budgeted.context_source == "data_fixture"
     assert budgeted.expectations["required_facts"]["portfolio_total"] == 1000000
 
@@ -284,12 +308,12 @@ async def test_two_variant_comparison_passes_context_assertions(finance_pack):
         data=_fake_data(),
         inter_run_delay_s=0,
     )
-    assert len(report.run_records) == 4
+    assert len(report.run_records) == 5
     by_key = {record.run_key: record for record in report.run_records}
 
     for record in report.run_records:
         assert record.status == "COMPLETE", (record.run_key, record.error_text)
-        assert record.variant_id in {"full-raw", "budgeted-comp"}
+        assert record.variant_id in {"full", "budgeted-hybrid-v1", "budgeted-extractive"}
         # 真实构建报告进运行记录与事件流
         assert record.context_build is not None
         events = {event["eventType"]: event for event in record.events}
@@ -303,8 +327,8 @@ async def test_two_variant_comparison_passes_context_assertions(finance_pack):
         assert artifact["context"]["working_tokens"] > 0
         assert artifact["provenance"]["snapshot_hash"].startswith("sha256:")
 
-    port_full = by_key["ctx-mini-port:full-raw:native:0"]
-    port_budgeted = by_key["ctx-mini-port:budgeted-comp:native:0"]
+    port_full = by_key["ctx-mini-port:full:native:0"]
+    port_budgeted = by_key["ctx-mini-port:budgeted-hybrid-v1:native:0"]
     # 压缩生效:budgeted 工作上下文显著小于 full,且仍受预算约束
     assert port_budgeted.context_build["workingTokens"] <= port_budgeted.context_build["tokenBudget"]
     assert port_budgeted.context_build["workingTokens"] < port_full.context_build["workingTokens"]
@@ -325,14 +349,15 @@ async def test_two_variant_comparison_passes_context_assertions(finance_pack):
         assert judgment.validity == "VALID"
 
     summary = summarize_by_variant(report)
-    for variant_id in ("full-raw", "budgeted-comp"):
+    expected_valid = {"full": 2, "budgeted-hybrid-v1": 2, "budgeted-extractive": 1}
+    for variant_id, valid_runs in expected_valid.items():
         row = summary[variant_id]
-        assert row["valid_runs"] == 2
-        assert row["required_retained_runs"] == 2
+        assert row["valid_runs"] == valid_runs
+        assert row["required_retained_runs"] == valid_runs
         assert row["missing_required_fact_runs"] == 0
         assert row["forbidden_fact_leak_runs"] == 0
-        assert row["injection_isolated_runs"] == 2
-    assert summary["budgeted-comp"]["mean_working_tokens"] < summary["full-raw"]["mean_working_tokens"]
+        assert row["injection_isolated_runs"] == valid_runs
+    assert summary["budgeted-hybrid-v1"]["mean_working_tokens"] < summary["full"]["mean_working_tokens"]
 
 
 @pytest.mark.asyncio
@@ -352,7 +377,7 @@ async def test_manual_case_covers_beginning_middle_and_end_facts(finance_pack):
         assert judgment.required_retained and judgment.required_retention_rate == 1.0
         assert judgment.missing_required_facts == []
     # 两条变体的运行记录都关联真实 variant 与快照
-    assert {record.variant_id for record in report.run_records} == {"full-raw", "budgeted-comp"}
+    assert {record.variant_id for record in report.run_records} == {"full", "budgeted-hybrid-v1"}
 
 
 @pytest.mark.asyncio
@@ -361,7 +386,7 @@ async def test_required_overflow_marks_run_invalid(finance_pack):
     cases = load_context_variant_cases(_views(), _fake_data())
     tight = [
         case
-        if not (case.case_id == "ctx-mini-port" and case.variant_id == "budgeted-comp")
+        if not (case.case_id == "ctx-mini-port" and case.variant_id == "budgeted-hybrid-v1")
         else ContextVariantCase(**{**case.__dict__, "token_budget": 10})
         for case in cases
     ]
@@ -373,7 +398,7 @@ async def test_required_overflow_marks_run_invalid(finance_pack):
         data=_fake_data(),
         inter_run_delay_s=0,
     )
-    overflow = [r for r in report.variant_runs if r.case_id == "ctx-mini-port" and r.variant_id == "budgeted-comp"]
+    overflow = [r for r in report.variant_runs if r.case_id == "ctx-mini-port" and r.variant_id == "budgeted-hybrid-v1"]
     assert len(overflow) == 1
     judgment = overflow[0].judgment
     assert judgment.validity == "INVALID"
@@ -381,3 +406,116 @@ async def test_required_overflow_marks_run_invalid(finance_pack):
     assert "required context needs" in (judgment.context_error or "")
     # 其余运行不受影响
     assert all(r.judgment.validity == "VALID" for r in report.variant_runs if r is not overflow[0])
+
+
+# ── 按用例冻结集接线(ctx-session 类文件用例) ────────────────────────────
+
+
+def _case_with_fixture_set(fixture_set_id: str | None) -> ContextVariantCase:
+    base = load_context_variant_cases(_views(), _fake_data())[0]
+    return ContextVariantCase(**{**base.__dict__, "fixture_set_id": fixture_set_id})
+
+
+def _case_fixture_payload() -> dict[str, Any]:
+    """用例自带集:按 path 冻结(与 ScriptedContextModel 的工具流对齐)。"""
+    return {
+        "responses": [
+            {
+                "call_key": "market.get_realtime_quote:300750",
+                "response_status": "SUCCESS",
+                "response": {"symbol": "300750", "price": 185.50},
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_case_fixture_set_is_fetched_and_recorded(finance_pack):
+    """用例声明 fixture_set_id:runner 按用例取集,provenance 记录真实所用。"""
+    data = FakeVariantData(
+        {},
+        fixture_sets={"ab-eval": frozen_payload(), "ctx-mini-tools-v1": _case_fixture_payload()},
+    )
+    case = _case_with_fixture_set("ctx-mini-tools-v1")
+    report = await run_context_eval(
+        cases=[case],
+        llm=ScriptedContextModel(),
+        catalog=catalog_from_snapshot(seeded_snapshot()),
+        data=data,
+        inter_run_delay_s=0,
+    )
+    assert data.requested_fixture_sets == ["ab-eval", "ctx-mini-tools-v1"]
+    assert report.run_records[0].provenance["fixture_set_id"] == "ctx-mini-tools-v1"
+    # 工具观测来自用例集:金标模型按集内返回作答,判定通过
+    assert report.variant_runs[0].judgment.validity == "VALID"
+    assert report.variant_runs[0].judgment.tool_correct
+
+
+@pytest.mark.asyncio
+async def test_missing_case_fixture_set_fails_loudly(finance_pack):
+    """声明的集未注册:立即抛错,不静默回落(回落=再造无效样本)。"""
+    data = FakeVariantData({}, fixture_sets={"ab-eval": frozen_payload()})  # 用例集未注册
+    case = _case_with_fixture_set("ctx-mini-tools-v1")
+    with pytest.raises(KeyError, match="ctx-mini-tools-v1"):
+        await run_context_eval(
+            cases=[case],
+            llm=ScriptedContextModel(),
+            catalog=catalog_from_snapshot(seeded_snapshot()),
+            data=data,
+            inter_run_delay_s=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_explicit_frozen_overrides_case_fixture_set(finance_pack):
+    """显式传入 frozen:调用方完全接管,不请求任何冻结集(测试/CLI 口径)。"""
+    data = FakeVariantData({}, fixture_sets={"ab-eval": frozen_payload(), "ctx-mini-tools-v1": _case_fixture_payload()})
+    case = _case_with_fixture_set("ctx-mini-tools-v1")
+    report = await run_context_eval(
+        cases=[case],
+        llm=ScriptedContextModel(),
+        catalog=catalog_from_snapshot(seeded_snapshot()),
+        frozen=FrozenObservations(frozen_payload()),
+        data=data,
+        inter_run_delay_s=0,
+    )
+    assert data.requested_fixture_sets == []
+    assert report.run_records[0].provenance["fixture_set_id"] == "caller-provided"
+
+
+@pytest.mark.asyncio
+async def test_hard_timeout_abandons_run_and_batch_continues(finance_pack, monkeypatch):
+    """流式悬挂且首次取消被吞(SDK 内部重试):两级熔断放弃该运行,批次继续。"""
+    import bdlh_runtime.evaluation.context_eval as context_eval
+
+    class StickyLoop:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        async def run(self, _turn: Any) -> Any:
+            first_cancel = True
+            while True:
+                try:
+                    await asyncio.sleep(30)
+                except asyncio.CancelledError:
+                    if first_cancel:
+                        first_cancel = False
+                        continue
+                    raise
+
+    monkeypatch.setattr(context_eval, "AgentLoop", StickyLoop)
+    monkeypatch.setenv("EVAL_RUN_TIMEOUT_S", "0.2")
+    monkeypatch.setenv("EVAL_RUN_CANCEL_GRACE_S", "0.2")
+    cases = load_context_variant_cases(_views(), _fake_data())
+    report = await run_context_eval(
+        cases=cases[:2],
+        llm=ScriptedContextModel(),
+        catalog=catalog_from_snapshot(seeded_snapshot()),
+        frozen=FrozenObservations(frozen_payload()),
+        data=_fake_data(),
+        inter_run_delay_s=0,
+    )
+    assert len(report.run_records) == 2  # 批次没有卡死,两个运行都产出
+    for outcome in report.variant_runs:
+        assert outcome.judgment.context_error and "硬放弃" in outcome.judgment.context_error
+        assert outcome.judgment.validity == "INVALID"

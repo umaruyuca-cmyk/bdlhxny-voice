@@ -1,7 +1,9 @@
 """长上下文压缩对照 runner(核心功能任务清单 任务二)。
 
-六套 ctx 用例 × (full-raw / budgeted-comp) 两变体,同一 Agent 逻辑、同一冻结
-工具数据、同一判官(工具/数字/合规断言),唯一变量是上下文处理策略。
+ctx 用例 × (full / budgeted-hybrid-v1 / budgeted-extractive) 对照变体,同一 Agent 逻辑、同一冻结
+工具数据、同一判官(工具/数字/合规断言),唯一变量是上下文处理策略(full 为完整
+上下文对照,budgeted-* 为本项目按预算压缩方法;recent-turns / single-summary
+独立基准不在此对照)。
 变体上下文条目来自 data 服务(优先 fixture_context_items 正规表,兼容
 case_variants.data_fixture JSONB),运行记录关联真实 variant_id。
 
@@ -70,15 +72,19 @@ from bdlh_runtime.evaluation.run_telemetry import (
     record_output_guardrail,
     validity_of,
 )
+from bdlh_runtime.experiments.compression import session_case_dir
 from bdlh_runtime.infra.llm import create_llm
 from bdlh_runtime.registry import load_and_validate_payload
+from bdlh_runtime.session import load_variants
 from bdlh_runtime.tools.catalog import ToolCatalog, catalog_from_snapshot
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-#: 压缩对照执行的变体口径:全量透传 vs 按预算压缩
-FULL_VARIANT = "full-raw"
-BUDGETED_VARIANT = "budgeted-comp"
-COMPARISON_VARIANTS = (FULL_VARIANT, BUDGETED_VARIANT)
+#: 压缩对照执行的变体口径:完整上下文对照 vs 按预算压缩(本项目算法族)。
+#: 与 ctx-session-* 用例 variants.json 对齐;recent-turns / single-summary 是
+#: 独立基准(不使用本项目算法),不进本对照(口径同 experiments.CONTEXT_MODES 注释)。
+FULL_VARIANT = "full"
+BUDGETED_VARIANTS = ("budgeted-hybrid-v1", "budgeted-extractive")
+COMPARISON_VARIANTS = (FULL_VARIANT, *BUDGETED_VARIANTS)
 
 #: 交错运行默认种子(确定性可复现;随批次 fixed_conditions 记录)
 DEFAULT_INTERLEAVE_SEED = 20260821
@@ -176,6 +182,23 @@ class ContextVariantCase:
     history: tuple[dict[str, str], ...] = ()
     expectations: dict[str, Any] = field(default_factory=dict)
     context_source: str = "data_fixture"
+    fixture_set_id: str | None = None
+
+
+def _fixture_set_for(case_id: str) -> str | None:
+    """用例自带的冻结工具集(取自其 variants.json 的 common_conditions)。
+
+    ctx-session 类文件用例声明 fixture_set_id(按 path 冻结的真实工具返回,
+    注册于 fixture_tool_responses);无文件或未声明的用例返回 None,运行时
+    回落全局 ab-eval。显式传入 frozen 参数时本字段不生效(调用方完全接管)。
+    """
+
+    variants_path = session_case_dir(case_id) / f"{case_id}.variants.json"
+    if not variants_path.is_file():
+        return None
+    conditions = load_variants(variants_path).get("common_conditions") or {}
+    set_id = str(conditions.get("fixture_set_id") or "")
+    return set_id or None
 
 
 def load_context_variant_cases(
@@ -186,7 +209,7 @@ def load_context_variant_cases(
 ) -> list[ContextVariantCase]:
     """从用例目录 + 变体上下文接口装配压缩对照执行单元。
 
-    选择口径:用例的变体目录里出现对照变体(full-raw/budgeted-comp)即入选。
+    选择口径:用例的变体目录里出现对照变体(full / budgeted-*)即入选。
     """
 
     cases: list[ContextVariantCase] = []
@@ -231,6 +254,7 @@ def load_context_variant_cases(
                     history=history,
                     expectations=dict(checks.get("context_expectations") or {}),
                     context_source=str(context_payload.get("source") or "data_fixture"),
+                    fixture_set_id=_fixture_set_for(str(view["id"])),
                 )
             )
     return cases
@@ -459,16 +483,22 @@ async def run_context_eval(
     """跑压缩对照批次;每个 (case, variant, repeat) 产出完整 RunRecord。
 
     同一 Agent 逻辑(完整工程模式),唯一变量是上下文处理策略;
+    冻结工具数据:frozen 显式传入时全程接管;否则用例声明 fixture_set_id
+    即按用例取集(缺失抛错,不静默回落),未声明用全局 ab-eval。
     """
 
     if not cases:
         raise ValueError("压缩对照用例为空:需从 data 服务加载 ctx 变体")
     if llm is None:
         llm = build_llm_from_env(model)
-    if catalog is None or frozen is None:
-        client = data or DataClient()
-        catalog = catalog or catalog_from_snapshot(load_and_validate_payload(client.get_tool_catalog()))
-        frozen = frozen or FrozenObservations(client.get_tool_fixtures(FIXTURE_SET_ID))
+    client = data or DataClient()
+    if catalog is None:
+        catalog = catalog_from_snapshot(load_and_validate_payload(client.get_tool_catalog()))
+    # 冻结工具数据:显式传入 = 调用方完全接管(测试口径);否则按用例自带
+    # fixture_set_id 取集(按 path 冻结的真实返回),无声明回落全局 ab-eval。
+    # 同一变体族共享同一份集——"同一冻结工具数据"的对照前提逐用例成立。
+    default_frozen = frozen if frozen is not None else FrozenObservations(client.get_tool_fixtures(FIXTURE_SET_ID))
+    frozen_by_set: dict[str, FrozenObservations] = {}
     catalog_names = {c.name for c in catalog.list()}
     catalog_hash = _tool_catalog_hash(catalog)
     builder = ContextBuilder()
@@ -481,6 +511,13 @@ async def run_context_eval(
         runs_per_variant=runs_per_variant,
     )
     for case in cases:
+        case_frozen = default_frozen
+        if case.fixture_set_id and frozen is None:
+            if case.fixture_set_id not in frozen_by_set:
+                frozen_by_set[case.fixture_set_id] = FrozenObservations(
+                    client.get_tool_fixtures(case.fixture_set_id)
+                )
+            case_frozen = frozen_by_set[case.fixture_set_id]
         for repeat_index in range(runs_per_variant):
             recorder = RunRecorder(
                 run_key=f"{case.case_id}:{case.variant_id}:native:{repeat_index}",
@@ -501,9 +538,13 @@ async def run_context_eval(
             )
             recorder.record.provenance["tool_catalog_hash"] = catalog_hash
             recorder.record.provenance["context_source"] = case.context_source
+            # 实际使用的冻结集:显式传入时由调用方接管,只记来源性质不猜 id
+            recorder.record.provenance["fixture_set_id"] = (
+                (case.fixture_set_id or FIXTURE_SET_ID) if frozen is None else "caller-provided"
+            )
             started = time.perf_counter()
 
-            executor = RecordingExecutor(FrozenToolExecutor(frozen), recorder)
+            executor = RecordingExecutor(FrozenToolExecutor(case_frozen), recorder)
             # AgentTurn.token_budget 口径含工具 Schema 预留;变体预算为纯工作
             # 上下文预算,补偿 Schema(循环内会重新预留并复核)
             scoped_cards = ToolLoader(catalog).load_for_turn(case.scene_tag, authenticated=case.authenticated)
@@ -529,18 +570,44 @@ async def run_context_eval(
                 max_tool_calls=20,
                 context_builder=builder,
             )
-            try:
-                # 单运行总时长熔断:个别流式调用会无限悬挂(provider 端连接 hang,
-                # timeout 参数对流式分块不生效),超时降级为一次运行而非卡死整批
-                agent_result = await asyncio.wait_for(
-                    loop.run(turn), timeout=float(os.getenv("EVAL_RUN_TIMEOUT_S", "300"))
-                )
-            except TimeoutError:
-                agent_result = AgentResult(
-                    answer="", entered_loop=False, degraded=True, context_error="运行超时(timed out):单运行熔断"
-                )
-            except Exception as exc:  # noqa: BLE001 —— 异常降级为一次运行,不中断批次
-                agent_result = AgentResult(answer="", entered_loop=False, degraded=True, context_error=str(exc))
+            # 单运行总时长熔断(两级):provider 流式悬挂时,软超时取消可能被
+            # SDK 内部重试吞掉,wait_for 随之永等并卡死整批——先 asyncio.wait
+            # 软超时,再取消并给宽限(EVAL_RUN_CANCEL_GRACE_S,默认 15s),仍未
+            # 终止即放弃该运行(降级 INVALID),批次继续;被放弃任务事后对事件
+            # 流的追加写入不参与判定(保批次不卡死优先)。
+            run_timeout_s = float(os.getenv("EVAL_RUN_TIMEOUT_S", "300"))
+            cancel_grace_s = float(os.getenv("EVAL_RUN_CANCEL_GRACE_S", "15"))
+            run_task = asyncio.ensure_future(loop.run(turn))
+            done, _ = await asyncio.wait({run_task}, timeout=run_timeout_s)
+            if run_task in done:
+                if run_task.cancelled():
+                    agent_result = AgentResult(
+                        answer="", entered_loop=False, degraded=True, context_error="运行被取消:单运行熔断"
+                    )
+                else:
+                    run_exc = run_task.exception()
+                    agent_result = (
+                        run_task.result()
+                        if run_exc is None
+                        else AgentResult(answer="", entered_loop=False, degraded=True, context_error=str(run_exc))
+                    )
+            else:
+                run_task.cancel()
+                done_again, _ = await asyncio.wait({run_task}, timeout=cancel_grace_s)
+                if run_task in done_again and not run_task.cancelled():
+                    run_exc = run_task.exception()
+                    agent_result = (
+                        run_task.result()
+                        if run_exc is None
+                        else AgentResult(answer="", entered_loop=False, degraded=True, context_error=str(run_exc))
+                    )
+                else:
+                    agent_result = AgentResult(
+                        answer="",
+                        entered_loop=False,
+                        degraded=True,
+                        context_error="运行超时(timed out):单运行熔断(硬放弃)",
+                    )
 
             # 上下文构建报告(真实或重建)
             if agent_result.context_build_result is not None:
@@ -702,7 +769,7 @@ def render_markdown(report: ContextEvalReport) -> str:
         "",
         "## 实验设置",
         "",
-        f"- 用例数:{report.case_count}(每套 full-raw / budgeted-comp 两变体)",
+        f"- 用例数:{report.case_count}(每套 {len(COMPARISON_VARIANTS)} 个对照变体: {' / '.join(COMPARISON_VARIANTS)})",
         f"- 模型:{report.model}",
         "- 同一 Agent 逻辑、同一冻结工具数据、同一判官;唯一变量是上下文处理策略",
         "- tokenizer:" + CONSERVATIVE_TOKENIZER_VERSION,
@@ -792,7 +859,7 @@ def main(argv: list[str] | None = None) -> int:
     data = DataClient()
     cases = load_context_variant_cases(data.list_cases(), data)
     if not cases:
-        print("库内没有 ctx-* 对照变体;先执行 changes/20260821-long-context-cases.sql")
+        print("库内没有带对照变体(full / budgeted-*)的 ctx 用例;需先将 ctx-session-* 用例变体注册入 case_variants")
         return 1
     report = asyncio.run(
         run_context_eval(
