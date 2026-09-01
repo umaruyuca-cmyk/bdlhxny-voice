@@ -286,6 +286,10 @@ function isContextArtifact(artifact) {
 
 /** 策略变体 → 公开组键/标签。 */
 const CONTEXT_VARIANT_KEYS = {
+  "full": { key: "full", label: "full（完整上下文对照）" },
+  "budgeted-hybrid-v1": { key: "budgeted-hybrid-v1", label: "budgeted-hybrid-v1（按预算压缩·混合主算法）" },
+  "budgeted-extractive": { key: "budgeted-extractive", label: "budgeted-extractive（按预算压缩·抽取式基线）" },
+  // 旧口径变体(2026-09-01 前批次工件):读历史批次时仍需映射
   "full-raw": { key: "full", label: "full（全量透传 full-raw）" },
   "budgeted-comp": { key: "budgeted", label: "budgeted（按预算压缩）" },
 };

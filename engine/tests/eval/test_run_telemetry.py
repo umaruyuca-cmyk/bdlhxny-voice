@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -110,6 +111,22 @@ class TestArtifact:
         artifact = build_run_artifact(recorder.record)
         artifact["status"] = "FAILED"
         assert not verify_artifact_hash(artifact)
+
+    def test_integral_floats_serialized_language_neutrally(self) -> None:
+        """整值浮点(如保留率 1.0)必须以整数形态进工件与哈希。
+
+        Python "1.0" vs 发布器 JS "1" 会让 artifact_hash 跨语言复算不一致;
+        构建时收敛后,工件 JSON 文本不出现 ":1.0" 形态。
+        """
+        recorder = _recorder()
+        recorder.record_judgment({"required_retention_rate": 1.0, "ratio": 13 / 15})
+        recorder.complete(status="COMPLETE")
+        artifact = build_run_artifact(recorder.record)
+        assert artifact["judgment"]["required_retention_rate"] == 1
+        assert artifact["judgment"]["ratio"] == 13 / 15
+        text = json.dumps(artifact, ensure_ascii=False)
+        assert ": 1.0" not in text and ":1.0" not in text
+        assert verify_artifact_hash(artifact)
 
     def test_invalid_run_keeps_validity_invalid(self) -> None:
         recorder = _recorder()

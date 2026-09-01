@@ -1458,8 +1458,29 @@ def build_run_artifact(record: RunRecord) -> dict[str, Any]:
             "estimated": bool((record.judgment or {}).get("tokens_estimated")),
         },
     }
+    artifact = _integral_floats_to_int(artifact)
     artifact["artifact_hash"] = artifact_hash_of(artifact)
     return artifact
+
+
+def _integral_floats_to_int(value: Any) -> Any:
+    """整值浮点规范化为 int(1.0 → 1)。
+
+    Python json.dumps 序列化 1.0 为 "1.0",发布器(JS JSON.stringify)为 "1",
+    artifact_hash 跨语言复算随之不一致。工件构建时统一收敛为整数,两种语言
+    的规范化文本恒同。非整值浮点(如 13/15)两边都是最短表示,天然一致;
+    指数形式的极小/极大浮点仍有 "1e-07" vs "1e-7" 差异,工件指标不出现该量级。
+    """
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {key: _integral_floats_to_int(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_integral_floats_to_int(item) for item in value]
+    return value
 
 
 def artifact_hash_of(artifact: dict[str, Any]) -> str:
