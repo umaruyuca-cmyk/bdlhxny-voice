@@ -4,16 +4,10 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { redirectFor } from "./scripts/redirect-map.mjs";
-import { ownerApiRegExp } from "./scripts/owner-api-allowlist.mjs";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = Number.parseInt(process.env.PORT || "8082", 10);
 const publicDirectory = fileURLToPath(new URL("./public/", import.meta.url));
-// 开发代理:把匿名公共测试接口转发到本地 engine,「实验 / 我的测试」页可端到端联调。
-// 默认开启并指向本地 engine(127.0.0.1:8090,与 deploy/.env 的 ENGINE_PORT 一致);
-// 设 RUN_API_PROXY=off 可恢复纯静态行为(与公开部署一致),或指向其他地址。
-const runApiProxyRaw = process.env.RUN_API_PROXY || "http://127.0.0.1:8090";
-const runApiProxy = /^(off|0|false|none)$/i.test(runApiProxyRaw) ? "" : runApiProxyRaw.replace(/\/+$/, "");
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -22,15 +16,43 @@ const contentTypes = new Map([
   [".json", "application/json; charset=utf-8"],
   [".svg", "image/svg+xml"],
   [".png", "image/png"],
-  [".ico", "image/x-icon"]
+  [".ico", "image/x-ico"],
 ]);
 
 /**
- * 对照评测展示站：纯静态页面，无后端代理。
+ * 展示站开发服务器:纯静态,无后端代理。
+ * 五页架构(/ /results/ /evidence/ /system/ /methodology/)+ 静态资产
+ * (/docs/*.css|js、/showcase-data/*)+ 旧地址 301(redirect-map)。
  */
+// 唯一后端依赖(窄代理):真实运行演示页读取系统演示账号的只读执行数据。
+// 仅放行 GET 且前缀匹配的演示端点;其余请求一律静态服务,不代理任何 API。
+const DEMO_API_PREFIX = "/api/v1/public/context-demo";
+
+async function proxyDemoApi(request, response, pathname) {
+  if (request.method !== "GET" || !pathname.startsWith(DEMO_API_PREFIX)) {
+    return false;
+  }
+  try {
+    const search = new URL(request.url || '/', 'http://localhost').search;
+    const upstream = await fetch(`http://127.0.0.1:8090${pathname}${search}`, {
+      headers: { Accept: "application/json" },
+    });
+    const body = await upstream.text();
+    response.writeHead(upstream.status, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(body);
+  } catch {
+    response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+    response.end('{"enabled":false,"error":"DEMO_API_UNAVAILABLE"}');
+  }
+  return true;
+}
+
 const server = http.createServer(async (request, response) => {
   try {
     const requestUrl = new URL(request.url || "/", `http://${request.headers.host || host}`);
+    if (await proxyDemoApi(request, response, requestUrl.pathname)) {
+      return;
+    }
     await serveStatic(requestUrl.pathname, request, response);
   } catch (error) {
     console.error("前端开发服务器处理请求失败:", error);
@@ -42,62 +64,29 @@ const server = http.createServer(async (request, response) => {
 });
 
 async function serveStatic(requestPath, request, response) {
-  // 开发代理(可选):匿名公共接口 + 实验页所有者通道(登录/模板/plan/批次/作业/
-  // 实验组/统计),与 nginx.conf 的反代白名单共用同一份常量(scripts/owner-api-allowlist.mjs);
-  // 仅显式配置 RUN_API_PROXY 时启用
-  const ownerApiPattern = ownerApiRegExp();
-  if (runApiProxy && (requestPath.startsWith("/api/v1/public/") || ownerApiPattern.test(requestPath))) {
-    const target = new URL(runApiProxy + request.url);
-    const proxied = http.request(
-      target,
-      { method: request.method, headers: { ...request.headers, host: target.host } },
-      (upstream) => {
-        response.writeHead(upstream.statusCode || 502, upstream.headers);
-        upstream.pipe(response);
-      },
-    );
-    proxied.on("error", () => {
-      response.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
-      response.end("运行服务不可达:engine 未启动或 RUN_API_PROXY 配置错误");
-    });
-    request.pipe(proxied);
+  // 单次运行证据链 /evidence/run/?id=<run_id>:静态站无服务端路由,
+  // 统一落到 run.html,由页面解析查询参数(与 nginx try_files 同口径)。
+  if (requestPath === "/evidence/run" || requestPath.startsWith("/evidence/run/")) {
+    await serveStaticFile("/evidence/run.html", response);
     return;
   }
-  // 批次详情 /experiment/batch/<id>:静态站无服务端路由,统一落到 batch.html
-  // (与 nginx 的 try_files 同口径;批次标识由页面从 pathname 解析)
-  if (requestPath.startsWith("/experiment/batch/")) {
-    await serveStaticFile("/experiment/batch.html", response);
-    return;
-  }
-  // 实验组详情 /experiment/series/<id>:同 nginx,统一落到 series.html
-  // (样本积累 + 统计快照 + 逐样本追加;修复方案 P0-2 本地路由对齐)
-  if (requestPath.startsWith("/experiment/series/")) {
-    await serveStaticFile("/experiment/series.html", response);
-    return;
-  }
-  // 上下文构建详情 /experiment/context-builds/<id>:落到 context-build.html
-  if (requestPath.startsWith("/experiment/context-builds/")) {
-    await serveStaticFile("/experiment/context-build.html", response);
-    return;
-  }
-  // 旧路径 301(任务六 §11:/docs/* 页面与 /showcase/context 迁至七模块新位置;
-  // /docs/ 下的 css/js 资产保留原位,不在映射内)
+  // 旧路径 301 到五页新位置(redirect-map 与 nginx 同一映射;静态资产不在映射内)
   const redirect = redirectFor(requestPath);
   if (redirect) {
     response.writeHead(301, { Location: redirect });
     response.end();
     return;
   }
-  // 模块前缀(五模块首页 + 子模块):无尾斜杠 302 到模块首页;{page} 自动补 .html
-  const MODULE_PREFIXES = ["/about", "/tools", "/cases", "/showcase", "/experiment", "/test", "/context", "/judging", "/engine", "/ops", "/assets", "/docs"];
+  // 五页模块前缀:无尾斜杠 302 到模块首页
+  const MODULE_PREFIXES = ["/results", "/evidence", "/system", "/methodology"];
   if (MODULE_PREFIXES.includes(requestPath)) {
     response.writeHead(302, { Location: requestPath + "/" });
     response.end();
     return;
   }
-  const DIRECTORY_INDEX = ["/about/", "/tools/", "/cases/", "/showcase/", "/experiment/", "/test/", "/context/", "/judging/", "/engine/", "/ops/", "/assets/", "/docs/"];
-  // 模块子页带尾斜杠(/experiment/compression/)301 去斜杠:子页是 *.html 文件
-  // 不是目录;目录索引(如 /experiment/ 自身)除外。与 nginx 的去斜杠 rewrite 同口径。
+  const DIRECTORY_INDEX = ["/results/", "/evidence/", "/system/", "/methodology/"];
+  // 模块子页带尾斜杠(/evidence/run/)301 去斜杠:子页是 *.html 文件不是目录;
+  // 目录索引(/evidence/ 自身)除外
   if (requestPath !== "/" && requestPath.endsWith("/")) {
     const stripped = requestPath.replace(/\/+$/, "");
     if (DIRECTORY_INDEX.some((prefix) => stripped.startsWith(prefix) && stripped !== prefix)) {
@@ -186,7 +175,7 @@ async function streamFile(filePath, fileStats, request, response) {
 }
 
 server.listen(port, host, () => {
-  console.log(`对照评测展示站: http://${host}:${port}/`);
+  console.log(`实验与证据展示站: http://${host}:${port}/`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

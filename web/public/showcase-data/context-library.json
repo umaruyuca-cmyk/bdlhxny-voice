@@ -1,8 +1,8 @@
 {
-  "generated_from": "三套场景化冻结 Session @ git 3c502b2fefa8",
-  "generated_at": "2026-08-27T08:51:07.791Z",
-  "git_commit": "3c502b2fefa8e6bf522150dc9129ac39dd9bfba3",
-  "tokenizer_version": "conservative-cjk1-latin4-v1",
+  "generated_from": "三套场景化冻结 Session @ git 9473b7d029fb",
+  "generated_at": "2026-08-31T03:31:46.074Z",
+  "git_commit": "9473b7d029fbceea65e9f187f50b29eb524f8fc6",
+  "tokenizer_version": "unknown",
   "kind": "scenario-frozen-session-corpus",
   "entries": [
     {
@@ -12,7 +12,7 @@
       "title": "产品边界与长上下文文库演进 Session",
       "summary": "从公开只读实验平台、Mock Tools、数据库边界一路讨论到长上下文文库替换，包含多次误解纠正、真实文件读取和最终范围收敛。",
       "disclosure": "根据项目讨论脉络和仓库真实文件整理的可复现评测 Session，不是未经编辑的原始聊天逐字稿。",
-      "tokenizer_version": "conservative-cjk1-latin4-v1",
+      "tokenizer_version": "unknown",
       "stats": {
         "event_count": 124,
         "user_messages": 45,
@@ -33,9 +33,9 @@
       "current_question": "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。",
       "strategies": [
         {
-          "variant_id": "full-session",
-          "title": "完整 Session",
-          "strategy_version": "full-session-v1",
+          "variant_id": "full",
+          "title": "完整上下文(对照)",
+          "strategy_version": "full-v1",
           "token_budget": 65536,
           "original_tokens": 25013,
           "working_tokens": 25006,
@@ -44,23 +44,23 @@
           "compressed": 0,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 43,
-          "compiled_context_hash": "sha256:fbca6a9025df5063cffe4fd22adf69157d02d059a0197992b1a3801895412f6d"
+          "build_duration_ms": 45,
+          "compiled_context_hash": "sha256:250cc9bebedcb0d9567ead0bf154b5deca1fbe8b05218dc75420604f953de4bb"
         },
         {
-          "variant_id": "recent-window",
-          "title": "最近窗口",
-          "strategy_version": "recent-window-v1",
+          "variant_id": "recent-turns",
+          "title": "最近对话轮(基准)",
+          "strategy_version": "recent-turns-v1",
           "token_budget": 8192,
-          "original_tokens": 25013,
+          "original_tokens": 20070,
           "working_tokens": 6379,
-          "compression_pct": 74,
+          "compression_pct": 68,
           "kept": 13,
           "compressed": 0,
           "referenced": 0,
-          "omitted": 111,
-          "build_duration_ms": 28,
-          "compiled_context_hash": "sha256:6a8ddc32c07636eb38ff50ad0c57674526e90b786c3bffc4810380a8dde921a2"
+          "omitted": 43,
+          "build_duration_ms": 26,
+          "compiled_context_hash": "sha256:747228a8efe0e3384637d6ca79fd4614787cb95c8d7e8366951c19e8b9484141"
         },
         {
           "variant_id": "single-summary",
@@ -74,13 +74,13 @@
           "compressed": 122,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 24,
+          "build_duration_ms": 26,
           "compiled_context_hash": "sha256:37929d338856c3c22f9de9d958e51e216c6e83ec3e551f385464c4baf8a3667f"
         },
         {
-          "variant_id": "budgeted-session",
-          "title": "按预算选择和压缩",
-          "strategy_version": "budgeted-session-v1",
+          "variant_id": "budgeted-hybrid-v1",
+          "title": "按预算压缩(混合主算法)",
+          "strategy_version": "budgeted-hybrid-v1",
           "token_budget": 8192,
           "original_tokens": 25013,
           "working_tokens": 7590,
@@ -89,8 +89,23 @@
           "compressed": 99,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 108,
-          "compiled_context_hash": "sha256:8d9770d559f1c037c40ac929a85495dfa5ad218cd8a208ac58194acec6800991"
+          "build_duration_ms": 107,
+          "compiled_context_hash": "sha256:c2c27707fac6320d35a1442b1b6aa07077edab07bf56e51154fd4bd4e967c883"
+        },
+        {
+          "variant_id": "budgeted-extractive",
+          "title": "按预算压缩(抽取式基线)",
+          "strategy_version": "budgeted-extractive-v1",
+          "token_budget": 8192,
+          "original_tokens": 25013,
+          "working_tokens": 7590,
+          "compression_pct": 70,
+          "kept": 25,
+          "compressed": 99,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 112,
+          "compiled_context_hash": "sha256:d201f1b431bba4edd33cdc23d67ab3c589896816fb101c4de1cf0734660e02ac"
         }
       ],
       "txt": "/showcase-data/context-library/ctx-session-product-evolution-01.txt"
@@ -102,7 +117,7 @@
       "title": "上下文编译、预算与 Agent 循环排查 Session",
       "summary": "围绕四种策略、工具调用配对、多因子评分和最终模型请求预算进行连续代码审查，保留搜索失败、假设修正与实现边界。",
       "disclosure": "使用当前仓库源码作为冻结工具结果，并按代码审查流程整理的可复现 Session。",
-      "tokenizer_version": "conservative-cjk1-latin4-v1",
+      "tokenizer_version": "unknown",
       "stats": {
         "event_count": 26,
         "user_messages": 5,
@@ -112,7 +127,7 @@
         "first_at": "2026-08-21T02:00:00.000Z",
         "last_at": "2026-08-21T03:20:00.000Z"
       },
-      "original_tokens": 29165,
+      "original_tokens": 29902,
       "source_session_hash": "sha256:69e9e18dacca5d883855a2dd6771bb082690fc6013485103c21b20b2ce931f1a",
       "source_materials": [
         "engine/src/bdlh_runtime/session/compiler.py",
@@ -125,64 +140,79 @@
       "current_question": "请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。",
       "strategies": [
         {
-          "variant_id": "full-session",
-          "title": "完整 Session",
-          "strategy_version": "full-session-v1",
+          "variant_id": "full",
+          "title": "完整上下文(对照)",
+          "strategy_version": "full-v1",
           "token_budget": 65536,
-          "original_tokens": 29165,
-          "working_tokens": 29162,
+          "original_tokens": 29902,
+          "working_tokens": 29899,
           "compression_pct": 0,
           "kept": 26,
           "compressed": 0,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 144,
-          "compiled_context_hash": "sha256:d7d7fb5bdc7b08cb9afdbd49f9e9dfde4acb43a91ab39433d29c4140a931e278"
+          "build_duration_ms": 94,
+          "compiled_context_hash": "sha256:e1887a025bdc9c2fe541b1c167abdc2e5bc9a29d5a96bb97700b603710a93f93"
         },
         {
-          "variant_id": "recent-window",
-          "title": "最近窗口",
-          "strategy_version": "recent-window-v1",
+          "variant_id": "recent-turns",
+          "title": "最近对话轮(基准)",
+          "strategy_version": "recent-turns-v1",
           "token_budget": 8192,
-          "original_tokens": 29165,
+          "original_tokens": 29902,
           "working_tokens": 6605,
-          "compression_pct": 77,
+          "compression_pct": 78,
           "kept": 5,
           "compressed": 0,
           "referenced": 0,
           "omitted": 21,
-          "build_duration_ms": 112,
-          "compiled_context_hash": "sha256:ecf06fea4366ce59bc0ef0066cc3d6acde8852c0f22bd1db37f0f672b206947d"
+          "build_duration_ms": 50,
+          "compiled_context_hash": "sha256:d4c5e1b613e416266752ed78bf5d215ccbc66e8193b887d593fd5037c03e0c66"
         },
         {
           "variant_id": "single-summary",
           "title": "一次性摘要",
           "strategy_version": "single-summary-v1",
           "token_budget": 8192,
-          "original_tokens": 29165,
-          "working_tokens": 3394,
-          "compression_pct": 88,
+          "original_tokens": 29902,
+          "working_tokens": 3397,
+          "compression_pct": 89,
           "kept": 1,
           "compressed": 25,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 131,
-          "compiled_context_hash": "sha256:482568c4ecc62160957d27aeb84b0594607060d524cb4892b4508687d6f4df65"
+          "build_duration_ms": 45,
+          "compiled_context_hash": "sha256:43802765c576f6153351114dd4ca6788cd9f9e578e621eee628abc51bd513263"
         },
         {
-          "variant_id": "budgeted-session",
-          "title": "按预算选择和压缩",
-          "strategy_version": "budgeted-session-v1",
+          "variant_id": "budgeted-hybrid-v1",
+          "title": "按预算压缩(混合主算法)",
+          "strategy_version": "budgeted-hybrid-v1",
           "token_budget": 8192,
-          "original_tokens": 29165,
-          "working_tokens": 8164,
-          "compression_pct": 72,
+          "original_tokens": 29902,
+          "working_tokens": 8122,
+          "compression_pct": 73,
           "kept": 1,
           "compressed": 25,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 350,
-          "compiled_context_hash": "sha256:a16678b2299f881fb8b134a86eced2351df55215c2751784f0ec91e9b9727dca"
+          "build_duration_ms": 205,
+          "compiled_context_hash": "sha256:c6a8310dade12055588b8691dbea5c735ca61ff4d393777f9c53620bbe538a00"
+        },
+        {
+          "variant_id": "budgeted-extractive",
+          "title": "按预算压缩(抽取式基线)",
+          "strategy_version": "budgeted-extractive-v1",
+          "token_budget": 8192,
+          "original_tokens": 29902,
+          "working_tokens": 8122,
+          "compression_pct": 73,
+          "kept": 1,
+          "compressed": 25,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 197,
+          "compiled_context_hash": "sha256:915fe61c8a882a09ff4fdd900cdbb9438845c6f0d38d33f14c00d59204f90858"
         }
       ],
       "txt": "/showcase-data/context-library/ctx-session-context-engine-debug-01.txt"
@@ -194,7 +224,7 @@
       "title": "PostgreSQL、数据服务与云部署一致性 Session",
       "summary": "从手工 SQL、迁移脚本、本地 5432、data 服务职责到云部署配置进行连续审计，包含错误路径、需求纠正和压缩工件追溯要求。",
       "disclosure": "使用当前仓库 SQL、配置和 Java 源码作为冻结工具结果，并按部署审计流程整理的可复现 Session。",
-      "tokenizer_version": "conservative-cjk1-latin4-v1",
+      "tokenizer_version": "unknown",
       "stats": {
         "event_count": 31,
         "user_messages": 5,
@@ -219,9 +249,9 @@
       "current_question": "请使用只读工具审计 db/postgresql/setup/init.sql、db/postgresql/changes/20260823-trim-simple-add-complex.sql、data/src/main/resources/application.yaml、data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java、deploy/docker-compose.yml 与 deploy/docker-compose.cloud.yml。判断“SQL 由维护者手动执行、本地 PostgreSQL 使用 5432、data 只负责受控读写、压缩工件可完整追溯、所有模块可云部署”是否一致，并列出三个最高风险差距。不要执行 SQL、不要连接数据库、不要修改文件。",
       "strategies": [
         {
-          "variant_id": "full-session",
-          "title": "完整 Session",
-          "strategy_version": "full-session-v1",
+          "variant_id": "full",
+          "title": "完整上下文(对照)",
+          "strategy_version": "full-v1",
           "token_budget": 65536,
           "original_tokens": 29795,
           "working_tokens": 29791,
@@ -230,13 +260,13 @@
           "compressed": 0,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 109,
-          "compiled_context_hash": "sha256:94198f5f4164cc0052ed2181929dc59fd68204c9f189c5223e4f69ccd0c9d943"
+          "build_duration_ms": 90,
+          "compiled_context_hash": "sha256:fe252d1d74f49f50d16aaed99032d2d286c4793eaf5940514d08355d681770d1"
         },
         {
-          "variant_id": "recent-window",
-          "title": "最近窗口",
-          "strategy_version": "recent-window-v1",
+          "variant_id": "recent-turns",
+          "title": "最近对话轮(基准)",
+          "strategy_version": "recent-turns-v1",
           "token_budget": 8192,
           "original_tokens": 29795,
           "working_tokens": 7584,
@@ -245,8 +275,8 @@
           "compressed": 0,
           "referenced": 0,
           "omitted": 26,
-          "build_duration_ms": 56,
-          "compiled_context_hash": "sha256:21238aa0269e07a0734902c6c4a96f90f9468371327eb6cac53270927589dbd5"
+          "build_duration_ms": 53,
+          "compiled_context_hash": "sha256:6f2038088d7bd28e77f64adb5b3f6b2e99d56332462f627aae3b5b1686137306"
         },
         {
           "variant_id": "single-summary",
@@ -260,13 +290,13 @@
           "compressed": 29,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 49,
+          "build_duration_ms": 50,
           "compiled_context_hash": "sha256:3e83ab542dd58b4e89b498d10ea4a11f2f6d19f3c65ebb5c99f71aca66ef675d"
         },
         {
-          "variant_id": "budgeted-session",
-          "title": "按预算选择和压缩",
-          "strategy_version": "budgeted-session-v1",
+          "variant_id": "budgeted-hybrid-v1",
+          "title": "按预算压缩(混合主算法)",
+          "strategy_version": "budgeted-hybrid-v1",
           "token_budget": 8192,
           "original_tokens": 29795,
           "working_tokens": 7141,
@@ -275,8 +305,23 @@
           "compressed": 30,
           "referenced": 0,
           "omitted": 0,
-          "build_duration_ms": 198,
-          "compiled_context_hash": "sha256:a1b45664f0e1a0c1a70850b4eb54cdb7acddccd33daacea71d33a0dcec96c8cb"
+          "build_duration_ms": 189,
+          "compiled_context_hash": "sha256:deb71c52b63ea5f904a08f51bc86e7d60f3a0b3113c2979f0437dfbdb598c99d"
+        },
+        {
+          "variant_id": "budgeted-extractive",
+          "title": "按预算压缩(抽取式基线)",
+          "strategy_version": "budgeted-extractive-v1",
+          "token_budget": 8192,
+          "original_tokens": 29795,
+          "working_tokens": 7141,
+          "compression_pct": 76,
+          "kept": 1,
+          "compressed": 30,
+          "referenced": 0,
+          "omitted": 0,
+          "build_duration_ms": 188,
+          "compiled_context_hash": "sha256:66fe8e0e4aa2f8abca901cdd7a38377a9d9366d35e61f42ebd8fc6c934536653"
         }
       ],
       "txt": "/showcase-data/context-library/ctx-session-database-deploy-01.txt"

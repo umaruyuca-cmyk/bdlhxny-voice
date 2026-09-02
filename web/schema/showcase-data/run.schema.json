@@ -11,6 +11,66 @@
     "case_id": { "type": "string", "minLength": 1 },
     "status": { "enum": ["COMPLETE", "FAILED", "INVALID", "CANCELLED", "PENDING_JUDGMENT", "NOT_RUN"] },
     "validity": { "enum": ["VALID", "INVALID", "UNCLASSIFIED"] },
+    "started_at": { "type": "string", "description": "运行发生时间;旧版工件可能缺失,页面显示「未记录」" },
+    "config_hash": { "type": "string", "description": "运行配置快照哈希(同配置必同哈希)" },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "实际生效的运行配置(来自 provenance.per_run_config 白名单投影;旧版工件缺失)",
+      "properties": {
+        "config_version": { "type": ["integer", "null"] },
+        "execution_engine": { "type": ["string", "null"] },
+        "tool_delivery": { "type": ["string", "null"] },
+        "governance_profile": { "type": ["string", "null"] },
+        "context_strategy": { "type": ["string", "null"] },
+        "fixture_version": { "type": ["string", "null"] },
+        "prompt_version": { "type": ["string", "null"] },
+        "judge_version": { "type": ["string", "null"] },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": { "type": ["string", "null"] },
+            "model_id": { "type": ["string", "null"] },
+            "temperature_requested": { "type": ["number", "null"] },
+            "temperature_effective": { "type": ["number", "null"] },
+            "top_p_requested": { "type": ["number", "null"] },
+            "top_p_effective": { "type": ["number", "null"] },
+            "reasoning_effort_requested": { "type": ["string", "null"] },
+            "reasoning_effort_effective": { "type": ["string", "null"] },
+            "seed_requested": { "type": ["integer", "null"] },
+            "seed_effective": { "type": ["integer", "null"] },
+            "max_output_tokens": { "type": ["integer", "null"] },
+            "tool_choice": { "type": ["string", "null"] },
+            "parallel_tool_calls": { "type": ["boolean", "null"] }
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_agent_steps": { "type": ["integer", "null"] },
+            "max_tool_calls": { "type": ["integer", "null"] },
+            "max_calls_per_tool": { "type": ["integer", "null"] },
+            "agent_timeout_seconds": { "type": ["integer", "null"] },
+            "tool_timeout_seconds": { "type": ["integer", "null"] },
+            "llm_retry_count": { "type": ["integer", "null"] },
+            "tool_retry_count": { "type": ["integer", "null"] }
+          }
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "token_budget": { "type": ["integer", "null"] },
+            "recent_turn_count": { "type": ["integer", "null"] },
+            "compression_target_tokens": { "type": ["integer", "null"] },
+            "current_turn_reserved_tokens": { "type": ["integer", "null"] },
+            "tokenizer_version": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
     "experiment": {
       "type": "object",
       "additionalProperties": false,
@@ -100,6 +160,8 @@
               "name": { "type": "string" },
               "status": { "type": "string" },
               "audit_code": { "type": "string" },
+              "arguments": { "type": ["object", "null"], "description": "调用参数(模型所发请求;脱敏白名单内)" },
+              "duration_ms": { "type": ["integer", "null"] },
               "summary": { "type": ["object", "null"] },
               "source": { "type": ["string", "null"] },
               "data_time": { "type": ["string", "null"] }

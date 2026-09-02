@@ -1,0 +1,189 @@
+{
+  "run_id": "455e3235-7489-4d2c-8d21-4b4b0c60c2ec",
+  "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+  "case_id": "ctx-session-database-deploy-01",
+  "status": "COMPLETE",
+  "validity": "VALID",
+  "experiment": {
+    "agent_mode": "native-tool-calling",
+    "context_strategy": "full",
+    "model": "Qwen/Qwen3.6-35B-A3B",
+    "repeat_index": 3
+  },
+  "sections": {
+    "fixed_input": {
+      "message": "请使用只读工具审计 db/postgresql/setup/init.sql、db/postgresql/changes/20260823-trim-simple-add-complex.sql、data/src/main/resources/application.yaml、data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java、deploy/docker-compose.yml 与 deploy/docker-compose.cloud.yml。判断“SQL 由维护者手动执行、本地 PostgreSQL 使用 5432、data 只负责受控读写、压缩工件可完整追溯、所有模块可云部署”是否一致，并列出三个最高风险差距。不要执行 SQL、不要连接数据库、不要修改文件。",
+      "scene": "database_and_deployment_audit",
+      "authenticated": true,
+      "history_count": 0,
+      "allowed_tools": null
+    },
+    "context": {
+      "strategy": "full",
+      "raw_tokens": 29926,
+      "working_tokens": 29918,
+      "required_retained": true,
+      "item_counts": {
+        "retained": 22,
+        "compressed": 0,
+        "referenced": 0,
+        "isolated": 0,
+        "omitted": 0
+      }
+    },
+    "visible_tools": [
+      "analysis.run_analysis",
+      "appointment.find_clinic",
+      "audio.transcribe",
+      "audio.translate",
+      "browser.click",
+      "browser.fill_form",
+      "browser.open_page",
+      "calculator.evaluate",
+      "calendar.create_event",
+      "calendar.find_availability",
+      "calendar.list_events",
+      "cart.add_item",
+      "ci.get_status",
+      "citation.lookup",
+      "code.execute",
+      "code.read",
+      "code.search",
+      "compliance.check_text",
+      "computer.screenshot",
+      "computer.upload_file",
+      "contacts.search",
+      "contract.extract_terms",
+      "crm.get_account",
+      "crm.search_customer",
+      "dashboard.get",
+      "data.export",
+      "data.transform",
+      "database.describe_table",
+      "database.list_tables",
+      "database.query",
+      "design.create_mockup",
+      "device.get_status",
+      "device.list",
+      "device.set_state",
+      "document.compare",
+      "document.summarize",
+      "drive.get_metadata",
+      "drive.list_folder",
+      "drive.search",
+      "file.extract_text",
+      "file.list",
+      "file.read",
+      "file.search",
+      "fitness.get_activity",
+      "git.get_diff",
+      "github.search_issues",
+      "health.get_medication_info",
+      "health.search_guidance",
+      "home.create_automation",
+      "image.analyze",
+      "image.edit",
+      "image.generate",
+      "knowledge.get_record",
+      "knowledge.search",
+      "learning.explain_topic",
+      "learning.search_course",
+      "legal.compare_clauses",
+      "legal.search_policy",
+      "mail.draft",
+      "mail.read",
+      "mail.search",
+      "mail.send",
+      "maps.get_directions",
+      "maps.search_places",
+      "market.get_news",
+      "message.search",
+      "message.send",
+      "metrics.get",
+      "notes.search",
+      "ocr.extract_text",
+      "order.get_status",
+      "product.compare",
+      "product.get_price",
+      "product.search",
+      "project.get_status",
+      "quiz.create",
+      "research.deep_search",
+      "research.web_search",
+      "speech.generate",
+      "spreadsheet.calculate",
+      "spreadsheet.create_chart",
+      "spreadsheet.find_rows",
+      "spreadsheet.read_range",
+      "support.create_ticket",
+      "support.search_tickets",
+      "task.create",
+      "task.list",
+      "translate.text",
+      "travel.build_itinerary",
+      "travel.search_hotels",
+      "travel.search_transport",
+      "video.generate",
+      "video.summarize",
+      "weather.get_forecast",
+      "web.check_freshness",
+      "web.compare_sources",
+      "web.extract",
+      "web.find",
+      "web.open",
+      "web.search"
+    ],
+    "model_steps": [
+      {
+        "seq": 1,
+        "decision": "answer",
+        "latency_ms": 70644
+      }
+    ],
+    "code_decisions": [
+      {
+        "seq": 1,
+        "allowed": true
+      }
+    ],
+    "tool_results": [],
+    "output_checks": [
+      {
+        "check": "tool_correct",
+        "passed": false
+      },
+      {
+        "check": "number_grounding",
+        "passed": true
+      },
+      {
+        "check": "c1_compliance",
+        "passed": true
+      },
+      {
+        "check": "c2_compliance",
+        "passed": true
+      }
+    ],
+    "final_result": {
+      "answer_excerpt": "\n\n基于提供的文件内容，对五项设计断言的一致性审计如下：\n\n### 🔍 一致性审计结论\n\n| 断言 | 审计结果 | 依据 |\n|:---|:---|:---|\n| **SQL 由维护者手动执行** | ✅ 一致 | `init.sql` 头部明确声明“仅用于全新数据库”、“执行方式：psql ... -f init.sql”；`deploy/README.md` 要求“手动执行 init.sql",
+      "citations": null,
+      "audit_codes": [],
+      "judgment": {
+        "task_success": false,
+        "tool_correct": false,
+        "number_grounded": true
+      }
+    },
+    "cost": {
+      "duration_ms": 70945,
+      "context_ms": 135,
+      "llm_ms": 70644,
+      "tool_ms": 0,
+      "prompt_tokens": 33261,
+      "completion_tokens": 4727,
+      "compression_tokens": 0,
+      "tokens_estimated": false
+    }
+  }
+}

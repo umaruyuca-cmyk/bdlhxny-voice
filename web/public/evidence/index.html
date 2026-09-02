@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>原始证据 · Touchstone</title>
+<meta name="description" content="正式批次的单次运行索引:按批次、实验、用例、变体、结果与失败原因筛选,可进入完整证据链。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/">实验结果</a><a href="/evidence/" class="on">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
+  </div>
+</header>
+<main class="page-main">
+  <div class="page-body">
+
+  <h1>原始证据</h1>
+  <p class="page-lead">每个汇总数字都能落到单次运行。索引列出公开发布的全部运行;点「查看证据链」进入该运行从任务输入到评测断言的完整记录。缺失字段显示「未记录」,不做推断。</p>
+
+  <div id="evidenceEmpty" class="panel empty-state" hidden>
+    <h2>尚无公开发布的运行</h2>
+    <p>运行证据随正式批次一起发布。当前公开快照中没有正式批次,因此没有可列出的运行。</p>
+    <p>可以先了解:<a href="/results/">实验结果</a> · <a href="/system/">证据如何产生</a></p>
+  </div>
+
+  <div id="evidenceApp" hidden>
+    <section class="panel">
+      <h2>筛选</h2>
+      <div class="filter-row" role="group" aria-label="证据筛选">
+        <label>批次<select id="eBatch"></select></label>
+        <label>实验<select id="eExperiment"></select></label>
+        <label>用例<select id="eCase"></select></label>
+        <label>变体<select id="eVariant"></select></label>
+        <label>结果<select id="eResult"></select></label>
+        <label>失败原因<select id="eFailure"></select></label>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>运行索引</h2>
+      <div id="evidenceTable"></div>
+      <div class="pager" id="evidencePager"></div>
+    </section>
+  </div>
+  </div>
+</main>
+<footer class="site-foot">
+  <div class="foot-inner">
+    <p>全部结果数字来自发布校验后的公开快照;未发布即显示空状态,不使用演示成绩。证据为可审计执行记录,不含模型内部思维链。</p>
+    <p class="foot-links">源码仓库:<a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">GitHub · bdlhxny-agent</a></p>
+  </div>
+</footer>
+<script src="/docs/docs.js"></script>
+<script src="/docs/showcase-data.js"></script>
+<script src="/evidence/evidence.js"></script>
+</body>
+</html>

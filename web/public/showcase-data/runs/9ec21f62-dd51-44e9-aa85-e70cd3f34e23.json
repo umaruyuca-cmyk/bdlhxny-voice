@@ -1,0 +1,335 @@
+{
+  "run_id": "9ec21f62-dd51-44e9-aa85-e70cd3f34e23",
+  "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+  "case_id": "ctx-session-product-evolution-01",
+  "status": "INVALID",
+  "validity": "INVALID",
+  "experiment": {
+    "agent_mode": "native-tool-calling",
+    "context_strategy": "budgeted",
+    "model": "Qwen/Qwen3.6-35B-A3B",
+    "repeat_index": 2
+  },
+  "sections": {
+    "fixed_input": {
+      "message": "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。",
+      "scene": "product_and_context_design",
+      "authenticated": true,
+      "history_count": 0,
+      "allowed_tools": null
+    },
+    "context": {
+      "strategy": "budgeted",
+      "raw_tokens": 26390,
+      "working_tokens": 11684,
+      "required_retained": true,
+      "item_counts": {
+        "retained": 26,
+        "compressed": 83,
+        "referenced": 0,
+        "isolated": 0,
+        "omitted": 0
+      }
+    },
+    "visible_tools": null,
+    "model_steps": [
+      {
+        "seq": 1,
+        "decision": "call_tool",
+        "latency_ms": 11548
+      },
+      {
+        "seq": 5,
+        "decision": "call_tool",
+        "latency_ms": 4164
+      },
+      {
+        "seq": 7,
+        "decision": "call_tool",
+        "latency_ms": 2079
+      },
+      {
+        "seq": 9,
+        "decision": "call_tool",
+        "latency_ms": 5371
+      },
+      {
+        "seq": 11,
+        "decision": "call_tool",
+        "latency_ms": 7170
+      },
+      {
+        "seq": 14,
+        "decision": "call_tool",
+        "latency_ms": 3957
+      },
+      {
+        "seq": 15,
+        "decision": "call_tool",
+        "latency_ms": 3210
+      },
+      {
+        "seq": 18,
+        "decision": "call_tool",
+        "latency_ms": 2305
+      }
+    ],
+    "code_decisions": [],
+    "tool_results": [
+      {
+        "seq": 2,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/product/产品目标与使用方式.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/product/产品目标与使用方式.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7e5a125ec08745f58a6f1eea1020caf278ae0364a18ec99150a041eaf10c2527",
+          "content_excerpt": "读取路径: docs/product/产品目标与使用方式.md\n冻结范围: 第 1-168 行，共 168 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 3,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/context/长上下文构建与压缩.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/context/长上下文构建与压缩.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:22b3da256f926b6beb83485e34b65d1a77da090713697bbcfa94f3b3ebef3619",
+          "content_excerpt": "读取路径: docs/context/长上下文构建与压缩.md\n冻结范围: 第 1-401 行，共 401 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 4,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "web/scripts/generate-context-library.mjs"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "web/scripts/generate-context-library.mjs",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7c3c30c252dac660925762e623816906bb209f4d0d90f46ee5b3aeb43df936f6",
+          "content_excerpt": "读取路径: web/scripts/generate-context-library.mjs\n冻结范围: 第 1-179…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 6,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/product/产品目标与使用方式.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/product/产品目标与使用方式.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7e5a125ec08745f58a6f1eea1020caf278ae0364a18ec99150a041eaf10c2527",
+          "content_excerpt": "读取路径: docs/product/产品目标与使用方式.md\n冻结范围: 第 1-168 行，共 168 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 8,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/product/产品目标与使用方式.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/product/产品目标与使用方式.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7e5a125ec08745f58a6f1eea1020caf278ae0364a18ec99150a041eaf10c2527",
+          "content_excerpt": "读取路径: docs/product/产品目标与使用方式.md\n冻结范围: 第 1-168 行，共 168 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 10,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/context/长上下文构建与压缩.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/context/长上下文构建与压缩.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:22b3da256f926b6beb83485e34b65d1a77da090713697bbcfa94f3b3ebef3619",
+          "content_excerpt": "读取路径: docs/context/长上下文构建与压缩.md\n冻结范围: 第 1-401 行，共 401 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 12,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/context/长上下文构建与压缩.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/context/长上下文构建与压缩.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:22b3da256f926b6beb83485e34b65d1a77da090713697bbcfa94f3b3ebef3619",
+          "content_excerpt": "读取路径: docs/context/长上下文构建与压缩.md\n冻结范围: 第 1-401 行，共 401 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 13,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "web/scripts/generate-context-library.mjs"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "web/scripts/generate-context-library.mjs",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7c3c30c252dac660925762e623816906bb209f4d0d90f46ee5b3aeb43df936f6",
+          "content_excerpt": "读取路径: web/scripts/generate-context-library.mjs\n冻结范围: 第 1-179…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 16,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/context/长上下文构建与压缩.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/context/长上下文构建与压缩.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:22b3da256f926b6beb83485e34b65d1a77da090713697bbcfa94f3b3ebef3619",
+          "content_excerpt": "读取路径: docs/context/长上下文构建与压缩.md\n冻结范围: 第 1-401 行，共 401 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 17,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "web/scripts/generate-context-library.mjs"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "web/scripts/generate-context-library.mjs",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7c3c30c252dac660925762e623816906bb209f4d0d90f46ee5b3aeb43df936f6",
+          "content_excerpt": "读取路径: web/scripts/generate-context-library.mjs\n冻结范围: 第 1-179…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 19,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "docs/context/长上下文构建与压缩.md"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "docs/context/长上下文构建与压缩.md",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:22b3da256f926b6beb83485e34b65d1a77da090713697bbcfa94f3b3ebef3619",
+          "content_excerpt": "读取路径: docs/context/长上下文构建与压缩.md\n冻结范围: 第 1-401 行，共 401 行\n----…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 20,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "web/scripts/generate-context-library.mjs"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "web/scripts/generate-context-library.mjs",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:7c3c30c252dac660925762e623816906bb209f4d0d90f46ee5b3aeb43df936f6",
+          "content_excerpt": "读取路径: web/scripts/generate-context-library.mjs\n冻结范围: 第 1-179…"
+        },
+        "source": "fixture",
+        "data_time": null
+      }
+    ],
+    "output_checks": [
+      {
+        "check": "tool_correct",
+        "passed": false
+      },
+      {
+        "check": "number_grounding",
+        "passed": true
+      },
+      {
+        "check": "c1_compliance",
+        "passed": true
+      },
+      {
+        "check": "c2_compliance",
+        "passed": true
+      }
+    ],
+    "final_result": {
+      "answer_excerpt": "",
+      "citations": null,
+      "audit_codes": [],
+      "judgment": {
+        "task_success": false,
+        "tool_correct": false,
+        "number_grounded": true
+      }
+    },
+    "cost": {
+      "duration_ms": 600499,
+      "context_ms": 165,
+      "llm_ms": 39804,
+      "tool_ms": 0,
+      "prompt_tokens": 129549,
+      "completion_tokens": 1538,
+      "compression_tokens": 0,
+      "tokens_estimated": true
+    }
+  }
+}

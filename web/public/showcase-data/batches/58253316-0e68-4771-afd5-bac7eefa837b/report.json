@@ -1,0 +1,102 @@
+{
+  "batch_id": "58253316-0e68-4771-afd5-bac7eefa837b",
+  "experiment_type": "experiment-series",
+  "experiment_name": "temperature-stability · cmp-basic-single-01",
+  "generated_at": "2026-09-02T08:22:47.931788+00:00",
+  "git_commit": "889dd6a",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "cmp-basic-single-01"
+    ],
+    "runs_per_case": 3,
+    "tool_data": "frozen",
+    "variable": "temperature-stability"
+  },
+  "groups": [
+    {
+      "key": "t0.0",
+      "label": "t0.0",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 2,
+        "mean_tokens": 2415.6666999999998,
+        "median_duration_ms": 4836,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "t0.1",
+      "label": "t0.1",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 2,
+        "mean_tokens": 2391.6666999999998,
+        "median_duration_ms": 4480,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "t0.3",
+      "label": "t0.3",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 2,
+        "mean_tokens": 2521.3333000000002,
+        "median_duration_ms": 6446,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "t0.7",
+      "label": "t0.7",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 2,
+        "mean_tokens": 2348,
+        "median_duration_ms": 4351,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}

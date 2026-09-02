@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>实验结果 · Touchstone</title>
+<meta name="description" content="正式实验批次的结果:实验目的、唯一自变量、固定条件、样本规模、核心指标、变体对比、分场景结果、失败类型与代表性案例。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/" class="on">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
+  </div>
+</header>
+<main class="page-main">
+  <div class="page-body">
+
+  <h1>实验结果</h1>
+  <p class="page-lead">本页只展示经发布校验的正式实验批次。每个汇总指标都标注分母与口径,并可下钻到组成它的单次运行证据;成功与失败同样展示。</p>
+
+  <div id="resultsEmpty" class="panel empty-state" hidden>
+    <h2>尚无正式实验结果</h2>
+    <p>正式结果由维护者在私有侧运行实验、通过发布校验(有效样本门槛、逐运行哈希复算、敏感信息扫描)后发布到这里。当前公开快照中没有正式批次,因此本页没有可展示的数字——不会用演示数据或估算填充。</p>
+    <p>可以先了解:<a href="/methodology/">实验与指标如何定义</a> · <a href="/system/">系统如何执行一次运行</a></p>
+  </div>
+
+  <div id="resultsApp" hidden>
+    <section id="results-filter" class="panel">
+      <h2>筛选</h2>
+      <div class="filter-row" role="group" aria-label="结果筛选">
+        <label>批次<select id="fBatch"></select></label>
+        <label>实验<select id="fExperiment"></select></label>
+        <label>变体<select id="fVariant"></select></label>
+        <label>场景<select id="fScene"></select></label>
+        <label>状态<select id="fStatus"></select></label>
+      </div>
+      <p class="note">筛选只影响本页展示范围,不改变任何数据;「状态」筛选作用于单次运行(有效=VALID 样本,含任务失败;无效=INVALID 运行,不进指标分母)。</p>
+    </section>
+
+    <section id="results-summary" class="panel">
+      <h2>结论摘要</h2>
+      <div id="summaryBlock"></div>
+    </section>
+
+    <section id="results-design" class="panel">
+      <h2>实验设计与固定条件</h2>
+      <div id="designBlock"></div>
+    </section>
+
+    <section id="results-samples" class="panel">
+      <h2>样本规模</h2>
+      <div id="sampleBlock"></div>
+    </section>
+
+    <section id="results-metrics" class="panel">
+      <h2>核心指标</h2>
+      <div id="metricsBlock"></div>
+    </section>
+
+    <section id="results-compare" class="panel">
+      <h2>变体对比</h2>
+      <div id="compareBlock"></div>
+    </section>
+
+    <section id="results-scenes" class="panel">
+      <h2>分场景结果</h2>
+      <div id="sceneBlock"></div>
+    </section>
+
+    <section id="results-failures" class="panel">
+      <h2>失败类型</h2>
+      <div id="failureBlock"></div>
+    </section>
+
+    <section id="results-cases" class="panel">
+      <h2>代表性案例</h2>
+      <div id="caseBlock"></div>
+    </section>
+  </div>
+  </div>
+</main>
+<footer class="site-foot">
+  <div class="foot-inner">
+    <p>全部结果数字来自发布校验后的公开快照;未发布即显示空状态,不使用演示成绩。证据为可审计执行记录,不含模型内部思维链。</p>
+    <p class="foot-links">源码仓库:<a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">GitHub · bdlhxny-agent</a></p>
+  </div>
+</footer>
+<script src="/docs/docs.js"></script>
+<script src="/docs/showcase-data.js"></script>
+<script src="/results/results.js"></script>
+</body>
+</html>

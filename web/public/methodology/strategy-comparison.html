@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>长上下文策略对比 · 测试逻辑</title>
+<meta name="description" content="三套冻结长会话 × 五种上下文策略(budgeted-hybrid-v1 主算法、抽取式基线与三项对照)的实测对比;数字全部来自冻结工件,纯静态展示。">
+<link rel="stylesheet" href="/docs/docs.css">
+<style>
+.cmp-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 6px; }
+.cmp-badge { display: inline-block; border-radius: 999px; padding: 3px 12px; font-size: 12px; border: 1px solid #cbd5e1; background: #fff; color: #475569; }
+.cmp-badge.primary { background: #eff6ff; border-color: #2563eb; color: #1d4ed8; font-weight: 600; }
+.cmp-badge.baseline { background: #f1f5f9; border-color: #94a3b8; color: #475569; }
+.cmp-sessions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.cmp-session { border: 1px solid #dbe3ee; border-radius: 12px; padding: 14px; background: #fff; text-align: left; cursor: pointer; font: inherit; }
+.cmp-session:hover { border-color: #93c5fd; }
+.cmp-session[aria-pressed="true"] { border-color: #2563eb; box-shadow: 0 0 0 2px #dbeafe; background: #f8fbff; }
+.cmp-session h3 { margin: 0 0 8px; font-size: 15px; color: #1e293b; }
+.cmp-session-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #64748b; }
+.cmp-session-meta b { color: #1e293b; }
+.cmp-session-q { margin: 10px 0 0; font-size: 12px; color: #475569; overflow-wrap: anywhere; }
+.cmp-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 10px; }
+@media (max-width: 1100px) { .cmp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .cmp-grid { grid-template-columns: 1fr; } }
+.cmp-card { border: 1px solid #dbe3ee; border-radius: 12px; padding: 12px; background: #fff; }
+.cmp-card.primary { border-color: #bfdbfe; background: #f8fbff; }
+.cmp-card-name { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: #1e293b; font-weight: 600; margin-bottom: 2px; }
+.cmp-card-ver { font-size: 11px; color: #94a3b8; margin-bottom: 8px; overflow-wrap: anywhere; }
+.cmp-card-token { font-size: 22px; color: #0f172a; line-height: 1.1; }
+.cmp-card-token small { font-size: 12px; color: #64748b; font-weight: 400; }
+.cmp-card-delta { font-size: 11px; color: #64748b; margin: 2px 0 8px; }
+.cmp-bar { display: block; height: 8px; border-radius: 4px; background: #e2e8f0; overflow: hidden; margin-bottom: 4px; }
+.cmp-bar i { display: block; height: 100%; background: #2563eb; }
+.cmp-card-rate { font-size: 12px; color: #475569; margin-bottom: 8px; }
+.cmp-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 11px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 8px; }
+.cmp-counts b { color: #1e293b; font-weight: 600; }
+.cmp-card-note { font-size: 11px; color: #94a3b8; margin-top: 6px; }
+.cmp-total { border: 1px solid #dbe3ee; border-radius: 12px; padding: 14px; background: #fff; margin-bottom: 22px; }
+.cmp-total h3 { font-size: 13px; margin: 0 0 10px; color: #1e293b; }
+.cmp-total-track { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid #cbd5e1; }
+.cmp-total-track i { display: block; min-width: 2px; }
+.cmp-total-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: 12px; color: #475569; }
+.cmp-total-legend b { color: #1e293b; }
+.cmp-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 2px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/" class="on">测试逻辑</a></nav>
+  </div>
+</header>
+<main class="page-main">
+  <div class="page-body">
+    <p><a href="/methodology/">← 返回测试逻辑</a></p>
+    <h1>长上下文策略对比</h1>
+    <div class="cmp-head">
+      <span class="cmp-badge primary">主算法 budgeted-hybrid-v1</span>
+      <span class="cmp-badge baseline">基线 budgeted-extractive</span>
+      <span class="cmp-badge">对照 full / recent-turns / single-summary</span>
+    </div>
+    <p class="page-lead">同一套冻结长会话 × 五种上下文策略,唯一自变量是上下文方式。以下数字全部来自冻结工件实测(纯静态快照,页面加载不发起任何创建任务的请求)。</p>
+
+    <section aria-labelledby="sessions-title">
+      <h2 id="sessions-title">① 选择会话</h2>
+      <div id="sessionList" class="cmp-sessions"><div class="placeholder-block">正在读取语料快照…</div></div>
+    </section>
+
+    <section aria-labelledby="strategies-title">
+      <h2 id="strategies-title">② 五策略实测对比</h2>
+      <div id="strategyGrid" class="cmp-grid"><div class="placeholder-block">等待会话数据…</div></div>
+      <div id="totalBar" class="cmp-total" hidden>
+        <h3>最终进入模型的 Token(真实比例)</h3>
+        <div class="cmp-total-track" id="totalTrack"></div>
+        <div class="cmp-total-legend" id="totalLegend"></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="notes-title">
+      <h2 id="notes-title">③ 策略口径说明</h2>
+      <ul>
+        <li><strong>full(完整上下文,对照)</strong>:全部事件原文透传;模型窗口容纳不下时显示「不适用」,不把截断输入冒充 full。</li>
+        <li><strong>recent-turns(最近对话轮,基准)</strong>:按完整对话轮保留最近 16 轮——一条用户消息开启一轮,其后到下一条用户消息之前的助手消息、工具调用与结果同属该轮、原子不拆。</li>
+        <li><strong>single-summary(一次摘要,基准)</strong>:更早历史一次性摘要,最近事件保留原文。</li>
+        <li><strong>budgeted-hybrid-v1(混合主算法)</strong>:代码预规则与预算选择 + LLM 辅助分类(单次构建最多 1 次)+ 有限 LLM 摘要(默认上限 2 次),失败回退抽取式。</li>
+        <li><strong>budgeted-extractive(抽取式基线)</strong>:与主算法同一套代码规则与预算,摘要固定确定性抽取式(零模型调用);冻结层与主算法同内容,生成式差异见压缩方法对照。</li>
+      </ul>
+    </section>
+
+    <p style="margin-top:14px;font-size:13px;color:#64748b">语料明细见<a href="/context/library">长上下文库</a>(历史地址,由站点映射维护)。</p>
+  </div>
+</main>
+<script>
+(function () {
+  "use strict";
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"]/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch];
+    });
+  }
+  var MODES = ["full", "recent-turns", "single-summary", "budgeted-hybrid-v1", "budgeted-extractive"];
+  var MODE_LABEL = {
+    "full": "完整上下文",
+    "recent-turns": "最近对话轮",
+    "single-summary": "一次摘要",
+    "budgeted-hybrid-v1": "按预算压缩·混合主算法",
+    "budgeted-extractive": "按预算压缩·抽取式基线",
+  };
+  var MODE_KIND = { "budgeted-hybrid-v1": "primary", "budgeted-extractive": "baseline" };
+  var MODE_TAG = { "budgeted-hybrid-v1": "主算法", "budgeted-extractive": "基线", "full": "对照", "recent-turns": "基准", "single-summary": "基准" };
+  var BAR_COLORS = { "full": "#1e3a5f", "recent-turns": "#0ea5e9", "single-summary": "#7c3aed", "budgeted-hybrid-v1": "#2563eb", "budgeted-extractive": "#94a3b8" };
+  var selected = { session: null };
+  var entries = [];
+
+  function byId(entry, vid) {
+    return (entry.strategies || []).filter(function (s) { return s.variant_id === vid; })[0] || null;
+  }
+  function fmt(n) { return n == null ? "—" : Number(n).toLocaleString("zh-CN"); }
+
+  function renderSessions() {
+    var list = document.getElementById("sessionList");
+    list.innerHTML = entries.map(function (s) {
+      var stats = s.stats || {};
+      var picked = s.id === selected.session;
+      return '<button type="button" class="cmp-session" data-select-session="' + esc(s.id) + '" aria-pressed="' + picked + '">'
+        + "<h3>" + esc(s.title || s.id) + (picked ? " · 当前" : "") + "</h3>"
+        + '<div class="cmp-session-meta"><span>对话轮 <b>' + esc(stats.user_messages) + "</b></span>"
+        + "<span>事件 <b>" + esc(stats.event_count) + "</b></span>"
+        + "<span>工具对 <b>" + esc(stats.tool_pairs) + "</b></span>"
+        + "<span>原始 <b>" + fmt(s.original_tokens) + " token</b></span></div>"
+        + '<p class="cmp-session-q">当前输入:' + esc(String(s.current_question || "").slice(0, 80)) + "…</p></button>";
+    }).join("");
+    Array.prototype.forEach.call(list.querySelectorAll("[data-select-session]"), function (btn) {
+      btn.addEventListener("click", function () {
+        selected.session = btn.getAttribute("data-select-session");
+        renderSessions();
+        renderStrategies();
+      });
+    });
+  }
+
+  function renderStrategies() {
+    var entry = entries.filter(function (s) { return s.id === selected.session; })[0];
+    if (!entry) return;
+    var full = byId(entry, "full");
+    var grid = document.getElementById("strategyGrid");
+    grid.innerHTML = MODES.map(function (vid) {
+      var s = byId(entry, vid);
+      if (!s) return "";
+      var kind = MODE_KIND[vid] || "";
+      var original = Number(s.original_tokens) || 0;
+      var working = Number(s.working_tokens) || 0;
+      var ratio = original > 0 ? Math.max(1, Math.round(working * 100 / original)) : 0;
+      var delta = "";
+      if (full && vid !== "full" && Number(full.working_tokens) > 0) {
+        var pct = Math.round((working - Number(full.working_tokens)) * 100 / Number(full.working_tokens));
+        delta = "相对完整上下文 " + (pct > 0 ? "+" : "") + pct + "%";
+      }
+      var noteText = vid === "budgeted-extractive"
+        ? "与主算法冻结层同内容;生成式差异见压缩方法对照"
+        : vid === "recent-turns" ? "按完整对话轮保留最近 16 轮" : "";
+      return '<div class="cmp-card ' + kind + '">'
+        + '<div class="cmp-card-name">' + esc(MODE_LABEL[vid])
+        + ' <span class="cmp-badge ' + kind + '">' + esc(MODE_TAG[vid]) + "</span></div>"
+        + '<div class="cmp-card-ver">' + esc(s.strategy_version) + " · 预算 " + fmt(s.token_budget) + "</div>"
+        + '<div class="cmp-card-token">' + fmt(working) + " <small>token 进入模型</small></div>"
+        + '<div class="cmp-card-delta">' + esc(delta || "原始 " + fmt(original) + " token") + "</div>"
+        + '<span class="cmp-bar"><i style="width:' + ratio + '%"></i></span>'
+        + '<div class="cmp-card-rate">压缩率 ' + (s.compression_pct == null ? "—" : s.compression_pct + "%")
+        + " · 构建 " + (s.build_duration_ms == null ? "—" : s.build_duration_ms + "ms") + "</div>"
+        + '<div class="cmp-counts">'
+        + "<span>保留 <b>" + fmt(s.kept) + "</b></span><span>压缩 <b>" + fmt(s.compressed) + "</b></span>"
+        + "<span>引用 <b>" + fmt(s.referenced) + "</b></span><span>忽略 <b>" + fmt(s.omitted) + "</b></span>"
+        + "</div>"
+        + (noteText ? '<div class="cmp-card-note">' + esc(noteText) + "</div>" : "")
+        + "</div>";
+    }).join("");
+    renderTotalBar(entry);
+  }
+
+  function renderTotalBar(entry) {
+    var box = document.getElementById("totalBar");
+    var track = document.getElementById("totalTrack");
+    var legend = document.getElementById("totalLegend");
+    var rows = MODES.map(function (vid) { return byId(entry, vid); }).filter(Boolean);
+    if (!rows.length) { box.hidden = true; return; }
+    var max = Math.max.apply(null, rows.map(function (s) { return Number(s.working_tokens) || 0; })) || 1;
+    box.hidden = false;
+    track.innerHTML = rows.map(function (s) {
+      var w = Math.max(1, Math.round(Number(s.working_tokens) * 100 / max));
+      return '<i style="width:' + w + "%;background:" + BAR_COLORS[s.variant_id] + '" title="'
+        + esc(MODE_LABEL[s.variant_id]) + " " + fmt(s.working_tokens) + ' token"></i>';
+    }).join("");
+    legend.innerHTML = rows.map(function (s) {
+      return '<span><span class="cmp-dot" style="background:' + BAR_COLORS[s.variant_id] + '"></span> '
+        + esc(MODE_LABEL[s.variant_id]) + " <b>" + fmt(s.working_tokens) + "</b></span>";
+    }).join("");
+  }
+
+  fetch("/showcase-data/context-library.json", { cache: "no-store" })
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (lib) {
+      entries = (lib && lib.entries) || [];
+      if (!entries.length) {
+        document.getElementById("sessionList").innerHTML = '<div class="placeholder-block">尚未维护压缩 Session。</div>';
+        return;
+      }
+      var wanted = new URLSearchParams(location.search).get("session_id");
+      selected.session = entries.some(function (e) { return e.id === wanted; }) ? wanted : entries[0].id;
+      renderSessions();
+      renderStrategies();
+    })
+    .catch(function () {
+      document.getElementById("sessionList").innerHTML = '<div class="placeholder-block">语料快照不可读。</div>';
+    });
+})();
+</script>
+</body>
+</html>

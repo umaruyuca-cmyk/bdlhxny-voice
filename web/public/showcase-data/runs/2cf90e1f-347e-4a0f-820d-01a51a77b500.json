@@ -1,0 +1,354 @@
+{
+  "run_id": "2cf90e1f-347e-4a0f-820d-01a51a77b500",
+  "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+  "case_id": "ctx-session-database-deploy-01",
+  "status": "COMPLETE",
+  "validity": "VALID",
+  "experiment": {
+    "agent_mode": "native-tool-calling",
+    "context_strategy": "budgeted",
+    "model": "Qwen/Qwen3.6-35B-A3B",
+    "repeat_index": 2
+  },
+  "sections": {
+    "fixed_input": {
+      "message": "请使用只读工具审计 db/postgresql/setup/init.sql、db/postgresql/changes/20260823-trim-simple-add-complex.sql、data/src/main/resources/application.yaml、data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java、deploy/docker-compose.yml 与 deploy/docker-compose.cloud.yml。判断“SQL 由维护者手动执行、本地 PostgreSQL 使用 5432、data 只负责受控读写、压缩工件可完整追溯、所有模块可云部署”是否一致，并列出三个最高风险差距。不要执行 SQL、不要连接数据库、不要修改文件。",
+      "scene": "database_and_deployment_audit",
+      "authenticated": true,
+      "history_count": 0,
+      "allowed_tools": null
+    },
+    "context": {
+      "strategy": "budgeted",
+      "raw_tokens": 29926,
+      "working_tokens": 7274,
+      "required_retained": true,
+      "item_counts": {
+        "retained": 3,
+        "compressed": 19,
+        "referenced": 0,
+        "isolated": 0,
+        "omitted": 0
+      }
+    },
+    "visible_tools": [
+      "analysis.run_analysis",
+      "appointment.find_clinic",
+      "audio.transcribe",
+      "audio.translate",
+      "browser.click",
+      "browser.fill_form",
+      "browser.open_page",
+      "calculator.evaluate",
+      "calendar.create_event",
+      "calendar.find_availability",
+      "calendar.list_events",
+      "cart.add_item",
+      "ci.get_status",
+      "citation.lookup",
+      "code.execute",
+      "code.read",
+      "code.search",
+      "compliance.check_text",
+      "computer.screenshot",
+      "computer.upload_file",
+      "contacts.search",
+      "contract.extract_terms",
+      "crm.get_account",
+      "crm.search_customer",
+      "dashboard.get",
+      "data.export",
+      "data.transform",
+      "database.describe_table",
+      "database.list_tables",
+      "database.query",
+      "design.create_mockup",
+      "device.get_status",
+      "device.list",
+      "device.set_state",
+      "document.compare",
+      "document.summarize",
+      "drive.get_metadata",
+      "drive.list_folder",
+      "drive.search",
+      "file.extract_text",
+      "file.list",
+      "file.read",
+      "file.search",
+      "fitness.get_activity",
+      "git.get_diff",
+      "github.search_issues",
+      "health.get_medication_info",
+      "health.search_guidance",
+      "home.create_automation",
+      "image.analyze",
+      "image.edit",
+      "image.generate",
+      "knowledge.get_record",
+      "knowledge.search",
+      "learning.explain_topic",
+      "learning.search_course",
+      "legal.compare_clauses",
+      "legal.search_policy",
+      "mail.draft",
+      "mail.read",
+      "mail.search",
+      "mail.send",
+      "maps.get_directions",
+      "maps.search_places",
+      "market.get_news",
+      "message.search",
+      "message.send",
+      "metrics.get",
+      "notes.search",
+      "ocr.extract_text",
+      "order.get_status",
+      "product.compare",
+      "product.get_price",
+      "product.search",
+      "project.get_status",
+      "quiz.create",
+      "research.deep_search",
+      "research.web_search",
+      "speech.generate",
+      "spreadsheet.calculate",
+      "spreadsheet.create_chart",
+      "spreadsheet.find_rows",
+      "spreadsheet.read_range",
+      "support.create_ticket",
+      "support.search_tickets",
+      "task.create",
+      "task.list",
+      "translate.text",
+      "travel.build_itinerary",
+      "travel.search_hotels",
+      "travel.search_transport",
+      "video.generate",
+      "video.summarize",
+      "weather.get_forecast",
+      "web.check_freshness",
+      "web.compare_sources",
+      "web.extract",
+      "web.find",
+      "web.open",
+      "web.search"
+    ],
+    "model_steps": [
+      {
+        "seq": 1,
+        "decision": "call_tool",
+        "latency_ms": 9109
+      },
+      {
+        "seq": 8,
+        "decision": "answer",
+        "latency_ms": 84722
+      }
+    ],
+    "code_decisions": [
+      {
+        "seq": 1,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 2,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 3,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 4,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 5,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 6,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 7,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 8,
+        "allowed": false,
+        "audit_code": "NUM_HALLUCINATION"
+      },
+      {
+        "seq": 9,
+        "allowed": true
+      },
+      {
+        "seq": 10,
+        "allowed": true
+      },
+      {
+        "seq": 11,
+        "allowed": true
+      },
+      {
+        "seq": 12,
+        "allowed": true
+      },
+      {
+        "seq": 13,
+        "allowed": true
+      },
+      {
+        "seq": 14,
+        "allowed": true
+      }
+    ],
+    "tool_results": [
+      {
+        "seq": 2,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "db/postgresql/setup/init.sql"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "db/postgresql/setup/init.sql",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:bdae06f8a1bf0f73268135f243433c93f51695cb4e78d93bdf36ce1e9261e4d2",
+          "content_excerpt": "读取路径: db/postgresql/setup/init.sql\n冻结范围: 第 1-520 行，共 1155 行\n…"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 3,
+        "name": "file.read",
+        "status": "FAILED",
+        "arguments": {
+          "path": "db/postgresql/changes/20260823-trim-simple-add-complex.sql"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "status": "FAILED",
+          "error": "no frozen observation for: file.read"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 4,
+        "name": "file.read",
+        "status": "FAILED",
+        "arguments": {
+          "path": "data/src/main/resources/application.yaml"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "status": "FAILED",
+          "error": "no frozen observation for: file.read"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 5,
+        "name": "file.read",
+        "status": "FAILED",
+        "arguments": {
+          "path": "data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "status": "FAILED",
+          "error": "no frozen observation for: file.read"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 6,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "deploy/docker-compose.yml"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "deploy/docker-compose.yml",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:4856f508a299502c19509f055bebcd02fd72e092f10d7810291b24d86ca6e9bb",
+          "content_excerpt": "读取路径: deploy/docker-compose.yml\n冻结范围: 第 1-81 行，共 81 行\n----- …"
+        },
+        "source": "fixture",
+        "data_time": null
+      },
+      {
+        "seq": 7,
+        "name": "file.read",
+        "status": "SUCCESS",
+        "arguments": {
+          "path": "deploy/docker-compose.cloud.yml"
+        },
+        "duration_ms": 0,
+        "summary": {
+          "path": "deploy/docker-compose.cloud.yml",
+          "simulated": true,
+          "line_range": "1-60",
+          "content_hash": "sha256:e0b0e1b7208306d0cb329ec6a38e865b8267611ed25158cc8c00b09d77a3d393",
+          "content_excerpt": "读取路径: deploy/docker-compose.cloud.yml\n冻结范围: 第 1-60 行，共 60 行\n…"
+        },
+        "source": "fixture",
+        "data_time": null
+      }
+    ],
+    "output_checks": [
+      {
+        "check": "tool_correct",
+        "passed": false
+      },
+      {
+        "check": "number_grounding",
+        "passed": true
+      },
+      {
+        "check": "c1_compliance",
+        "passed": true
+      },
+      {
+        "check": "c2_compliance",
+        "passed": true
+      }
+    ],
+    "final_result": {
+      "answer_excerpt": "\n\n基于提供的上下文与文件片段，以下是对五项声明的一致性审计及最高风险差距分析：\n\n### 🔍 一致性判断\n\n| 声明 | 一致性 | 依据与说明 |\n|:---|:---:|:---|\n| **SQL 由维护者手动执行** | ✅ 一致 | `init.sql` 明确标注“仅用于尚未建立 Touchstone 表的全新数据库”、“执行方式：`psql ... -f init.sql`”、“已初始",
+      "citations": null,
+      "audit_codes": [],
+      "judgment": {
+        "task_success": false,
+        "tool_correct": false,
+        "number_grounded": true
+      }
+    },
+    "cost": {
+      "duration_ms": 94549,
+      "context_ms": 284,
+      "llm_ms": 93831,
+      "tool_ms": 0,
+      "prompt_tokens": 29858,
+      "completion_tokens": 5464,
+      "compression_tokens": 0,
+      "tokens_estimated": false
+    }
+  }
+}

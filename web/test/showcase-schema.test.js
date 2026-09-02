@@ -77,6 +77,58 @@ test("三个 schema 的合法样例全部通过", async () => {
   validate(runSample, await loadSchema("run"));
 });
 
+test("空索引合法:latest_batch 为 null(尚未发布任何批次)", async () => {
+  const schema = await loadSchema("index");
+  validate({ generated_at: "2026-08-31T00:00:00+08:00", formal_batches: [], latest_batch: null }, schema);
+});
+
+test("证据链扩展字段(可选):started_at/config/config_hash 与批次 purpose 合法,旧工件省略亦合法", async () => {
+  const runSchema = await loadSchema("run");
+  const extended = structuredClone(runSample);
+  extended.started_at = "2026-08-30T10:00:00+08:00";
+  extended.config_hash = "a".repeat(64);
+  extended.config = {
+    config_version: 1,
+    execution_engine: "native-tool-calling",
+    tool_delivery: "all",
+    governance_profile: "standard",
+    context_strategy: "budgeted",
+    fixture_version: "fixture-v1",
+    prompt_version: "agent-prompt-v1",
+    judge_version: "fixed-rules-v1",
+    model: {
+      provider: "openai", model_id: "glm-4.7-flash",
+      temperature_requested: 0.1, temperature_effective: 0.1,
+      top_p_requested: null, top_p_effective: null,
+      reasoning_effort_requested: null, reasoning_effort_effective: null,
+      seed_requested: null, seed_effective: null,
+      max_output_tokens: 1200, tool_choice: "auto", parallel_tool_calls: false,
+    },
+    limits: {
+      max_agent_steps: 4, max_tool_calls: 6, max_calls_per_tool: 2,
+      agent_timeout_seconds: 0, tool_timeout_seconds: 10,
+      llm_retry_count: 1, tool_retry_count: 0,
+    },
+    context: {
+      token_budget: 8192, recent_turn_count: null, compression_target_tokens: null,
+      current_turn_reserved_tokens: 1024, tokenizer_version: "conservative-cjk1-latin4-v1",
+    },
+  };
+  extended.sections.tool_results[0].arguments = { code: "000001" };
+  extended.sections.tool_results[0].duration_ms = 5;
+  validate(extended, runSchema);
+  // 配置白名单外字段仍然拒绝(additionalProperties: false)
+  const rogue = structuredClone(extended);
+  rogue.config.model.secret_extra = "x";
+  assert.throws(() => validate(rogue, runSchema), /secret_extra/);
+
+  const batchSchema = await loadSchema("batch-report");
+  const namedBatch = structuredClone(batchSample);
+  namedBatch.experiment_name = "上下文策略对照";
+  namedBatch.purpose = "同一底座比较四种上下文策略";
+  validate(namedBatch, batchSchema);
+});
+
 test("缺必填字段被拒绝", async () => {
   const schema = await loadSchema("run");
   const broken = structuredClone(runSample);

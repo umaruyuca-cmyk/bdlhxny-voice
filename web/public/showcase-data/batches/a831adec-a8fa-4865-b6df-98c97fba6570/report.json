@@ -1,0 +1,64 @@
+{
+  "batch_id": "a831adec-a8fa-4865-b6df-98c97fba6570",
+  "experiment_type": "experiment-series",
+  "experiment_name": "tool-delivery-comparison · cmp-multi-data-01",
+  "generated_at": "2026-09-02T08:19:07.841736+00:00",
+  "git_commit": "889dd6a",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "cmp-multi-data-01"
+    ],
+    "runs_per_case": 3,
+    "tool_data": "frozen",
+    "variable": "tool-delivery-comparison"
+  },
+  "groups": [
+    {
+      "key": "all",
+      "label": "all",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3.3333,
+        "mean_tokens": 6795.6667,
+        "median_duration_ms": 21097,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "search",
+      "label": "search",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 4,
+        "mean_tokens": 8091.6667,
+        "median_duration_ms": 35065,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}

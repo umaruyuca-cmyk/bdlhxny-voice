@@ -1,0 +1,159 @@
+{
+  "generated_at": "2026-09-02T13:50:39.939155+00:00",
+  "formal_batches": [
+    {
+      "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+      "experiment_type": "context-strategy",
+      "published_at": "2026-09-02T06:59:59.983Z",
+      "is_formal": true,
+      "case_count": 3,
+      "runs_per_case": 5,
+      "model": "Qwen/Qwen3.6-35B-A3B",
+      "git_commit": "f456ea7"
+    },
+    {
+      "batch_id": "56176d03-9382-42a6-b314-d5da899d61a5",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T07:55:35.043Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "28a3639"
+    },
+    {
+      "batch_id": "58253316-0e68-4771-afd5-bac7eefa837b",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:03.427Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "768d2841-e71a-4844-8287-2f1d7a5c9f84",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:06.893Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "9fbd128f-dc6b-4a17-928b-159bc5495749",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:10.116Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "a831adec-a8fa-4865-b6df-98c97fba6570",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:13.258Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "b2e08b6c-d72d-4150-b8e2-e44d8dc3595e",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:16.220Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "b944194f-9be4-4a26-b80c-295e1b2f07c8",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:19.329Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "f13a06df-59a2-4762-8d50-938e6655ff9c",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T09:55:25.415Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "9e26b12e-3efd-4815-9da8-c0cb9089222d",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T12:13:00.373Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "c9928a3d-fe5a-476e-8266-f8006150c4fc",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T12:13:08.271Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "5c4a39be-a2e5-4bb0-8396-f747164d622d",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T13:02:09.252Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "a8445094-d6ba-4da4-958b-ea077c97963b",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T13:50:38.920Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    },
+    {
+      "batch_id": "e06b966e-3185-4860-8a6e-d2e7821592e0",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-02T13:50:42.942Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "889dd6a"
+    }
+  ],
+  "latest_batch": {
+    "batch_id": "e06b966e-3185-4860-8a6e-d2e7821592e0",
+    "experiment_type": "experiment-series",
+    "published_at": "2026-09-02T13:50:42.942Z",
+    "is_formal": true,
+    "case_count": 0,
+    "runs_per_case": 0,
+    "model": "configured-model",
+    "git_commit": "889dd6a",
+    "validity_gate": {
+      "met": true,
+      "reason": "每组有效样本 ≥ 3(任务三门槛),发布校验(敏感扫描/hash 复算/引用解析)全部通过;本批次无效运行 18 次已单列"
+    }
+  }
+}

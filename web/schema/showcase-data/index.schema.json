@@ -15,7 +15,8 @@
   },
   "definitions": {
     "latestBatch": {
-      "type": "object",
+      "type": ["object", "null"],
+      "description": "null 表示尚未发布任何批次(初始空索引;发布器发布后始终写入对象)",
       "additionalProperties": false,
       "required": ["batch_id", "published_at", "is_formal", "case_count", "runs_per_case", "model", "git_commit", "validity_gate"],
       "properties": {

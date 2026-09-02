@@ -1,0 +1,189 @@
+{
+  "run_id": "2d6affe1-5dd5-4079-9934-7e2fafa0c1d5",
+  "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+  "case_id": "ctx-session-context-engine-debug-01",
+  "status": "COMPLETE",
+  "validity": "VALID",
+  "experiment": {
+    "agent_mode": "native-tool-calling",
+    "context_strategy": "budgeted",
+    "model": "Qwen/Qwen3.6-35B-A3B",
+    "repeat_index": 3
+  },
+  "sections": {
+    "fixed_input": {
+      "message": "请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。",
+      "scene": "context_engine_debugging",
+      "authenticated": true,
+      "history_count": 0,
+      "allowed_tools": null
+    },
+    "context": {
+      "strategy": "budgeted",
+      "raw_tokens": 30034,
+      "working_tokens": 8062,
+      "required_retained": true,
+      "item_counts": {
+        "retained": 3,
+        "compressed": 17,
+        "referenced": 0,
+        "isolated": 0,
+        "omitted": 0
+      }
+    },
+    "visible_tools": [
+      "analysis.run_analysis",
+      "appointment.find_clinic",
+      "audio.transcribe",
+      "audio.translate",
+      "browser.click",
+      "browser.fill_form",
+      "browser.open_page",
+      "calculator.evaluate",
+      "calendar.create_event",
+      "calendar.find_availability",
+      "calendar.list_events",
+      "cart.add_item",
+      "ci.get_status",
+      "citation.lookup",
+      "code.execute",
+      "code.read",
+      "code.search",
+      "compliance.check_text",
+      "computer.screenshot",
+      "computer.upload_file",
+      "contacts.search",
+      "contract.extract_terms",
+      "crm.get_account",
+      "crm.search_customer",
+      "dashboard.get",
+      "data.export",
+      "data.transform",
+      "database.describe_table",
+      "database.list_tables",
+      "database.query",
+      "design.create_mockup",
+      "device.get_status",
+      "device.list",
+      "device.set_state",
+      "document.compare",
+      "document.summarize",
+      "drive.get_metadata",
+      "drive.list_folder",
+      "drive.search",
+      "file.extract_text",
+      "file.list",
+      "file.read",
+      "file.search",
+      "fitness.get_activity",
+      "git.get_diff",
+      "github.search_issues",
+      "health.get_medication_info",
+      "health.search_guidance",
+      "home.create_automation",
+      "image.analyze",
+      "image.edit",
+      "image.generate",
+      "knowledge.get_record",
+      "knowledge.search",
+      "learning.explain_topic",
+      "learning.search_course",
+      "legal.compare_clauses",
+      "legal.search_policy",
+      "mail.draft",
+      "mail.read",
+      "mail.search",
+      "mail.send",
+      "maps.get_directions",
+      "maps.search_places",
+      "market.get_news",
+      "message.search",
+      "message.send",
+      "metrics.get",
+      "notes.search",
+      "ocr.extract_text",
+      "order.get_status",
+      "product.compare",
+      "product.get_price",
+      "product.search",
+      "project.get_status",
+      "quiz.create",
+      "research.deep_search",
+      "research.web_search",
+      "speech.generate",
+      "spreadsheet.calculate",
+      "spreadsheet.create_chart",
+      "spreadsheet.find_rows",
+      "spreadsheet.read_range",
+      "support.create_ticket",
+      "support.search_tickets",
+      "task.create",
+      "task.list",
+      "translate.text",
+      "travel.build_itinerary",
+      "travel.search_hotels",
+      "travel.search_transport",
+      "video.generate",
+      "video.summarize",
+      "weather.get_forecast",
+      "web.check_freshness",
+      "web.compare_sources",
+      "web.extract",
+      "web.find",
+      "web.open",
+      "web.search"
+    ],
+    "model_steps": [
+      {
+        "seq": 1,
+        "decision": "answer",
+        "latency_ms": 73168
+      }
+    ],
+    "code_decisions": [
+      {
+        "seq": 1,
+        "allowed": true
+      }
+    ],
+    "tool_results": [],
+    "output_checks": [
+      {
+        "check": "tool_correct",
+        "passed": false
+      },
+      {
+        "check": "number_grounding",
+        "passed": true
+      },
+      {
+        "check": "c1_compliance",
+        "passed": true
+      },
+      {
+        "check": "c2_compliance",
+        "passed": true
+      }
+    ],
+    "final_result": {
+      "answer_excerpt": "\n\n基于已提供的代码片段与文档，以下是对三种核心文件的复核结论。分析严格区分**已实现**、**条件启用**与**仅文档设计**状态。\n\n### 一、 四种上下文策略的真实边界\n\n在 `builder.py` 的 `ContextBuilder.build()` 中，四种策略的边界由 `request.strategy` 严格分发，互不旁路：\n\n| 策略 | 真实边界与行为 | 状态 |\n|:--",
+      "citations": null,
+      "audit_codes": [],
+      "judgment": {
+        "task_success": false,
+        "tool_correct": false,
+        "number_grounded": true
+      }
+    },
+    "cost": {
+      "duration_ms": 73512,
+      "context_ms": 247,
+      "llm_ms": 73168,
+      "tool_ms": 0,
+      "prompt_tokens": 15033,
+      "completion_tokens": 3752,
+      "compression_tokens": 0,
+      "tokens_estimated": false
+    }
+  }
+}

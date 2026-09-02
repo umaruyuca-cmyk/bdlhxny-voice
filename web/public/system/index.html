@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>执行逻辑 · Touchstone</title>
+<meta name="description" content="一次 Agent 运行的完整链路:每一步的输入、执行模块、关键规则、输出与写入的证据;模块关系与公私边界。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/" class="on">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
+  </div>
+</header>
+<main class="page-main with-toc">
+  <nav class="page-toc" aria-label="本页目录"><h4>本页目录</h4><ul><li><a href="#pipeline">一次运行的完整链路</a></li><li><a href="#modules">模块关系与公私边界</a></li><li><a href="#agent-loop">Agent 循环与三层闸门</a></li><li><a href="#governance">治理拦截链与审计码</a></li><li><a href="#context">上下文构建器</a></li><li><a href="#judging-publish">评测器与发布校验</a></li><li><a href="#private-api">私有运行 API(仅说明,公开侧不可达)</a></li></ul></nav>
+  <div class="page-body">
+<section id="pipeline"><h2>一次运行的完整链路</h2>
+
+<p>私有侧每发起一次运行,都经过同一条固定链路;链路的每一步都留下可回查的证据,发布时随批次一起投影为公开快照。</p>
+<div class="flow"><span class="flow-step">固定任务</span><span class="flow-arrow">→</span><span class="flow-step">数据与工具冻结</span><span class="flow-arrow">→</span><span class="flow-step">上下文构建</span><span class="flow-arrow">→</span><span class="flow-step">Agent 循环</span><span class="flow-arrow">→</span><span class="flow-step">治理拦截</span><span class="flow-arrow">→</span><span class="flow-step">输出护栏</span><span class="flow-arrow">→</span><span class="flow-step">评测断言</span><span class="flow-arrow">→</span><span class="flow-step">工件落库</span><span class="flow-arrow">→</span><span class="flow-step">发布校验</span></div>
+<div class="tbl-scroll">
+<table class="tbl">
+  <thead><tr><th>步骤</th><th>输入</th><th>执行模块</th><th>关键规则</th><th>输出</th><th>写入的证据</th></tr></thead>
+  <tbody>
+    <tr><td>1. 固定任务</td><td>固定题库(20 条对比用例 / 3 个长上下文 Session)</td><td>data 服务(PostgreSQL 题库三表)</td><td>题目、金标与变体全部版本化;不接受自由输入正文</td><td>运行定义(用例 + 变体 + 重复序号)</td><td>运行工件 case 段(问题、场景、登录态)</td></tr>
+    <tr><td>2. 数据与工具冻结</td><td>工具目录八表 + 冻结工具返回集</td><td>data 服务(internal 接口)、engine 目录快照</td><td>工具返回取自冻结 fixture 集,隔离执行质量差异;高危操作语义工具(交易执行类)物理上无法注册</td><td>工具目录快照 + fixture 集</td><td>provenance 段(目录哈希 / 快照哈希 / 配置哈希)</td></tr>
+    <tr><td>3. 上下文构建</td><td>会话条目(分类、优先级、可信度)+ token 预算</td><td>engine 上下文构建器</td><td>强制项全保留红线;预算不足显式失败,不静默截断;不可信条目整体隔离,不进指令区</td><td>工作上下文消息 + 逐条处理报告</td><td>context 段(策略、原始/工作 token、逐类计数)</td></tr>
+    <tr><td>4. Agent 循环</td><td>工作上下文 + 当轮可见工具</td><td>engine Agent 循环(原生 Tool Calling)</td><td>步数与调用次数上限;每轮装载集合写盘;决策只记录可观察行为</td><td>模型逐步决策 + 工具调用序列</td><td>steps 段(模型步 / 工具步交织时间线)、visible_tools</td></tr>
+    <tr><td>5. 治理拦截</td><td>每次工具调用</td><td>engine 治理中间件(G1–G7 链)</td><td>可见性 → 只读 → 权限 → 预算 → 参数校验,任一不过即结构化拒绝并带稳定审计码</td><td>放行或带审计码的拒绝</td><td>guardrail_checks(逐次判定 + 审计码)</td></tr>
+    <tr><td>6. 输出护栏</td><td>模型最终答案</td><td>engine 输出护栏(response 时点)</td><td>数字接地(幻觉数字替换)、高危操作语义拦截、未授权建议结论替换;每次修正留痕</td><td>修正后的最终输出</td><td>result 段 + guardrail_checks(response)</td></tr>
+    <tr><td>7. 评测断言</td><td>调用记录 + 修正后答案 + 题库金标</td><td>engine 机械判官(代码断言,无 LLM 判官)</td><td>工具层 / 答案层 / 上下文层三层断言;判官版本随工件落盘</td><td>通过 / 失败项与失败原因</td><td>judgment 段 + output_checks</td></tr>
+    <tr><td>8. 工件落库</td><td>以上全部记录</td><td>engine 运行遥测</td><td>九段统一工件;哈希覆盖全段可复算;事件流逐步落库</td><td>逐运行工件(文件 + 数据库双写)</td><td>runs/{run_id}.json 的全部段落</td></tr>
+    <tr><td>9. 发布校验</td><td>批次工件 + 逐运行工件</td><td>web 发布脚本(发布器)</td><td>有效样本门槛、逐运行哈希复算、敏感信息零容忍、引用可解析;任何一条不过整体拒绝,不部分发布</td><td>公开快照(索引 / 批次报告 / 逐运行工件)</td><td>showcase-data/ 下的 index、report、runs 文件</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note">有公开发布运行后,每一步对应的真实证据可在<a href="/evidence/">原始证据</a>页按运行查看。</p></section>
+<section id="modules"><h2>模块关系与公私边界</h2>
+
+<p>系统由四个部分组成,一条公私边界隔开运行与展示:</p>
+<div class="flow">web(纯静态展示层,只读公开快照)| engine(私有运行 API + 模板执行器)| data(题库 / 记录 / 发布登记服务)| PostgreSQL(唯一数据来源)</div>
+<ul>
+  <li><strong>web</strong> 是本站:纯静态页面,不调用任何私有 API,不含登录或输入表单;公开部署镜像物理上不包含运行入口。</li>
+  <li><strong>engine</strong> 只在私有侧:接受项目所有者按模板发起的运行,产出运行事件与九段工件;接口不接受问题正文、系统提示词或工具列表。</li>
+  <li><strong>data</strong> 是题库、冻结工具返回、运行记录与发布登记的唯一入口;engine 不直连数据库。</li>
+  <li><strong>PostgreSQL</strong> 保存全部原始记录;公开快照只是它经验证后的投影,公开页面永远不回源查询。</li>
+</ul></section>
+<section id="agent-loop"><h2>Agent 循环与三层闸门</h2>
+
+<p>循环内每次模型调用前有三层闸门,全部由代码确定执行:</p>
+<div class="flow">G-α 语义快路径(纯闲聊 / 知识问答 / 禁止项不进循环、不装载工具)→ G-β 模型决定是否调用工具 → G-γ 治理中间件以预算为上限执行调用</div>
+<p>循环体为「装载当轮可见工具 → 模型决策 → 治理检查 → 工具执行 → Observation 回填」。系统提示从版本化文件加载,不内联;全部模型输入的上下文拼装统一经上下文构建器,有架构测试守卫,不允许旁路拼装。</p>
+<h3>工具提供方式</h3>
+<ul>
+  <li><strong>scoped(默认)</strong>:按场景与登录态定向装载当轮可见工具,可审计性最好;</li>
+  <li><strong>search(实验轴)</strong>:模型先经检索元工具找工具再按名调用,面向目录规模增长;权限过滤先于检索。</li>
+</ul>
+<p>每轮实际装载集合写入运行工件的 visible_tools——单次运行页可以看到「当次模型到底看到了哪些工具」。</p></section>
+<section id="governance"><h2>治理拦截链与审计码</h2>
+
+<p>工具调用的唯一执行咽喉,本地工具与外部工具走同一条链:</p>
+<div class="flow">G1 可见性 → G2 只读 → G3 权限 → G4 预算 → G5 参数校验 → 执行 → G6 Observation 包装 → G7 审计记录</div>
+<p>任一前置拦截即终止并返回结构化拒绝,附带稳定审计码(例如 <code>G3-AUTH-001</code> 未登录调用受限工具、<code>G4-BUDGET-001</code> 预算耗尽、<code>G5-SCHEMA-001</code> 参数不符);每次检查写入 guardrail_checks,证据页的「治理判定」段可逐条核对。</p>
+<h3>输出护栏:答案出口三检查</h3>
+<ul>
+  <li><strong>数字接地</strong>:答案中的非平凡数字必须来自某条工具结果,幻觉数字替换为「[数据待核实]」;</li>
+  <li><strong>高危操作(C-1)</strong>:被禁止执行的操作语义替换为固定表述并追加风险披露(当前配置:交易执行类);</li>
+  <li><strong>专业建议(C-2)</strong>:未被授权给出的建议结论替换为固定免责表述(当前配置:投资适当性类)。</li>
+</ul>
+<p>修正后的答案才进入判官;每次修正都记录在 response 时点的治理检查与事件流中。</p></section>
+<section id="context"><h2>上下文构建器</h2>
+
+<p>模型输入不是直接拼接的聊天记录,而是经过统一构建器裁决的工作上下文。四种处理策略:</p>
+<ul>
+  <li><strong>full</strong>:完整透传(预算内不压缩;放不下即失败,不截断冒充全量);</li>
+  <li><strong>recent-n</strong>:只保留最近 N 条,窗口外显式省略;</li>
+  <li><strong>single-summary</strong>:可压缩项合并为单摘要;</li>
+  <li><strong>budgeted</strong>:按优先级与性价比逐条分配预算压缩,仅引用项以来源元数据代表。</li>
+</ul>
+<p>红线:强制项(required)保留率必须 100%,缺失即按失败口径处理;注入条目永远进不了指令区;处理报告(原始 / 工作 token、逐类计数、逐条决策原因)随工件落盘。token 采用保守确定性计数口径,刻意高估,保证预算内不超出真实 tokenizer。压缩为确定性过程(规范化、JSON 紧凑化、头尾保留 + 显式省略标记),不调用模型。</p></section>
+<section id="judging-publish"><h2>评测器与发布校验</h2>
+
+<p><strong>评测</strong>:全部指标由代码断言产生(判官版本 <code>fixed-rules-v1</code>),没有 LLM 判官,不存在判官模型偏好这个隐藏变量。断言分三层:工具层(调用与金标比对)、答案层(数字接地 / C-1 / C-2)、上下文层(强制项保留 / 关键事实出现 / 禁用事实不入答案 / 注入隔离)。指标口径见<a href="/methodology/#metrics">测试逻辑 · 指标定义</a>(全站唯一定义)。</p>
+<p><strong>发布</strong>:批次要成为正式结果,必须整批通过发布器校验——每组有效运行数达门槛、逐运行工件哈希复算一致、敏感信息零容忍扫描(密钥 / 内部地址 / 系统提示标记等)、批次报告引用的运行全部可解析。任何一条不过整体拒绝;通过后才投影出本站读取的公开快照。发布不修改源工件,可重复执行。</p></section>
+<section id="private-api"><h2>私有运行 API(仅说明,公开侧不可达)</h2>
+
+<p>运行与发布都在私有侧完成。engine 对项目所有者暴露的接口族包括:登录会话、固定题库与实验模板清单、模板批次预估、实验组与单次运行创建(一次请求只创建一个运行)、运行事件流与逐步明细、纯代码统计快照、作业状态与取消,以及发布登记查询。公开部署不包含这些入口,本站页面也不调用它们。</p></section>
+  </div>
+</main>
+<footer class="site-foot">
+  <div class="foot-inner">
+    <p>全部结果数字来自发布校验后的公开快照;未发布即显示空状态,不使用演示成绩。证据为可审计执行记录,不含模型内部思维链。</p>
+    <p class="foot-links">源码仓库:<a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">GitHub · bdlhxny-agent</a></p>
+  </div>
+</footer>
+<script src="/docs/docs.js"></script>
+
+</body>
+</html>

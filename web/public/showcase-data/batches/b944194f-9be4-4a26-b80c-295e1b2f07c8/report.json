@@ -1,0 +1,83 @@
+{
+  "batch_id": "b944194f-9be4-4a26-b80c-295e1b2f07c8",
+  "experiment_type": "experiment-series",
+  "experiment_name": "max-agent-steps-stability · cmp-multi-data-01",
+  "generated_at": "2026-09-02T09:07:45.534438+00:00",
+  "git_commit": "889dd6a",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "cmp-multi-data-01"
+    ],
+    "runs_per_case": 3,
+    "tool_data": "frozen",
+    "variable": "max-agent-steps-stability"
+  },
+  "groups": [
+    {
+      "key": "steps-3",
+      "label": "steps-3",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": 5875.3333,
+        "median_duration_ms": 19584,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "steps-4",
+      "label": "steps-4",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": 6146.6667,
+        "median_duration_ms": 28586,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "steps-5",
+      "label": "steps-5",
+      "valid_runs": 3,
+      "invalid_runs": 6,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": 6022.6667,
+        "median_duration_ms": 26677,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}

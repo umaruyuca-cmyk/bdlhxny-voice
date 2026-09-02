@@ -1,0 +1,102 @@
+{
+  "batch_id": "b2e08b6c-d72d-4150-b8e2-e44d8dc3595e",
+  "experiment_type": "experiment-series",
+  "experiment_name": "temperature-stability · cmp-multi-data-01",
+  "generated_at": "2026-09-02T08:29:03.526386+00:00",
+  "git_commit": "889dd6a",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "cmp-multi-data-01"
+    ],
+    "runs_per_case": 3,
+    "tool_data": "frozen",
+    "variable": "temperature-stability"
+  },
+  "groups": [
+    {
+      "key": "t0.0",
+      "label": "t0.0",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3.3333,
+        "mean_tokens": 6378.3333999999995,
+        "median_duration_ms": 14631,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "t0.1",
+      "label": "t0.1",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3.3333,
+        "mean_tokens": 6448.6667,
+        "median_duration_ms": 21546,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "t0.3",
+      "label": "t0.3",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3.3333,
+        "mean_tokens": 6455,
+        "median_duration_ms": 14670,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "t0.7",
+      "label": "t0.7",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": 6842.3333,
+        "median_duration_ms": 32213,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}

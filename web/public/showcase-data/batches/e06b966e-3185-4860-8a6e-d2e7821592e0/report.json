@@ -1,0 +1,83 @@
+{
+  "batch_id": "e06b966e-3185-4860-8a6e-d2e7821592e0",
+  "experiment_type": "experiment-series",
+  "experiment_name": "tool-availability-degradation · cmp-combo-route-01",
+  "generated_at": "2026-09-02T13:50:39.939155+00:00",
+  "git_commit": "889dd6a",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "cmp-combo-route-01"
+    ],
+    "runs_per_case": 3,
+    "tool_data": "frozen",
+    "variable": "tool-availability-degradation"
+  },
+  "groups": [
+    {
+      "key": "full-catalog",
+      "label": "full-catalog",
+      "valid_runs": 3,
+      "invalid_runs": 2,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3.3333,
+        "mean_tokens": 16005.3333,
+        "median_duration_ms": 35519,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "remove-preferred",
+      "label": "remove-preferred",
+      "valid_runs": 3,
+      "invalid_runs": 2,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": 5681.6666,
+        "median_duration_ms": 28959,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "remove-preferred-and-alternative",
+      "label": "remove-preferred-and-alternative",
+      "valid_runs": 3,
+      "invalid_runs": 14,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": 6128.6667,
+        "median_duration_ms": 25488,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}

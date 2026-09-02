@@ -260,6 +260,80 @@ test("canonicalHash 与 engine payload_hash 同口径(跨语言对拍样例)", (
   assert.equal(canonicalHash(sample), "sha256:bbd2c4239adce18fbb59a58555e2499dd1b0d89b995b8b648a2b940af35380de");
 });
 
+test("证据链投影:生效配置/发生时间/工具参数与耗时进公开工件(可选,旧工件缺失不报错)", async () => {
+  const perRunConfig = {
+    config_version: 1,
+    execution_engine: "native-tool-calling",
+    tool_delivery: "all",
+    governance_profile: "standard",
+    context_strategy: "budgeted",
+    fixture_version: "fixture-v1",
+    prompt_version: "agent-prompt-v1",
+    judge_version: "fixed-rules-v1",
+    model: {
+      provider: "openai", model_id: "glm-4.7-flash",
+      temperature_requested: 0.1, temperature_effective: 0.1,
+      top_p_requested: null, top_p_effective: null,
+      reasoning_effort_requested: null, reasoning_effort_effective: null,
+      seed_requested: null, seed_effective: null,
+      max_output_tokens: 1200, tool_choice: "auto", parallel_tool_calls: false,
+      unsupported_reasons: ["top_p"],
+    },
+    limits: {
+      max_agent_steps: 4, max_tool_calls: 6, max_calls_per_tool: 2,
+      agent_timeout_seconds: 0, tool_timeout_seconds: 10,
+      llm_retry_count: 1, tool_retry_count: 0,
+    },
+    context: {
+      token_budget: 8192, recent_turn_count: null, compression_target_tokens: null,
+      current_turn_reserved_tokens: 1024, tokenizer_version: "conservative-cjk1-latin4-v1",
+    },
+  };
+  const runArtifact = makeRunArtifact(RUN_BUDGETED, "budgeted");
+  runArtifact.started_at = "2026-08-30T10:00:00+08:00";
+  runArtifact.provenance.per_run_config = perRunConfig;
+  runArtifact.provenance.config_hash = "a".repeat(64);
+  runArtifact.artifact_hash = canonicalHash(Object.fromEntries(
+    Object.entries(runArtifact).filter(([k]) => k !== "artifact_hash"),
+  ));
+  await writeRun(runArtifact);
+  await writeBatch(makeBatchArtifact({
+    experiment_name: "上下文策略对照",
+    purpose: "同一底座比较四种上下文策略",
+  }));
+  const result = await runPublish();
+  assert.equal(result.files, 4);
+
+  const run = JSON.parse(await readFile(path.join(workDir, "out", "runs", `${RUN_BUDGETED}.json`), "utf8"));
+  validate(run, await loadSchema("run"));
+  assert.equal(run.started_at, "2026-08-30T10:00:00+08:00");
+  assert.equal(run.config_hash, "a".repeat(64));
+  // 白名单投影:unsupported_reasons 等未列入字段不外泄;agent_timeout 0=不限时如实透出
+  assert.equal(run.config.limits.agent_timeout_seconds, 0);
+  assert.equal(run.config.limits.tool_timeout_seconds, 10);
+  assert.equal(run.config.model.model_id, "glm-4.7-flash");
+  assert.ok(!JSON.stringify(run.config).includes("unsupported_reasons"));
+  // 工具调用参数与耗时进入公开工件(证据链 06 段)
+  const toolRow = run.sections.tool_results[0];
+  assert.deepEqual(toolRow.arguments, { code: "000001" });
+  assert.equal(toolRow.duration_ms, 5);
+
+  const report = JSON.parse(await readFile(path.join(workDir, "out", "batches", BATCH_ID, "report.json"), "utf8"));
+  validate(report, await loadSchema("batch-report"));
+  assert.equal(report.experiment_name, "上下文策略对照");
+  assert.equal(report.purpose, "同一底座比较四种上下文策略");
+
+  // 旧版工件(无 per_run_config/started_at)发布不报错,字段省略
+  await writeRun(makeRunArtifact(RUN_RAW, "full"));
+  await writeBatch(makeBatchArtifact());
+  await runPublish();
+  const legacy = JSON.parse(await readFile(path.join(workDir, "out", "runs", `${RUN_RAW}.json`), "utf8"));
+  validate(legacy, await loadSchema("run"));
+  assert.ok(!("config" in legacy));
+  assert.ok(!("started_at" in legacy));
+  assert.ok(!("purpose" in JSON.parse(await readFile(path.join(workDir, "out", "batches", BATCH_ID, "report.json"), "utf8"))));
+});
+
 // ── 实验组统计工件发布(series-{id}.json → experiment-series 批次) ──────
 
 const SERIES_ID = "56176d03-9382-42a6-b314-d5da899d61a5";

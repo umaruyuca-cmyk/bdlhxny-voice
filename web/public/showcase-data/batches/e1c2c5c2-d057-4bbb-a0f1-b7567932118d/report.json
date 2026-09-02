@@ -1,0 +1,319 @@
+{
+  "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+  "experiment_type": "context-strategy",
+  "generated_at": "2026-09-01",
+  "git_commit": "f456ea7",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "fixed_conditions": {
+    "case_ids": [
+      "ctx-session-context-engine-debug-01",
+      "ctx-session-database-deploy-01",
+      "ctx-session-product-evolution-01"
+    ],
+    "runs_per_case": 5,
+    "tool_data": "frozen",
+    "variable": "context_strategy"
+  },
+  "groups": [
+    {
+      "key": "budgeted-extractive",
+      "label": "budgeted-extractive（按预算压缩·抽取式基线）",
+      "valid_runs": 13,
+      "invalid_runs": 2,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": 0.15384615384615385,
+        "hallucination_rate": null,
+        "invisible_tool_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": null,
+        "mean_tokens": null,
+        "median_duration_ms": 65628,
+        "p95_duration_ms": null,
+        "selection_precision_mean": null,
+        "selection_recall_mean": null,
+        "missed_rate": null,
+        "extra_call_rate": null,
+        "forbidden_attempt_rate": null,
+        "params_complete_rate": null,
+        "params_type_valid_rate": null,
+        "params_factual_rate": null,
+        "duplicate_call_rate": null,
+        "order_correct_rate": null,
+        "unconfirmed_write_rate": null,
+        "write_for_query_rate": null,
+        "search_hit_rate": null,
+        "invalid_search_rate": null,
+        "duplicate_search_rate": null,
+        "search_then_correct_rate": null,
+        "mean_tools_schema_tokens": null,
+        "constraint_retention_rate": 1,
+        "fact_recall_rate": 1,
+        "injection_isolated_rate": 1,
+        "forbidden_fact_leak_rate": 0,
+        "raw_tokens": 28966,
+        "working_tokens": 7647
+      }
+    },
+    {
+      "key": "budgeted-hybrid-v1",
+      "label": "budgeted-hybrid-v1（按预算压缩·混合主算法）",
+      "valid_runs": 15,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": 0.2,
+        "hallucination_rate": null,
+        "invisible_tool_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": null,
+        "mean_tokens": null,
+        "median_duration_ms": 70028,
+        "p95_duration_ms": null,
+        "selection_precision_mean": null,
+        "selection_recall_mean": null,
+        "missed_rate": null,
+        "extra_call_rate": null,
+        "forbidden_attempt_rate": null,
+        "params_complete_rate": null,
+        "params_type_valid_rate": null,
+        "params_factual_rate": null,
+        "duplicate_call_rate": null,
+        "order_correct_rate": null,
+        "unconfirmed_write_rate": null,
+        "write_for_query_rate": null,
+        "search_hit_rate": null,
+        "invalid_search_rate": null,
+        "duplicate_search_rate": null,
+        "search_then_correct_rate": null,
+        "mean_tools_schema_tokens": null,
+        "constraint_retention_rate": 1,
+        "fact_recall_rate": 1,
+        "injection_isolated_rate": 1,
+        "forbidden_fact_leak_rate": 0,
+        "raw_tokens": 28815,
+        "working_tokens": 7660
+      }
+    },
+    {
+      "key": "full",
+      "label": "full（完整上下文对照）",
+      "valid_runs": 15,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": 0,
+        "hallucination_rate": null,
+        "invisible_tool_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": null,
+        "mean_tokens": null,
+        "median_duration_ms": 72060,
+        "p95_duration_ms": null,
+        "selection_precision_mean": null,
+        "selection_recall_mean": null,
+        "missed_rate": null,
+        "extra_call_rate": null,
+        "forbidden_attempt_rate": null,
+        "params_complete_rate": null,
+        "params_type_valid_rate": null,
+        "params_factual_rate": null,
+        "duplicate_call_rate": null,
+        "order_correct_rate": null,
+        "unconfirmed_write_rate": null,
+        "write_for_query_rate": null,
+        "search_hit_rate": null,
+        "invalid_search_rate": null,
+        "duplicate_search_rate": null,
+        "search_then_correct_rate": null,
+        "mean_tools_schema_tokens": null,
+        "constraint_retention_rate": 1,
+        "fact_recall_rate": 1,
+        "injection_isolated_rate": 1,
+        "forbidden_fact_leak_rate": 0,
+        "raw_tokens": 28815,
+        "working_tokens": 28797
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": [
+    {
+      "id": "ctx-session-context-engine-debug-01",
+      "category": "context_engine_debugging",
+      "message": "请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。",
+      "groups": {
+        "budgeted-extractive": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 4,
+          "duration_p50_ms": 78286,
+          "duration_p95_ms": 100815,
+          "estimated_token_runs": 0
+        },
+        "budgeted-hybrid-v1": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 74710,
+          "duration_p95_ms": 105906,
+          "estimated_token_runs": 0
+        },
+        "full": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 65120,
+          "duration_p95_ms": 88620,
+          "estimated_token_runs": 0
+        }
+      },
+      "run_ids": {
+        "budgeted-extractive": [
+          "b0953172-a671-4dd3-90b6-860f09cb340f",
+          "63f7b6be-c93e-4212-b2e5-6a7bf830d275",
+          "2d6affe1-5dd5-4079-9934-7e2fafa0c1d5",
+          "f267fae3-8b9d-4fd9-9138-b94fbdaf908d",
+          "8257a26d-2574-44ce-8c2e-33d37c1e8e32"
+        ],
+        "budgeted-hybrid-v1": [
+          "468d3021-1def-4362-bda0-a7be870c11a7",
+          "e93cc629-990a-4dc6-8083-263f0b39631d",
+          "2b90cf1d-834c-49a7-9d6c-ffa31a5e91a2",
+          "43a5f53b-5162-4b52-97b9-93f2ef8f50c0",
+          "ac4beac6-a460-4688-b9b9-96f4d8883122"
+        ],
+        "full": [
+          "1d401928-e587-418e-9c0b-2c99b81599a8",
+          "29f39bdb-7d7c-48c8-885b-8de4bd448efe",
+          "f51d8a57-580e-4652-9623-f24728bfcef1",
+          "3d7fdf3f-b99c-4fb5-af9c-663ea78290b4",
+          "fbb9253c-de1f-4cc2-b063-6727e0613297"
+        ]
+      }
+    },
+    {
+      "id": "ctx-session-database-deploy-01",
+      "category": "database_and_deployment_audit",
+      "message": "请使用只读工具审计 db/postgresql/setup/init.sql、db/postgresql/changes/20260823-trim-simple-add-complex.sql、data/src/main/resources/application.yaml、data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java、deploy/docker-compose.yml 与 deploy/docker-compose.cloud.yml。判断“SQL 由维护者手动执行、本地 PostgreSQL 使用 5432、data 只负责受控读写、压缩工件可完整追溯、所有模块可云部署”是否一致，并列出三个最高风险差距。不要执行 SQL、不要连接数据库、不要修改文件。",
+      "groups": {
+        "budgeted-extractive": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 66782,
+          "duration_p95_ms": 94355,
+          "estimated_token_runs": 0
+        },
+        "budgeted-hybrid-v1": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 94549,
+          "duration_p95_ms": 123668,
+          "estimated_token_runs": 0
+        },
+        "full": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 80500,
+          "duration_p95_ms": 107192,
+          "estimated_token_runs": 0
+        }
+      },
+      "run_ids": {
+        "budgeted-extractive": [
+          "8420c828-3df6-46b7-a0ce-19eb05d735e8",
+          "853c7e5d-e458-4cae-8e9e-6d0b8f02fcb5",
+          "193f6661-6700-4e05-8a3e-767ad6077a6e",
+          "c4939b9e-cb75-4dc1-a3d8-bfcf539f7aee",
+          "04950c53-8fdf-4963-80a9-2e9eb0c9bd34"
+        ],
+        "budgeted-hybrid-v1": [
+          "ab7d8880-9822-4963-adb2-93d5bd3f47e6",
+          "2cf90e1f-347e-4a0f-820d-01a51a77b500",
+          "abeb5abc-5b01-47fe-aa56-f85c1ead6808",
+          "6eb6de76-6450-457e-8070-3e73614404fe",
+          "80b81841-6b6e-4179-84e6-52cadbb549ef"
+        ],
+        "full": [
+          "ee358dd7-800e-4847-8182-600a9f6f843a",
+          "2238b6c7-48fe-428d-84ea-80e1a34c29b2",
+          "455e3235-7489-4d2c-8d21-4b4b0c60c2ec",
+          "c968fb04-59f1-47f7-ab6f-408896125c09",
+          "61a99c53-1718-4212-86c6-f6daf74a0c94"
+        ]
+      }
+    },
+    {
+      "id": "ctx-session-product-evolution-01",
+      "category": "product_and_context_design",
+      "message": "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。",
+      "groups": {
+        "budgeted-extractive": {
+          "correct": 2,
+          "hallucinated": 0,
+          "total": 4,
+          "duration_p50_ms": 52937,
+          "duration_p95_ms": 71875,
+          "estimated_token_runs": 0
+        },
+        "budgeted-hybrid-v1": {
+          "correct": 3,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 30905,
+          "duration_p95_ms": 45219,
+          "estimated_token_runs": 0
+        },
+        "full": {
+          "correct": 0,
+          "hallucinated": 0,
+          "total": 5,
+          "duration_p50_ms": 69561,
+          "duration_p95_ms": 77048,
+          "estimated_token_runs": 0
+        }
+      },
+      "run_ids": {
+        "budgeted-extractive": [
+          "5c3affec-0b8b-42d7-ba59-27a72c71ac83",
+          "9ec21f62-dd51-44e9-aa85-e70cd3f34e23",
+          "945c062c-4c80-48f6-8423-e7b33867ffc4",
+          "8169823d-13f7-421e-874e-f6493cca0d52",
+          "0db2f9d0-b2b1-41de-b082-2f36a7e019b3"
+        ],
+        "budgeted-hybrid-v1": [
+          "03bda527-11bf-4459-acde-7317c3a3d3a0",
+          "56c14c89-66fb-4fac-8d6f-3f9221614a49",
+          "833fd03a-66d5-4044-b452-54c6c06c0a50",
+          "4833c8c2-a99f-430d-88f2-34af9a01dc7f",
+          "d7a7be1c-d97d-447f-8d48-a97be4094d6f"
+        ],
+        "full": [
+          "86b2c9de-feb1-4fbf-9ab3-0116fe4268c9",
+          "27748e01-548c-4a84-8e4e-826c0c58b0f9",
+          "1bbb27aa-fa79-4890-8b7d-c7ddec2baba4",
+          "06902474-2121-47ae-9d49-dd6f1581e846",
+          "8d275151-219a-4e02-a02b-5d671d1991c3"
+        ]
+      }
+    }
+  ]
+}

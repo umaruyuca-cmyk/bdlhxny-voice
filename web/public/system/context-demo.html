@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>真实运行 · 上下文压缩 · 执行逻辑</title>
+<meta name="description" content="系统自动以真实 LLM 执行的完整压缩链路:分段、分类、预算选择、摘要入库与 Agent 运行;只读展示。">
+<link rel="stylesheet" href="/docs/docs.css">
+<style>
+.context-shell { max-width: 1280px; }
+.context-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 10px; }
+.context-metric { border: 1px solid #dbe3ee; border-radius: 10px; padding: 12px; background: #fff; }
+.context-metric span { display: block; color: #64748b; font-size: 12px; }
+.context-metric b { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.context-steps { display: grid; grid-template-columns: repeat(6,minmax(120px,1fr)); gap: 8px; }
+.context-step { border: 1px solid #dbe3ee; border-radius: 9px; padding: 10px; background: #fff; }
+.context-step b, .context-step span { display: block; }
+.context-step span { font-size: 12px; color: #64748b; margin-top: 4px; }
+.context-events { display: grid; gap: 8px; }
+.context-event, .context-card, .context-message { border: 1px solid #dbe3ee; border-radius: 9px; padding: 10px; background: #fff; }
+.context-event-head, .context-card-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #64748b; font-size: 12px; }
+.context-event pre, .context-card pre, .context-message pre { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: #1e293b; }
+.context-message { margin-bottom: 8px; }
+.context-message .role { font-size: 12px; color: #475569; text-transform: uppercase; }
+.context-tool-calls { margin: 0; padding-left: 18px; font-size: 13px; color: #334155; }
+.context-tool-calls li { margin-bottom: 4px; word-break: break-all; }
+.budget-note { margin-top: 8px; font-size: 12px; color: #64748b; }
+h3 { font-size: 14px; margin: 18px 0 8px; }
+@media (max-width: 900px) { .context-steps { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/" class="on">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
+  </div>
+</header>
+<main class="page-main">
+  <div class="page-body context-shell">
+    <p><a href="/system/">← 返回执行逻辑</a></p>
+    <h1>真实运行 · 上下文压缩</h1>
+    <p class="page-lead">引擎启动后自动以真实 LLM 执行完整压缩链路(分段 → 分类 → 预算选择 → 摘要入库 → Agent 运行),数据由系统演示账号产出;本页只读展示,不提供任何提交操作。</p>
+    <div id="demoError" class="placeholder-block" hidden></div>
+
+    <h2>构建列表(系统自动执行)</h2>
+    <div id="demoBuilds" class="context-metrics"><div class="placeholder-block">正在读取演示数据…</div></div>
+    <div id="demoEmpty" class="placeholder-block" hidden>
+      还没有演示数据:引擎需配置 LLM_API_KEY 并完成一次启动执行。未配置模型时系统不会伪造任何数据。
+    </div>
+
+    <div id="demoDetail" hidden>
+      <h2>构建详情</h2>
+      <p id="demoIdentity" style="font-size:13px;color:#64748b"></p>
+      <h3>六阶段执行状态</h3>
+      <div id="demoSteps" class="context-steps"></div>
+      <h3>LLM 调用台账(分项计量,压缩与 Agent 分开)</h3>
+      <div id="demoLedger"></div>
+      <h3>分类结果与预算指标</h3>
+      <div id="demoClassMetrics" class="context-metrics"></div>
+      <div id="demoBudget" style="border:1px solid #dbe3ee;border-radius:10px;padding:14px;background:#fff;margin-top:10px"></div>
+      <h3>分段摘要库(本构建注入并入库的 Segment)</h3>
+      <div id="demoSegments" class="context-events"></div>
+      <h3>Agent 运行(工具循环,真实模型)</h3>
+      <div id="demoAgent"></div>
+      <h3>冻结消息序列</h3>
+      <div id="demoMessages" class="context-events"></div>
+    </div>
+
+    <p style="margin-top:14px;font-size:13px;color:#64748b">策略对比见<a href="/methodology/strategy-comparison.html">长上下文策略对比</a>。</p>
+  </div>
+</main>
+<script src="/system/context-demo.js"></script>
+</body>
+</html>

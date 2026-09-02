@@ -1,15 +1,16 @@
 # showcase-data 数据契约
 
-`/showcase` 实证层页面只读 `web/public/showcase-data/` 下的静态数据;
-发布脚本(`web/scripts/publish-showcase.mjs`)产出的文件必须通过本目录 schema 校验。
+公开五页(信息架构 v3)只读 `web/public/showcase-data/` 下的静态数据;
+发布脚本(`web/scripts/publish-showcase.mjs`)产出的文件必须通过本目录 schema 校验,
+前端统一经 `public/docs/showcase-data.js` 适配层消费(页面不自行解析字段)。
 
 ## 三个 schema
 
 | 文件 | 产物 | 消费方 |
 |---|---|---|
-| `index.schema.json` | `showcase-data/index.json`(正式批次索引 + 最新批次门槛状态) | `/showcase/` 首页 |
-| `batch-report.schema.json` | `showcase-data/batches/{id}/report.json`(批次报告) | `/showcase/results` |
-| `run.schema.json` | `showcase-data/runs/{id}.json`(单次运行公开工件) | `/showcase/runs` |
+| `index.schema.json` | `showcase-data/index.json`(正式批次索引 + 最新批次门槛状态) | `/`(系统总览)与 `/results/`(经 `loadIndex`) |
+| `batch-report.schema.json` | `showcase-data/batches/{id}/report.json`(批次报告;`purpose`/`experiment_name` 为可选扩展字段) | `/results/`(经 `loadBatch`) |
+| `run.schema.json` | `showcase-data/runs/{id}.json`(单次运行公开工件;`started_at`/`config`/`config_hash` 与工具调用 `arguments`/`duration_ms` 为可选扩展字段,旧版工件缺失时页面显示「未记录」) | `/evidence/` 与 `/evidence/run/`(经 `loadRun`) |
 
 ## 关键约定
 

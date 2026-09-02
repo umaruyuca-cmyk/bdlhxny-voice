@@ -4,73 +4,70 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>公告 · Touchstone</title>
-<meta name="description" content="正式发布批次的公告页:未发布前统一显示「尚未发布」;全部数字来自发布校验后的公开快照。">
+<title>系统总览 · Touchstone</title>
+<meta name="description" content="受控 Agent 实验与证据展示系统:固定题库、冻结工具数据、代码断言评测,把每次运行落成可审计证据。">
 <link rel="stylesheet" href="/docs/docs.css">
 </head>
-<body class="dashboard-page">
+<body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent Eval</span></span></a>
-    <nav class="site-nav" aria-label="站点模块导航"><a href="/">公告</a><a href="/experiment/">实验</a><a href="/test/">我的测试</a><a href="/assets/">数据资产</a><a href="/docs/">文档</a></nav>
-    <div class="topbar-actions">
-      <a class="topbar-mytests" href="/test/">我的测试</a>
-      <a class="topbar-login" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>登录</a>
-    <a class="topbar-lab" title="进入运行台发起实验"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>运行台</a>
-    <a class="topbar-logout" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>退出登录</a>
-    <a class="topbar-gh" href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
-    </div>
+    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/" class="on">系统总览</a><a href="/results/">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
   </div>
 </header>
+<main class="page-main">
+  <div class="page-body">
 
-<main class="docs-main">
-  <div class="eyebrow">Announcements</div>
-  <h1>公告</h1>
-  <p class="page-sub">本页只展示经过维护者审核并发布的正式运行批次快照;系统与架构说明见「系统概览」,实验入口见「实验」。</p>
+  <h1>系统总览</h1>
+  <p class="page-lead">这是一套<strong>受控 Agent 实验与证据展示系统</strong>:固定题库、冻结工具数据、同一套代码断言评测,在唯一自变量受控的条件下运行 Agent,并把每一次运行的输入、工具调用、治理判定、输出与评测结论完整落成可审计的公开证据。它不是聊天产品,本站不提供公开试用、发起实验或登录入口。</p>
 
-  <div class="stat-row">
-    <div class="stat"><b>112</b><span><a href="/tools/">工具目录</a>(冻结 Mock,版本化)</span></div>
-    <div class="stat"><b>20</b><span><a href="/cases/">对比用例</a>(固定题库)</span></div>
-    <div class="stat"><b>3</b><span><a href="/context/library">压缩长 Session</a>(版本化语料)</span></div>
-    <div class="stat"><b>7</b><span><a href="/experiment/">实验模板</a>(唯一自变量)</span></div>
+  <section id="publication-status" class="panel">
+    <h2>正式实验状态</h2>
+    <div id="homePublication">
+      <div class="placeholder-block">正在读取正式发布索引…</div>
+    </div>
+    <p class="note">正式结果只来自经维护者发布校验(有效样本门槛、逐运行哈希复算、敏感信息扫描)的公开快照;开发调试批次与匿名临时结果不会出现在这里。</p>
+  </section>
+
+  <section id="flow" class="panel">
+    <h2>一次实验的端到端流程</h2>
+    <div class="flow"><span class="flow-step">固定任务</span><span class="flow-arrow">→</span><span class="flow-step">上下文构建</span><span class="flow-arrow">→</span><span class="flow-step">Agent 规划与工具调用</span><span class="flow-arrow">→</span><span class="flow-step">治理检查</span><span class="flow-arrow">→</span><span class="flow-step">结果生成</span><span class="flow-arrow">→</span><span class="flow-step">评测断言</span><span class="flow-arrow">→</span><span class="flow-step">证据发布</span></div>
+    <p>每一步的输入、执行模块、关键规则、输出与写入的证据,见<a href="/system/">执行逻辑</a>;实验如何定义变量与固定条件、指标如何计算,见<a href="/methodology/">测试逻辑</a>。</p>
+  </section>
+
+  <section id="composition" class="panel">
+    <h2>系统构成(非实验成绩)</h2>
+    <div class="fact-row" id="homeFacts">
+      <div class="fact"><b>112</b><span>登记工具(冻结 Mock,只读)</span></div>
+      <div class="fact"><b>20</b><span>对比用例(固定题库)</span></div>
+      <div class="fact"><b>3</b><span>长上下文 Session 语料(版本化冻结)</span></div>
+      <div class="fact"><b>7</b><span>实验模板(每模板一个唯一自变量)</span></div>
+    </div>
+    <p class="note">以上是系统的静态构成事实,不代表任何实验结果;实验结果只看<a href="/results/">实验结果</a>页。</p>
+  </section>
+
+  <section id="guide" class="panel">
+    <h2>本站怎么读</h2>
+    <table class="tbl">
+      <thead><tr><th>页面</th><th>回答什么问题</th></tr></thead>
+      <tbody>
+        <tr><td><a href="/results/">实验结果</a></td><td>做了哪些正式实验,取得了什么结果,成功与失败各是什么样</td></tr>
+        <tr><td><a href="/evidence/">原始证据</a></td><td>每个汇总数字由哪些单次运行支持,单次运行实际发生了什么</td></tr>
+        <tr><td><a href="/system/">执行逻辑</a></td><td>一次运行经过哪些模块,每一步的规则与产出的证据是什么</td></tr>
+        <tr><td><a href="/methodology/">测试逻辑</a></td><td>实验怎么设计,指标怎么算,什么算有效运行</td></tr>
+      </tbody>
+    </table>
+  </section>
   </div>
-
-  <div class="cta-row" aria-label="下一步入口">
-    <a class="btn cta" href="/experiment/">查看实验</a>
-    <a class="btn ghost cta" href="/cases/">浏览案例</a>
-    <a class="btn ghost cta" href="/about/">了解系统</a>
-  </div>
-
-  <div class="panel panel-dashed" id="announcePubState">
-    <b>尚未发布。</b>公告展示的是维护者审核后的正式运行批次公开快照,不是用例定义本身。发布链路:用例库提供考题 → 压缩模块提供 Session → 运行系统产生答卷与证据 → 维护者审核并创建公开快照 → 本页只读取公开快照。正式批次发布后,这里将按实验模板分组展示对照汇总(实验目的、唯一自变量、变体与 config_hash)、压缩上下文实验结果、代表性实例,以及每个汇总数字到单次运行证据的下钻入口;当前没有任何正式发布批次。
-  </div>
-
-  <p class="note">口径说明:本站为纯静态展示,浏览不产生模型调用与费用;公告数字只来自发布校验后的正式运行批次公开快照;工具调用均来自冻结数据集,不访问真实外部系统;匿名测试结果保存在「我的测试」,不会自动进入本页;未运行的数字显示「未运行」,不以估算冒充实测。</p>
 </main>
+<footer class="site-foot">
+  <div class="foot-inner">
+    <p>全部结果数字来自发布校验后的公开快照;未发布即显示空状态,不使用演示成绩。证据为可审计执行记录,不含模型内部思维链。</p>
+    <p class="foot-links">源码仓库:<a href="https://github.com/umaruyuca-cmyk/bdlhxny-agent" target="_blank" rel="noopener">GitHub · bdlhxny-agent</a></p>
+  </div>
+</footer>
 <script src="/docs/docs.js"></script>
-<script>
-(function () {
-  "use strict";
-  // 公告页只读取「正式发布批次」的公开快照索引;不读取匿名临时结果、
-  // 开发调试批次或尚未运行的占位数据。索引为空时统一显示「尚未发布」。
-  fetch("/showcase-data/publications/index.json", { cache: "no-store" })
-    .then(function (res) { return res.ok ? res.json() : null; })
-    .then(function (index) {
-      var pubs = (index && index.formal_publications) || [];
-      var el = document.getElementById("announcePubState");
-      if (!el) return;
-      if (!pubs.length) {
-        el.textContent = "尚未发布:还没有经过审核的正式发布批次。公告展示的是维护者审核并发布的正式运行批次快照,不是用例定义本身;未发布前本页所有数据区保持空状态。";
-        return;
-      }
-      var latest = pubs[0];
-      el.textContent = "最新正式发布:" + window.SITE.fmtTime(latest.published_at) + "(批次 " + String(latest.batch_id || "").slice(0, 8) + ");对照汇总、压缩结果与代表性实例以该批次公开快照为准。";
-    })
-    .catch(function () {
-      var el = document.getElementById("announcePubState");
-      if (el) el.textContent = "尚未发布(发布索引不可读)。";
-    });
-})();
-</script>
+<script src="/docs/showcase-data.js"></script>
+<script src="/docs/home.js"></script>
 </body>
 </html>

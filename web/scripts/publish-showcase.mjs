@@ -282,6 +282,55 @@ function buildPublishedRuns(artifact, batchId, runArtifacts, errors) {
   return published;
 }
 
+/** 运行配置快照 → 公开白名单投影(证据链「实际生效的运行配置」段)。
+ *  只取已知安全字段;缺失写 null,页面显示「未记录」。 */
+function projectRunConfig(cfg) {
+  const m = cfg.model || {};
+  const l = cfg.limits || {};
+  const x = cfg.context || {};
+  return {
+    config_version: num(cfg.config_version),
+    execution_engine: str(cfg.execution_engine) || null,
+    tool_delivery: str(cfg.tool_delivery) || null,
+    governance_profile: str(cfg.governance_profile) || null,
+    context_strategy: str(cfg.context_strategy) || null,
+    fixture_version: str(cfg.fixture_version) || null,
+    prompt_version: str(cfg.prompt_version) || null,
+    judge_version: str(cfg.judge_version) || null,
+    model: {
+      provider: str(m.provider) || null,
+      model_id: str(m.model_id) || null,
+      temperature_requested: num(m.temperature_requested),
+      temperature_effective: num(m.temperature_effective),
+      top_p_requested: num(m.top_p_requested),
+      top_p_effective: num(m.top_p_effective),
+      reasoning_effort_requested: str(m.reasoning_effort_requested) || null,
+      reasoning_effort_effective: str(m.reasoning_effort_effective) || null,
+      seed_requested: num(m.seed_requested),
+      seed_effective: num(m.seed_effective),
+      max_output_tokens: num(m.max_output_tokens),
+      tool_choice: str(m.tool_choice) || null,
+      parallel_tool_calls: typeof m.parallel_tool_calls === "boolean" ? m.parallel_tool_calls : null,
+    },
+    limits: {
+      max_agent_steps: num(l.max_agent_steps),
+      max_tool_calls: num(l.max_tool_calls),
+      max_calls_per_tool: num(l.max_calls_per_tool),
+      agent_timeout_seconds: num(l.agent_timeout_seconds),
+      tool_timeout_seconds: num(l.tool_timeout_seconds),
+      llm_retry_count: num(l.llm_retry_count),
+      tool_retry_count: num(l.tool_retry_count),
+    },
+    context: {
+      token_budget: num(x.token_budget),
+      recent_turn_count: num(x.recent_turn_count),
+      compression_target_tokens: num(x.compression_target_tokens),
+      current_turn_reserved_tokens: num(x.current_turn_reserved_tokens),
+      tokenizer_version: str(x.tokenizer_version) || null,
+    },
+  };
+}
+
 function projectPublicRun(full, batchId) {
   const judgment = full.judgment || {};
   const c1 = judgment.c1_violations || [];
@@ -292,12 +341,17 @@ function projectPublicRun(full, batchId) {
   const timing = full.timing || {};
   const tokens = full.tokens || {};
   const strategy = full.experiment && full.experiment.context_strategy;
+  const provenance = full.provenance || {};
   const run = {
     run_id: String(full.run_id),
     batch_id: batchId,
     case_id: String(full.case.id),
     status: full.status === "INVALID" ? "INVALID" : full.status,
     validity: full.validity,
+    // 发生时间/生效配置为可选投影:旧版工件缺失时省略,页面显示「未记录」
+    ...(full.started_at ? { started_at: String(full.started_at) } : {}),
+    ...(provenance.config_hash ? { config_hash: String(provenance.config_hash) } : {}),
+    ...(provenance.per_run_config ? { config: projectRunConfig(provenance.per_run_config) } : {}),
     experiment: {
       agent_mode: full.experiment.agent_mode,
       context_strategy: CONTEXT_STRATEGY_ENUM.has(strategy) ? strategy : null,
@@ -335,6 +389,9 @@ function projectPublicRun(full, batchId) {
       tool_results: steps.filter((s) => s.type === "tool").map((s) => {
         const row = { seq: s.seq, name: s.name, status: s.status };
         if (s.audit_code) row.audit_code = s.audit_code;
+        // 调用参数与耗时(证据链必需):模型所发请求参数,仍过敏感扫描
+        row.arguments = s.arguments && typeof s.arguments === "object" ? s.arguments : null;
+        row.duration_ms = Number.isFinite(s.duration_ms) ? Math.trunc(s.duration_ms) : null;
         row.summary = s.observation && s.observation.summary ? s.observation.summary : null;
         row.source = s.source ?? null;
         row.data_time = s.data_time ?? null;
@@ -420,6 +477,9 @@ function projectContextBatchReport(artifact, batchId, gitCommit, publishedRuns) 
   return {
     batch_id: batchId,
     experiment_type: "context-strategy",
+    // 实验名称/目的:批次工件未携带时省略(可选字段),页面显示「未记录」
+    ...(artifact.experiment_name ? { experiment_name: str(artifact.experiment_name) } : {}),
+    ...(artifact.purpose ? { purpose: str(artifact.purpose) } : {}),
     generated_at: artifact.generated_at,
     git_commit: gitCommit,
     model: str(artifact.model),

@@ -1,0 +1,64 @@
+{
+  "batch_id": "9e26b12e-3efd-4815-9da8-c0cb9089222d",
+  "experiment_type": "experiment-series",
+  "experiment_name": "compression-method-comparison · ctx-session-product-evolution-01",
+  "generated_at": "2026-09-02T11:40:12.452962+00:00",
+  "git_commit": "889dd6a",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "ctx-session-product-evolution-01"
+    ],
+    "runs_per_case": 1,
+    "tool_data": "frozen",
+    "variable": "compression-method-comparison"
+  },
+  "groups": [
+    {
+      "key": "budgeted-extractive",
+      "label": "budgeted-extractive",
+      "valid_runs": 1,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": 0,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 1,
+        "mean_tokens": null,
+        "median_duration_ms": 27692,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "budgeted-hybrid-v1",
+      "label": "budgeted-hybrid-v1",
+      "valid_runs": 1,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": 0,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 3,
+        "mean_tokens": null,
+        "median_duration_ms": 34487,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}

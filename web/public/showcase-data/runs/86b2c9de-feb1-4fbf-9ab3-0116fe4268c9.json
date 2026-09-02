@@ -1,0 +1,189 @@
+{
+  "run_id": "86b2c9de-feb1-4fbf-9ab3-0116fe4268c9",
+  "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
+  "case_id": "ctx-session-product-evolution-01",
+  "status": "COMPLETE",
+  "validity": "VALID",
+  "experiment": {
+    "agent_mode": "native-tool-calling",
+    "context_strategy": "full",
+    "model": "Qwen/Qwen3.6-35B-A3B",
+    "repeat_index": 1
+  },
+  "sections": {
+    "fixed_input": {
+      "message": "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。",
+      "scene": "product_and_context_design",
+      "authenticated": true,
+      "history_count": 0,
+      "allowed_tools": null
+    },
+    "context": {
+      "strategy": "full",
+      "raw_tokens": 26485,
+      "working_tokens": 26445,
+      "required_retained": true,
+      "item_counts": {
+        "retained": 109,
+        "compressed": 0,
+        "referenced": 0,
+        "isolated": 0,
+        "omitted": 0
+      }
+    },
+    "visible_tools": [
+      "analysis.run_analysis",
+      "appointment.find_clinic",
+      "audio.transcribe",
+      "audio.translate",
+      "browser.click",
+      "browser.fill_form",
+      "browser.open_page",
+      "calculator.evaluate",
+      "calendar.create_event",
+      "calendar.find_availability",
+      "calendar.list_events",
+      "cart.add_item",
+      "ci.get_status",
+      "citation.lookup",
+      "code.execute",
+      "code.read",
+      "code.search",
+      "compliance.check_text",
+      "computer.screenshot",
+      "computer.upload_file",
+      "contacts.search",
+      "contract.extract_terms",
+      "crm.get_account",
+      "crm.search_customer",
+      "dashboard.get",
+      "data.export",
+      "data.transform",
+      "database.describe_table",
+      "database.list_tables",
+      "database.query",
+      "design.create_mockup",
+      "device.get_status",
+      "device.list",
+      "device.set_state",
+      "document.compare",
+      "document.summarize",
+      "drive.get_metadata",
+      "drive.list_folder",
+      "drive.search",
+      "file.extract_text",
+      "file.list",
+      "file.read",
+      "file.search",
+      "fitness.get_activity",
+      "git.get_diff",
+      "github.search_issues",
+      "health.get_medication_info",
+      "health.search_guidance",
+      "home.create_automation",
+      "image.analyze",
+      "image.edit",
+      "image.generate",
+      "knowledge.get_record",
+      "knowledge.search",
+      "learning.explain_topic",
+      "learning.search_course",
+      "legal.compare_clauses",
+      "legal.search_policy",
+      "mail.draft",
+      "mail.read",
+      "mail.search",
+      "mail.send",
+      "maps.get_directions",
+      "maps.search_places",
+      "market.get_news",
+      "message.search",
+      "message.send",
+      "metrics.get",
+      "notes.search",
+      "ocr.extract_text",
+      "order.get_status",
+      "product.compare",
+      "product.get_price",
+      "product.search",
+      "project.get_status",
+      "quiz.create",
+      "research.deep_search",
+      "research.web_search",
+      "speech.generate",
+      "spreadsheet.calculate",
+      "spreadsheet.create_chart",
+      "spreadsheet.find_rows",
+      "spreadsheet.read_range",
+      "support.create_ticket",
+      "support.search_tickets",
+      "task.create",
+      "task.list",
+      "translate.text",
+      "travel.build_itinerary",
+      "travel.search_hotels",
+      "travel.search_transport",
+      "video.generate",
+      "video.summarize",
+      "weather.get_forecast",
+      "web.check_freshness",
+      "web.compare_sources",
+      "web.extract",
+      "web.find",
+      "web.open",
+      "web.search"
+    ],
+    "model_steps": [
+      {
+        "seq": 1,
+        "decision": "answer",
+        "latency_ms": 76853
+      }
+    ],
+    "code_decisions": [
+      {
+        "seq": 1,
+        "allowed": true
+      }
+    ],
+    "tool_results": [],
+    "output_checks": [
+      {
+        "check": "tool_correct",
+        "passed": false
+      },
+      {
+        "check": "number_grounding",
+        "passed": true
+      },
+      {
+        "check": "c1_compliance",
+        "passed": true
+      },
+      {
+        "check": "c2_compliance",
+        "passed": true
+      }
+    ],
+    "final_result": {
+      "answer_excerpt": "\n\n基于对 `docs/product/产品目标与使用方式.md`、`docs/context/长上下文构建与压缩.md` 和 `web/scripts/generate-context-library.mjs` 的只读检查，判断结论如下：\n\n**判断结论：尚未完全符合。**\n虽然 `generate-context-library.mjs` 的脚本逻辑已按新规范重写（注释明确限定只展示完整 Se",
+      "citations": null,
+      "audit_codes": [],
+      "judgment": {
+        "task_success": false,
+        "tool_correct": false,
+        "number_grounded": true
+      }
+    },
+    "cost": {
+      "duration_ms": 77048,
+      "context_ms": 75,
+      "llm_ms": 76853,
+      "tool_ms": 0,
+      "prompt_tokens": 29324,
+      "completion_tokens": 4333,
+      "compression_tokens": 0,
+      "tokens_estimated": false
+    }
+  }
+}

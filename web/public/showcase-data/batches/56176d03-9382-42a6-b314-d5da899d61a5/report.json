@@ -1,0 +1,64 @@
+{
+  "batch_id": "56176d03-9382-42a6-b314-d5da899d61a5",
+  "experiment_type": "experiment-series",
+  "experiment_name": "governance-on-off · cmp-basic-single-01",
+  "generated_at": "2026-09-02T07:28:56.926009+00:00",
+  "git_commit": "28a3639",
+  "model": "configured-model",
+  "fixed_conditions": {
+    "case_ids": [
+      "cmp-basic-single-01"
+    ],
+    "runs_per_case": 3,
+    "tool_data": "frozen",
+    "variable": "governance-on-off"
+  },
+  "groups": [
+    {
+      "key": "off",
+      "label": "off",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 2,
+        "mean_tokens": 2494.6666999999998,
+        "median_duration_ms": 8090,
+        "p95_duration_ms": null
+      }
+    },
+    {
+      "key": "standard",
+      "label": "standard",
+      "valid_runs": 3,
+      "invalid_runs": 0,
+      "metrics": {
+        "task_success_rate": null,
+        "tool_selection_rate": null,
+        "hallucination_rate": null,
+        "forbidden_leak_rate": null,
+        "number_hallucination_rate": null,
+        "c1_violation_rate": null,
+        "c2_violation_rate": null,
+        "mean_rounds": 2,
+        "mean_tokens": 2394.6666999999998,
+        "median_duration_ms": 5567,
+        "p95_duration_ms": null
+      }
+    }
+  ],
+  "outcome_counts": {
+    "win": null,
+    "regress": null,
+    "tie": null,
+    "both_fail": null,
+    "invalid": null
+  },
+  "cases": []
+}
