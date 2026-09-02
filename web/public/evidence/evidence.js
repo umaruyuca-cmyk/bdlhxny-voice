@@ -10,6 +10,9 @@
   var PAGE_SIZE = 20;
 
   function el(id) { return document.getElementById(id); }
+
+  /* 机器键 → 中文显示(适配层 SC.zh;未知键原样) */
+  function zh(v) { return SC.zh ? SC.zh(v) : v; }
   function chip(ok) {
     if (ok === true) return '<span class="st st-ok">通过</span>';
     if (ok === false) return '<span class="st st-bad">未通过</span>';
@@ -43,10 +46,11 @@
     });
   }
 
-  function fillSelect(select, values, current, allLabel) {
+  function fillSelect(select, values, current, allLabel, zhFn) {
     var html = '<option value="">' + allLabel + "</option>";
     values.forEach(function (v) {
-      html += '<option value="' + S.esc(v) + '"' + (v === current ? " selected" : "") + ">" + S.esc(v) + "</option>";
+      var text = zhFn ? zhFn(v) : v;
+      html += '<option value="' + S.esc(v) + '"' + (v === current ? " selected" : "") + ">" + S.esc(text) + "</option>";
     });
     select.innerHTML = html;
   }
@@ -81,8 +85,8 @@
         : '<span class="st st-muted">未记录</span>';
       return "<tr>" +
         '<td class="code"><span class="hash">' + S.esc(v.runId) + "</span></td>" +
-        "<td><code>" + S.esc(v.caseId) + "</code></td>" +
-        "<td>" + orUnset(v.variant) + "</td>" +
+        "<td><code>" + S.esc(zh(v.caseId)) + "</code></td>" +
+        "<td>" + orUnset(zh(v.variant)) + "</td>" +
         "<td>" + S.statusChip(v.status, v.validity) + "</td>" +
         "<td>" + judged + "</td>" +
         '<td class="num">' + S.fmtInt(v.stepCount) + "</td>" +
@@ -107,8 +111,8 @@
   function initFiltersSelects() {
     fillSelect(el("eBatch"), unique(rows.map(function (v) { return v.batchId; })), filters.batch, "全部批次");
     fillSelect(el("eExperiment"), unique(rows.map(function (v) { return v.experiment; })), filters.experiment, "全部实验");
-    fillSelect(el("eCase"), unique(rows.map(function (v) { return v.caseId; })), filters.case, "全部用例");
-    fillSelect(el("eVariant"), unique(rows.map(function (v) { return v.variant; })), filters.variant, "全部变体");
+    fillSelect(el("eCase"), unique(rows.map(function (v) { return v.caseId; })), filters.case, "全部用例", zh);
+    fillSelect(el("eVariant"), unique(rows.map(function (v) { return v.variant; })), filters.variant, "全部变体", zh);
     fillSelect(el("eResult"), Object.keys(RESULT_LABELS).map(function (k) { return k; }), filters.result, "全部结果");
     fillSelect(el("eFailure"), unique(rows.map(function (v) { return v.failure; })), filters.failure, "全部/无失败");
     var resultSel = el("eResult");
@@ -141,7 +145,8 @@
     page = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
     var published = await SC.loadPublished();
     published.forEach(function (d) {
-      var experiment = d.batch.experiment_type === "context-strategy" ? "上下文策略对照(context-strategy)" : d.batch.experiment_type;
+      var zh = function (v) { return SC.zh ? SC.zh(v) : v; };
+      var experiment = d.batch.experiment_type === "context-strategy" ? "上下文策略对照" : zh(d.batch.experiment_name || d.batch.experiment_type);
       d.runs.forEach(function (run) {
         var v = SC.runView(run, d.batch);
         v.experiment = experiment;

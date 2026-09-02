@@ -103,7 +103,49 @@
     }[check] || check;
   }
 
+  /** 机器键 → 中文显示映射(发布数据保持稳定英文键,显示层统一翻译;
+   *  未知键原样返回,复合名按「 · 」分段翻译)。 */
+  var ZH_LABELS = {
+    // 实验模板
+    "context-strategy-comparison": "上下文策略对照",
+    "context-strategy": "上下文策略对照",
+    "governance-on-off": "治理开关对照",
+    "tool-delivery-comparison": "工具提供方式对照",
+    "temperature-stability": "温度稳定性",
+    "max-agent-steps-stability": "最大步数稳定性",
+    "tool-availability-degradation": "工具可用性降级",
+    "compression-method-comparison": "压缩方法对照",
+    // 变体
+    "off": "治理关闭", "standard": "治理标准",
+    "all": "全量工具", "search": "搜索工具",
+    "t0.0": "温度 0.0", "t0.1": "温度 0.1", "t0.3": "温度 0.3", "t0.7": "温度 0.7",
+    "steps-3": "最多 3 步", "steps-4": "最多 4 步", "steps-5": "最多 5 步",
+    "full-catalog": "完整目录", "remove-preferred": "移除首选工具", "remove-preferred-and-alternative": "移除首选+替代工具",
+    "budgeted-extractive": "抽取式压缩", "budgeted-hybrid-v1": "混合主算法",
+    "full": "完整上下文(对照)", "recent-turns": "最近轮次", "single-summary": "单次摘要",
+    // 用例 / Session
+    "cmp-basic-single-01": "基础·单工具",
+    "cmp-multi-data-01": "多工具·数据",
+    "cmp-multi-travel-01": "多工具·出行",
+    "cmp-combo-route-01": "组合·路线",
+    "ctx-session-database-deploy-01": "数据库与部署 Session",
+    "ctx-session-product-evolution-01": "产品演进 Session",
+    "ctx-session-context-engine-debug-01": "上下文引擎排查 Session",
+  };
+
+  function zhOne(value) {
+    var text = String(value == null ? "" : value);
+    return Object.prototype.hasOwnProperty.call(ZH_LABELS, text) ? ZH_LABELS[text] : text;
+  }
+
   window.SHOWCASE = {
+    /** 键 → 中文显示;复合名(「A · B」)分段翻译,未知段原样保留。 */
+    zh: function (value) {
+      var text = String(value == null ? "" : value);
+      if (text.indexOf(" · ") === -1) return zhOne(text);
+      return text.split(" · ").map(zhOne).join(" · ");
+    },
+
     /** 正式批次索引;尚未发布(文件缺失)时返回 null,调用方渲染空状态。 */
     loadIndex: function () { return getJson("/showcase-data/index.json"); },
 
