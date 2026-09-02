@@ -17,6 +17,7 @@ AgentLoop、预算、遥测、有效性判定与批次路径完全一致——�
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,7 +25,26 @@ from bdlh_runtime.experiments.series_store import SeriesRecord
 
 
 class SeriesRunError(RuntimeError):
-    """单次运行执行失败(用例缺失、计划展开数异常等)。"""
+    """单次运行执行失败(用例缺失、计划展开数异常、超时硬放弃等)。"""
+
+
+async def _with_hard_timeout(coro, *, what: str) -> Any:
+    """两级硬熔断(与 context_eval 同口径):provider 流式悬挂时软超时取消
+    可能被 SDK 内部重试吞掉,先 asyncio.wait 软超时,再取消并给宽限
+    (EVAL_RUN_CANCEL_GRACE_S,默认 15s),仍未终止即抛 SeriesRunError——
+    单运行失败可见,不卡死实验组与全局批次槽。"""
+
+    timeout_s = float(os.getenv("EVAL_RUN_TIMEOUT_S", "300"))
+    grace_s = float(os.getenv("EVAL_RUN_CANCEL_GRACE_S", "15"))
+    task = asyncio.ensure_future(coro)
+    done, _ = await asyncio.wait({task}, timeout=timeout_s)
+    if task in done:
+        return task.result()
+    task.cancel()
+    done_again, _ = await asyncio.wait({task}, timeout=grace_s)
+    if task in done_again and not task.cancelled():
+        return task.result()
+    raise SeriesRunError(f"运行超时(timed out):单运行熔断({what},硬放弃 {timeout_s:.0f}s+{grace_s:.0f}s)")
 
 
 @dataclass
@@ -96,14 +116,17 @@ def execute_prepared_series_run(
     from bdlh_runtime.experiments.template_runner import run_template_batch
 
     report = asyncio.run(
-        run_template_batch(
-            prepared.plan,
-            message=prepared.case.message,
-            visible_tools=prepared.case.allowed_tools,
-            llm=llm,
-            fixtures=prepared.fixtures,
-            fixture_version=prepared.fixture_version,
-            event_sink=event_sink,
+        _with_hard_timeout(
+            run_template_batch(
+                prepared.plan,
+                message=prepared.case.message,
+                visible_tools=prepared.case.allowed_tools,
+                llm=llm,
+                fixtures=prepared.fixtures,
+                fixture_version=prepared.fixture_version,
+                event_sink=event_sink,
+            ),
+            what="experiment-series",
         )
     )
     runs = report.get("runs") or []
@@ -128,7 +151,10 @@ def execute_series_run(
         from bdlh_runtime.experiments.compression import run_single_compression_method
 
         return asyncio.run(
-            run_single_compression_method(series.case_id, variant_id, llm=llm, max_agent_steps=max_agent_steps)
+            _with_hard_timeout(
+                run_single_compression_method(series.case_id, variant_id, llm=llm, max_agent_steps=max_agent_steps),
+                what="experiment-series-compression",
+            )
         )
     prepared = prepare_series_run(series, variant_id, model_capability=model_capability)
     return execute_prepared_series_run(prepared, llm=llm)
