@@ -590,6 +590,12 @@ async def _default_cell_runner(
     catalog = session_tool_catalog(list(session.visible_tools))
     cards = catalog.list()
     schema_tokens = _tool_schema_tokens(cards, ConservativeTokenCounter())
+    # 运行时观察预留:变体预算 8192 会被冻结历史占满(抽取式 ~7141),Agent
+    # 调工具后循环按预算重建上下文,保留的工具观察挤不下 → BudgetExceeded →
+    # 运行 INVALID(实测 database-deploy 抽取式确定性 8389>8192)。预留只作用
+    # 于运行期 refit 的机械空间,两方法同额加成,对照公平性不变;冻结工件的
+    # working_tokens 仍是变体预算口径。EVAL_OBSERVATION_RESERVE_TOKENS 可调。
+    observation_reserve = max(0, int(os.getenv("EVAL_OBSERVATION_RESERVE_TOKENS", "2048")))
     timeout_s = float(os.getenv("EVAL_RUN_TIMEOUT_S", "300"))
     started = time.perf_counter()
     stop_reason = ""
@@ -604,7 +610,7 @@ async def _default_cell_runner(
             run_id=run_key,
             context_entries=tuple(entry.item for entry in serialized),
             context_strategy=artifact.strategy,
-            token_budget=artifact.token_budget + schema_tokens,
+            token_budget=artifact.token_budget + schema_tokens + observation_reserve,
             owner_id=None,
         )
         frozen_ids = ("system-prompt",) + tuple(item.item_id for item in turn.context_entries) + ("current-question",)
@@ -841,29 +847,41 @@ def _compile_method_artifacts(
     *,
     llm_summarizer: Any | None = None,
     on_phase: Callable[[str], None] | None = None,
+    methods: tuple[str, ...] | None = None,
 ) -> dict[str, CompiledContext]:
-    """同一 budgeted 变体定义编译两次:抽取式 vs LLM 生成式(同模型同目标 token)。
+    """同一 budgeted 变体定义编译两种方法(同模型同目标 token),可按需子集。
 
     ``llm_summarizer`` 供测试注入 Fake 摘要器;生产走 from_env(llm_summary=True)。
     ``on_phase`` 在每个可能耗时的阶段开始时回调(作业进度展示当前步骤)。
+    ``methods`` 按需编译子集:单方法运行只编译所请求的方法,不被另一方法的
+    LLM 摘要编译(可能很慢/悬挂)拖累;缺省编译全部(对照/生成入口)。
     """
     from bdlh_runtime.engine.loop import load_prompt
 
     budgeted_def = _budgeted_variant(variants)
     if budgeted_def is None:
         raise CompressionSessionError("Session 变体定义缺少 budgeted-hybrid-v1,不能做压缩方法对照")
+    wanted = set(methods) if methods is not None else {"budgeted-extractive", "budgeted-hybrid-v1"}
+    unknown = wanted - {"budgeted-extractive", "budgeted-hybrid-v1"}
+    if unknown:
+        raise CompressionSessionError(f"未知压缩方法子集:{sorted(unknown)}")
     common_rules = load_prompt("system_base.md", "scene_chat.md")
-    if on_phase is not None:
-        on_phase("构建抽取式压缩上下文(代码,无模型调用)")
-    extractive = SessionCompiler.from_env(llm_summary=False).compile(session, budgeted_def, common_rules=common_rules)
-    if on_phase is not None:
-        on_phase("生成 LLM 摘要 · budgeted-hybrid-v1 主算法(真实模型调用,可能较慢)")
-    if llm_summarizer is not None:
-        generative_compiler = SessionCompiler(summarizer=llm_summarizer)
-    else:
-        generative_compiler = SessionCompiler.from_env(llm_summary=True)
-    generative = generative_compiler.compile(session, budgeted_def, common_rules=common_rules)
-    return {"budgeted-extractive": extractive, "budgeted-hybrid-v1": generative}
+    compiled: dict[str, CompiledContext] = {}
+    if "budgeted-extractive" in wanted:
+        if on_phase is not None:
+            on_phase("构建抽取式压缩上下文(代码,无模型调用)")
+        compiled["budgeted-extractive"] = SessionCompiler.from_env(llm_summary=False).compile(
+            session, budgeted_def, common_rules=common_rules
+        )
+    if "budgeted-hybrid-v1" in wanted:
+        if on_phase is not None:
+            on_phase("生成 LLM 摘要 · budgeted-hybrid-v1 主算法(真实模型调用,可能较慢)")
+        if llm_summarizer is not None:
+            generative_compiler = SessionCompiler(summarizer=llm_summarizer)
+        else:
+            generative_compiler = SessionCompiler.from_env(llm_summary=True)
+        compiled["budgeted-hybrid-v1"] = generative_compiler.compile(session, budgeted_def, common_rules=common_rules)
+    return compiled
 
 
 def generate_compression_method_contexts(
@@ -1041,7 +1059,11 @@ async def run_single_compression_method(
         raise CompressionSessionError(f"未知压缩方法:{method!r};可用:{list(COMPRESSION_METHODS)}")
     steps = max_agent_steps or default_max_agent_steps()
     session, variants, _ = _load_session_bundle(session_id)
-    compiled = _compile_method_artifacts(session, variants, llm_summarizer=llm_summarizer, on_phase=on_phase)
+    # 按需编译:单方法运行只编译所请求方法(extractive 运行不被 hybrid 的
+    # LLM 摘要编译拖累/悬挂)
+    compiled = _compile_method_artifacts(
+        session, variants, llm_summarizer=llm_summarizer, on_phase=on_phase, methods=(method,)
+    )
     runner = cell_runner or _default_cell_runner
     run_config = RunConfig(
         execution_engine=EXECUTION_ENGINE_NATIVE_TOOL_CALLING,

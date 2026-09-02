@@ -572,3 +572,30 @@ async def test_method_comparison_budget_counts_build_requests(monkeypatch):
     assert result["budget_terminated"]
     assert result["budget"]["llm_requests"] == 2
     assert len(result["skipped_unit_ids"]) == 1
+
+
+def test_compile_method_artifacts_on_demand_subset_skips_generative():
+    """按需编译:methods 只取抽取式时不执行 generative 的 LLM 摘要编译。
+
+    修复背景:单方法运行曾无条件编译两种方法,extractive 运行被 hybrid 的
+    LLM 摘要(可能很慢/悬挂)拖累;替身摘要器被调用即失败。
+    """
+    session, variants, _ = compression._load_session_bundle(SESSION_ID)
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("generative 编译不应被触发")
+
+    compiled = compression._compile_method_artifacts(
+        session, variants, llm_summarizer=_boom, methods=("budgeted-extractive",)
+    )
+    assert set(compiled) == {"budgeted-extractive"}
+    assert compiled["budgeted-extractive"].working_tokens > 0
+
+
+def test_compile_method_artifacts_rejects_unknown_subset():
+    import pytest
+    from bdlh_runtime.experiments.compression import CompressionSessionError
+
+    session, variants, _ = compression._load_session_bundle(SESSION_ID)
+    with pytest.raises(CompressionSessionError, match="未知压缩方法子集"):
+        compression._compile_method_artifacts(session, variants, methods=("no-such-method",))
