@@ -118,6 +118,7 @@
   /* 实验总览:全部已发布正式批次一行一个(与单批视图同源数据),点击下钻。
      概要列只呈现该批最有区分度的一项已发布事实(压缩率/最快变体/成功率)。 */
   function renderOverview() {
+    if (!el("overviewBlock")) return;
     if (data.length === 0) {
       el("overviewBlock").innerHTML = '<div class="placeholder-block">尚无正式批次。</div>';
       return;
@@ -161,6 +162,7 @@
   /* 结论摘要:全部由本页已发布数字推导(组表/指标表同源),不另立口径;
      字段缺失时逐条降级为「未记录」,不推断。 */
   function renderSummary() {
+    if (!el("summaryBlock")) return;
     var b = sel.batch;
     var groups = b.groups || [];
     var fc = b.fixed_conditions || {};

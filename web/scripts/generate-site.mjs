@@ -168,6 +168,16 @@ const RESULTS = {
       <p class="note">筛选只影响本页展示范围,不改变任何数据;「状态」筛选作用于单次运行(有效=VALID 样本,含任务失败;无效=INVALID 运行,不进指标分母)。</p>
     </section>
 
+    <section id="results-overview" class="panel">
+      <h2>实验总览</h2>
+      <div id="overviewBlock"></div>
+    </section>
+
+    <section id="results-summary" class="panel">
+      <h2>结论摘要</h2>
+      <div id="summaryBlock"></div>
+    </section>
+
     <section id="results-design" class="panel">
       <h2>实验设计与固定条件</h2>
       <div id="designBlock"></div>
