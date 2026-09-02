@@ -155,6 +155,104 @@ export async function publishBatch({ artifactsDir = DEFAULT_ARTIFACTS, batchId, 
   return { batchId: id, files: payloads.length, registration };
 }
 
+/** 实验组统计工件(artifacts/series-{id}.json)→ 公开批次报告。
+ *
+ *  阶段一投影:组级指标 + 样本门槛(实验组自身 formal_min 口径,组内 included
+ *  计数达标)。逐运行九段公开工件尚不由实验组链路产出——cases 置空,证据页
+ *  该批次暂无逐运行下钻(结果页指标/摘要正常),不编造分用例统计。
+ *  指标只填实验组统计真实携带的项(task_success/轮次/token/时长中位数),
+ *  其余按 schema 语义置 null,页面显示「未记录」。 */
+export async function publishSeriesBatch({ artifactsDir = DEFAULT_ARTIFACTS, seriesId, gitCommit, outputDir = OUTPUT_DIR }) {
+  if (!gitCommit) throw new Error("git_commit 缺失：发布必须携带代码版本（--git-commit 或 GIT_COMMIT）");
+  if (!seriesId) throw new Error("--series <seriesId> 缺失");
+  const stats = JSON.parse(await readFile(path.join(artifactsDir, `series-${seriesId}.json`), "utf8"));
+  if (stats.statistics_version !== "experiment-stats-v2") {
+    throw new Error("非 experiment-stats-v2 实验组统计工件,拒绝发布");
+  }
+  const errors = [];
+  const formalMin = Math.max(1, int(stats.formal_min_repeat_count || 3));
+  const meanOf = (agg, key) => {
+    const block = agg[key] || {};
+    return Number.isFinite(Number(block.mean)) ? Number(block.mean) : null;
+  };
+  const groups = Object.entries(stats.by_variant || {}).map(([variant, agg]) => ({
+    key: str(variant),
+    label: str(variant),
+    valid_runs: int(agg.included_count),
+    invalid_runs: int(agg.excluded_count) + int(agg.failed_count),
+    metrics: {
+      task_success_rate: num(agg.success_rate),
+      tool_selection_rate: null,
+      hallucination_rate: null,
+      forbidden_leak_rate: null,
+      number_hallucination_rate: null,
+      c1_violation_rate: null,
+      c2_violation_rate: null,
+      mean_rounds: meanOf(agg, "actual_agent_steps"),
+      mean_tokens:
+        meanOf(agg, "input_tokens") != null && meanOf(agg, "output_tokens") != null
+          ? num(meanOf(agg, "input_tokens") + meanOf(agg, "output_tokens"))
+          : null,
+      median_duration_ms: meanOf(agg, "duration_ms") != null && Number.isFinite(Number((agg.duration_ms || {}).median))
+          ? num(Number(agg.duration_ms.median))
+          : null,
+      p95_duration_ms: null,
+    },
+  }));
+  if (groups.length === 0) errors.push({ rule: "validity_threshold", file: `series-${seriesId}.json`, detail: "统计无任何变体组" });
+  const threshold = {
+    min_valid_per_group: formalMin,
+    groups: Object.fromEntries(groups.map((g) => [g.key, { required: formalMin, valid: g.valid_runs, met: g.valid_runs >= formalMin }])),
+    met: groups.length > 0 && groups.every((g) => g.valid_runs >= formalMin),
+  };
+  if (!threshold.met) {
+    const detail = Object.entries(threshold.groups).map(([name, g]) => `${name} 有效 ${g.valid}/${g.required}`).join("; ");
+    errors.push({ rule: "validity_threshold", file: `series-${seriesId}.json`, detail: `实验组正式样本门槛未满足:${detail}` });
+  }
+  const batch = {
+    batch_id: seriesId,
+    experiment_type: "experiment-series",
+    experiment_name: str(stats.title || `${stats.template_id || ""} · ${stats.case_id || ""}`).trim(),
+    generated_at: str(stats.generated_at),
+    git_commit: gitCommit,
+    model: str(stats.model || ""),
+    fixed_conditions: {
+      case_ids: [str(stats.case_id)],
+      runs_per_case: formalMin,
+      tool_data: "frozen",
+      variable: str(stats.template_id),
+    },
+    groups,
+    outcome_counts: { win: null, regress: null, tie: null, both_fail: null, invalid: null },
+    cases: [],
+  };
+  const index = await projectIndex(stats, seriesId, gitCommit, new Date().toISOString(), outputDir, batch, threshold);
+  const payloads = [
+    { name: "index", payload: index, file: "index.json" },
+    { name: "batch-report", payload: batch, file: `batches/${seriesId}/report.json` },
+  ];
+  for (const item of payloads) {
+    try {
+      validate(item.payload, await loadSchema(item.name));
+    } catch (error) {
+      if (!error.errors) throw error;
+      for (const se of error.errors) errors.push({ rule: "schema", file: item.file, path: se.path, detail: se.message });
+    }
+    for (const forbidden of scanForbidden(item.payload)) {
+      errors.push({ rule: "forbidden_field", file: item.file, detail: `禁止字段:${forbidden}` });
+    }
+    scanSensitive(item.payload, item.file, errors);
+  }
+  if (errors.length > 0) throw new PublishValidationError(errors);
+  for (const item of payloads) {
+    await writeJson(path.join(outputDir, item.file), item.payload);
+  }
+  for (const item of payloads) {
+    validate(JSON.parse(await readFile(path.join(outputDir, item.file), "utf8")), await loadSchema(item.name));
+  }
+  return { batchId: seriesId, files: payloads.length };
+}
+
 async function loadRunArtifacts(artifactsDir, artifact) {
   const runs = new Map();
   for (const row of artifact.run_records || []) {
@@ -546,18 +644,33 @@ function arg(name) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  publishBatch({
-    artifactsDir: arg("artifacts") ? path.resolve(arg("artifacts")) : DEFAULT_ARTIFACTS,
-    batchId: arg("batch"),
-    gitCommit: arg("git-commit") ?? process.env.GIT_COMMIT,
-    register: arg("register") ?? (process.env.DATA_API_BASE_URL || "").replace(/\/internal\/v1$/, ""),
-  })
-    .then((result) => {
-      const extra = result.registration ? ` 注册 publication=${result.registration.publicationId}` : "";
-      console.log(`published: batch=${result.batchId} files=${result.files}${extra} → ${path.relative(REPO_ROOT, OUTPUT_DIR)}`);
+  if (arg("series")) {
+    publishSeriesBatch({
+      artifactsDir: arg("artifacts") ? path.resolve(arg("artifacts")) : DEFAULT_ARTIFACTS,
+      seriesId: arg("series"),
+      gitCommit: arg("git-commit") ?? process.env.GIT_COMMIT,
     })
-    .catch((error) => {
-      console.error(`发布失败: ${error.message}`);
-      process.exitCode = 1;
-    });
+      .then((result) => {
+        console.log(`published: series=${result.batchId} files=${result.files} → ${path.relative(REPO_ROOT, OUTPUT_DIR)}`);
+      })
+      .catch((error) => {
+        console.error(`发布失败: ${error.message}`);
+        process.exitCode = 1;
+      });
+  } else {
+    publishBatch({
+      artifactsDir: arg("artifacts") ? path.resolve(arg("artifacts")) : DEFAULT_ARTIFACTS,
+      batchId: arg("batch"),
+      gitCommit: arg("git-commit") ?? process.env.GIT_COMMIT,
+      register: arg("register") ?? (process.env.DATA_API_BASE_URL || "").replace(/\/internal\/v1$/, ""),
+    })
+      .then((result) => {
+        const extra = result.registration ? ` 注册 publication=${result.registration.publicationId}` : "";
+        console.log(`published: batch=${result.batchId} files=${result.files}${extra} → ${path.relative(REPO_ROOT, OUTPUT_DIR)}`);
+      })
+      .catch((error) => {
+        console.error(`发布失败: ${error.message}`);
+        process.exitCode = 1;
+      });
+  }
 }

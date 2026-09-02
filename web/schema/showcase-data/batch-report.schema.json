@@ -7,7 +7,9 @@
   "required": ["batch_id", "experiment_type", "generated_at", "git_commit", "model", "fixed_conditions", "groups", "outcome_counts", "cases"],
   "properties": {
     "batch_id": { "type": "string", "minLength": 1 },
-    "experiment_type": { "enum": ["context-strategy"] },
+    "experiment_type": { "enum": ["context-strategy", "experiment-series"] },
+    "experiment_name": { "type": "string", "description": "实验名称(批次工件未携带时缺失,页面显示「未记录」)" },
+    "purpose": { "type": "string", "description": "实验目的(批次工件未携带时缺失,页面显示「未记录」)" },
     "generated_at": { "type": "string", "minLength": 1 },
     "git_commit": { "type": "string", "minLength": 1 },
     "model": { "type": "string", "minLength": 1 },

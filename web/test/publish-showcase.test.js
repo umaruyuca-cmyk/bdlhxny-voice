@@ -259,3 +259,88 @@ test("canonicalHash 与 engine payload_hash 同口径(跨语言对拍样例)", (
   const sample = { b: { d: [3, 1], c: "中文" }, a: 1 };
   assert.equal(canonicalHash(sample), "sha256:bbd2c4239adce18fbb59a58555e2499dd1b0d89b995b8b648a2b940af35380de");
 });
+
+// ── 实验组统计工件发布(series-{id}.json → experiment-series 批次) ──────
+
+const SERIES_ID = "56176d03-9382-42a6-b314-d5da899d61a5";
+
+function makeSeriesStats({ formalMin = 3, includeOff = 3, includeStandard = 3 } = {}) {
+  const agg = (n) => ({
+    included_count: n,
+    completed_count: n,
+    failed_count: 0,
+    excluded_count: 0,
+    success_rate: null,
+    duration_ms: { mean: 7000, median: 7000 + n, min: 3000, max: 11000, n },
+    input_tokens: { mean: 2153, median: 2153, min: 2153, max: 2153, n },
+    output_tokens: { mean: 340, median: 328, min: 124, max: 573, n },
+    tool_calls_per_run: { mean: 1, median: 1, min: 1, max: 1, n },
+    actual_agent_steps: { mean: 2, median: 2, min: 2, max: 2, n },
+  });
+  return {
+    statistics_version: "experiment-stats-v2",
+    series_id: SERIES_ID,
+    template_id: "governance-on-off",
+    template_version: 1,
+    case_id: "cmp-basic-single-01",
+    title: "governance-on-off · cmp-basic-single-01",
+    model: "configured-model",
+    generated_at: "2026-09-02T07:28:56.926009+00:00",
+    formal_min_repeat_count: formalMin,
+    by_variant: { off: agg(includeOff), standard: agg(includeStandard) },
+  };
+}
+
+test("实验组统计:达标系列发布为 experiment-series 批次(cases 空,不编造分用例)", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "series-pub-"));
+  try {
+    const artifacts = path.join(dir, "artifacts");
+    const out = path.join(dir, "out");
+    await mkdir(artifacts, { recursive: true });
+    await mkdir(out, { recursive: true });
+    await writeFile(path.join(artifacts, `series-${SERIES_ID}.json`), JSON.stringify(makeSeriesStats()));
+    const { publishSeriesBatch } = await import("../scripts/publish-showcase.mjs");
+    const result = await publishSeriesBatch({ artifactsDir: artifacts, seriesId: SERIES_ID, gitCommit: "test1234", outputDir: out });
+    assert.equal(result.files, 2);
+    const report = JSON.parse(await readFile(path.join(out, "batches", SERIES_ID, "report.json"), "utf8"));
+    validate(report, await loadSchema("batch-report"));
+    assert.equal(report.experiment_type, "experiment-series");
+    assert.equal(report.experiment_name, "governance-on-off · cmp-basic-single-01");
+    assert.deepEqual(report.cases, []);
+    assert.deepEqual(report.groups.map((g) => [g.key, g.valid_runs]), [["off", 3], ["standard", 3]]);
+    assert.equal(report.groups[0].metrics.mean_rounds, 2);
+    assert.equal(report.groups[0].metrics.median_duration_ms, 7003);
+    assert.equal(report.groups[0].metrics.task_success_rate, null);
+    const index = JSON.parse(await readFile(path.join(out, "index.json"), "utf8"));
+    assert.equal(index.formal_batches.length, 1);
+    assert.equal(index.formal_batches[0].experiment_type, "experiment-series");
+    assert.equal(index.latest_batch.validity_gate.met, true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("实验组统计:未达 formal_min 的变体拒绝发布", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "series-pub-"));
+  try {
+    const artifacts = path.join(dir, "artifacts");
+    const out = path.join(dir, "out");
+    await mkdir(artifacts, { recursive: true });
+    await mkdir(out, { recursive: true });
+    await writeFile(
+      path.join(artifacts, `series-${SERIES_ID}.json`),
+      JSON.stringify(makeSeriesStats({ includeStandard: 2 })),
+    );
+    const { publishSeriesBatch, PublishValidationError: SeriesError } = await import("../scripts/publish-showcase.mjs");
+    await assert.rejects(
+      () => publishSeriesBatch({ artifactsDir: artifacts, seriesId: SERIES_ID, gitCommit: "test1234", outputDir: out }),
+      (error) => {
+        assert.ok(error instanceof SeriesError);
+        assert.match(error.message, /standard 有效 2\/3/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
