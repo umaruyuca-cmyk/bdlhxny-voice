@@ -2,9 +2,9 @@
   "case_id": "ctx-session-context-engine-debug-01",
   "case_version": 1,
   "source_session_hash": "sha256:69e9e18dacca5d883855a2dd6771bb082690fc6013485103c21b20b2ce931f1a",
-  "variant_id": "full-session",
+  "variant_id": "full",
   "strategy": "full",
-  "strategy_version": "full-session-v1",
+  "strategy_version": "full-v1",
   "token_budget": 65536,
   "compiled_messages": [
     {
@@ -68,7 +68,7 @@
       "content": "请使用只读工具复核 engine/src/bdlh_runtime/session/compiler.py、engine/src/bdlh_runtime/context/builder.py 与 engine/src/bdlh_runtime/engine/loop.py：说明四种上下文策略在当前代码中的真实边界，判断最终模型请求是否受统一 Token 预算约束，并按优先级列出三个实现缺口。必须区分已实现、条件启用和仅文档设计；不要修改文件。"
     }
   ],
-  "compiled_context_hash": "sha256:ad4f3e5bffa630ceae2d5ae1ec59a87374919dfa5a551899d01b40d790264e64",
+  "compiled_context_hash": "sha256:e1887a025bdc9c2fe541b1c167abdc2e5bc9a29d5a96bb97700b603710a93f93",
   "input_event_ids": [
     "evt-0001",
     "evt-0002",
@@ -130,7 +130,7 @@
   "omitted_event_ids": [],
   "original_tokens": 29902,
   "working_tokens": 29899,
-  "build_duration_ms": 117,
+  "build_duration_ms": 99,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
@@ -145,7 +145,19 @@
   "budget_fit": true,
   "tokenizer_version": "conservative-cjk1-latin4-v1",
   "scores": [],
+  "classification": {
+    "source": "code_rules_only",
+    "stats": {},
+    "llm_calls": 0,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0,
+    "truncated": false
+  },
   "scoring_version": "",
+  "memory_segment_ids": [],
+  "segment_cache_hits": 0,
+  "segment_generated": 0,
+  "segment_invalidated": 0,
   "status": "COMPLETE",
-  "compile_wall_ms": 118
+  "compile_wall_ms": 100
 }

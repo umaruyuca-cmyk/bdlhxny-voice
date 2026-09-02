@@ -2,9 +2,9 @@
   "case_id": "ctx-session-database-deploy-01",
   "case_version": 1,
   "source_session_hash": "sha256:61a38dd06d2e04baafb3323338a786e3e7df6a22701fde9710b71e72190008bb",
-  "variant_id": "full-session",
+  "variant_id": "full",
   "strategy": "full",
-  "strategy_version": "full-session-v1",
+  "strategy_version": "full-v1",
   "token_budget": 65536,
   "compiled_messages": [
     {
@@ -64,7 +64,7 @@
       "content": "请使用只读工具审计 db/postgresql/setup/init.sql、db/postgresql/changes/20260823-trim-simple-add-complex.sql、data/src/main/resources/application.yaml、data/src/main/java/com/bdlh/touchstone/data/repository/RunRepository.java、deploy/docker-compose.yml 与 deploy/docker-compose.cloud.yml。判断“SQL 由维护者手动执行、本地 PostgreSQL 使用 5432、data 只负责受控读写、压缩工件可完整追溯、所有模块可云部署”是否一致，并列出三个最高风险差距。不要执行 SQL、不要连接数据库、不要修改文件。"
     }
   ],
-  "compiled_context_hash": "sha256:94198f5f4164cc0052ed2181929dc59fd68204c9f189c5223e4f69ccd0c9d943",
+  "compiled_context_hash": "sha256:fe252d1d74f49f50d16aaed99032d2d286c4793eaf5940514d08355d681770d1",
   "input_event_ids": [
     "evt-0001",
     "evt-0002",
@@ -136,11 +136,14 @@
   "omitted_event_ids": [],
   "original_tokens": 29795,
   "working_tokens": 29791,
-  "build_duration_ms": 109,
+  "build_duration_ms": 96,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
   "build_cost": 0.0,
+  "build_cache_hits": 0,
+  "build_purpose": "COMPRESSION",
+  "build_summary_chunks": 0,
   "warnings": [
     "algo_version=structured-text-v1"
   ],
@@ -148,7 +151,19 @@
   "budget_fit": true,
   "tokenizer_version": "conservative-cjk1-latin4-v1",
   "scores": [],
+  "classification": {
+    "source": "code_rules_only",
+    "stats": {},
+    "llm_calls": 0,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0,
+    "truncated": false
+  },
   "scoring_version": "",
+  "memory_segment_ids": [],
+  "segment_cache_hits": 0,
+  "segment_generated": 0,
+  "segment_invalidated": 0,
   "status": "COMPLETE",
-  "compile_wall_ms": 109
+  "compile_wall_ms": 97
 }

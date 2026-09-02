@@ -98,6 +98,7 @@ _UNAVAILABLE_MARKERS = (
     "connect",
     "timeout",
     "timed out",
+    "超时",
     "unreachable",
     "refused",
     "reset by peer",

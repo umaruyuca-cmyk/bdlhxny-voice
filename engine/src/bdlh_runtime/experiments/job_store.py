@@ -137,6 +137,9 @@ class JobRecord:
     started_at: str | None = None
     completed_at: str | None = None
     error: str | None = None
+    #: 实时执行进度的公开安全投影：当前阶段、阶段开始时间与最近事件。
+    #: 不保存提示词、模型消息正文、工具参数或工具返回。
+    progress: dict[str, Any] = field(default_factory=dict)
     units: list[JobUnit] = field(default_factory=list)
     result: dict[str, Any] = field(default_factory=dict)
 
@@ -215,29 +218,38 @@ class JobStore:
 
         - 只处理 COMPLETE 且 ``actual_agent_steps==0`` 的单元(有效运行至少
           应有 1 次模型调用,除非显式快路径——快路径单元不带 COMPLETE+0 步组合);
-        - 原记录保留:不改动答案/耗时/停止原因,只新增
-          ``summary.measurement_invalid_reason`` 并把 validity 置 INVALID;
-        - 幂等:已审计过的任务(result.measurement_invalid 标记)跳过;
+        - 原答案/耗时/停止原因保留;单元状态改为 INVALID，任务按其余有效
+          单元数量改为 FAILED/PARTIAL，避免历史页面继续显示 COMPLETE;
+        - 幂等:已改为 INVALID 的单元不再重复处理；兼容早期只写
+          ``result.measurement_invalid``、未修正状态的审计记录;
         - 返回本次被标记的 job_id 列表。
         """
         audited: list[str] = []
         for path in self._root.glob("job-*.json"):
             job = self._load(path)
-            if job.result.get("measurement_invalid"):
-                continue
+            previously_flagged = set(job.result.get("measurement_invalid_unit_ids") or [])
             suspects = [
-                unit for unit in job.units if unit.status == UNIT_STATUS_COMPLETE and unit.actual_agent_steps == 0
+                unit
+                for unit in job.units
+                if unit.status == UNIT_STATUS_COMPLETE
+                and (unit.actual_agent_steps == 0 or unit.unit_id in previously_flagged)
             ]
             if not suspects:
                 continue
             for unit in suspects:
                 unit.validity = "INVALID"
+                unit.status = UNIT_STATUS_INVALID
+                unit.task_success = None
                 unit.summary["measurement_invalid_reason"] = (
                     "LLM_UNAVAILABLE: 历史审计发现该单元无 Agent 模型调用证据"
                     "(actual_agent_steps=0),不能作为有效 Agent 运行进入发布指标"
                 )
             job.result["measurement_invalid"] = True
-            job.result["measurement_invalid_unit_ids"] = [unit.unit_id for unit in suspects]
+            invalid_ids = previously_flagged | {unit.unit_id for unit in suspects}
+            job.result["measurement_invalid_unit_ids"] = sorted(invalid_ids)
+            completed = job.completed_unit_count()
+            job.status = JOB_STATUS_PARTIAL if completed else JOB_STATUS_FAILED
+            job.error = "LLM_UNAVAILABLE: 运行未产生 Agent 模型调用证据"
             self.save(job)
             audited.append(job.job_id)
         return audited

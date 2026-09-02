@@ -16,6 +16,19 @@ if str(SRC) not in sys.path:
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def _no_real_llm_credentials(monkeypatch):
+    """纪律闸门(全局):单测一律不得调用真实 LLM。
+
+    deploy/.env 的真实密钥可能被个别测试的 startup(如 with TestClient 触发
+    load_deploy_env)泄漏进 os.environ;本夹具在每个用例开始前强制清除,
+    确保任何测试路径都不会发起真实模型调用。需要假密钥的用例可再用
+    monkeypatch.setenv 覆盖(晚于本夹具生效)。
+    """
+
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+
 from bdlh_runtime.registry import load_and_validate
 
 from .registry.seeded_store import build_seeded_store

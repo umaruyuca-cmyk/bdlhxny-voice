@@ -13,21 +13,27 @@
   "llm_summary": false,
   "variants": [
     {
-      "variant_id": "budgeted-session",
-      "strategy": "budgeted-session",
-      "strategy_version": "budgeted-session-v1",
+      "variant_id": "budgeted-extractive",
+      "strategy": "budgeted",
+      "strategy_version": "budgeted-extractive-v1",
       "token_budget": 8192
     },
     {
-      "variant_id": "full-session",
+      "variant_id": "budgeted-hybrid-v1",
+      "strategy": "budgeted",
+      "strategy_version": "budgeted-hybrid-v1",
+      "token_budget": 8192
+    },
+    {
+      "variant_id": "full",
       "strategy": "full",
-      "strategy_version": "full-session-v1",
+      "strategy_version": "full-v1",
       "token_budget": 65536
     },
     {
-      "variant_id": "recent-window",
-      "strategy": "recent-window",
-      "strategy_version": "recent-window-v1",
+      "variant_id": "recent-turns",
+      "strategy": "recent-turns",
+      "strategy_version": "recent-turns-v1",
       "token_budget": 8192
     },
     {

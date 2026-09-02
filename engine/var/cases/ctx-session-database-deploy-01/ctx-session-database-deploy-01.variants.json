@@ -18,10 +18,10 @@
   },
   "context_variants": [
     {
-      "variant_id": "full-session",
-      "title": "完整 Session",
+      "variant_id": "full",
+      "title": "完整上下文(对照)",
       "strategy": "full",
-      "strategy_version": "full-session-v1",
+      "strategy_version": "full-v1",
       "token_budget": 65536,
       "source_events": "all",
       "preserve_event_order": true,
@@ -32,23 +32,24 @@
       "notes": "完整保留全部 Session 事件，仅做统一序列化、安全隔离、Token 计数和记录。"
     },
     {
-      "variant_id": "recent-window",
-      "title": "最近窗口",
-      "strategy": "recent-window",
-      "strategy_version": "recent-window-v1",
+      "variant_id": "recent-turns",
+      "title": "最近对话轮(基准)",
+      "strategy": "recent-turns",
+      "strategy_version": "recent-turns-v1",
       "token_budget": 8192,
       "reserved_tokens": {
         "common_system_rules_and_current_question": 768,
         "recent_session_events_max": 7424
       },
-      "selection": "从 Session 结尾向前选择完整事件，达到预算后停止",
+      "selection": "从 Session 结尾向前保留最近 16 个完整对话轮(用户消息开轮,工具对归轮),预算内全保留",
       "preserve_event_order": true,
       "preserve_tool_call_result_pairs": true,
       "always_keep_common_system_rules": true,
       "always_keep_current_question": true,
       "uses_custom_budgeted_algorithm": false,
       "uses_summary_model": false,
-      "notes": "简单窗口基准，不使用项目的按预算选择算法。"
+      "notes": "简单窗口基准，不使用项目的按预算选择算法。",
+      "recent_turns": 16
     },
     {
       "variant_id": "single-summary",
@@ -71,10 +72,10 @@
       "notes": "摘要成本单独记录，所有实验变体使用同一份冻结摘要。"
     },
     {
-      "variant_id": "budgeted-session",
-      "title": "按预算选择和压缩",
-      "strategy": "budgeted-session",
-      "strategy_version": "budgeted-session-v1",
+      "variant_id": "budgeted-hybrid-v1",
+      "title": "按预算压缩(混合主算法)",
+      "strategy": "budgeted",
+      "strategy_version": "budgeted-hybrid-v1",
       "token_budget": 8192,
       "reserved_tokens": {
         "common_system_rules_and_current_question": 768,
@@ -94,6 +95,33 @@
       "preserve_tool_call_result_pairs": true,
       "uses_custom_budgeted_algorithm": true,
       "uses_summary_model": "only_when_text_summary_representation_is_enabled",
+      "notes": "项目待验证策略，必须和三个独立基准分开统计。",
+      "summary_call_cap": 2
+    },
+    {
+      "variant_id": "budgeted-extractive",
+      "title": "按预算压缩(抽取式基线)",
+      "strategy": "budgeted",
+      "strategy_version": "budgeted-extractive-v1",
+      "token_budget": 8192,
+      "reserved_tokens": {
+        "common_system_rules_and_current_question": 768,
+        "selected_session_context_max": 7424
+      },
+      "source_events": "all",
+      "representations": [
+        "full",
+        "structured_summary",
+        "text_summary",
+        "reference",
+        "omit"
+      ],
+      "required_behavior": "公共规则、当前问题、仍有效硬约束和当前执行状态不得因普通评分删除；强制内容超预算时构建失败",
+      "selection": "不读取 gold；按来源、时间、当前任务相关性、决定有效性、工具结果新旧、依赖和 Token 占用选择表示",
+      "preserve_event_order": true,
+      "preserve_tool_call_result_pairs": true,
+      "uses_custom_budgeted_algorithm": true,
+      "uses_summary_model": false,
       "notes": "项目待验证策略，必须和三个独立基准分开统计。"
     }
   ],

@@ -503,7 +503,7 @@ def test_compression_series_flow_via_api(series_env, monkeypatch):
     )
     assert created.status_code == 201
     payload = created.json()
-    assert payload["variant_labels"] == ["budgeted", "budgeted-llm"]
+    assert payload["variant_labels"] == ["budgeted-extractive", "budgeted-hybrid-v1"]
     assert payload["case_id"] == COMPRESSION_SESSION
 
     def stub_executor(series, variant_id, **kwargs):
@@ -515,14 +515,14 @@ def test_compression_series_flow_via_api(series_env, monkeypatch):
         return row
 
     monkeypatch.setattr(run_api, "execute_series_run", stub_executor)
-    for variant in ("budgeted", "budgeted-llm"):
+    for variant in ("budgeted-extractive", "budgeted-hybrid-v1"):
         entry = _post_run(client, payload["series_id"], {"variant_id": variant})
         assert entry.status_code == 200
         _wait_for_run(client, payload["series_id"], entry.json()["run_key"])
     snapshot = client.get(f"/api/v1/statistics/experiment-series/{payload['series_id']}").json()
-    assert snapshot["by_variant"]["budgeted"]["success_rate"] == 1.0
+    assert snapshot["by_variant"]["budgeted-extractive"]["success_rate"] == 1.0
     # 压缩模板 formal_min_repeat_count=1:1 个有效样本即达正式最小口径(修复方案 §5)
-    assert snapshot["by_variant"]["budgeted-llm"]["sample_level"]["level"] == "formal-minimum"
+    assert snapshot["by_variant"]["budgeted-hybrid-v1"]["sample_level"]["level"] == "formal-minimum"
 
 
 def test_run_single_compression_method_shape():
@@ -542,12 +542,12 @@ def test_run_single_compression_method_shape():
         }
 
     first = asyncio.run(
-        run_single_compression_method(SESSION_ID, "budgeted", cell_runner=fake_runner, max_agent_steps=4)
+        run_single_compression_method(SESSION_ID, "budgeted-extractive", cell_runner=fake_runner, max_agent_steps=4)
     )
     second = asyncio.run(
-        run_single_compression_method(SESSION_ID, "budgeted", cell_runner=fake_runner, max_agent_steps=4)
+        run_single_compression_method(SESSION_ID, "budgeted-extractive", cell_runner=fake_runner, max_agent_steps=4)
     )
-    assert first["variant_label"] == "budgeted"
+    assert first["variant_label"] == "budgeted-extractive"
     assert first["config_hash"]
     assert first["validity"] == "VALID"
     assert first["actual_agent_steps"] == 1
@@ -556,13 +556,13 @@ def test_run_single_compression_method_shape():
     llm_variant = asyncio.run(
         run_single_compression_method(
             SESSION_ID,
-            "budgeted-llm",
+            "budgeted-hybrid-v1",
             cell_runner=fake_runner,
             max_agent_steps=4,
             llm_summarizer=_FakeLLMSummarizer(),
         )
     )
-    assert llm_variant["variant_label"] == "budgeted-llm"
+    assert llm_variant["variant_label"] == "budgeted-hybrid-v1"
     assert llm_variant["config_hash"] != first["config_hash"]  # 摘要器不同 → 配置不同
 
 

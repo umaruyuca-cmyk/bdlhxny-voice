@@ -36,10 +36,13 @@ from bdlh_runtime.tools.search import ToolSearchIndex
 #: 模板上下文变体 → ContextStrategy 枚举值(recent-window 的枚举名是 recent-n)
 CONTEXT_STRATEGY_MAP = {
     "full": "full",
-    "recent-window": "recent-n",
+    "recent-window": "recent-n",  # 旧标识读兼容(按事件)
+    "recent-turns": "recent-turns",
     "single-summary": "single-summary",
     "budgeted": "budgeted",
-    "budgeted-session": "budgeted",
+    "budgeted-session": "budgeted",  # 旧标识读兼容
+    "budgeted-hybrid-v1": "budgeted",
+    "budgeted-extractive": "budgeted",
     "full-session": "full",
 }
 
@@ -321,11 +324,16 @@ async def run_native_agent(
         for card in loader.eligible_catalog()
     ]
     started = time.perf_counter()
-    timeout = timeout_seconds if timeout_seconds is not None else float(run_config.limits.agent_timeout_seconds)
+    timeout = timeout_seconds if timeout_seconds is not None else run_config.limits.agent_timeout_seconds
     loaded_names: tuple[str, ...] = ()
     audit_objects: list[Any] = []
     try:
-        result = await asyncio.wait_for(loop.run(turn), timeout=timeout)
+        if timeout > 0:
+            result = await asyncio.wait_for(loop.run(turn), timeout=float(timeout))
+        else:
+            # agent_timeout_seconds=0(或显式 timeout_seconds=0)= 不限时:跳过整体熔断,
+            # 单步超时仍由 tool_timeout_seconds 与步数/调用上限约束
+            result = await loop.run(turn)
         answer = result.answer
         error = result.context_error if result.degraded else None
         if llm_missing:
@@ -363,6 +371,8 @@ async def run_native_agent(
     # 超时路径无审计对象,如实跳过)
     if audit_objects:
         record_governance_audits(recorder, audit_objects, observations)
+    if answer:
+        recorder.record_output(answer_excerpt=str(answer))
     recorder.complete(status=status, error_category=category or None, error_text=error)
     model_call_rows = [row.to_payload() for row in recorder.record.model_calls]
     tool_call_rows = [row.to_payload() for row in recorder.record.tool_calls]

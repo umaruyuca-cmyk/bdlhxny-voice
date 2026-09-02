@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from bdlh_runtime.experiments import TestType
@@ -14,6 +16,7 @@ from bdlh_runtime.experiments.comparison import ComparisonCase
 from bdlh_runtime.experiments.job_store import (
     JOB_STATUS_CANCELLED,
     JOB_STATUS_COMPLETE,
+    JOB_STATUS_FAILED,
     JOB_STATUS_INTERRUPTED,
     JOB_STATUS_PARTIAL,
     JOB_STATUS_QUEUED,
@@ -21,6 +24,7 @@ from bdlh_runtime.experiments.job_store import (
     UNIT_STATUS_CANCELLED,
     UNIT_STATUS_COMPLETE,
     UNIT_STATUS_INTERRUPTED,
+    UNIT_STATUS_INVALID,
     UNIT_STATUS_QUEUED,
     UNIT_STATUS_RUNNING,
     JobRecord,
@@ -209,6 +213,160 @@ class TestAnonymousService:
         assert stored is not None
         assert stored.status == JOB_STATUS_COMPLETE
         assert stored.completed_unit_count() == 1
+
+    def test_template_result_without_task_success_falls_back_to_validity(self, tmp_path):
+        """模板运行没有 task_success 时必须保留 None，不能把有效结果强制写成失败。"""
+
+        def executor(job, should_stop=lambda: False):
+            unit = job.units[0]
+            return {
+                "runs": [
+                    {
+                        "unit_id": unit.unit_id,
+                        "validity": "VALID",
+                        "stop_reason": "FINAL_ANSWER",
+                        "actual_agent_steps": 1,
+                        "duration_ms": 5,
+                    }
+                ]
+            }
+
+        service = _service(tmp_path, template_executor=executor)
+        job = service.create_job(
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": TEMPLATE_ID,
+                "case_id": "cmp-x",
+                "repeat_count": 1,
+                "variant_label": "off",
+            },
+            anonymous_id_hash=ANON_A,
+        )
+        stored = service.store.get(job.job_id)
+        assert stored is not None
+        assert stored.status == JOB_STATUS_COMPLETE
+        assert stored.units[0].task_success is None
+        assert stored.units[0].status == UNIT_STATUS_COMPLETE
+
+    def test_invalid_timeout_unit_fails_job_instead_of_completing(self, tmp_path):
+        """模型超时是无效运行：单元和任务都不能显示为 COMPLETE。"""
+
+        def executor(job, should_stop=lambda: False):
+            unit = job.units[0]
+            return {
+                "runs": [
+                    {
+                        "unit_id": unit.unit_id,
+                        "validity": "INVALID",
+                        "stop_reason": "TIMEOUT",
+                        "actual_agent_steps": 0,
+                        "duration_ms": 60_000,
+                        "error": "运行超时:单运行熔断",
+                    }
+                ]
+            }
+
+        service = _service(tmp_path, template_executor=executor)
+        job = service.create_job(
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": TEMPLATE_ID,
+                "case_id": "cmp-x",
+                "repeat_count": 1,
+                "variant_label": "off",
+            },
+            anonymous_id_hash=ANON_A,
+        )
+        stored = service.store.get(job.job_id)
+        assert stored is not None
+        assert stored.status == JOB_STATUS_FAILED
+        assert stored.units[0].status == UNIT_STATUS_INVALID
+        assert stored.units[0].task_success is None
+        assert stored.error == "运行超时:单运行熔断"
+
+    def test_template_job_persists_live_execution_chain(self, tmp_path):
+        """真实 recorder 事件必须形成可轮询的当前步骤，且不泄露工具参数。"""
+
+        def executor(
+            job,
+            should_stop=lambda: False,
+            on_phase=None,
+            on_run_done=None,
+            event_sink=None,
+        ):
+            on_phase("校验模板并装载固定用例")
+            recorder = SimpleNamespace(
+                record=SimpleNamespace(
+                    events=[
+                        {
+                            "sequence": 1,
+                            "eventType": "run.started",
+                            "payload": {"variantId": "off"},
+                            "occurredAt": "2026-08-31T04:00:00+00:00",
+                        }
+                    ]
+                ),
+                listeners=[],
+            )
+            recorder.add_event_listener = recorder.listeners.append
+            event_sink.attach(recorder)
+            recorder.listeners[0](
+                {
+                    "sequence": 2,
+                    "eventType": "model.requested",
+                    "payload": {"model": "test-model", "tools": ["a.tool"]},
+                    "occurredAt": "2026-08-31T04:00:01+00:00",
+                }
+            )
+            recorder.listeners[0](
+                {
+                    "sequence": 3,
+                    "eventType": "tool.requested",
+                    "payload": {"sequence": 1, "tool": "a.tool", "arguments": {"secret": "must-not-leak"}},
+                    "occurredAt": "2026-08-31T04:00:02+00:00",
+                }
+            )
+            on_run_done({})
+            unit = job.units[0]
+            return {
+                "runs": [
+                    {
+                        "unit_id": unit.unit_id,
+                        "validity": "VALID",
+                        "stop_reason": "FINAL_ANSWER",
+                        "actual_agent_steps": 1,
+                        "duration_ms": 5,
+                    }
+                ]
+            }
+
+        service = _service(tmp_path, template_executor=executor)
+        job = service.create_job(
+            {
+                "test_type": "COMPARISON_CASE",
+                "template_id": TEMPLATE_ID,
+                "case_id": "cmp-x",
+                "repeat_count": 1,
+                "variant_label": "off",
+            },
+            anonymous_id_hash=ANON_A,
+        )
+        stored = service.store.get(job.job_id)
+        assert stored is not None
+        assert stored.progress["stage"] == "complete"
+        assert stored.progress["phase"] == "任务已完成"
+        event_types = [row["event_type"] for row in stored.progress["events"]]
+        assert event_types == [
+            "job.started",
+            "phase.changed",
+            "run.started",
+            "model.requested",
+            "tool.requested",
+            "unit.completed",
+            "job.completed",
+        ]
+        assert "must-not-leak" not in str(stored.progress)
+        assert any("等待模型响应" in row["label"] for row in stored.progress["events"])
 
     def test_single_variant_rejects_repeat_gt_one(self, tmp_path):
         """匿名单变体运行固定 1 次;重复多次不予创建。"""
@@ -615,8 +773,11 @@ class TestInvalidAgentRunAudit:
         stored = store.get("job-audit-1")
         suspect = stored.units[0]
         assert suspect.validity == "INVALID"
+        assert suspect.status == UNIT_STATUS_INVALID
+        assert suspect.task_success is None
         assert "LLM_UNAVAILABLE" in suspect.summary["measurement_invalid_reason"]
         assert stored.units[1].validity == ""  # 正常单元不受影响
+        assert stored.status == JOB_STATUS_PARTIAL
         assert stored.result["measurement_invalid"] is True
         assert stored.result["measurement_invalid_unit_ids"] == ["u1"]
 
@@ -640,7 +801,38 @@ class TestInvalidAgentRunAudit:
         )
         store.save(job)
         assert store.audit_invalid_agent_runs() == ["job-audit-2"]
+        stored = store.get("job-audit-2")
+        assert stored.status == JOB_STATUS_FAILED
+        assert stored.error.startswith("LLM_UNAVAILABLE")
         assert store.audit_invalid_agent_runs() == []  # 已审计任务不再重复处理
+
+    def test_legacy_audit_marker_also_repairs_status(self, tmp_path):
+        """兼容旧审计：已有 measurement_invalid 标记时仍修正 COMPLETE 状态。"""
+        store = JobStore(tmp_path / "jobs")
+        job = JobRecord(
+            job_id="job-audit-legacy",
+            test_type=TestType.COMPARISON_CASE.value,
+            execution_scope="template-batch",
+            status=JOB_STATUS_COMPLETE,
+            anonymous_id_hash=ANON_A,
+            units=[
+                JobUnit(
+                    seq=1,
+                    unit_id="u1",
+                    agent_mode_id="a",
+                    repeat_index=0,
+                    status=UNIT_STATUS_COMPLETE,
+                    actual_agent_steps=0,
+                    validity="INVALID",
+                )
+            ],
+            result={"measurement_invalid": True, "measurement_invalid_unit_ids": ["u1"]},
+        )
+        store.save(job)
+        assert store.audit_invalid_agent_runs() == ["job-audit-legacy"]
+        stored = store.get("job-audit-legacy")
+        assert stored.status == JOB_STATUS_FAILED
+        assert stored.units[0].status == UNIT_STATUS_INVALID
 
     def test_healthy_jobs_untouched(self, tmp_path):
         store = JobStore(tmp_path / "jobs")

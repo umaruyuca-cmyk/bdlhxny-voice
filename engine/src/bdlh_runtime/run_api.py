@@ -132,6 +132,39 @@ def recover_jobs_on_startup() -> None:
     except Exception as exc:  # noqa: BLE001 —— data 不可达时不阻塞启动
         print(f"[run_api] 孤儿批次清点跳过:{exc}")
     _start_context_analysis_scheduler()
+    _start_context_demo_pipeline()
+
+
+def _start_context_demo_pipeline() -> None:
+    """无登录真实数据:启动后台线程自动执行 构建→Agent 运行(系统演示账号)。
+
+    - 未配置 ``LLM_API_KEY`` 时线程仍启动,但管线逐会话如实返回 SKIPPED
+      (页面显示诚实空态);
+    - 幂等守卫:同会话同来源哈希只执行一次,重启复用既有终态,零新调用;
+    - 数据写入文件 Store 的系统演示账号,公开只读端点展示(无需登录)。
+    """
+
+    # 测试守卫:pytest 进程内(含 with TestClient 触发的 startup)绝不发起
+    # 真实 LLM 调用(纪律:单元测试不得调用真实 LLM 或真实 Agent)
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    import threading as _threading
+
+    artifacts_dir = os.environ.get("ARTIFACTS_DIR") or "var/artifacts"
+
+    def _loop() -> None:
+        from bdlh_runtime.memory.demo import run_demo_pipeline
+
+        results = run_demo_pipeline(artifacts_dir=artifacts_dir, store=_context_store)
+        for row in results:
+            print(
+                f"[run_api] 演示管线: {row.get('session_id')} "
+                f"build={row.get('build_status') or row.get('skipped')} "
+                f"agent={row.get('agent_status')} "
+                f"error={row.get('error') or '-'}"
+            )
+
+    _threading.Thread(target=_loop, name="context-demo-pipeline", daemon=True).start()
 
 
 def _start_context_analysis_scheduler() -> None:
@@ -151,6 +184,8 @@ def _start_context_analysis_scheduler() -> None:
         return
     if settings.interval_s <= 0:
         print("[run_api] 定时分析调度器已关闭(CONTEXT_ANALYSIS_INTERVAL_S<=0)")
+        return
+    if os.environ.get("PYTEST_CURRENT_TEST"):
         return
     if not (os.getenv("DATA_INTERNAL_TOKEN") or "").strip():
         print("[run_api] 未配置 DATA_INTERNAL_TOKEN,定时分析调度器不启动")
@@ -327,6 +362,85 @@ class ContextAccessAuditRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: str = Field(pattern=r"^CONTEXT_CONTENT_COPY$")
+
+
+# ── 上下文演示(公开只读,无需登录):系统演示账号的真实执行数据 ──
+
+_CONTEXT_DEMO_OWNER = "system-demo"
+
+
+def _demo_store() -> ContextBuildStore | None:
+    """演示数据只来自文件 Store(演示管线写入);data-service 模式下不提供。"""
+
+    store = _context_store
+    return store if isinstance(store, ContextBuildStore) else None
+
+
+@app.get("/api/v1/public/context-demo")
+def get_context_demo_overview() -> dict[str, Any]:
+    """演示构建列表(系统账号最新完成构建;llm_configured 供页面诚实空态)。"""
+
+    store = _demo_store()
+    llm_ready = bool((os.environ.get("LLM_API_KEY") or "").strip())
+    if store is None:
+        return {"enabled": False, "llm_configured": llm_ready, "builds": []}
+    service = ContextWorkbenchService(store)
+    builds = []
+    for row in service.sessions():
+        session_id = str(row["session_id"])
+        latest = store.latest_for_session(_CONTEXT_DEMO_OWNER, session_id)
+        if latest is None:
+            continue
+        full = store.get(str(latest["build_id"]), _CONTEXT_DEMO_OWNER)
+        classification: dict[str, Any] = {}
+        try:
+            artifact = store.artifact(str(latest["build_id"]), _CONTEXT_DEMO_OWNER)
+            classification = artifact.get("classification") or {}
+        except Exception:  # noqa: BLE001 —— 工件缺失时分类段留空
+            classification = {}
+        builds.append(
+            {
+                "session_id": session_id,
+                "session_title": str(row.get("title") or session_id),
+                "build_id": latest["build_id"],
+                "status": latest["status"],
+                "created_at": latest.get("created_at"),
+                "llm_usage": full.get("llm_usage") or {},
+                "classification": classification,
+                "agent_run": {
+                    key: (full.get("agent_run") or {}).get(key)
+                    for key in ("status", "steps", "stop_reason", "output", "error_code")
+                    if isinstance(full.get("agent_run"), dict)
+                },
+            }
+        )
+    return {"enabled": True, "llm_configured": llm_ready, "builds": builds}
+
+
+@app.get("/api/v1/public/context-demo/builds/{build_id}")
+def get_context_demo_build(build_id: str) -> dict[str, Any]:
+    store = _demo_store()
+    if store is None:
+        raise HTTPException(status_code=404, detail={"error_code": "DEMO_DISABLED"})
+    try:
+        row = store.get(build_id, _CONTEXT_DEMO_OWNER)  # store 内部已校验属主=演示账号
+    except (BuildNotFound, ForbiddenBuild) as exc:
+        raise _context_lookup_error(exc) from exc
+    row.pop("decisions", None)  # 公开口径:决策计数已在 item_counts,正文不外放
+    return row
+
+
+@app.get("/api/v1/public/context-demo/builds/{build_id}/artifact")
+def get_context_demo_artifact(build_id: str) -> dict[str, Any]:
+    store = _demo_store()
+    if store is None:
+        raise HTTPException(status_code=404, detail={"error_code": "DEMO_DISABLED"})
+    try:
+        artifact = store.artifact(build_id, _CONTEXT_DEMO_OWNER)
+    except (BuildNotFound, ForbiddenBuild) as exc:
+        raise _context_lookup_error(exc) from exc
+    # 公开口径:消息正文属冻结会话(已是公开语料),原样展示
+    return artifact
 
 
 @app.get("/health")

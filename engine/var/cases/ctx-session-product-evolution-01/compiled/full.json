@@ -2,9 +2,9 @@
   "case_id": "ctx-session-product-evolution-01",
   "case_version": 1,
   "source_session_hash": "sha256:a586b387f7e32f6ab853a8f4b610276d3655d422ffab97c5d3494444b88b029b",
-  "variant_id": "full-session",
+  "variant_id": "full",
   "strategy": "full",
-  "strategy_version": "full-session-v1",
+  "strategy_version": "full-v1",
   "token_budget": 65536,
   "compiled_messages": [
     {
@@ -388,7 +388,7 @@
       "content": "请使用只读工具检查 docs/product/产品目标与使用方式.md、docs/context/长上下文构建与压缩.md 和 web/scripts/generate-context-library.mjs，判断当前长上下文文库是否已经符合“只展示完整 Session、明确语料性质、同一 Session 派生四种上下文”的最终要求，并列出仍需修改的三个位置。不要修改文件，也不要运行测试。"
     }
   ],
-  "compiled_context_hash": "sha256:fbca6a9025df5063cffe4fd22adf69157d02d059a0197992b1a3801895412f6d",
+  "compiled_context_hash": "sha256:250cc9bebedcb0d9567ead0bf154b5deca1fbe8b05218dc75420604f953de4bb",
   "input_event_ids": [
     "evt-0001",
     "evt-0002",
@@ -646,11 +646,14 @@
   "omitted_event_ids": [],
   "original_tokens": 25013,
   "working_tokens": 25006,
-  "build_duration_ms": 69,
+  "build_duration_ms": 47,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
   "build_cost": 0.0,
+  "build_cache_hits": 0,
+  "build_purpose": "COMPRESSION",
+  "build_summary_chunks": 0,
   "warnings": [
     "algo_version=structured-text-v1"
   ],
@@ -658,7 +661,19 @@
   "budget_fit": true,
   "tokenizer_version": "conservative-cjk1-latin4-v1",
   "scores": [],
+  "classification": {
+    "source": "code_rules_only",
+    "stats": {},
+    "llm_calls": 0,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0,
+    "truncated": false
+  },
   "scoring_version": "",
+  "memory_segment_ids": [],
+  "segment_cache_hits": 0,
+  "segment_generated": 0,
+  "segment_invalidated": 0,
   "status": "COMPLETE",
-  "compile_wall_ms": 70
+  "compile_wall_ms": 48
 }

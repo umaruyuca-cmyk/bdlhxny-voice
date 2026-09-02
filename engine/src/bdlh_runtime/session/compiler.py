@@ -35,18 +35,45 @@ from bdlh_runtime.context import (
 
 from .history_segments import HistorySegmentLike, SegmentUsage, inject_history_segments
 from .loader import SessionCase, canonical_json_hash
-from .serializer import serialize_session
+from .serializer import SerializedItem, serialize_session
 
-#: variants 配置中的 strategy 名 → 构建器策略
+#: variants 配置中的 strategy 名 → 构建器策略(需求 §3.1 新旧标识映射)。
+#: 旧名(full-session/recent-n/recent-window/budgeted-session/budgeted)仅为
+#: 读取旧工件与旧配置兼容;新建任务一律使用新标识,不再暴露旧名称。
 STRATEGY_BY_NAME: dict[str, ContextStrategy] = {
     "full": ContextStrategy.FULL,
-    "full-session": ContextStrategy.FULL,
-    "recent-n": ContextStrategy.RECENT_N,
-    "recent-window": ContextStrategy.RECENT_N,
+    "full-session": ContextStrategy.FULL,  # 旧名读兼容
+    "recent-n": ContextStrategy.RECENT_EVENTS_LEGACY,
+    "recent-window": ContextStrategy.RECENT_EVENTS_LEGACY,  # 旧名读兼容(按事件)
+    "recent-events-legacy": ContextStrategy.RECENT_EVENTS_LEGACY,
+    "recent-turns": ContextStrategy.RECENT_TURNS,
     "single-summary": ContextStrategy.SINGLE_SUMMARY,
     "budgeted": ContextStrategy.BUDGETED,
-    "budgeted-session": ContextStrategy.BUDGETED,
+    "budgeted-session": ContextStrategy.BUDGETED,  # 旧名读兼容
+    "budgeted-hybrid-v1": ContextStrategy.BUDGETED,
+    "budgeted-extractive": ContextStrategy.BUDGETED,
 }
+
+#: recent-turns 默认保留轮数(需求 §11.1:最近 12~20 个完整轮,默认 16)
+DEFAULT_RECENT_TURNS = 16
+
+
+def recent_turns_event_ids(events: tuple[Any, ...], keep_turns: int) -> frozenset[str]:
+    """返回最近 ``keep_turns`` 个完整对话轮内的事件 id(需求 §8.4 轮次口径)。
+
+    一条 user_message 开启一轮;其后到下一条 user_message 之前的助手消息、
+    工具调用/结果与系统事件同属该轮,原子不拆;轮数不足时全保留。
+    """
+
+    turn_of: dict[str, int] = {}
+    turn = 0
+    for event in events:
+        if str(getattr(event, "type", "")) == "user_message":
+            turn += 1
+        turn_of[str(getattr(event, "event_id", ""))] = turn
+    total = turn
+    keep_from = max(1, total - max(1, keep_turns) + 1)
+    return frozenset(event_id for event_id, index in turn_of.items() if index >= keep_from)
 
 #: budgeted 早期实现的算法版本号(与 run_telemetry 的 structured-text-v1 对齐)
 STRUCTURED_TEXT_ALGO_VERSION = "structured-text-v1"
@@ -108,6 +135,14 @@ class CompiledContext:
     scores: tuple[ItemScore, ...] = field(default_factory=tuple)
     #: 评分权重版本(仅 budgeted v2 启用时非空,否则空串)
     scoring_version: str = ""
+    #: LLM 辅助分类计量(§9.1/§10.3:语义分类辅助 0 或 1 次,与摘要分开计数)
+    classify_model_calls: int = 0
+    classify_input_tokens: int = 0
+    classify_output_tokens: int = 0
+    classify_truncated: bool = False
+    #: 分类来源与分布:code_rules=代码预规则条数,llm_assist=LLM 判定条数
+    classification_source: str = "code_rules_only"
+    classification_stats: dict[str, int] = field(default_factory=dict)
     #: 底层构建结果(冻结喂入用;不进入机器可读工件)
     build_result: ContextBuildResult | None = None
     #: 历史轮 Segment(已注入 Compiler 的冻结摘要)追溯与计量(§6.4)
@@ -149,6 +184,14 @@ class CompiledContext:
             "budget_fit": self.budget_fit,
             "tokenizer_version": self.tokenizer_version,
             "scores": [_score_payload(row) for row in self.scores],
+            "classification": {
+                "source": self.classification_source,
+                "stats": dict(self.classification_stats),
+                "llm_calls": self.classify_model_calls,
+                "llm_input_tokens": self.classify_input_tokens,
+                "llm_output_tokens": self.classify_output_tokens,
+                "truncated": self.classify_truncated,
+            },
             "scoring_version": self.scoring_version,
             "memory_segment_ids": list(self.memory_segment_ids),
             "segment_cache_hits": self.segment_cache_hits,
@@ -190,6 +233,7 @@ class SessionCompiler:
         tokenizer_version: str | None = None,
         summarizer: HistorySummarizer | None = None,
         scorer: MultiFactorScorer | None = None,
+        classifier: Any | None = None,
     ) -> None:
         if counter is None or tokenizer_version is None:
             env_counter, env_version = counter_from_env()
@@ -211,6 +255,8 @@ class SessionCompiler:
             )
         else:
             self._builder = ContextBuilder(counter=self._counter, scorer=scorer)
+        #: LLM 辅助分类器(§9.1/§13.2 步骤 7):None=仅代码规则(对照轨道/关闭时)
+        self._classifier = classifier
 
     @classmethod
     def from_env(cls, *, llm_summary: bool = False) -> SessionCompiler:
@@ -225,13 +271,22 @@ class SessionCompiler:
         from bdlh_runtime.context import scorer_from_env
 
         summarizer = None
+        classifier = None
         if llm_summary:
             from .llm_summary import LLMSummarizer
 
             summarizer = LLMSummarizer(
                 cache_path=(Path(__file__).resolve().parents[3] / "var" / "cache" / "llm-summary.json")
             )
-        return cls(scorer=scorer_from_env(), summarizer=summarizer)
+            # 分类辅助与摘要同一真实模型开关(§10.3 语义分类辅助 0 或 1 次);
+            # CLASSIFY_LLM=0 可单独关闭(回退代码规则),对照轨道默认不装配
+            import os
+
+            if os.environ.get("CLASSIFY_LLM", "1").strip().lower() not in {"0", "false", "off"}:
+                from .llm_classify import LLMContextClassifier
+
+                classifier = LLMContextClassifier()
+        return cls(scorer=scorer_from_env(), summarizer=summarizer, classifier=classifier)
 
     def compile(
         self,
@@ -250,6 +305,17 @@ class SessionCompiler:
         token_budget = int(variant["token_budget"])
 
         serialized_source = serialize_session(session)
+        # recent-turns(§8.4):先按完整轮过滤历史条目,再走事件窗口构建分支;
+        # 预算语义不变(超预算从尾部保留到预算耗尽),只是截取粒度从事件变为轮
+        if strategy is ContextStrategy.RECENT_TURNS:
+            keep_ids = recent_turns_event_ids(
+                session.events,
+                int(variant.get("recent_turns") or DEFAULT_RECENT_TURNS),
+            )
+            serialized_source = tuple(
+                entry for entry in serialized_source if set(entry.event_ids) & set(keep_ids)
+            )
+            strategy = ContextStrategy.RECENT_EVENTS_LEGACY
         # 历史轮 Segment 注入:被完整覆盖的连续条目替换为合成摘要条目;
         # 非法 Segment 拒绝注入并保留原文(warning 记入工件)
         injection = inject_history_segments(serialized_source, history_segments)
@@ -257,6 +323,11 @@ class SessionCompiler:
         # 生产工作台允许“首条用户消息”为当前请求，此时历史事件为空；
         # 当前问题仍作为 REQUIRED 条目构建，不应因无历史而崩溃。
         question_sequence = session.events[-1].seq + 1 if session.events else 1
+        # ── 分类(§9.1/§13.2 步骤 6-7):仅 budgeted 系消费四分类语义 ──
+        classify_usage: Any | None = None
+        code_rule_count = 0
+        if strategy is ContextStrategy.BUDGETED:
+            serialized, classify_usage, code_rule_count = self._classify_items(serialized)
         items: list[ContextItem] = [
             ContextItem(
                 # item id 与 loop.assemble_model_context 对齐,冻结喂入可按 id 命中
@@ -351,6 +422,8 @@ class SessionCompiler:
         warnings = list(built.report.warnings)
         warnings.extend(injection.warnings)
         warnings.extend(f"summary: {row}" for row in usage_warnings)
+        if classify_usage is not None:
+            warnings.extend(_classification_warnings(classify_usage, code_rule_count))
         warnings.append(f"algo_version={STRUCTURED_TEXT_ALGO_VERSION}")
         if self.tokenizer_version == TIKTOKEN_TOKENIZER_VERSION:
             warnings.append("tokenizer=cl100k_base 为 OpenAI 词表近似口径(非 Qwen 词表),跨口径数据不可直接比较")
@@ -359,7 +432,20 @@ class SessionCompiler:
                 "tokenizer=qwen 官方词表精确口径(与模型实际切分高度一致;若模型带扩展词表略有偏差),"
                 "跨口径数据不可直接比较"
             )
+        classification_stats: dict[str, int] = {}
+        if strategy is ContextStrategy.BUDGETED:
+            for entry in serialized:
+                category = entry.item.classification.value
+                classification_stats[category] = classification_stats.get(category, 0) + 1
+            classification_stats["code_rules"] = code_rule_count
+            classification_stats["llm_assist"] = len(classify_usage.decisions) if classify_usage else 0
         return CompiledContext(
+            classification_source=_classification_source(classify_usage),
+            classification_stats=classification_stats,
+            classify_model_calls=classify_usage.model_calls if classify_usage else 0,
+            classify_input_tokens=classify_usage.input_tokens if classify_usage else 0,
+            classify_output_tokens=classify_usage.output_tokens if classify_usage else 0,
+            classify_truncated=classify_usage.truncated if classify_usage else False,
             case_id=session.session_id,
             case_version=session.session_version,
             source_session_hash=session.source_hash,
@@ -396,6 +482,60 @@ class SessionCompiler:
             segment_generated=segment_usage.generated if segment_usage is not None else 0,
             segment_invalidated=segment_usage.invalidated if segment_usage is not None else 0,
         )
+
+    def _classify_items(
+        self,
+        serialized: tuple[SerializedItem, ...],
+    ) -> tuple[tuple[SerializedItem, ...], Any, int]:
+        """budgeted 系条目分类(§9.1/§13.2 步骤 6-7):代码预规则 + LLM 辅助。
+
+        - 代码预规则(语义可确定):已取代(同来源存在更新版本)→ distractor;
+        - 其余条目属"语义不明确的候选",装配分类器时批量一次 LLM 判四分类
+          (失败/超限/关闭 → 回退 COMPRESSIBLE,即既有行为);
+        - Segment 合成条目(memory-segment:*)已是摘要,跳过 LLM 分类。
+
+        返回 (新 serialized, 分类用量或 None, 代码预规则条数)。
+        """
+
+        import dataclasses
+
+        items = [entry.item for entry in serialized]
+        code_rule_ids: set[str] = set()
+        replaced: dict[str, Any] = {}
+        for item in items:
+            if item.superseded and item.classification is not ContextClassification.DISTRACTOR:
+                replaced[item.item_id] = dataclasses.replace(
+                    item, classification=ContextClassification.DISTRACTOR
+                )
+                code_rule_ids.add(item.item_id)
+
+        candidates: list[tuple[str, str, str]] = []
+        for item in items:
+            if item.item_id in replaced or item.item_id.startswith("memory-segment:"):
+                continue
+            role = "assistant" if item.role == ContextRole.ASSISTANT else (
+                "tool" if item.role == ContextRole.UNTRUSTED_DATA else "user"
+            )
+            candidates.append((item.item_id, role, item.content))
+
+        usage = None
+        if self._classifier is not None and candidates:
+            usage = self._classifier.classify(candidates)
+            for item_id, (category, _reason) in usage.decisions.items():
+                mapping = ContextClassification(category)
+                base = next((row.item for row in serialized if row.item.item_id == item_id), None)
+                if base is None or base.classification is mapping:
+                    continue
+                replaced[item_id] = dataclasses.replace(base, classification=mapping)
+        # 无候选时不调用 LLM,usage 保持 None(纯代码规则口径)
+
+        if not replaced:
+            return serialized, usage, 0
+        new_serialized = tuple(
+            SerializedItem(item=replaced.get(entry.item.item_id, entry.item), event_ids=entry.event_ids)
+            for entry in serialized
+        )
+        return new_serialized, usage, len(code_rule_ids)
 
     def _prebuild_summary_map(
         self,
@@ -518,3 +658,26 @@ class SessionCompiler:
             ),
             list(getattr(usage, "warnings", []) or []),
         )
+
+
+def _classification_source(usage: Any | None) -> str:
+    if usage is None:
+        return "code_rules_only"
+    if usage.decisions:
+        return "llm_assist"
+    if usage.error_code:
+        return "llm_failed_fallback"
+    return "code_rules_only"
+
+
+def _classification_warnings(usage: Any, code_rule_count: int) -> list[str]:
+    """分类辅助的告警(进工件 warnings;不改变构建结论)。"""
+
+    rows: list[str] = []
+    if code_rule_count:
+        rows.append(f"classify: 代码预规则判 interruptions/已取代 {code_rule_count} 条为 distractor")
+    if usage.error_code:
+        rows.append(f"classify: LLM 辅助分类不可用({usage.error_code}),已回退代码默认分类(全部可压缩)")
+    elif usage.truncated:
+        rows.append("classify: 条目数超出输入预算,截断部分按代码默认分类(可压缩)")
+    return rows

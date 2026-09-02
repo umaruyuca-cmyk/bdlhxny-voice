@@ -66,6 +66,9 @@ class TestClassifyFailure:
     def test_service_unavailable_is_invalid(self) -> None:
         assert classify_failure("Connection error: connection refused") == ("INVALID", "MODEL_SERVICE_UNAVAILABLE")
 
+    def test_chinese_timeout_is_model_service_unavailable(self) -> None:
+        assert classify_failure("运行超时:单运行熔断") == ("INVALID", "MODEL_SERVICE_UNAVAILABLE")
+
     def test_task_failure_is_valid_but_failed(self) -> None:
         status, category = classify_failure("JSONDecodeError: expecting value")
         assert status == "FAILED"

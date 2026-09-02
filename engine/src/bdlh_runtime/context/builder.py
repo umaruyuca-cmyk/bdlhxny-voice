@@ -55,7 +55,7 @@ class ContextBuilder:
 
         if request.strategy is ContextStrategy.FULL:
             selected, decisions = self._build_full(eligible, request.token_budget)
-        elif request.strategy is ContextStrategy.RECENT_N:
+        elif request.strategy in (ContextStrategy.RECENT_N, ContextStrategy.RECENT_EVENTS_LEGACY):
             selected, decisions = self._build_recent(eligible, request)
         elif request.strategy is ContextStrategy.SINGLE_SUMMARY:
             selected, decisions = self._build_single_summary(eligible, request)

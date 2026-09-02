@@ -682,7 +682,7 @@ def test_method_comparison_template_owner_only_and_two_runs():
     plan = plan_template_batch("compression-method-comparison", repeat_count=1, role=ROLE_OWNER)
     assert plan.run_count == 2
     strategies = {run.run_config.context_strategy for run in plan.runs}
-    assert strategies == {"budgeted", "budgeted-llm"}
+    assert strategies == {"budgeted-extractive", "budgeted-hybrid-v1"}
     context_only_plan = plan_template_batch(
         "compression-method-comparison", repeat_count=1, role=ROLE_OWNER, context_only=True
     )
@@ -1071,3 +1071,53 @@ def test_native_agent_estimates_when_usage_missing():
     assert record.input_tokens > 0
     assert record.output_tokens > 0
     assert len(record.model_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_agent_timeout_zero_disables_circuit_breaker():
+    """limits.agent_timeout_seconds=0 → 跳过整体熔断(asyncio.wait_for 不包裹)。
+
+    显式 timeout_seconds > 0 仍生效:极小阈值触发 TIMEOUT 路径。
+    使用本地延迟假模型,不访问网络、不调用真实 LLM。
+    """
+    import asyncio
+
+    from bdlh_runtime.experiments.template_runner import run_native_agent
+    from bdlh_runtime.experiments.templates import TEMPLATES
+
+    class SlowChatModel:
+        def __init__(self, delay: float) -> None:
+            self._delay = delay
+
+        def bind_tools(self, tools, **_kwargs):
+            return self
+
+        async def ainvoke(self, messages, **_kwargs):
+            await asyncio.sleep(self._delay)
+            return AIMessage(content="上海多云。")
+
+    config = TEMPLATES["governance-on-off"].base_config.with_overrides(
+        {"limits.agent_timeout_seconds": 0}
+    )
+    assert config.limits.agent_timeout_seconds == 0
+
+    # 0 = 不限时:循环照常完成
+    record = await run_native_agent(
+        run_config=config,
+        message="查上海天气",
+        visible_tools=("weather.get_forecast",),
+        llm=SlowChatModel(delay=0.02),
+    )
+    assert record.validity == "VALID"
+    assert not record.error
+
+    # 显式正秒数仍然熔断:走「运行超时:单运行熔断」路径
+    tripped = await run_native_agent(
+        run_config=config,
+        message="查上海天气",
+        visible_tools=("weather.get_forecast",),
+        llm=SlowChatModel(delay=0.5),
+        timeout_seconds=0.01,
+    )
+    assert tripped.stop_reason == "TIMEOUT"
+    assert tripped.error == "运行超时:单运行熔断"

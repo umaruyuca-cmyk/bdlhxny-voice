@@ -349,7 +349,7 @@ def test_context_artifact_download_scoped_to_owner(client, tmp_path, monkeypatch
 
     compiled_dir = tmp_path / "ctx-session-context-engine-debug-01" / "compiled"
     compiled_dir.mkdir(parents=True)
-    (compiled_dir / "budgeted-session.json").write_text('{"variant_id": "budgeted-session"}', encoding="utf-8")
+    (compiled_dir / "budgeted-extractive.json").write_text('{"variant_id": "budgeted-extractive"}', encoding="utf-8")
     monkeypatch.setattr(compression_module, "CASES_ROOT", tmp_path)
 
     created = client.post(
@@ -365,11 +365,11 @@ def test_context_artifact_download_scoped_to_owner(client, tmp_path, monkeypatch
     assert created.status_code == 200
     job_id = created.json()["job_id"]
 
-    ok = client.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/budgeted-session")
+    ok = client.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/budgeted-extractive")
     assert ok.status_code == 200
-    assert ok.json()["variant_id"] == "budgeted-session"
+    assert ok.json()["variant_id"] == "budgeted-extractive"
     # 变体白名单外按不存在处理
     assert client.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/no-such").status_code == 404
     # 陌生匿名身份(无同一 Cookie)不可下载
     stranger = TestClient(run_api.app)
-    assert stranger.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/budgeted-session").status_code == 404
+    assert stranger.get(f"/api/v1/public/test-jobs/{job_id}/context-artifacts/budgeted-extractive").status_code == 404

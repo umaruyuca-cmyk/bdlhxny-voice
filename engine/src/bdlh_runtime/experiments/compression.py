@@ -30,6 +30,7 @@ from bdlh_runtime.context import (
 )
 from bdlh_runtime.experiments import (
     COMPRESSION_REPEAT_COUNT,
+    CONTEXT_MATRIX_MODES,
     CONTEXT_MODES,
     NATIVE_AGENT_MODE_ID,
     RunUnit,
@@ -51,6 +52,7 @@ from bdlh_runtime.experiments.run_config import (
 )
 from bdlh_runtime.session import (
     CompiledContext,
+    SegmentUsage,
     SessionCompiler,
     dispatcher_from_gold,
     load_gold,
@@ -202,6 +204,90 @@ class ContextGenerationResult:
     generated_at: str = ""
 
 
+_COMPARISON_SEGMENT_REPO: Any | None = None
+
+
+def _comparison_segment_repository() -> Any:
+    """进程级共享的内存 Segment 仓库(首次调用惰性创建)。"""
+
+    global _COMPARISON_SEGMENT_REPO
+    if _COMPARISON_SEGMENT_REPO is None:
+        from bdlh_runtime.memory.segments import InMemoryMemorySegmentRepository
+
+        _COMPARISON_SEGMENT_REPO = InMemoryMemorySegmentRepository()
+    return _COMPARISON_SEGMENT_REPO
+
+
+def prepare_segments_for_comparison(session: SessionCase) -> Any:
+    """对比轨道的新压缩策略管线:分段 → 来源哈希复用 → 冻结保存(零模型调用)。
+
+    budgeted 系变体(budgeted-hybrid-v1 主算法 / budgeted-extractive 基线)在
+    生成上下文时走与生产工作台相同的 Segment 管线:原始事件不动,最近轮保留
+    原文,达到阈值后对较早历史分段、代码预分类与预算选择交给编译器、摘要
+    (对照固定抽取式,保证可复现)写入进程内摘要库,后续构建命中来源哈希
+    直接复用。返回 SegmentPreparation,由调用方注入编译器。
+    """
+
+    from bdlh_runtime.memory.segments import (
+        ExtractiveSegmentSummarizer,
+        MemorySegmentManager,
+        SegmentSettings,
+    )
+
+    current = current_event_of(session)
+    history_events = tuple(event for event in session.events if event.seq < current.seq)
+    manager = MemorySegmentManager(
+        # 进程级共享仓库(按 owner 隔离):跨构建命中来源哈希直接复用;
+        # 重启后由下次构建重新生成,不丢原始事件
+        repository=_comparison_segment_repository(),
+        owner_id=f"comparison:{session.session_id}",
+        settings=SegmentSettings.from_env(),
+        summarizer=ExtractiveSegmentSummarizer(),
+    )
+    return manager.prepare(
+        session_id=session.session_id,
+        history_events=history_events,
+        allow_generation=True,
+        allow_save=True,
+    )
+
+
+def _compile_one_with_pipeline(
+    instance: SessionCompiler,
+    session: SessionCase,
+    variant: dict[str, Any],
+    common_rules: str,
+    *,
+    segment_preps: dict[str, Any] | None = None,
+) -> tuple[CompiledContext, Any | None]:
+    """编译单个变体;budgeted 系先走 Segment 管线再注入(与生成/重载路径共用)。"""
+
+    history_segments = ()
+    segment_usage_kwargs: dict[str, int] = {}
+    prep = None
+    if str(variant.get("strategy")) in ("budgeted",):
+        assert segment_preps is not None
+        vid = str(variant["variant_id"])
+        prep = segment_preps.get(vid)
+        if prep is None:
+            prep = prepare_segments_for_comparison(session)
+            segment_preps[vid] = prep
+        history_segments = prep.segments
+        segment_usage_kwargs = {
+            "cache_hits": prep.cache_hits,
+            "generated": prep.generated,
+            "invalidated": prep.invalidated,
+        }
+    compiled = instance.compile(
+        session,
+        variant,
+        common_rules=common_rules,
+        history_segments=history_segments,
+        segment_usage=SegmentUsage(**segment_usage_kwargs) if segment_usage_kwargs else None,
+    )
+    return compiled, prep
+
+
 def generate_contexts(
     session_id: str,
     *,
@@ -217,13 +303,30 @@ def generate_contexts(
     common_rules = load_prompt("system_base.md", "scene_chat.md")
 
     artifacts: dict[str, dict[str, Any]] = {}
+    segment_preps: dict[str, Any] = {}
     for variant in variants.get("context_variants") or []:
         variant_id = str(variant["variant_id"])
         started = time.perf_counter()
         try:
-            compiled = instance.compile(session, variant, common_rules=common_rules)
+            # 新压缩策略管线(§16.2 链路):budgeted 系先分段/复用再注入编译器
+            compiled, prep = _compile_one_with_pipeline(
+                instance, session, variant, common_rules, segment_preps=segment_preps
+            )
             payload = compiled.to_payload()
             payload["status"] = "COMPLETE"
+            if variant_id in segment_preps:
+                prep = segment_preps[variant_id]
+                payload["segment_pipeline"] = {
+                    "enabled": True,
+                    "old_turns": prep.old_turns,
+                    "recent_raw_turns": prep.recent_raw_turns,
+                    "cache_hits": prep.cache_hits,
+                    "generated": prep.generated,
+                    "saved_tokens": prep.saved_tokens,
+                    "segment_count": len(prep.segments),
+                    "mode": "extractive-deterministic",
+                }
+                payload["warnings"] = list(payload.get("warnings") or []) + list(prep.warnings)
         except ValueError as exc:  # full-session 超窗等 → 记为无效上下文,不静默截断
             payload = {
                 "case_id": session.session_id,
@@ -277,9 +380,13 @@ def compile_variants(
 
     instance = compiler or SessionCompiler.from_env(llm_summary=llm_summary)
     common_rules = load_prompt("system_base.md", "scene_chat.md")
+    segment_preps: dict[str, Any] = {}
     compiled: dict[str, CompiledContext] = {}
     for variant in variants.get("context_variants") or []:
-        compiled[str(variant["variant_id"])] = instance.compile(session, variant, common_rules=common_rules)
+        artifact, _prep = _compile_one_with_pipeline(
+            instance, session, variant, common_rules, segment_preps=segment_preps
+        )
+        compiled[str(variant["variant_id"])] = artifact
     return compiled
 
 
@@ -367,7 +474,9 @@ def build_compression_run_configs(
     ``context_strategy``。
     """
     configs: dict[str, RunConfig] = {}
-    for variant_id, artifact in compiled.items():
+    # 矩阵口径 4×1:抽取式基线不进 Agent 运行(与主算法冻结工件相同)
+    matrix_variants = [(vid, compiled[vid]) for vid in CONTEXT_MATRIX_MODES if vid in compiled]
+    for variant_id, artifact in matrix_variants:
         for mode in agent_mode_ids:
             if mode != NATIVE_AGENT_MODE_ID:
                 raise CompressionSessionError(f"未知 Agent 实现编号:{mode!r}")
@@ -401,7 +510,7 @@ def expected_compression_method_config_hashes(
     """压缩方法对照每变体的预期 RunConfig 哈希(创建实验组时冻结;纯代码,无 LLM 调用)。
 
     与 ``run_single_compression_method`` 构建同一 RunConfig:两种方法编译同一
-    ``budgeted-session`` 变体定义,``token_budget`` 直接取自变体定义(同预算),
+    主算法变体定义(budgeted-hybrid-v1;旧 variants 回落 budgeted-session),
     因此哈希可以在不编译工件、不调用摘要模型的前提下确定性冻结。运行 payload
     携带的 ``config_hash`` 与冻结值一致,统计模块按正式口径直接比较(修复方案 P1-2)。
     """
@@ -409,12 +518,9 @@ def expected_compression_method_config_hashes(
 
     steps = max_agent_steps or default_max_agent_steps()
     session, variants, _ = _load_session_bundle(session_id)
-    budgeted_def = next(
-        (v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"),
-        None,
-    )
+    budgeted_def = _budgeted_variant(variants)
     if budgeted_def is None:
-        raise CompressionSessionError("Session 变体定义缺少 budgeted-session,不能做压缩方法对照")
+        raise CompressionSessionError("Session 变体定义缺少 budgeted-hybrid-v1,不能做压缩方法对照")
     token_budget = int(budgeted_def["token_budget"])
     hashes: dict[str, str] = {}
     for method in COMPRESSION_METHODS:
@@ -635,7 +741,7 @@ async def run_native_context_matrix(
         "source_session_hash": session.source_hash,
         "repeat_count": COMPRESSION_REPEAT_COUNT,
         "max_agent_steps": steps,
-        "context_variants": list(CONTEXT_MODES),
+        "context_variants": list(CONTEXT_MATRIX_MODES),
         "agent_mode_ids": [NATIVE_AGENT_MODE_ID],
         "independent_variable": ["context_strategy"],
         "experiment_definition": "context-strategy-comparison",
@@ -707,14 +813,25 @@ def _assemble_cell_result(
 
 
 #: 压缩方法对照(私有台):唯一自变量 = 摘要器(抽取式 vs LLM 生成式)。
-#: 两变体共用 budgeted-session 的分类与预算,仅编译期摘要器不同;
+#: 两方法共用主算法变体的分类与预算,仅编译期摘要器不同;
 #: LLM 摘要与主模型同源(env 唯一真源),失败回退抽取式并在工件 warnings 标注。
-COMPRESSION_METHODS: tuple[str, ...] = ("budgeted", "budgeted-llm")
+def _budgeted_variant(variants: dict[str, Any]) -> dict[str, Any] | None:
+    """取主算法变体定义:budgeted-hybrid-v1 优先,旧 variants 的 budgeted-session 回落兼容。"""
+
+    rows = variants.get("context_variants") or []
+    for variant_id in ("budgeted-hybrid-v1", "budgeted-session"):
+        found = next((v for v in rows if v.get("variant_id") == variant_id), None)
+        if found is not None:
+            return found
+    return None
+
+
+COMPRESSION_METHODS: tuple[str, ...] = ("budgeted-extractive", "budgeted-hybrid-v1")
 
 #: 方法标识 → 进度展示名(作业进度 phase 文案与单元列表共用)
 COMPRESSION_METHOD_LABELS: dict[str, str] = {
-    "budgeted": "抽取式(代码)",
-    "budgeted-llm": "生成式(LLM 摘要)",
+    "budgeted-extractive": "budgeted-extractive(抽取式基线,代码,无模型调用)",
+    "budgeted-hybrid-v1": "budgeted-hybrid-v1(混合主算法:代码硬规则+LLM 摘要)",
 }
 
 
@@ -732,24 +849,21 @@ def _compile_method_artifacts(
     """
     from bdlh_runtime.engine.loop import load_prompt
 
-    budgeted_def = next(
-        (v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session"),
-        None,
-    )
+    budgeted_def = _budgeted_variant(variants)
     if budgeted_def is None:
-        raise CompressionSessionError("Session 变体定义缺少 budgeted-session,不能做压缩方法对照")
+        raise CompressionSessionError("Session 变体定义缺少 budgeted-hybrid-v1,不能做压缩方法对照")
     common_rules = load_prompt("system_base.md", "scene_chat.md")
     if on_phase is not None:
         on_phase("构建抽取式压缩上下文(代码,无模型调用)")
     extractive = SessionCompiler.from_env(llm_summary=False).compile(session, budgeted_def, common_rules=common_rules)
     if on_phase is not None:
-        on_phase(f"生成 LLM 摘要 · {COMPRESSION_METHOD_LABELS['budgeted-llm']}(真实模型调用,可能较慢)")
+        on_phase("生成 LLM 摘要 · budgeted-hybrid-v1 主算法(真实模型调用,可能较慢)")
     if llm_summarizer is not None:
         generative_compiler = SessionCompiler(summarizer=llm_summarizer)
     else:
         generative_compiler = SessionCompiler.from_env(llm_summary=True)
     generative = generative_compiler.compile(session, budgeted_def, common_rules=common_rules)
-    return {"budgeted": extractive, "budgeted-llm": generative}
+    return {"budgeted-extractive": extractive, "budgeted-hybrid-v1": generative}
 
 
 def generate_compression_method_contexts(

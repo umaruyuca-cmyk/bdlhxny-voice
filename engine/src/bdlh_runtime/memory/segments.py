@@ -16,7 +16,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
-import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
@@ -379,6 +378,56 @@ def _optional_str(value: Any) -> str | None:
     return str(value) if value not in (None, "") else None
 
 
+class ExtractiveSegmentSummarizer:
+    """确定性抽取式批量轮摘要(对照/基线配置):零模型调用、可复现。
+
+    ``deterministic = True`` 标记供 Manager 识别:生成的 Segment 记
+    GENERATION_MODE_EXTRACTIVE 且不计入 fallback 统计(这是刻意选择的基线,
+    不是 LLM 失败回退)。
+    """
+
+    deterministic = True
+
+    def __init__(self, extractive: ExtractiveSummarizer | None = None) -> None:
+        self._extractive = extractive or ExtractiveSummarizer()
+
+    def summarize_batch(
+        self,
+        entries: list[tuple[str, str]],
+        *,
+        max_tokens_per_item: int,
+        counter: TokenCounter,
+    ) -> dict[str, str]:
+        return {
+            turn_id: self._extractive.summarize([source], max_tokens_per_item, counter)
+            for turn_id, source in entries
+        }
+
+
+class InMemoryMemorySegmentRepository:
+    """进程内 Segment 仓库(对照实验/单机场景):接口与 Data Service 仓库一致。
+
+    同一进程内跨构建复用(首次生成、后续命中来源哈希直接复用);
+    进程重启即清空,Segment 由下次构建重新生成,不丢原始事件。
+    """
+
+    def __init__(self) -> None:
+        import threading
+
+        self._lock = threading.Lock()
+        self._rows: dict[tuple[str, str], list[MemorySegment]] = {}
+
+    def list_segments(self, owner_id: str, session_id: str) -> list[MemorySegment]:
+        with self._lock:
+            return list(self._rows.get((owner_id, session_id), []))
+
+    def save_segment(self, owner_id: str, session_id: str, segment: MemorySegment) -> str:
+        with self._lock:
+            rows = self._rows.setdefault((owner_id, session_id), [])
+            rows.append(segment)
+        return segment.segment_id
+
+
 class MemorySegmentManager:
     """轮次 → hash → 命中 → 批量生成 → 冻结保存 的编排器。"""
 
@@ -521,21 +570,24 @@ class MemorySegmentManager:
         for turn, expected_hash in missing:
             source_text = sources[turn.turn_id]
             summary = str(mapping.get(turn.turn_id) or "").strip()
-            mode = GENERATION_MODE_LLM
-            reason: str | None = None
+            deterministic = bool(getattr(summarizer, "deterministic", False))
+            mode = GENERATION_MODE_EXTRACTIVE if deterministic else GENERATION_MODE_LLM
+            reason: str | None = "对照配置固定抽取式,无模型调用" if deterministic else None
             extractive_text = self._extractive.summarize([source_text], settings.max_summary_tokens, self._counter)
-            if not summary or summary == source_text or self._counter.count(summary) > settings.max_summary_tokens:
+            if not deterministic and (
+                not summary or summary == source_text or self._counter.count(summary) > settings.max_summary_tokens
+            ):
                 summary = extractive_text
                 mode = GENERATION_MODE_EXTRACTIVE
                 reason = "LLM 摘要缺失、等于原文或超出 Segment 预算"
-            elif summary == extractive_text:
+            elif not deterministic and summary == extractive_text:
                 # LLMSummarizer 内部失败时回退抽取式;结果与确定性抽取式一致即如实标注
                 mode = GENERATION_MODE_EXTRACTIVE
                 reason = "LLM 调用失败或响应无效,摘要器已回退抽取式"
             if not summary.strip():
                 warnings.append(f"轮 {turn.turn_id} 摘要仍为空,拒绝保存并跳过该 Segment")
                 continue
-            if mode == GENERATION_MODE_EXTRACTIVE:
+            if mode == GENERATION_MODE_EXTRACTIVE and not deterministic:
                 fallbacks += 1
             segment = self._freeze(
                 session_id,
@@ -570,7 +622,9 @@ class MemorySegmentManager:
             warnings.append(f"轮 {turn.turn_id} source hash 在写入前发生变化,放弃保存")
             return None
         segment = MemorySegment(
-            segment_id=f"local-{uuid.uuid4()}",
+            # 确定性 id:来源哈希派生(同一轮内容跨进程/跨构建 id 稳定,
+            # 重生成不改变既有工件哈希;轮内容变化 → 哈希变化 → 新 id)
+            segment_id=f"local-{source_hash.split(':', 1)[-1][:32]}",
             session_id=session_id,
             start_event_id=events[0].event_id,
             end_event_id=events[-1].event_id,

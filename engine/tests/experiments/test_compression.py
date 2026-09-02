@@ -45,8 +45,9 @@ def test_generate_contexts_creates_zero_agent_runs(compiled_once):
     """只生成上下文:不创建 Agent、Tool 或评判运行(结构保证 + 结果断言)。"""
     result = compiled_once
     assert result.agent_runs_created == 0
-    assert set(result.artifacts) == {"full-session", "recent-window", "single-summary", "budgeted-session"}
-    assert result.stats["variant_count"] == 4
+    expected_variants = {"full", "recent-turns", "single-summary", "budgeted-hybrid-v1", "budgeted-extractive"}
+    assert set(result.artifacts) == expected_variants
+    assert result.stats["variant_count"] == 5
     # 每份工件都有内容哈希与 Token 统计(压缩前后口径)
     for payload in result.artifacts.values():
         assert payload["compiled_context_hash"].startswith("sha256:")
@@ -124,8 +125,11 @@ async def test_all_cells_reuse_same_artifact_hash(compiled_once):
         by_variant.setdefault(variant, set()).add(artifact_hash)
     for variant, hashes in by_variant.items():
         assert len(hashes) == 1, f"{variant}: 不同单元读到了不同的工件哈希 {hashes}"
-    # 且与生成阶段冻结的哈希一致
-    for variant_id, payload in compiled_once.artifacts.items():
+    # 且与生成阶段冻结的哈希一致(矩阵口径 4×1:抽取式基线不跑 Agent)
+    from bdlh_runtime.experiments import CONTEXT_MATRIX_MODES
+
+    for variant_id in CONTEXT_MATRIX_MODES:
+        payload = compiled_once.artifacts[variant_id]
         assert by_variant[variant_id] == {payload["compiled_context_hash"]}
 
 
@@ -138,16 +142,16 @@ async def test_run_current_combo_single_run(compiled_once):
     spy: list[tuple] = []
     cell = await run_current_combo(
         SESSION_ID,
-        "budgeted-session",
+        "budgeted-hybrid-v1",
         NATIVE_AGENT_MODE_ID,
         artifacts=compiled,
         max_agent_steps=5,
         cell_runner=_fake_cell_runner(spy),
     )
     assert len(spy) == 1  # 只运行 1 次
-    assert cell.context_variant == "budgeted-session"
+    assert cell.context_variant == "budgeted-hybrid-v1"
     assert cell.agent_mode_id == NATIVE_AGENT_MODE_ID
-    assert cell.context_artifact_hash == compiled["budgeted-session"].compiled_context_hash
+    assert cell.context_artifact_hash == compiled["budgeted-hybrid-v1"].compiled_context_hash
 
 
 def test_stale_artifacts_rejected_after_session_change(tmp_path, monkeypatch):
@@ -172,7 +176,13 @@ def test_stale_artifacts_rejected_after_session_change(tmp_path, monkeypatch):
 
     # 2) 未变化:可加载(确定性构建哈希一致)
     session, variants, compiled = compression._load_frozen_batch(SESSION_ID)
-    assert set(compiled) == {"full-session", "recent-window", "single-summary", "budgeted-session"}
+    assert set(compiled) == {
+        "full",
+        "recent-turns",
+        "single-summary",
+        "budgeted-hybrid-v1",
+        "budgeted-extractive",
+    }
 
     # 3) Session 内容变化(追加一轮对话)→ source_hash 变化 → 拒绝复用
     import json as _json
@@ -225,7 +235,7 @@ def test_build_compression_details_counts_and_excerpts():
             self.content = content
 
     artifacts = {
-        "budgeted-session": {
+        "budgeted-hybrid-v1": {
             "strategy": "budgeted",
             "original_tokens": 1000,
             "working_tokens": 300,
@@ -240,7 +250,7 @@ def test_build_compression_details_counts_and_excerpts():
         },
     }
     events = [_Event(f"evt-{i}", f"事件{i}的内容" + "长" * 80) for i in range(1, 6)]
-    row = compression.build_compression_details(artifacts, events=events)["budgeted-session"]
+    row = compression.build_compression_details(artifacts, events=events)["budgeted-hybrid-v1"]
     assert row["counts"] == {"kept": 2, "compressed": 1, "referenced": 1, "omitted": 1}
     assert row["compressed_items"][0]["id"] == "evt-3"
     assert len(row["compressed_items"][0]["excerpt"]) <= 61
@@ -249,7 +259,7 @@ def test_build_compression_details_counts_and_excerpts():
     assert row["required_retained"] is True and row["budget_fit"] is True
     # 缺事件来源:摘要为空串,结构完整
     bare = compression.build_compression_details(artifacts, events=())
-    assert bare["budgeted-session"]["omitted_items"][0]["excerpt"] == ""
+    assert bare["budgeted-hybrid-v1"]["omitted_items"][0]["excerpt"] == ""
 
 
 class _FakeLLMSummarizer:
@@ -302,14 +312,20 @@ def test_generate_compression_method_contexts_two_artifacts():
     """
     result = compression.generate_compression_method_contexts(SESSION_ID, llm_summarizer=_FakeLLMSummarizer())
     assert result["test_type"] == "COMPRESSION_CASE"
-    assert set(result["stats"]["original_tokens"]) == {"budgeted", "budgeted-llm"}
+    assert set(result["stats"]["original_tokens"]) == {"budgeted-extractive", "budgeted-hybrid-v1"}
     # 同一输入:压缩前 token 必然一致
-    assert result["stats"]["original_tokens"]["budgeted"] == result["stats"]["original_tokens"]["budgeted-llm"]
+    assert (
+    result["stats"]["original_tokens"]["budgeted-extractive"]
+    == result["stats"]["original_tokens"]["budgeted-hybrid-v1"]
+)
     # 摘要文本不同 → 压缩后工作上下文与构建哈希不同
-    assert result["stats"]["working_tokens"]["budgeted-llm"] != result["stats"]["working_tokens"]["budgeted"]
-    details = result["compression_details"]["budgeted-llm"]
+    assert (
+    result["stats"]["working_tokens"]["budgeted-hybrid-v1"]
+    != result["stats"]["working_tokens"]["budgeted-extractive"]
+)
+    details = result["compression_details"]["budgeted-hybrid-v1"]
     assert details["counts"]["compressed"] >= 1
-    assert isinstance(result["by_variant"]["budgeted-llm"]["warnings"], list)
+    assert isinstance(result["by_variant"]["budgeted-hybrid-v1"]["warnings"], list)
 
 
 def test_compression_method_on_phase_reports_steps():
@@ -319,7 +335,10 @@ def test_compression_method_on_phase_reports_steps():
     compression.generate_compression_method_contexts(
         SESSION_ID, llm_summarizer=_FakeLLMSummarizer(), on_phase=phases.append
     )
-    assert [p.split("(")[0] for p in phases] == ["构建抽取式压缩上下文", "生成 LLM 摘要 · 生成式"]
+    assert [p.split("(")[0] for p in phases] == [
+        "构建抽取式压缩上下文",
+        "生成 LLM 摘要 · budgeted-hybrid-v1 主算法",
+    ]
 
     run_phases: list[str] = []
 
@@ -348,7 +367,10 @@ def test_compression_method_on_phase_reports_steps():
     )
     # 前 2 个阶段同生成阶段;随后每个单元开跑前报「运行 Agent · <方法>」
     assert run_phases[:2] == phases
-    assert run_phases[2:] == ["运行 Agent · 抽取式(代码) · 第1次", "运行 Agent · 生成式(LLM 摘要) · 第1次"]
+    assert run_phases[2:] == [
+        "运行 Agent · budgeted-extractive(抽取式基线,代码,无模型调用) · 第1次",
+        "运行 Agent · budgeted-hybrid-v1(混合主算法:代码硬规则+LLM 摘要) · 第1次",
+    ]
 
 
 @pytest.mark.asyncio
@@ -380,13 +402,16 @@ async def test_run_compression_method_comparison_two_cells():
     assert fake_summarizer.calls > 0  # 生成式侧真实调用了摘要器(budgeted 压缩步骤)
     # 唯一自变量进入配置快照与固定条件
     strategies = {payload["context_strategy"] for payload in result["run_configs"].values()}
-    assert strategies == {"budgeted", "budgeted-llm"}
+    assert strategies == {"budgeted-extractive", "budgeted-hybrid-v1"}
     assert result["fixed_conditions"]["independent_variable"] == ["compression_method"]
     assert result["fixed_conditions"]["experiment_definition"] == "compression-method-comparison"
     assert set(result["by_variant"]) == set(COMPRESSION_METHODS)
     assert set(result["compression_details"]) == set(COMPRESSION_METHODS)
     # 注入 LLM 摘要器后,生成式工件的替代文本与抽取式不同 → 构建哈希必然不同
-    assert result["frozen_artifact_hashes"]["budgeted"] != result["frozen_artifact_hashes"]["budgeted-llm"]
+    assert (
+    result["frozen_artifact_hashes"]["budgeted-extractive"]
+    != result["frozen_artifact_hashes"]["budgeted-hybrid-v1"]
+)
 
 
 class _BatchCapSummarizer:
@@ -413,7 +438,9 @@ def test_generative_compile_caps_summary_calls_via_batch(monkeypatch):
 
     monkeypatch.setenv("LLM_SUMMARY_MAX_CALLS_PER_BUILD", "4")
     session, variants, _ = compression._load_session_bundle("ctx-session-product-evolution-01")
-    budgeted_def = next(v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session")
+    budgeted_def = next(
+            v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-hybrid-v1"
+        )
     fake = _BatchCapSummarizer()
     compiled = SessionCompiler(summarizer=fake).compile(session, budgeted_def, common_rules="规则")
     assert fake.batch_calls <= 4  # 分块请求数受硬上限约束
@@ -475,7 +502,9 @@ async def test_default_cell_runner_llm_unavailable_marks_invalid(monkeypatch):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     session, variants, _ = compression._load_session_bundle(SESSION_ID)
-    budgeted_def = next(v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-session")
+    budgeted_def = next(
+            v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-hybrid-v1"
+        )
     from bdlh_runtime.session import SessionCompiler
 
     artifact = SessionCompiler().compile(session, budgeted_def, common_rules="规则")

@@ -94,7 +94,8 @@ class LimitsConfig:
     max_agent_steps: int = 4
     max_tool_calls: int = 6
     max_calls_per_tool: int = 2
-    agent_timeout_seconds: int = 60
+    # 0 = 不限时(默认关闭整体熔断;长任务可显式配置 > 0 的秒数恢复整体超时)
+    agent_timeout_seconds: int = 0
     tool_timeout_seconds: int = 10
     llm_retry_count: int = 1
     tool_retry_count: int = 0
@@ -207,6 +208,8 @@ class RunConfig:
             )
         if self.limits.max_agent_steps <= 0 or self.limits.max_tool_calls < 0:
             raise RunConfigError("limits.max_agent_steps 必须 > 0 且 max_tool_calls >= 0")
+        if self.limits.agent_timeout_seconds < 0 or self.limits.tool_timeout_seconds < 0:
+            raise RunConfigError("limits.agent_timeout_seconds / tool_timeout_seconds 必须 >= 0(0 = 不限时)")
         if self.model.tool_choice != TOOL_CHOICE_AUTO:
             raise RunConfigError(f"工具选择实验 tool_choice 固定为 {TOOL_CHOICE_AUTO!r}")
 

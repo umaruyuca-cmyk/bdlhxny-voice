@@ -330,7 +330,8 @@ class DataClient:
 
     def save_batch_report(self, batch_id: str, report: dict[str, Any]) -> None:
         """批次执行报告落库(报告读取的第一来源;列缺失/未执行迁移时由调用方降级)。"""
-        self._request("POST", f"/batches/{batch_id}/report", json={"report": report})
+        # data 服务端点返回 ResponseEntity<Void>(200 空 body),与 complete_batch 同口径
+        self._request("POST", f"/batches/{batch_id}/report", json={"report": report}, expect_json=False)
 
     def get_batch_report(self, batch_id: str) -> dict[str, Any] | None:
         """读取批次执行报告;无报告(未完成/历史批次/未迁移列)返回 None,不抛错。"""

@@ -112,7 +112,7 @@ def create_llm(
     base_url: str | None = None,
     model: str = DEFAULT_LLM_MODEL,
     temperature: float = 0.1,
-    timeout: float = 30.0,
+    timeout: float | None = None,
     max_output_tokens: int | None = None,
     parallel_tool_calls: bool | None = None,
     max_retries: int | None = None,
@@ -150,6 +150,14 @@ def create_llm(
     except ImportError:
         logger.warning("langchain-openai 未安装，LLM 降级为规则替身")
         return None
+
+    # timeout 未显式给出时读环境变量(缺省 30 秒):长上下文运行的单位
+    # 生成耗时可能远超 30 秒,由部署侧按需放宽;显式参数优先于环境变量
+    if timeout is None:
+        try:
+            timeout = float(os.getenv("LLM_TIMEOUT_S", "30"))
+        except ValueError:
+            timeout = 30.0
 
     logger.info("LLM 初始化成功 (model=%s, base_url=%s)", model, resolved_base_url)
     extra: dict[str, Any] = {}

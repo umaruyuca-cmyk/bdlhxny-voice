@@ -348,10 +348,13 @@ class ContextWorkbenchService:
             "summary_call_cap": summary_call_cap(),
         }
 
-    def execute_build(self, build_id: str, owner_id: str) -> None:
+    def execute_build(self, build_id: str, owner_id: str, *, mode: str | None = None) -> None:
         row = self.store.get(build_id, owner_id)
         try:
-            mode = (os.getenv("CONTEXT_MEMORY_MODE", "legacy")).strip().lower()
+            # mode 可由调用方显式指定(演示管线强制 incremental);缺省读环境
+            mode = (mode or os.getenv("CONTEXT_MEMORY_MODE", "legacy")).strip().lower()
+            if mode not in {"legacy", "shadow", "incremental"}:
+                raise ValueError(f"unsupported CONTEXT_MEMORY_MODE {mode!r}")
             segment_manager = self._segment_manager(owner_id, mode)
             self.store.start_phase(build_id, "LOAD_HISTORY")
             session, variants = self.source.get_session(str(row["session_id"]))
@@ -379,8 +382,15 @@ class ContextWorkbenchService:
                     allow_save=incremental,
                 )
             variant = next(
-                row for row in variants.get("context_variants") or [] if row.get("variant_id") == "budgeted-session"
+                (
+                    row
+                    for row in variants.get("context_variants") or []
+                    if row.get("variant_id") in ("budgeted-hybrid-v1", "budgeted-session")
+                ),
+                None,
             )
+            if variant is None:
+                raise RuntimeError("BUDGETED_VARIANT_MISSING")
             hybrid_variant = dict(variant)
             hybrid_variant["variant_id"] = "budgeted-hybrid-v1"
             hybrid_variant["strategy_version"] = "budgeted-hybrid-v1"
@@ -434,6 +444,11 @@ class ContextWorkbenchService:
                 "source_event_ids": list(compiled.input_event_ids),
                 "events": turned,
             }
+            artifact["classification"] = {
+                "source": compiled.classification_source,
+                "stats": dict(compiled.classification_stats),
+                "llm_calls": compiled.classify_model_calls,
+            }
             if segment_manager is not None:
                 artifact["memory_segment_ids"] = list(compiled.memory_segment_ids)
                 artifact["memory_segments"] = self._segment_rows(preparation, turned)
@@ -447,7 +462,11 @@ class ContextWorkbenchService:
                 "tokenizer_version": compiled.tokenizer_version,
             }
             llm_usage: dict[str, Any] = {
-                "classification_calls": 0,
+                # LLM 辅助分类计量(§10.3):0 或 1 次;无分类器/未配置 key 时为 0
+                "classification_calls": compiled.classify_model_calls,
+                "classification_input_tokens": compiled.classify_input_tokens,
+                "classification_output_tokens": compiled.classify_output_tokens,
+                "classification_source": compiled.classification_source,
                 "summary_calls": compiled.build_model_calls + preparation.model_calls,
                 "cache_hits": compiled.build_cache_hits,
                 # 调用上限写入构建快照(需求 §10.3:可配置且必须入快照)

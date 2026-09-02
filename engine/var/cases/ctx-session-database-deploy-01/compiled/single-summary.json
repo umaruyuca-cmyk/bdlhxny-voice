@@ -101,11 +101,14 @@
   "omitted_event_ids": [],
   "original_tokens": 29795,
   "working_tokens": 3892,
-  "build_duration_ms": 49,
+  "build_duration_ms": 53,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
   "build_cost": 0.0,
+  "build_cache_hits": 0,
+  "build_purpose": "COMPRESSION",
+  "build_summary_chunks": 0,
   "warnings": [
     "algo_version=structured-text-v1"
   ],
@@ -113,7 +116,19 @@
   "budget_fit": true,
   "tokenizer_version": "conservative-cjk1-latin4-v1",
   "scores": [],
+  "classification": {
+    "source": "code_rules_only",
+    "stats": {},
+    "llm_calls": 0,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0,
+    "truncated": false
+  },
   "scoring_version": "",
+  "memory_segment_ids": [],
+  "segment_cache_hits": 0,
+  "segment_generated": 0,
+  "segment_invalidated": 0,
   "status": "COMPLETE",
-  "compile_wall_ms": 50
+  "compile_wall_ms": 53
 }

@@ -6,7 +6,7 @@ import pytest
 
 from bdlh_runtime.experiments import (
     COMPARISON_REPEAT_COUNTS,
-    CONTEXT_MODES,
+    CONTEXT_MATRIX_MODES,
     NATIVE_AGENT_MODE_ID,
     RepeatCountError,
     TestType,
@@ -48,7 +48,8 @@ class TestRunExpansion:
         assert len(units) == 4
         assert native_context_run_count() == 4
         # 唯一自变量是上下文方式:4 方式 × 1 种统一原生配置,每格 repeat_index=0
-        assert {u.context_variant for u in units} == set(CONTEXT_MODES)
+        # 矩阵口径 4×1:抽取式基线不在 Agent 矩阵(与主算法冻结工件相同)
+        assert {u.context_variant for u in units} == set(CONTEXT_MATRIX_MODES)
         assert {u.agent_mode_id for u in units} == {NATIVE_AGENT_MODE_ID}
         assert all(u.repeat_index == 0 for u in units)
         assert all(u.test_type is TestType.COMPRESSION_CASE for u in units)

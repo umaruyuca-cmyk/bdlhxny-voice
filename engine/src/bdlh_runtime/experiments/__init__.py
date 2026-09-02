@@ -35,7 +35,25 @@ class TestType(StrEnum):
 
 
 #: 压缩用例的四种上下文方式(页面名与 strategy id 一一对应)。
-CONTEXT_MODES: tuple[str, ...] = ("full-session", "recent-window", "single-summary", "budgeted-session")
+#: 长上下文策略对比的对照集(需求 §3.1/§17):主算法 budgeted-hybrid-v1
+#: + 抽取式基线 budgeted-extractive + 完整/最近轮次/单摘要对照;
+#: 旧标识仅在读旧工件时兼容,新任务不再暴露。
+CONTEXT_MODES: tuple[str, ...] = (
+    "full",
+    "recent-turns",
+    "single-summary",
+    "budgeted-hybrid-v1",
+    "budgeted-extractive",
+)
+
+#: Agent 运行矩阵口径(4×1):抽取式基线与主算法冻结工件相同,不重复跑 Agent;
+#: 它只在"生成上下文/方法对照/库展示"出现(需求 §17)
+CONTEXT_MATRIX_MODES: tuple[str, ...] = (
+    "full",
+    "recent-turns",
+    "single-summary",
+    "budgeted-hybrid-v1",
+)
 
 #: 新正式运行的统一执行引擎标识(混合路线:原生 Tool Calling AgentLoop)。
 NATIVE_AGENT_MODE_ID = "native-tool-calling"
@@ -102,7 +120,7 @@ class RunUnit:
 def plan_native_context_runs(
     session_id: str,
     *,
-    context_modes: tuple[str, ...] = CONTEXT_MODES,
+    context_modes: tuple[str, ...] = CONTEXT_MATRIX_MODES,
 ) -> list[RunUnit]:
     """新默认上下文运行计划:4 种上下文 × 1 种固定原生 Tool Calling 配置(4×1)。
 

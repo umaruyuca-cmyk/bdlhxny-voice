@@ -136,20 +136,20 @@ def test_compile_four_variants_from_one_session_freeze_and_hash() -> None:
         assert artifact.required_retained
         assert artifact.compiled_context_hash.startswith("sha256:")
 
-    assert set(artifacts) == {"full-session", "recent-window", "single-summary", "budgeted-session"}
+    assert set(artifacts) == {"full", "recent-turns", "single-summary", "budgeted-hybrid-v1", "budgeted-extractive"}
     hashes = {artifact.compiled_context_hash for artifact in artifacts.values()}
-    assert len(hashes) == 4  # 四份派生输入互不相同
+    assert len(hashes) == 5  # 五份派生输入互不相同(hybrid 与 extractive 冻结层同内容但标识不同)
     source_hashes = {artifact.source_session_hash for artifact in artifacts.values()}
     assert len(source_hashes) == 1  # 但来自同一份 Session
 
-    full = artifacts["full-session"]
+    full = artifacts["full"]
     assert set(full.kept_event_ids) == set(session.event_ids)  # 完整透传
-    recent = artifacts["recent-window"]
+    recent = artifacts["recent-turns"]
     assert len(recent.kept_event_ids) < len(full.kept_event_ids)
     assert len(recent.omitted_event_ids) > 0
     summary = artifacts["single-summary"]
     assert summary.compressed_event_ids  # 更早事件进入一次性摘要
-    budgeted = artifacts["budgeted-session"]
+    budgeted = artifacts["budgeted-hybrid-v1"]
     assert budgeted.working_tokens <= budgeted.token_budget
 
     # 工件字段全集(variants.compiled_context_artifact_required_fields)
@@ -181,12 +181,44 @@ def test_full_session_overflow_raises_window_error(tmp_path: Path) -> None:
 
 
 def test_strategy_aliases_map_to_builder_strategies() -> None:
+    """§3.1 新旧标识映射:旧名只读兼容(按事件),新名按轮;新任务不暴露旧名。"""
+
     from bdlh_runtime.session.compiler import STRATEGY_BY_NAME
 
-    assert STRATEGY_BY_NAME["full-session"] is ContextStrategy.FULL
-    assert STRATEGY_BY_NAME["recent-window"] is ContextStrategy.RECENT_N
+    # 新标识(新建任务口径)
+    assert STRATEGY_BY_NAME["full"] is ContextStrategy.FULL
+    assert STRATEGY_BY_NAME["recent-turns"] is ContextStrategy.RECENT_TURNS
+    assert STRATEGY_BY_NAME["recent-events-legacy"] is ContextStrategy.RECENT_EVENTS_LEGACY
     assert STRATEGY_BY_NAME["single-summary"] is ContextStrategy.SINGLE_SUMMARY
+    assert STRATEGY_BY_NAME["budgeted-hybrid-v1"] is ContextStrategy.BUDGETED
+    assert STRATEGY_BY_NAME["budgeted-extractive"] is ContextStrategy.BUDGETED
+    # 旧标识读兼容:同为按事件截取的旧口径
+    assert STRATEGY_BY_NAME["full-session"] is ContextStrategy.FULL
+    assert STRATEGY_BY_NAME["recent-window"] is ContextStrategy.RECENT_EVENTS_LEGACY
+    assert STRATEGY_BY_NAME["recent-n"] is ContextStrategy.RECENT_EVENTS_LEGACY
     assert STRATEGY_BY_NAME["budgeted-session"] is ContextStrategy.BUDGETED
+
+
+def test_recent_turns_keeps_last_complete_turns_only() -> None:
+    """recent-turns 按 §8.4 轮次口径:保留最近 K 个完整轮,工具对不拆、系统与当前问题不丢。"""
+
+    from bdlh_runtime.session.compiler import DEFAULT_RECENT_TURNS, recent_turns_event_ids
+    from bdlh_runtime.session.loader import SessionEvent
+
+    events = (
+        SessionEvent(1, "u1", "", "user_message", "第一轮问题", "user"),
+        SessionEvent(2, "a1", "", "assistant_message", "第一轮回答", "assistant"),
+        SessionEvent(3, "u2", "", "user_message", "第二轮问题", "user"),
+        SessionEvent(4, "t-call", "", "tool_call", "", "assistant", call_id="c1", tool_name="x.y"),
+        SessionEvent(5, "t-res", "", "tool_result", "{}", "tool", call_id="c1"),
+        SessionEvent(6, "u3", "", "user_message", "第三轮问题(当前)", "user"),
+    )
+    keep_one = recent_turns_event_ids(events, 1)
+    assert keep_one == {"u3"}  # 只保留最后一轮
+    keep_two = recent_turns_event_ids(events, 2)
+    assert keep_two == {"u2", "t-call", "t-res", "u3"}  # 工具对与所属轮同进同出
+    assert recent_turns_event_ids(events, 99) == {e.event_id for e in events}
+    assert DEFAULT_RECENT_TURNS == 16  # 需求 §11.1 默认窗口
 
 
 # ── mock 调度器 ────────────────────────────────────────────────────────────
@@ -275,7 +307,7 @@ def test_judge_session_run_constraint_and_superseded_checks() -> None:
     gold = _plan()
     session = load_session(_SESSION_PATH)
     variants = load_variants(_VARIANTS_PATH)
-    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "recent-window")
+    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "recent-turns")
     compiled = SessionCompiler().compile(session, variant, common_rules=_COMMON_RULES)
 
     judgment = judge_session_run(
@@ -298,7 +330,7 @@ def test_grade_compiled_constraints_full_session_keeps_all() -> None:
     gold = _plan()
     session = load_session(_SESSION_PATH)
     variants = load_variants(_VARIANTS_PATH)
-    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "full-session")
+    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "full")
     compiled = SessionCompiler().compile(session, variant, common_rules=_COMMON_RULES)
     rate, missing = grade_compiled_constraints(compiled, gold)
     assert rate == 1.0
@@ -379,7 +411,7 @@ def test_serializer_reference_metadata_is_deterministic() -> None:
 
 
 def test_v2_scoring_writes_scores_and_version_into_budgeted_artifact_only() -> None:
-    """BUDGETED_SCORING=multi-factor-v2 时仅 budgeted-session 升级为 v2;其余变体不受影响。"""
+    """BUDGETED_SCORING=multi-factor-v2 时仅主算法变体升级为 v2;其余变体不受影响。"""
 
     session = load_session(_SESSION_PATH)
     variants = load_variants(_VARIANTS_PATH)
@@ -391,7 +423,7 @@ def test_v2_scoring_writes_scores_and_version_into_budgeted_artifact_only() -> N
         artifact = compiler.compile(session, variant, common_rules=_COMMON_RULES)
         payload = artifact.to_payload()
         strategy_versions[variant["variant_id"]] = artifact.strategy_version
-        if variant["variant_id"] == "budgeted-session":
+        if variant["variant_id"] in ("budgeted-hybrid-v1", "budgeted-extractive"):
             assert artifact.scoring_version == "multi-factor-v2"
             assert artifact.strategy_version == "multi-factor-v2"
             scores = payload["scores"]
@@ -413,7 +445,8 @@ def test_v2_scoring_writes_scores_and_version_into_budgeted_artifact_only() -> N
             assert payload["scores"] == []
             assert payload["scoring_version"] == ""
             assert artifact.strategy_version == variant["strategy_version"]
-    assert strategy_versions["budgeted-session"] == "multi-factor-v2"
+    assert strategy_versions["budgeted-hybrid-v1"] == "multi-factor-v2"
+    assert strategy_versions["budgeted-extractive"] == "multi-factor-v2"
 
 
 def test_v2_and_v1_are_controlled_contrast_on_real_session() -> None:
@@ -423,10 +456,10 @@ def test_v2_and_v1_are_controlled_contrast_on_real_session() -> None:
 
     session = load_session(_SESSION_PATH)
     variants = load_variants(_VARIANTS_PATH)
-    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "budgeted-session")
+    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "budgeted-hybrid-v1")
     v1 = SessionCompiler().compile(session, variant, common_rules=_COMMON_RULES)
     v2 = SessionCompiler(scorer=MultiFactorScorer()).compile(session, variant, common_rules=_COMMON_RULES)
-    assert v1.strategy_version == "budgeted-session-v1"
+    assert v1.strategy_version == "budgeted-hybrid-v1"
     assert v2.strategy_version == "multi-factor-v2"
     assert v1.compiled_context_hash != v2.compiled_context_hash
     assert v1.required_retained and v2.required_retained
@@ -436,7 +469,7 @@ def test_v2_and_v1_are_controlled_contrast_on_real_session() -> None:
 def test_compiled_artifact_records_tokenizer_version() -> None:
     session = load_session(_SESSION_PATH)
     variants = load_variants(_VARIANTS_PATH)
-    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "recent-window")
+    variant = next(row for row in variants["context_variants"] if row["variant_id"] == "recent-turns")
     compiled = SessionCompiler().compile(session, variant, common_rules=_COMMON_RULES)
     assert compiled.tokenizer_version == "conservative-cjk1-latin4-v1"
     assert compiled.to_payload()["tokenizer_version"] == "conservative-cjk1-latin4-v1"

@@ -217,14 +217,16 @@ _register(
     ExperimentTemplate(
         template_id="context-strategy-comparison",
         version=1,
-        purpose="同一原生 Tool Calling 底座上比较四种上下文组织方式(4×1)",
+        purpose="同一原生 Tool Calling 底座上比较四种上下文策略(4×1;上下文生成含抽取式基线共五份)",
         independent_variable=("context_strategy",),
         independent_variable_label="context_strategy",
         variants=(
+            # 4×1 Agent 运行矩阵;抽取式基线(budgeted-extractive)只在上下文生成
+            # 与方法对照出现,不重复运行 Agent(与主算法冻结工件相同)
             VariantSpec("full", (("context_strategy", "full"),)),
-            VariantSpec("recent-window", (("context_strategy", "recent-window"),)),
+            VariantSpec("recent-turns", (("context_strategy", "recent-turns"),)),
             VariantSpec("single-summary", (("context_strategy", "single-summary"),)),
-            VariantSpec("budgeted", (("context_strategy", "budgeted"),)),
+            VariantSpec("budgeted-hybrid-v1", (("context_strategy", "budgeted-hybrid-v1"),)),
         ),
         base_config=_NATIVE_BASE,
         allowed_test_types=("COMPRESSION_CASE",),
@@ -396,8 +398,10 @@ _register(
         independent_variable=("context_strategy",),
         independent_variable_label="compression_method",
         variants=(
-            VariantSpec("budgeted", (("context_strategy", "budgeted"),)),
-            VariantSpec("budgeted-llm", (("context_strategy", "budgeted-llm"),)),
+            # §3.1/§17:budgeted-llm 生成式能力并入主算法;对照轴改为
+            # budgeted-extractive(抽取式基线)vs budgeted-hybrid-v1(混合主算法)
+            VariantSpec("budgeted-extractive", (("context_strategy", "budgeted-extractive"),)),
+            VariantSpec("budgeted-hybrid-v1", (("context_strategy", "budgeted-hybrid-v1"),)),
         ),
         base_config=_NATIVE_BASE,
         allowed_test_types=("COMPRESSION_CASE",),

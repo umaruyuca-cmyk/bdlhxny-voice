@@ -2,9 +2,9 @@
   "case_id": "ctx-session-context-engine-debug-01",
   "case_version": 1,
   "source_session_hash": "sha256:69e9e18dacca5d883855a2dd6771bb082690fc6013485103c21b20b2ce931f1a",
-  "variant_id": "recent-window",
-  "strategy": "recent-n",
-  "strategy_version": "recent-window-v1",
+  "variant_id": "recent-turns",
+  "strategy": "recent-events-legacy",
+  "strategy_version": "recent-turns-v1",
   "token_budget": 8192,
   "compiled_messages": [
     {
@@ -32,7 +32,7 @@
       "content": "最后的问题不要让 Agent 改代码，要让它在长历史里找出仍有效的约束、已经修正的说法和真实实现差距。"
     }
   ],
-  "compiled_context_hash": "sha256:bd596ebf6feeb013a581fa21b478aee74cba4571e64453cb4e56827fd7cb30de",
+  "compiled_context_hash": "sha256:d4c5e1b613e416266752ed78bf5d215ccbc66e8193b887d593fd5037c03e0c66",
   "input_event_ids": [
     "evt-0001",
     "evt-0002",
@@ -95,7 +95,7 @@
   ],
   "original_tokens": 29902,
   "working_tokens": 6605,
-  "build_duration_ms": 51,
+  "build_duration_ms": 53,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
@@ -110,7 +110,19 @@
   "budget_fit": true,
   "tokenizer_version": "conservative-cjk1-latin4-v1",
   "scores": [],
+  "classification": {
+    "source": "code_rules_only",
+    "stats": {},
+    "llm_calls": 0,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0,
+    "truncated": false
+  },
   "scoring_version": "",
+  "memory_segment_ids": [],
+  "segment_cache_hits": 0,
+  "segment_generated": 0,
+  "segment_invalidated": 0,
   "status": "COMPLETE",
-  "compile_wall_ms": 51
+  "compile_wall_ms": 54
 }

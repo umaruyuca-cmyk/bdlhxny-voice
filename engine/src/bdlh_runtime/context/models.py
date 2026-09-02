@@ -25,7 +25,11 @@ class ContextRole(StrEnum):
 
 class ContextStrategy(StrEnum):
     FULL = "full"
+    #: 旧"按事件条数截取"口径(含 recent-n/recent-window 旧名),只读兼容
     RECENT_N = "recent-n"
+    RECENT_EVENTS_LEGACY = "recent-events-legacy"
+    #: 新生产口径:按完整对话轮计数(用户消息开轮,工具对归轮;需求 §8.4)
+    RECENT_TURNS = "recent-turns"
     SINGLE_SUMMARY = "single-summary"
     BUDGETED = "budgeted"
 

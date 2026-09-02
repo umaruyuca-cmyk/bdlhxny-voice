@@ -175,3 +175,17 @@ def test_telemetry_artifact_carries_config_snapshot():
     # 旧工件仍可读取:无 per_run_config 的记录不炸
     artifact["provenance"].pop("per_run_config")
     assert artifact["provenance"]["config_hash"] == config.config_hash
+
+
+def test_agent_timeout_zero_means_unlimited_and_kept_in_payload():
+    """agent_timeout_seconds 默认 0 = 不限时(取消 60 秒熔断);tool_timeout 保留 10s。"""
+    payload = RunConfig().to_payload()
+    assert payload["limits"]["agent_timeout_seconds"] == 0
+    assert payload["limits"]["tool_timeout_seconds"] == 10
+
+    config = RunConfig().with_overrides({"limits.agent_timeout_seconds": 0})
+    config.validate()  # 0 合法:不熔断
+    assert config.to_payload()["limits"]["agent_timeout_seconds"] == 0
+
+    with pytest.raises(RunConfigError):
+        RunConfig().with_overrides({"limits.agent_timeout_seconds": -1}).validate()

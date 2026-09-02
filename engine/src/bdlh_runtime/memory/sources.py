@@ -78,7 +78,7 @@ class DatabaseSessionSource:
         variants = {
             "context_variants": [
                 {
-                    "variant_id": "budgeted-session",
+                    "variant_id": "budgeted-hybrid-v1",
                     "strategy": "budgeted",
                     "strategy_version": "budgeted-hybrid-v1",
                     "token_budget": target_tokens,

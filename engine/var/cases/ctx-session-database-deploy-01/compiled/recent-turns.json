@@ -2,9 +2,9 @@
   "case_id": "ctx-session-database-deploy-01",
   "case_version": 1,
   "source_session_hash": "sha256:61a38dd06d2e04baafb3323338a786e3e7df6a22701fde9710b71e72190008bb",
-  "variant_id": "recent-window",
-  "strategy": "recent-n",
-  "strategy_version": "recent-window-v1",
+  "variant_id": "recent-turns",
+  "strategy": "recent-events-legacy",
+  "strategy_version": "recent-turns-v1",
   "token_budget": 8192,
   "compiled_messages": [
     {
@@ -32,7 +32,7 @@
       "content": "最终让 Agent 只做一致性审计，不能执行 SQL、不能启动数据库、也不要测试连接。"
     }
   ],
-  "compiled_context_hash": "sha256:21238aa0269e07a0734902c6c4a96f90f9468371327eb6cac53270927589dbd5",
+  "compiled_context_hash": "sha256:6f2038088d7bd28e77f64adb5b3f6b2e99d56332462f627aae3b5b1686137306",
   "input_event_ids": [
     "evt-0001",
     "evt-0002",
@@ -105,11 +105,14 @@
   ],
   "original_tokens": 29795,
   "working_tokens": 7584,
-  "build_duration_ms": 56,
+  "build_duration_ms": 55,
   "build_model_calls": 0,
   "build_input_tokens": 0,
   "build_output_tokens": 0,
   "build_cost": 0.0,
+  "build_cache_hits": 0,
+  "build_purpose": "COMPRESSION",
+  "build_summary_chunks": 0,
   "warnings": [
     "algo_version=structured-text-v1"
   ],
@@ -117,7 +120,19 @@
   "budget_fit": true,
   "tokenizer_version": "conservative-cjk1-latin4-v1",
   "scores": [],
+  "classification": {
+    "source": "code_rules_only",
+    "stats": {},
+    "llm_calls": 0,
+    "llm_input_tokens": 0,
+    "llm_output_tokens": 0,
+    "truncated": false
+  },
   "scoring_version": "",
+  "memory_segment_ids": [],
+  "segment_cache_hits": 0,
+  "segment_generated": 0,
+  "segment_invalidated": 0,
   "status": "COMPLETE",
   "compile_wall_ms": 56
 }

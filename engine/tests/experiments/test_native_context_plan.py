@@ -58,7 +58,7 @@ async def test_run_native_context_matrix_uses_frozen_artifacts_and_configs():
     # 每格配置快照:唯一自变量 context_strategy,其余字段一致
     assert set(result["run_configs"]) == {
         f"{SESSION_ID}:{variant}:{NATIVE_AGENT_MODE_ID}"
-        for variant in ("full-session", "recent-window", "single-summary", "budgeted-session")
+        for variant in ("full", "recent-turns", "single-summary", "budgeted-hybrid-v1")
     }
     strategies = {payload["context_strategy"] for payload in result["run_configs"].values()}
     assert len(strategies) == 4
