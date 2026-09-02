@@ -294,7 +294,7 @@ const CONTEXT_VARIANT_KEYS = {
   "budgeted-comp": { key: "budgeted", label: "budgeted（按预算压缩）" },
 };
 
-function projectContextBatchReport(artifact, batchId, gitCommit) {
+function projectContextBatchReport(artifact, batchId, gitCommit, publishedRuns) {
   const groups = Object.entries(artifact.by_variant ?? {}).map(([variant, agg]) => {
     const mapping = CONTEXT_VARIANT_KEYS[variant] || { key: variant, label: variant };
     const valid = int(agg.valid_runs);
@@ -333,13 +333,79 @@ function projectContextBatchReport(artifact, batchId, gitCommit) {
     },
     groups,
     outcome_counts: { win: null, regress: null, tie: null, both_fail: null, invalid: null },
-    cases: [],
+    // 逐用例结果与运行索引(证据页发现入口):统计来自批次工件 variant_runs 的
+    // 完整判定;run_ids 的「引用可解析」规则在发布时逐 id 核对已发布 runs 文件
+    cases: projectContextCases(artifact, publishedRuns || []),
   };
+}
+
+/** run_records + variant_runs → cases[](schema: id/category/message/groups/run_ids)。 */
+function projectContextCases(artifact, publishedRuns) {
+  const messageByCase = new Map();
+  for (const run of publishedRuns) {
+    const fixed = (run.sections || {}).fixed_input || {};
+    if (!messageByCase.has(run.case_id) && fixed.message) {
+      messageByCase.set(run.case_id, { message: str(fixed.message), category: str(fixed.scene || "") });
+    }
+  }
+  const groupKey = (variantId) => (CONTEXT_VARIANT_KEYS[str(variantId)] || { key: str(variantId) }).key;
+  const stats = new Map();
+  for (const item of artifact.variant_runs || []) {
+    const j = item.judgment || {};
+    const valid = str(j.validity) === "VALID";
+    const key = `${str(item.case_id)}\u0000${groupKey(item.variant_id)}`;
+    const s =
+      stats.get(key) ||
+      stats.set(key, { correct: 0, hallucinated: 0, total: 0, durations: [], estimated: 0 }).get(key);
+    if (!valid) continue;
+    s.total += 1;
+    if (j.tool_correct) s.correct += 1;
+    if (Array.isArray(j.hallucinated_tools) && j.hallucinated_tools.length > 0) s.hallucinated += 1;
+    if (Number.isFinite(Number(j.duration_ms))) s.durations.push(Number(j.duration_ms));
+    if (j.tokens_estimated) s.estimated += 1;
+  }
+  const byCase = new Map();
+  for (const row of artifact.run_records || []) {
+    const caseId = str(row.case_id);
+    let entry = byCase.get(caseId);
+    if (!entry) {
+      const meta = messageByCase.get(caseId) || { message: "", category: "" };
+      entry = { id: caseId, category: meta.category, message: meta.message, groups: {}, run_ids: {} };
+      byCase.set(caseId, entry);
+    }
+    const key = groupKey(row.variant_id);
+    entry.run_ids[key] = entry.run_ids[key] || [];
+    entry.run_ids[key].push({ run_id: str(row.run_id || ""), repeat_index: int(row.repeat_index) });
+  }
+  const percentile = (sorted, p) =>
+    sorted.length === 0 ? null : sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+  return [...byCase.values()]
+    .map((entry) => {
+      for (const key of Object.keys(entry.run_ids)) {
+        entry.run_ids[key] = entry.run_ids[key]
+          .sort((a, b) => a.repeat_index - b.repeat_index)
+          .map((r) => r.run_id);
+        const s = stats.get(`${entry.id}\u0000${key}`);
+        if (s) {
+          const durations = [...s.durations].sort((a, b) => a - b);
+          entry.groups[key] = {
+            correct: s.correct,
+            hallucinated: s.hallucinated,
+            total: s.total,
+            duration_p50_ms: percentile(durations, 50),
+            duration_p95_ms: percentile(durations, 95),
+            estimated_token_runs: s.estimated,
+          };
+        }
+      }
+      return entry;
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function projectBatchReport(artifact, batchId, gitCommit, _publishedRuns) {
   if (isContextArtifact(artifact)) {
-    return projectContextBatchReport(artifact, batchId, gitCommit);
+    return projectContextBatchReport(artifact, batchId, gitCommit, _publishedRuns);
   }
   throw new Error(
     `未知工件类型:${artifact.experiment_type || "(缺 experiment_type)"};当前仅支持 context-strategy(上下文压缩对照)批次发布`,
