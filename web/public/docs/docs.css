@@ -85,8 +85,19 @@ section { scroll-margin-top: 72px; }
   gap: 26px;
   flex-wrap: wrap;
 }
-.brand { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.brand { color: var(--ink); font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 9px; }
 .brand:hover { text-decoration: none; }
+.brand-avatar { width: 32px; height: 32px; flex: none; border-radius: 50%; display: block; }
+.gh-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-soft);
+  padding: 5px;
+  border-radius: 6px;
+}
+.gh-link:hover { color: var(--ink); background: var(--bg-soft); }
+.gh-link svg { width: 20px; height: 20px; display: block; }
 .wordmark b { font-size: 17px; letter-spacing: 0.02em; }
 .wordmark span {
   display: block;
@@ -117,7 +128,15 @@ section { scroll-margin-top: 72px; }
   grid-template-columns: minmax(0, 1fr) 200px;
   gap: 40px;
 }
-.page-toc { grid-column: 2; order: 2; }
+.page-toc {
+  grid-column: 2;
+  order: 2;
+  position: sticky;
+  top: 76px;
+  align-self: start;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+}
 .page-toc h4 { margin: 6px 0 8px; font-size: 13px; color: var(--ink-faint); }
 .page-toc ul { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line-soft); }
 .page-toc li { margin: 0; }

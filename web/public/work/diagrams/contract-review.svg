@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 2420" font-family="Microsoft YaHei,PingFang SC,Helvetica Neue,Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#555"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/></marker>
+    <marker id="arrowRed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#c0392b"/></marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#8e44ad"/></marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#e67e22"/></marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#3498db"/></marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%"><feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/></filter>
+  </defs>
+
+  <rect width="2400" height="2420" fill="#f8f9fa" rx="8"/>
+
+  <!-- 标题 -->
+  <text x="1200" y="35" text-anchor="middle" font-size="22" font-weight="bold" fill="#1a237e">B2B 供应链金融 — 合同审核机制</text>
+  <text x="1200" y="58" text-anchor="middle" font-size="13" fill="#546e7a">每笔资金流转前，系统自动核验合同。自动验不过的，人工介入审批。审批通过后自动完成打款。</text>
+  <text x="1200" y="76" text-anchor="middle" font-size="11" fill="#e67e22" font-weight="bold">两条独立通路：借款通路（银行放款）+ 转账通路（支付确认），各自验各自的合同</text>
+
+  <!-- ========== 1. 合同入库 ========== -->
+  <rect x="30" y="100" width="2340" height="170" rx="8" fill="white" stroke="#ddd" filter="url(#shadow)"/>
+  <rect x="50" y="110" width="240" height="32" rx="6" fill="#5C6BC0"/><text x="170" y="131" text-anchor="middle" font-size="14" fill="white" font-weight="bold">1. 合同从哪里来</text>
+
+  <rect x="70" y="155" width="360" height="95" rx="6" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+  <text x="250" y="178" text-anchor="middle" font-size="13" font-weight="bold" fill="#283593">合同① B2B采购合同</text>
+  <text x="250" y="198" text-anchor="middle" font-size="11" fill="#455a64">经销商 → 核心企业</text>
+  <text x="250" y="218" text-anchor="middle" font-size="10" fill="#78909c">B2B 平台通过接口单独推送</text>
+
+  <rect x="480" y="155" width="360" height="95" rx="6" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+  <text x="660" y="178" text-anchor="middle" font-size="13" font-weight="bold" fill="#283593">合同② 代采合同</text>
+  <text x="660" y="198" text-anchor="middle" font-size="11" fill="#455a64">核心企业 → 代采商</text>
+  <text x="660" y="218" text-anchor="middle" font-size="10" fill="#78909c">B2B 平台通过接口单独推送</text>
+
+  <rect x="890" y="155" width="380" height="95" rx="6" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1.5"/>
+  <text x="1080" y="178" text-anchor="middle" font-size="13" font-weight="bold" fill="#283593">合同③ 采购合同</text>
+  <text x="1080" y="198" text-anchor="middle" font-size="11" fill="#455a64">代采商 → 供应商</text>
+  <text x="1080" y="218" text-anchor="middle" font-size="10" fill="#78909c">跟随采购订单推送进入，直接标"待审核"</text>
+
+  <rect x="1320" y="155" width="460" height="95" rx="6" fill="#FFF8E1" stroke="#FFC107" stroke-width="1"/>
+  <text x="1550" y="178" text-anchor="middle" font-size="11" font-weight="bold" fill="#e65100">说明</text>
+  <text x="1550" y="198" text-anchor="middle" font-size="10" fill="#455a64">合同①②由后台定时任务自动完成解析+比对</text>
+  <text x="1550" y="215" text-anchor="middle" font-size="10" fill="#455a64">合同③因格式不统一只走人工审核，不自动比对</text>
+  <text x="1550" y="232" text-anchor="middle" font-size="10" fill="#455a64">合同解析失败会自动重试，最多 3 次</text>
+
+  <line x1="560" y1="270" x2="560" y2="305" stroke="#5C6BC0" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="1080" y1="270" x2="1080" y2="305" stroke="#5C6BC0" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ========== 2. 审核 ========== -->
+  <rect x="30" y="315" width="2340" height="340" rx="8" fill="white" stroke="#ddd" filter="url(#shadow)"/>
+  <rect x="50" y="325" width="300" height="32" rx="6" fill="#EF6C00"/><text x="200" y="346" text-anchor="middle" font-size="14" fill="white" font-weight="bold">2. 合同如何审核</text>
+  <text x="370" y="345" font-size="11" fill="#e67e22">（后台定时任务，每 5 分钟执行一次，仅合同①②参与）</text>
+
+  <rect x="70" y="375" width="260" height="95" rx="6" fill="#FFF3E0" stroke="#F57C00" stroke-width="2"/><text x="200" y="398" text-anchor="middle" font-size="13" font-weight="bold" fill="#e65100">第一步：解析合同</text><text x="200" y="420" text-anchor="middle" font-size="10" fill="#455a64">AI（HTTP 服务）将合同文件转为结构化数据</text><text x="200" y="440" text-anchor="middle" font-size="10" fill="#455a64">解析失败自动重试，最多 3 次</text>
+  <line x1="330" y1="422" x2="380" y2="422" stroke="#F57C00" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <rect x="390" y="375" width="300" height="95" rx="6" fill="#FFF3E0" stroke="#F57C00" stroke-width="2"/><text x="540" y="398" text-anchor="middle" font-size="13" font-weight="bold" fill="#e65100">第二步：自动比对</text><text x="540" y="422" text-anchor="middle" font-size="10" fill="#455a64">金额 / 买卖双方 / 收款账号</text><text x="540" y="442" text-anchor="middle" font-size="10" fill="#455a64">四项全对 = 审核通过</text><text x="540" y="460" text-anchor="middle" font-size="10" fill="#455a64">任一不对 = 转入人工审核</text>
+  <line x1="690" y1="422" x2="750" y2="422" stroke="#F57C00" stroke-width="2" marker-end="url(#arrowOrange)"/>
+
+  <rect x="760" y="375" width="220" height="95" rx="6" fill="#FFF3E0" stroke="#F57C00" stroke-width="2"/><text x="870" y="398" text-anchor="middle" font-size="12" font-weight="bold" fill="#27ae60">审核通过</text><text x="870" y="422" text-anchor="middle" font-size="10" fill="#455a64">自动完成</text><text x="870" y="445" font-size="12" font-weight="bold" fill="#e67e22">转入人工审核</text><text x="870" y="465" text-anchor="middle" font-size="10" fill="#455a64">待管理员审批</text>
+
+  <!-- 人工审核 -->
+  <rect x="1050" y="375" width="500" height="260" rx="6" fill="#FCE4EC" stroke="#AD1457" stroke-width="1.5"/>
+  <text x="1300" y="398" text-anchor="middle" font-size="13" font-weight="bold" fill="#880e4f">👤 人工审核（管理后台）</text>
+  <text x="1300" y="422" text-anchor="middle" font-size="10" fill="#455a64">管理员查看合同文件，对比订单数据判断是否合格</text>
+  <line x1="1070" y1="435" x2="1530" y2="435" stroke="#AD1457" stroke-width="0.5"/>
+  <rect x="1070" y="445" width="220" height="55" rx="4" fill="#C8E6C9" stroke="#27ae60" stroke-width="1"/><text x="1180" y="465" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">点击「通过」</text><text x="1180" y="485" text-anchor="middle" font-size="10" fill="#455a64">合同标记为合格</text><text x="1180" y="498" text-anchor="middle" font-size="10" fill="#27ae60" font-weight="bold">⬇ 自动触发打款</text>
+  <rect x="1310" y="445" width="220" height="55" rx="4" fill="#FFCDD2" stroke="#c0392b" stroke-width="1"/><text x="1420" y="465" text-anchor="middle" font-size="11" font-weight="bold" fill="#c0392b">点击「拒绝」</text><text x="1420" y="485" text-anchor="middle" font-size="10" fill="#455a64">合同标记为不合格</text><text x="1420" y="498" text-anchor="middle" font-size="10" fill="#c0392b">资金永久阻止</text>
+  <text x="1300" y="555" text-anchor="middle" font-size="10" fill="#78909c">打款失败后管理员可手动重新发起，系统不会自动重试</text>
+  <text x="1300" y="575" text-anchor="middle" font-size="10" fill="#78909c">合同③（采购合同）只走人工审核路径</text>
+
+  <!-- 自动审核通过 → 也进入触发模块 -->
+  <line x1="870" y1="470" x2="870" y2="530" stroke="#27ae60" stroke-width="2" stroke-dasharray="6,3"/>
+  <text x="880" y="510" font-size="10" fill="#27ae60" font-weight="bold">自动 PASS</text>
+  <line x1="870" y1="530" x2="1100" y2="530" stroke="#27ae60" stroke-width="2" stroke-dasharray="6,3"/>
+  <line x1="1100" y1="530" x2="1100" y2="665" stroke="#27ae60" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrowGreen)"/>
+  <text x="1110" y="600" font-size="10" fill="#27ae60" font-weight="bold">自动通过的也进同一触发流程</text>
+
+  <!-- 人工审核通过 → 进入触发模块 -->
+  <line x1="1300" y1="635" x2="1300" y2="665" stroke="#AD1457" stroke-width="2.5" marker-end="url(#arrowRed)"/>
+  <text x="1330" y="657" font-size="10" fill="#AD1457" font-weight="bold">人工 PASS</text>
+
+  <!-- ========== 2.5 触发模块 ========== -->
+  <rect x="180" y="675" width="2040" height="195" rx="8" fill="white" stroke="#1a237e" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="200" y="685" width="400" height="32" rx="6" fill="#1a237e"/><text x="400" y="706" text-anchor="middle" font-size="14" fill="white" font-weight="bold">2.5 审核通过后如何触发打款</text>
+  <text x="630" y="706" font-size="11" fill="#1a237e" font-weight="bold">主流程</text>
+
+  <rect x="200" y="728" width="320" height="55" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/><text x="360" y="748" text-anchor="middle" font-size="11" font-weight="bold" fill="#0d47a1">① 审核通过（自动 + 人工）</text><text x="360" y="766" text-anchor="middle" font-size="9" fill="#455a64">自动比对 PASS 或 管理员点击通过</text>
+  <line x1="520" y1="755" x2="560" y2="755" stroke="#42A5F5" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="560" y="728" width="330" height="55" rx="6" fill="#FFF8E1" stroke="#FFC107" stroke-width="1"/><text x="725" y="748" text-anchor="middle" font-size="11" font-weight="bold" fill="#e65100">② 查找待打款项</text><text x="725" y="766" text-anchor="middle" font-size="9" fill="#455a64">到"待执行表"查该合同对应的所有"待处理"记录</text>
+  <line x1="890" y1="755" x2="930" y2="755" stroke="#FFC107" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="930" y="728" width="350" height="55" rx="6" fill="#E8F5E9" stroke="#27ae60" stroke-width="1"/><text x="1105" y="748" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">③ 按类型分流执行</text><text x="1105" y="766" text-anchor="middle" font-size="9" fill="#455a64">借款放款 → 走借款通路 | 支付确认 → 走支付通路</text>
+  <line x1="1280" y1="755" x2="1320" y2="755" stroke="#27ae60" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="1320" y="728" width="340" height="55" rx="6" fill="#E8F5E9" stroke="#27ae60" stroke-width="1"/><text x="1490" y="748" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">④ 写回结果</text><text x="1490" y="766" text-anchor="middle" font-size="9" fill="#455a64">成功 → 标记"已完成" | 失败 → 标记"失败"，人工重试</text>
+
+  <!-- 兜底保障 -->
+  <rect x="200" y="798" width="1460" height="55" rx="6" fill="#E8F5E9" stroke="#3498db" stroke-width="1.5" stroke-dasharray="8,4"/>
+  <text x="215" y="818" font-size="11" font-weight="bold" fill="#3498db">⑤ 兜底保障（补偿任务，每5分钟）：防止 异步任务 触发失败或服务重启导致丢失</text>
+  <text x="215" y="838" font-size="10" fill="#455a64">定时扫描所有"待处理"记录 → 查对应合同审核状态 → PASS 则补触发执行 | REJECT 则标记失败 | PENDING 则跳过</text>
+
+  <line x1="1490" y1="783" x2="1490" y2="798" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+
+  <!-- 向下箭头 -->
+  <line x1="600" y1="870" x2="600" y2="920" stroke="#8e44ad" stroke-width="2.5" marker-end="url(#arrowPurple)"/><text x="620" y="905" font-size="10" fill="#6a1b9a" font-weight="bold">借款</text>
+  <line x1="1500" y1="870" x2="1500" y2="920" stroke="#2ecc71" stroke-width="2.5" marker-end="url(#arrowGreen)"/><text x="1520" y="905" font-size="10" fill="#1b5e20" font-weight="bold">支付</text>
+
+  <!-- ========== 3. 打钱 ========== -->
+  <rect x="30" y="930" width="2340" height="520" rx="8" fill="white" stroke="#ddd" filter="url(#shadow)"/>
+  <rect x="50" y="940" width="400" height="32" rx="6" fill="#2E7D32"/><text x="250" y="961" text-anchor="middle" font-size="14" fill="white" font-weight="bold">3. 什么时候验合同</text>
+  <text x="470" y="960" font-size="11" fill="#455a64">系统在"要打钱的时候"才验合同。审核通过，钱才能出去。</text>
+
+  <!-- A -->
+  <rect x="50" y="990" width="1100" height="220" rx="8" fill="#F3E5F5" stroke="#8e44ad" stroke-width="2.5"/>
+  <text x="600" y="1020" text-anchor="middle" font-size="15" font-weight="bold" fill="#6a1b9a">通路 A：借款放款（银行借钱给经销商）</text>
+  <text x="600" y="1043" text-anchor="middle" font-size="11" fill="#6a1b9a">进入时机：借款通过审批后，银行准备打款时 | 验的是合同①</text>
+
+  <rect x="70" y="1060" width="340" height="135" rx="6" fill="white" stroke="#e1bee7" stroke-width="1"/><text x="240" y="1082" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">合同审核通过</text><text x="240" y="1105" text-anchor="middle" font-size="10" fill="#27ae60" font-weight="bold">→ 直接放款</text><text x="240" y="1125" text-anchor="middle" font-size="10" fill="#455a64">经销商放款户 → 核心企业收款户</text><text x="240" y="1143" text-anchor="middle" font-size="10" fill="#455a64">借款状态：待转账 → 转账中 → 成功</text><text x="240" y="1163" text-anchor="middle" font-size="10" fill="#78909c">行内单笔支付 · 补足核心企业收款金额</text>
+
+  <rect x="440" y="1060" width="340" height="135" rx="6" fill="white" stroke="#e1bee7" stroke-width="1"/><text x="610" y="1082" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">合同被拒绝</text><text x="610" y="1105" text-anchor="middle" font-size="10" fill="#c0392b" font-weight="bold">→ 借款失败</text><text x="610" y="1125" text-anchor="middle" font-size="10" fill="#455a64">借款状态标记为"借款失败"</text><text x="610" y="1143" text-anchor="middle" font-size="10" fill="#455a64">释放已占用的借款额度</text>
+
+  <rect x="810" y="1060" width="320" height="135" rx="6" fill="white" stroke="#e1bee7" stroke-width="1"/><text x="970" y="1082" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">合同未解析 / 待审核</text><text x="970" y="1105" text-anchor="middle" font-size="10" fill="#e67e22" font-weight="bold">→ 钱先不打，记到"待执行表"等人审</text><text x="970" y="1125" text-anchor="middle" font-size="10" fill="#455a64">借款状态不变（保持"审核成功待转账"）</text><text x="970" y="1143" text-anchor="middle" font-size="10" fill="#455a64">等回 2.5 节流程：审核通过 → 触发打款</text><text x="970" y="1163" text-anchor="middle" font-size="10" fill="#455a64">⑤ 兜底任务也覆盖这个场景</text>
+
+  <!-- B -->
+  <rect x="1190" y="990" width="1160" height="220" rx="8" fill="#E8F5E9" stroke="#2ecc71" stroke-width="2.5"/>
+  <text x="1770" y="1020" text-anchor="middle" font-size="15" font-weight="bold" fill="#1b5e20">通路 B：支付确认（核心企业转账 / 代采商付款）</text>
+  <text x="1770" y="1043" text-anchor="middle" font-size="11" fill="#1b5e20">进入时机：业务方发起支付时 | 验的是合同②（代采）或合同③（采购）</text>
+
+  <rect x="1210" y="1060" width="340" height="135" rx="6" fill="white" stroke="#c8e6c9" stroke-width="1"/><text x="1380" y="1082" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">合同审核通过</text><text x="1380" y="1105" text-anchor="middle" font-size="10" fill="#27ae60" font-weight="bold">→ 直接转账</text><text x="1380" y="1125" text-anchor="middle" font-size="10" fill="#455a64">核心转代采：行内单笔</text><text x="1380" y="1143" text-anchor="middle" font-size="10" fill="#455a64">代采付供应商：行内或行外</text><text x="1380" y="1163" text-anchor="middle" font-size="10" fill="#78909c">按收款卡BIN判断走行内还是行外</text>
+
+  <rect x="1580" y="1060" width="340" height="135" rx="6" fill="white" stroke="#c8e6c9" stroke-width="1"/><text x="1750" y="1082" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">合同被拒绝</text><text x="1750" y="1105" text-anchor="middle" font-size="10" fill="#c0392b" font-weight="bold">→ 返回失败给调用方</text><text x="1750" y="1125" text-anchor="middle" font-size="10" fill="#455a64">不执行任何转账</text>
+
+  <rect x="1950" y="1060" width="380" height="135" rx="6" fill="white" stroke="#c8e6c9" stroke-width="1"/><text x="2140" y="1082" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">合同未解析 / 待审核</text><text x="2140" y="1105" text-anchor="middle" font-size="10" fill="#e67e22" font-weight="bold">→ 返回"处理中"给调用方</text><text x="2140" y="1125" text-anchor="middle" font-size="10" fill="#455a64">该笔待打款项记入"待执行表"</text><text x="2140" y="1143" text-anchor="middle" font-size="10" fill="#455a64">调用方可轮询查询支付结果</text><text x="2140" y="1163" text-anchor="middle" font-size="10" fill="#455a64">等回 2.5 节流程：审核通过 → 触发打款</text>
+
+  <!-- 关键设计 -->
+  <rect x="50" y="1230" width="2300" height="65" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1.5"/>
+  <text x="1200" y="1253" text-anchor="middle" font-size="13" font-weight="bold" fill="#0d47a1">关键设计</text>
+  <text x="1200" y="1275" text-anchor="middle" font-size="11" fill="#455a64">两条通路独立运作 | 合同未解析/待审核时不轮询不自动重试 | 审核通过统一异步触发 | §补偿任务每5分钟兜底扫描 | 打款失败不自动重试，人工判断</text>
+
+  <line x1="1200" y1="1305" x2="1200" y2="1340" stroke="#1a237e" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+  <!-- ========== 4. 汇总 ========== -->
+  <rect x="30" y="1350" width="2340" height="590" rx="8" fill="white" stroke="#ddd" filter="url(#shadow)"/>
+  <rect x="50" y="1360" width="360" height="32" rx="6" fill="#546E7A"/><text x="230" y="1381" text-anchor="middle" font-size="14" fill="white" font-weight="bold">4. 流程总结</text>
+
+  <!-- 完整时间线 -->
+  <text x="1200" y="1420" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a237e">一条完整的审核到打款流程（含兜底保障）</text>
+
+  <rect x="70" y="1440" width="170" height="45" rx="6" fill="#E8EAF6" stroke="#5C6BC0" stroke-width="1"/><text x="155" y="1458" text-anchor="middle" font-size="10" fill="#283593">合同入库</text><text x="155" y="1474" text-anchor="middle" font-size="8" fill="#78909c">业务推送</text>
+  <line x1="240" y1="1462" x2="280" y2="1462" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="285" y="1440" width="180" height="45" rx="6" fill="#FFF3E0" stroke="#F57C00" stroke-width="1"/><text x="375" y="1458" text-anchor="middle" font-size="10" fill="#e65100">定时解析+比对</text><text x="375" y="1474" text-anchor="middle" font-size="8" fill="#78909c">每5分钟</text>
+  <line x1="465" y1="1462" x2="505" y2="1462" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="510" y="1440" width="180" height="45" rx="6" fill="#FFF3E0" stroke="#F57C00" stroke-width="1"/><text x="600" y="1458" text-anchor="middle" font-size="10" fill="#e65100">审核结果生成</text><text x="600" y="1474" text-anchor="middle" font-size="8" fill="#78909c">PASS/PENDING</text>
+  <line x1="690" y1="1462" x2="730" y2="1462" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="155" y1="1477" x2="155" y2="1510" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="70" y="1515" width="170" height="45" rx="6" fill="#FCE4EC" stroke="#AD1457" stroke-width="1"/><text x="155" y="1533" text-anchor="middle" font-size="10" fill="#880e4f">人工审核</text><text x="155" y="1549" text-anchor="middle" font-size="8" fill="#78909c">管理员审批</text>
+  <line x1="240" y1="1537" x2="300" y2="1537" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="305" y="1515" width="190" height="45" rx="6" fill="#E3F2FD" stroke="#42A5F5" stroke-width="1"/><text x="400" y="1533" text-anchor="middle" font-size="10" fill="#0d47a1">查找+触发打款</text><text x="400" y="1549" text-anchor="middle" font-size="8" fill="#78909c">异步执行</text>
+  <line x1="495" y1="1537" x2="555" y2="1537" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="560" y="1515" width="190" height="45" rx="6" fill="#E8F5E9" stroke="#27ae60" stroke-width="1"/><text x="655" y="1533" text-anchor="middle" font-size="10" fill="#1b5e20">执行转账</text><text x="655" y="1549" text-anchor="middle" font-size="8" fill="#78909c">借款或支付</text>
+  <line x1="750" y1="1537" x2="810" y2="1537" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="815" y="1515" width="190" height="45" rx="6" fill="#E8F5E9" stroke="#27ae60" stroke-width="1"/><text x="910" y="1533" text-anchor="middle" font-size="10" fill="#1b5e20">写回结果</text><text x="910" y="1549" text-anchor="middle" font-size="8" fill="#78909c">成功/失败</text>
+
+  <!-- 兜底时间线 -->
+  <line x1="910" y1="1560" x2="910" y2="1595" stroke="#555" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowBlue)"/>
+
+  <rect x="770" y="1605" width="280" height="45" rx="6" fill="#E3F2FD" stroke="#3498db" stroke-width="1" stroke-dasharray="6,3"/>
+  <text x="910" y="1623" text-anchor="middle" font-size="10" fill="#3498db" font-weight="bold">⑤ 补偿任务兜底</text>
+  <text x="910" y="1641" text-anchor="middle" font-size="8" fill="#455a64">定时扫描 · 补触发 · 补失败标记</text>
+
+  <!-- 进度 -->
+  <rect x="50" y="1670" width="590" height="120" rx="6" fill="#E8F5E9" stroke="#27ae60" stroke-width="1.5"/>
+  <text x="345" y="1695" text-anchor="middle" font-size="13" font-weight="bold" fill="#1b5e20">已完成</text>
+  <text x="345" y="1718" text-anchor="middle" font-size="11" fill="#455a64">合同接收与存储</text>
+  <text x="345" y="1736" text-anchor="middle" font-size="11" fill="#455a64">自动比对逻辑（四项核验）</text>
+  <text x="345" y="1754" text-anchor="middle" font-size="11" fill="#455a64">两通路的合同验证关卡</text>
+  <text x="345" y="1772" text-anchor="middle" font-size="11" fill="#455a64">人工审核 + 自动查找待打款项 + 打款</text>
+  <text x="345" y="1790" text-anchor="middle" font-size="11" fill="#455a64">补偿任务兜底 + 解析自动重试3次</text>
+
+  <rect x="680" y="1670" width="460" height="120" rx="6" fill="#C8E6C9" stroke="#27ae60" stroke-width="1.5"/>
+  <text x="910" y="1695" text-anchor="middle" font-size="13" font-weight="bold" fill="#27ae60">核心阻塞（已解决）</text>
+  <text x="910" y="1718" text-anchor="middle" font-size="11" fill="#455a64">行方未提供解析接口 → 已改用 AI 解析方案</text>
+  <text x="910" y="1738" text-anchor="middle" font-size="11" fill="#333">→ HTTP 调用 AI 服务解析合同 → 自动比对</text>
+  <text x="910" y="1758" text-anchor="middle" font-size="11" fill="#333">→ 解析失败重试 3 次 · 比对不过转人工</text>
+  <text x="910" y="1778" text-anchor="middle" font-size="11" fill="#455a64">AI 解析 + 人工兜底 + 触发打款 全链路已上线</text>
+
+  <rect x="1180" y="1670" width="590" height="120" rx="6" fill="#C8E6C9" stroke="#27ae60" stroke-width="1.5"/>
+  <text x="1475" y="1695" text-anchor="middle" font-size="13" font-weight="bold" fill="#27ae60">待办（已全部完成）</text>
+  <text x="1475" y="1718" text-anchor="middle" font-size="11" fill="#455a64">✓ 管理后台审批页面开发</text>
+  <text x="1475" y="1736" text-anchor="middle" font-size="11" fill="#455a64">✓ 两个定时任务控制台配置</text>
+  <text x="1475" y="1754" text-anchor="middle" font-size="11" fill="#455a64">✓ 单元测试</text>
+  <text x="1475" y="1772" text-anchor="middle" font-size="11" fill="#455a64">✓ 业务参数确认（保证金/质押值等）</text>
+
+  <!-- 图例 -->
+  <rect x="50" y="1810" width="2320" height="20" rx="4" fill="none" stroke="none"/>
+  <text x="70" y="1825" font-size="9" fill="#455a64" font-weight="bold">图例：</text>
+  <rect x="110" y="1814" width="16" height="12" rx="2" fill="#E8EAF6" stroke="#5C6BC0"/><text x="130" y="1825" font-size="8" fill="#555">合同</text>
+  <rect x="180" y="1814" width="16" height="12" rx="2" fill="#FFF3E0" stroke="#F57C00"/><text x="200" y="1825" font-size="8" fill="#555">自动审核</text>
+  <rect x="270" y="1814" width="16" height="12" rx="2" fill="#FCE4EC" stroke="#AD1457"/><text x="290" y="1825" font-size="8" fill="#555">人工审核</text>
+  <rect x="360" y="1814" width="16" height="12" rx="2" fill="#E3F2FD" stroke="#42A5F5"/><text x="380" y="1825" font-size="8" fill="#555">触发+执行</text>
+  <rect x="460" y="1814" width="16" height="12" rx="2" fill="#E3F2FD" stroke="#3498db" stroke-dasharray="4,2"/><text x="480" y="1825" font-size="8" fill="#555">兜底</text>
+  <rect x="540" y="1814" width="16" height="12" rx="2" fill="#F3E5F5" stroke="#8e44ad"/><text x="560" y="1825" font-size="8" fill="#555">借款通路</text>
+  <rect x="650" y="1814" width="16" height="12" rx="2" fill="#E8F5E9" stroke="#2ecc71"/><text x="670" y="1825" font-size="8" fill="#555">支付通路</text>
+</svg>

@@ -77,14 +77,14 @@ async function serveStatic(requestPath, request, response) {
     response.end();
     return;
   }
-  // 页面模块前缀:无尾斜杠 302 到模块首页
-  const MODULE_PREFIXES = ["/results", "/evidence", "/system", "/methodology", "/work"];
+  // 页面模块前缀:无尾斜杠 302 到模块首页(/work 已 301 到 /,不在此列)
+  const MODULE_PREFIXES = ["/overview", "/results", "/evidence", "/system", "/methodology"];
   if (MODULE_PREFIXES.includes(requestPath)) {
     response.writeHead(302, { Location: requestPath + "/" });
     response.end();
     return;
   }
-  const DIRECTORY_INDEX = ["/results/", "/evidence/", "/system/", "/methodology/", "/work/"];
+  const DIRECTORY_INDEX = ["/overview/", "/results/", "/evidence/", "/system/", "/methodology/"];
   // 模块子页带尾斜杠(/evidence/run/)301 去斜杠:子页是 *.html 文件不是目录;
   // 目录索引(/evidence/ 自身)除外
   if (requestPath !== "/" && requestPath.endsWith("/")) {

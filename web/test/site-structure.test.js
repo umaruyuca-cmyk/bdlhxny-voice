@@ -4,17 +4,18 @@ import assert from "node:assert/strict";
 import { REDIRECTS, redirectFor } from "../scripts/redirect-map.mjs";
 
 /**
- * 站点结构契约(信息架构 v3 · 实验结果与原始证据优先):
- * 五页导航(系统总览 / 实验结果 / 原始证据 / 执行逻辑 / 测试逻辑),顺序固定;
- * 全站无登录/运行/试用入口;结果与证据为第一、二核心页;
- * 旧地址按内容唯一归属 301,站内无死链。
+ * 站点结构契约(信息架构 v4 · 代表项目门户页优先):
+ * 首页为代表项目(职业实践门户,2026-09 由 /work/ 升舱);导航:代表项目 / 系统总览 / 实验结果 / 原始证据 / 执行逻辑 / 测试逻辑,顺序固定;
+ * 全站无登录/运行/试用入口;结果与证据为实验第一、二核心页;
+ * 旧地址按内容唯一归属 301(/work 已 301 到 /),站内无死链。
  */
 
-const NAV_HREFS = ["/", "/results/", "/evidence/", "/system/", "/methodology/"];
-const NAV_LABELS = ["系统总览", "实验结果", "原始证据", "执行逻辑", "测试逻辑"];
+const NAV_HREFS = ["/", "/overview/", "/results/", "/evidence/", "/system/", "/methodology/"];
+const NAV_LABELS = ["代表项目", "系统总览", "实验结果", "原始证据", "执行逻辑", "测试逻辑"];
 
 const SITE_PAGES = [
   "/index.html",
+  "/overview/index.html",
   "/results/index.html",
   "/evidence/index.html",
   "/evidence/run.html",
@@ -41,7 +42,9 @@ test("五页齐备,共享外壳(静态五导航 + 页脚 GitHub 文字链接)", 
     const positions = NAV_HREFS.map((href) => html.indexOf(`href="${href}"`, navStart));
     assert.deepEqual([...positions].sort((a, b) => a - b), positions, `${page} 导航顺序必须固定`);
     assert.match(html, /site-foot/, `${page} 有页脚`);
-    assert.match(html, /GitHub · bdlhxny-agent/, `${page} 页脚含 GitHub 文字链接`);
+    assert.match(html, /GitHub · bdlhxny-voice/, `${page} 页脚含 GitHub 文字链接`);
+    assert.match(html, /class="gh-link"/, `${page} 顶栏含 GitHub 图标链接`);
+    assert.match(html, /class="brand-avatar"/, `${page} 顶栏含个人头像标识`);
   }
   const sharedJs = await readFile(new URL("../public/docs/docs.js", import.meta.url), "utf8");
   for (const label of NAV_LABELS) {
@@ -147,7 +150,7 @@ test("公开页零后端依赖、零文本输入;筛选只允许 select", async 
     }
   }
   // 数据页面允许 select 筛选(浏览操作);说明页不得出现任何控件
-  for (const page of ["/system/index.html", "/methodology/index.html", "/index.html"]) {
+  for (const page of ["/system/index.html", "/methodology/index.html", "/index.html", "/overview/index.html"]) {
     const html = await readPage(page);
     assert.doesNotMatch(html, /<select/, `${page} 说明页不得出现筛选控件`);
   }
@@ -213,10 +216,10 @@ test("证据页:六维筛选 + 分页 + 11 段证据链 + 只有复制无下载�
   assert.match(js, /不含模型内部思维链/, "声明不展示思维链");
 });
 
-test("首页事实卡数字与数据真源一致(防硬编码脱节)", async () => {
-  const home = await readPage("/index.html");
+test("系统总览页事实卡数字与数据真源一致(防硬编码脱节)", async () => {
+  const home = await readPage("/overview/index.html");
   const nums = [...home.matchAll(/<div class="fact"><b>(\d+)<\/b>/g)].map((m) => Number(m[1]));
-  assert.equal(nums.length, 4, "首页应有四张构成事实卡(工具/用例/Session/模板)");
+  assert.equal(nums.length, 4, "系统总览页应有四张构成事实卡(工具/用例/Session/模板)");
   const [tools, cases, sessions, templates] = nums;
   const toolsData = JSON.parse(await readFile(new URL("../public/showcase-data/tools.json", import.meta.url), "utf8"));
   assert.equal(tools, toolsData.total, "工具目录数与 tools.json 一致");
@@ -278,6 +281,10 @@ test("旧地址 301:redirect-map 与 nginx 一致,按内容唯一归属", async 
   assert.equal(redirectFor("/docs"), "/system/");
   assert.equal(redirectFor("/docs/results"), "/results/");
   assert.equal(redirectFor("/lab"), "/system/");
+  // 工作项目页升舱首页后,旧地址 301 到 /
+  assert.equal(redirectFor("/work"), "/");
+  assert.equal(redirectFor("/work/"), "/");
+  assert.equal(redirectFor("/work/index.html"), "/");
   // 目录斜杠/扩展名归一化
   assert.equal(redirectFor("/experiment/"), "/methodology/");
   assert.equal(redirectFor("/judging/metrics.html"), "/methodology/");

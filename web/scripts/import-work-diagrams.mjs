@@ -26,6 +26,7 @@ const OUT_DIR = path.join(WEB_ROOT, "public", "work", "diagrams");
 const SOURCES = [
   { from: "slr/dev-zcy/slr-cloud/doc/b2b_loan/B2B法透全链路流程图.svg", to: "b2b-legal-overdraft.svg" },
   { from: "slr/dev-zcy/slr-cloud/doc/b2b_loan/B2B商票模式全链路流程图.svg", to: "b2b-commercial-bill.svg" },
+  { from: "slr/dev-zcy/slr-cloud/doc/b2b_loan/合同审核流程_汇报用.svg", to: "contract-review.svg" },
   { from: "jingloan/jingloan/doc/京e贷贷款服务全链路流程图.svg", to: "bob-loan-service.svg" },
   { from: "jdong-cloud/jdong-cloud/document/银行能力开放平台全链路架构图.svg", to: "open-platform-architecture.svg" },
 ];
@@ -52,6 +53,10 @@ const GLOBAL_RULES = [
 
 /** 每张图各自的规则 */
 const FILE_RULES = {
+  "contract-review.svg": [
+    [/@Async 异步执行/g, "异步执行"],
+    [/@Async/g, "异步任务"],
+  ],
   "b2b-legal-overdraft.svg": [
     [/\/trade\/apply 接口/g, "支付申请接口"],
     [/\/payment\/confirm 接口/g, "支付确认接口"],

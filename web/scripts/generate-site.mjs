@@ -21,17 +21,20 @@ import { fileURLToPath } from "node:url";
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC = path.join(WEB_ROOT, "public");
-const GITHUB = "https://github.com/umaruyuca-cmyk/bdlhxny-agent";
+const GITHUB = "https://github.com/umaruyuca-cmyk/bdlhxny-voice";
 
-/** 顶部导航:五项实验站点导航 + 工作项目(职业实践入口,2026-09 增)。 */
+/** 顶部导航:首页为代表项目(职业实践门户,2026-09 调整),其后系统总览与实验站点四页。 */
 const NAV = [
-  { href: "/", label: "系统总览" },
+  { href: "/", label: "代表项目" },
+  { href: "/overview/", label: "系统总览" },
   { href: "/results/", label: "实验结果" },
   { href: "/evidence/", label: "原始证据" },
   { href: "/system/", label: "执行逻辑" },
   { href: "/methodology/", label: "测试逻辑" },
-  { href: "/work/", label: "工作项目" },
 ];
+
+/** 顶栏个人标识:圆形头像(public/avatar.png,脱敏加工产物)+ 姓名;右上角 GitHub 仓库图标。 */
+const GITHUB_MARK = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>`;
 
 const esc = (v) => String(v).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 
@@ -40,8 +43,9 @@ const esc = (v) => String(v).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&
  * sections: [{id,title,html}] → 正文章节 + 页内目录(≥3 节才生成);
  * bodyHtml: 自定义正文(数据页用,优先于 sections)。
  */
-function shell({ title, description, currentPath, sections = [], bodyHtml = "", extraScripts = "", pageClass = "" }) {
-  const hasToc = !bodyHtml && sections.length >= 3;
+function shell({ title, description, currentPath, sections = [], bodyHtml = "", extraScripts = "", pageClass = "", extraHead = "" }) {
+  // sections 同时用于生成页内目录;bodyHtml 页(如工作项目页)也可带目录。
+  const hasToc = sections.length >= 3;
   const toc = hasToc
     ? `<nav class="page-toc" aria-label="本页目录"><h4>本页目录</h4><ul>${sections
         .map((s) => `<li><a href="#${s.id}">${esc(s.title)}</a></li>`)
@@ -61,12 +65,13 @@ function shell({ title, description, currentPath, sections = [], bodyHtml = "", 
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
 <link rel="stylesheet" href="/docs/docs.css">
-</head>
+${extraHead}</head>
 <body${pageClass ? ` class="${esc(pageClass)}"` : ""}>
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
+    <a class="brand" href="/"><img class="brand-avatar" src="/avatar.png" alt="umaru~"><span class="wordmark"><b>umaru~</b></span></a>
     ${nav}
+    <a class="gh-link" href="${GITHUB}" target="_blank" rel="noopener" title="GitHub · umaruyuca-cmyk/bdlhxny-voice" aria-label="GitHub 仓库 umaruyuca-cmyk/bdlhxny-voice">${GITHUB_MARK}</a>
   </div>
 </header>
 <main class="page-main${hasToc ? " with-toc" : ""}">
@@ -77,7 +82,7 @@ ${body}
 <footer class="site-foot">
   <div class="foot-inner">
     <p>全部结果数字来自发布校验后的公开快照;未发布即显示空状态,不使用演示成绩。证据为可审计执行记录,不含模型内部思维链。</p>
-    <p class="foot-links">源码仓库:<a href="${GITHUB}" target="_blank" rel="noopener">GitHub · bdlhxny-agent</a></p>
+    <p class="foot-links">源码仓库:<a href="${GITHUB}" target="_blank" rel="noopener">GitHub · bdlhxny-voice</a></p>
   </div>
 </footer>
 <script src="/docs/docs.js"></script>
@@ -90,10 +95,10 @@ ${extraScripts}
 // ── 页面 1:/ 系统总览 ───────────────────────────────────────────────────
 
 const HOME = {
-  path: "index.html",
+  path: "overview/index.html",
   title: "系统总览 · Touchstone",
   description: "受控 Agent 实验与证据展示系统:固定题库、冻结工具数据、代码断言评测,把每次运行落成可审计证据。",
-  currentPath: "/",
+  currentPath: "/overview/",
   bodyHtml: `
   <h1>系统总览</h1>
   <p class="page-lead">这是一套<strong>受控 Agent 实验与证据展示系统</strong>:固定题库、冻结工具数据、同一套代码断言评测,在唯一自变量受控的条件下运行 Agent,并把每一次运行的输入、工具调用、治理判定、输出与评测结论完整落成可审计的公开证据。它不是聊天产品,本站不提供公开试用、发起实验或登录入口。</p>
@@ -490,79 +495,312 @@ const METHODOLOGY = {
 };
 
 // ── 工作项目页(职业实践;图表为脱敏版,由 scripts/import-work-diagrams.mjs 生成) ──
+// v2 排版:立场 Hero → 项目总览卡 → 逐项目(关键数字 + 设计要点卡 + 全链路图查看器) → 方法论映射。
+// 全链路图查看器:tab 切换 + 适应宽度/原始大小;禁用脚本时各图顺序展示,不影响阅读。
 
-const diagramFigure = (file, title, height) => `
-<figure class="diagram-block">
-  <div class="diagram-bar"><span>${title}（脱敏版）</span><a href="/work/diagrams/${file}" target="_blank" rel="noopener">原图新窗口打开</a></div>
-  <div class="diagram-scroll"><object type="image/svg+xml" data="/work/diagrams/${file}" style="height:${height}px" aria-label="${title}"></object></div>
-</figure>`;
+const WORK_STYLE = `<style>
+.work-hero {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f6f9fd 0%, #fff 100%);
+  padding: 26px 28px 22px;
+  margin: 6px 0 34px;
+}
+.work-hero h1 { font-size: 24px; margin: 0 0 10px; }
+.work-stance {
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px 14px;
+  margin: 14px 0 16px;
+  font-size: 15.5px;
+  color: var(--ink);
+  max-width: 56em;
+}
+.work-stance b { color: var(--accent); }
+.work-hero .hero-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.hero-chip {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.work-hero .note { margin-top: 14px; }
+
+.proj-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 14px 0 8px; }
+.proj-card {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px 14px;
+  background: var(--bg);
+}
+.proj-card:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(9,105,218,.12); }
+.proj-idx { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: .08em; }
+.proj-card h3 { margin: 4px 0 4px; font-size: 15.5px; }
+.proj-meta { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 8px; }
+.proj-one { font-size: 13.5px; color: var(--ink-soft); flex: 1; margin: 0 0 10px; }
+.tag-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.tag {
+  font-size: 12px; color: var(--ink-soft);
+  background: var(--bg-soft); border: 1px solid var(--line-soft);
+  border-radius: 4px; padding: 0 7px; white-space: nowrap;
+}
+.proj-go { font-size: 13px; font-weight: 600; }
+
+.proj-sec { border-top: 1px solid var(--line-soft); padding-top: 26px; margin-top: 40px; }
+.proj-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+.proj-head .proj-idx { font-size: 15px; }
+.proj-head h2 { margin: 0; font-size: 20px; }
+.proj-head .proj-meta { margin: 0; font-size: 13px; }
+.proj-lead { font-size: 14.5px; color: var(--ink-soft); max-width: 62em; }
+
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0 4px; }
+.stat {
+  border: 1px solid var(--line-soft); border-radius: 8px;
+  background: var(--bg-soft); padding: 10px 14px;
+}
+.stat b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.stat span { font-size: 12.5px; color: var(--ink-faint); }
+
+.point-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 6px; }
+.point {
+  border: 1px solid var(--line-soft); border-radius: 8px;
+  padding: 12px 16px; background: var(--bg);
+}
+.point h4 { margin: 0 0 5px; font-size: 14px; }
+.point h4 .pt-tag {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  border: 1px solid #b6d3f5; background: #eef4fc;
+  border-radius: 4px; padding: 0 6px; margin-left: 7px; vertical-align: 1px;
+}
+.point p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+
+.fig-viewer { margin: 20px 0 8px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
+.fig-bar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 12px; background: var(--bg-soft); border-bottom: 1px solid var(--line);
+}
+.fig-tab {
+  font: inherit; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--ink-soft); padding: 3px 12px;
+}
+.fig-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.fig-bar .fig-spacer { flex: 1; }
+.fig-zoom {
+  font: inherit; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--ink-soft); padding: 2px 10px;
+}
+.fig-zoom:hover, .fig-tab:hover { border-color: var(--accent); }
+.fig-open { font-size: 12.5px; white-space: nowrap; }
+.fig-stage { overflow: auto; max-height: 620px; background: #fbfbfc; }
+.fig-stage img { display: block; }
+.fig-stage img[hidden] { display: none; }
+.fig-stage.fit img { width: 100%; height: auto; cursor: zoom-in; }
+.fig-stage.raw img { width: var(--w, 2950px); height: auto; max-width: none; cursor: zoom-out; }
+.fig-hint { font-size: 12px; color: var(--ink-faint); padding: 6px 14px; border-top: 1px solid var(--line-soft); background: var(--bg-soft); }
+
+/* 技术栈行与收尾链接卡 */
+.proj-stack { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 10px 0 2px; }
+.proj-stack .stack-label { font-size: 12px; color: var(--ink-faint); margin-right: 2px; }
+.closing-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.closing-link {
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 16px; font-size: 13.5px; font-weight: 600;
+  color: var(--accent); background: var(--bg);
+}
+.closing-link:hover { border-color: var(--accent); text-decoration: none; background: #f2f7fd; }
+
+.map-tbl { width: 100%; border-collapse: collapse; font-size: 14px; margin: 14px 0 6px; }
+.map-tbl th, .map-tbl td { border: 1px solid var(--line-soft); padding: 9px 12px; text-align: left; vertical-align: top; }
+.map-tbl thead th { background: var(--bg-soft); font-weight: 600; }
+.map-tbl td.map-arrow { text-align: center; color: var(--accent); font-weight: 700; width: 40px; }
+.map-tbl td b { color: var(--ink); }
+.map-tbl .map-src { width: 46%; }
+
+@media (max-width: 1000px) {
+  .proj-grid { grid-template-columns: 1fr; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .work-hero { padding: 18px 16px; }
+  .point-grid { grid-template-columns: 1fr; }
+  .stat-row { grid-template-columns: 1fr 1fr; }
+  .fig-stage { max-height: 420px; }
+}
+</style>`;
+
+const WORK_SCRIPT = `<script>
+(function () {
+  "use strict";
+  document.querySelectorAll("[data-fig]").forEach(function (viewer) {
+    var tabs = Array.prototype.slice.call(viewer.querySelectorAll("[data-fig-tab]"));
+    var panes = Array.prototype.slice.call(viewer.querySelectorAll("[data-fig-pane]"));
+    var stage = viewer.querySelector("[data-fig-stage]");
+    var zoomBtn = viewer.querySelector("[data-fig-zoom]");
+    var openLink = viewer.querySelector("[data-fig-open]");
+    function show(i) {
+      tabs.forEach(function (t, j) { t.classList.toggle("on", i === j); });
+      panes.forEach(function (p, j) { p.hidden = i !== j; });
+      if (openLink && panes[i]) openLink.href = panes[i].getAttribute("src");
+      if (stage) stage.scrollTop = 0;
+    }
+    tabs.forEach(function (t, i) { t.addEventListener("click", function () { show(i); }); });
+    function applyZoom(raw) {
+      if (!stage) return;
+      stage.classList.toggle("raw", raw);
+      stage.classList.toggle("fit", !raw);
+      if (zoomBtn) zoomBtn.textContent = raw ? "切换适应宽度" : "切换原始大小";
+    }
+    if (zoomBtn) zoomBtn.addEventListener("click", function () { applyZoom(!stage.classList.contains("raw")); });
+    panes.forEach(function (p) { p.addEventListener("click", function () { applyZoom(!stage.classList.contains("raw")); }); });
+    // 默认适应宽度看整体结构;点图或按钮切换到原始大小阅读细节。
+    applyZoom(false);
+    show(0);
+  });
+})();
+</script>`;
+
+const figViewer = (figs) => `
+  <div class="fig-viewer" data-fig>
+    <div class="fig-bar">
+      ${figs.map((f, i) => `<button type="button" class="fig-tab${i === 0 ? " on" : ""}" data-fig-tab="${i}">${esc(f.tab)}</button>`).join("\n      ")}
+      <span class="fig-spacer"></span>
+      <button type="button" class="fig-zoom" data-fig-zoom>切换原始大小</button>
+      <a class="fig-open" data-fig-open href="/work/diagrams/${figs[0].file}" target="_blank" rel="noopener">新窗口打开原图</a>
+    </div>
+    <div class="fig-stage fit" data-fig-stage>
+      ${figs.map((f, i) => `<img src="/work/diagrams/${f.file}" alt="${esc(f.alt)}" data-fig-pane="${i}" style="--w:${f.w || 2950}px">`).join("\n      ")}
+    </div>
+    <div class="fig-hint">默认适应宽度看整体结构;点图或「切换原始大小」阅读细节,手机也可「新窗口打开原图」后双指放大(SVG 矢量不糊)。</div>
+  </div>`;
 
 const WORK = {
-  path: "work/index.html",
-  currentPath: "/work/",
-  title: "工作项目 · 金融系统实践",
-  description: "供应链金融与银行信贷系统的生产实践:六步状态机、可靠消息、AI 合同解析与盯市补保,配脱敏全链路流程图。",
+  path: "index.html",
+  currentPath: "/",
+  title: "工作项目 · 代表项目",
+  description: "与简历同口径的三套投产系统:数链融供应链金融平台、北京银行贷款服务与开放平台、“数字京杭”微信小程序,配脱敏全链路流程图。",
+  extraHead: WORK_STYLE,
+  extraScripts: WORK_SCRIPT,
   sections: [
-    {
-      id: "overview",
-      title: "定位",
-      html: `
-<p>本站主体是 Agent 实验与证据;这一页是平行维度——我在金融科技领域的生产系统实践。三个项目均已投产,它们共用的不是技术栈,而是同一套工程立场:<strong>资金状态的变更必须可解释、可补偿、可审计;结果不确定时宁可补查,不可盲目重放。</strong></p>
-<table class="tbl">
-  <thead><tr><th>项目</th><th>角色</th><th>周期</th><th>一句话</th></tr></thead>
-  <tbody>
-    <tr><td>数链融供应链金融平台（政采云 / 云趣）</td><td>核心开发</td><td>2025.06 - 至今</td><td>B2B 六步资金状态机 + 仓储质押 + 两处生产 AI</td></tr>
-    <tr><td>北京银行贷款服务与开放平台（度小满 / 1688）</td><td>核心开发</td><td>2023.09 - 2025.04</td><td>银行报文统一封装 + 国密 + 微服务统一鉴权</td></tr>
-    <tr><td>“数字京杭”微信小程序</td><td>全栈开发</td><td>2023 - 至今</td><td>生产小程序（微信可搜）+ Token 鉴权链路 + 行方门户集成</td></tr>
-  </tbody>
-</table>
-<p class="note">本页图表均为<strong>脱敏版</strong>:隐去行方服务编码、内部接口路径与实现细节,保留业务流程与设计决策;业务数字为量级估算口径。</p>`,
-    },
-    {
-      id: "slr",
-      title: "数链融 · 供应链金融平台",
-      html: `
-<p>面向小微企业的供应链金融平台,按合作方分两条产品线:政采云动产融资(含京智云仓仓储质押)与云趣电商贷。资金链路建模为 <strong>6 个有序步骤</strong>(订单推送 → 定金 → 代采订单 → 核心转账 → 采购订单 → 付款),以唯一流水、前置状态校验、乐观锁治理重复请求与并发覆盖;融资方案分<strong>商票 / 法透</strong>两种模式——同一套状态机底座,策略模式分流差异。</p>
-${diagramFigure("b2b-legal-overdraft.svg", "图 1 · B2B 法透模式全链路", 1095)}
-${diagramFigure("b2b-commercial-bill.svg", "图 2 · B2B 商票模式全链路", 1230)}
-<ul>
-  <li><strong>可靠消息</strong>:银行转账结果通知走 RocketMQ + Outbox 本地消息表,消费端按「消息 ID + 消费组」去重,配合结果补查与定时补偿收敛最终一致;</li>
-  <li><strong>合同审核</strong>:“要打钱时验合同”——大模型(HTTP 服务)把合同解析为结构化数据,四项自动比对(货物/双方/金额/收款账号),不过转人工;审核通过异步触发打款、补偿任务兜底,拒绝则永久阻断资金;</li>
-  <li><strong>盯市补保</strong>:Job 管数字(日终重估、跌超阈值自动生成补保工单)、AI 管沟通(催补草稿、审批摘要)、人工门闩把关发送——与本站 Agent 治理是同一哲学;</li>
-  <li><strong>规模口径</strong>:订单 500+,资金流转千万级,单笔融资 10~50 万。</li>
-</ul>`,
-    },
-    {
-      id: "bob",
-      title: "北京银行 · 贷款服务与开放平台",
-      html: `
-<p>两条产品线:与 1688 合作的<strong>银行能力开放平台</strong>——Spring Cloud 微服务,网关统一鉴权 + OAuth2 / JWT + Redis RBAC,统一封装银行总行与杭州分行的风控、授信、放款、还款等能力接口对外输出;与百度度小满合作的<strong>贷款服务</strong>——额度查询、提款审批、贷款发放、放还款结果、还款计划、贷前试算六类核心流程。</p>
-${diagramFigure("bob-loan-service.svg", "图 3 · 贷款服务全链路（度小满渠道）", 1080)}
-${diagramFigure("open-platform-architecture.svg", "图 4 · 银行能力开放平台架构", 1150)}
-<ul>
-  <li><strong>报文治理</strong>:三层银行报文头统一封装,行方与度小满两套签名协议适配,金额 BigDecimal 三级校验(提款 / 订单 / 合同);</li>
-  <li><strong>异步闭环</strong>:放款先落「待查」状态,轮询按状态机收敛终态;银行超时不自动重试资金操作,一律结果补查——超时 ≠ 失败;</li>
-  <li><strong>我在开放平台的足迹</strong>(git 可查):杭州分行接口客户端封装、对外 API 能力层、定时任务与数据模型——个人 240+ 次提交,第三大贡献者,2023.10 - 2025.03 持续参与。</li>
-</ul>`,
-    },
-    {
-      id: "sjjh",
-      title: "“数字京杭”微信小程序",
-      html: `
-<p>北京银行杭州分行的生产小程序(微信内搜索“数字京杭”可验证),服务用户 2 万+。我负责小程序、H5、Vue 管理后台与 Java 服务端的业务开发,以及一条贯穿始终的登录鉴权链路。</p>
-<ul>
-  <li><strong>业务</strong>:权益领取、营销活动等运营功能与配套后台配置审核,支撑分行多期活动上线;</li>
-  <li><strong>鉴权链路</strong>:会话密钥签名、403 静默刷新与请求排队重放、敏感字段加密、接口白名单;完成渗透漏洞修复与未登录接口审计;</li>
-  <li><strong>行方门户集成</strong>:Vue 后台以 iframe 集成至分行统一门户平台——URL 桥接换取登录态与权限、按权限动态渲染菜单,实现免二次登录嵌入。</li>
-</ul>`,
-    },
-    {
-      id: "methodology",
-      title: "方法论与本站的关系",
-      html: `
-<p>金融系统与 Agent 工程共享同一套立场:<strong>模型提议、代码裁决</strong>。盯市机制里“数字永远取自定时任务落库结果,模型只写文案”,对应本站治理层“权限与只读边界由代码强制执行”;Outbox 的“至少一次投递 + 幂等消费”对应 Agent 任务的唤醒去重;银行结果的补查收敛对应评测的可复算。工作系统里验证过的边界设计,延伸为本站要回答的实验问题。</p>`,
-    },
+    { id: "overview", title: "总览" },
+    { id: "slr", title: "01 · 数链融供应链平台" },
+    { id: "bob", title: "02 · 北京银行贷款服务" },
+    { id: "sjjh", title: "03 · “数字京杭”小程序" },
+    { id: "methodology", title: "方法论与本站" },
   ],
+  bodyHtml: `
+<section id="overview">
+  <div class="work-hero">
+    <h1>代表项目</h1>
+    <p style="margin:0;color:var(--ink-soft);max-width:62em">与简历同口径——杭州竞动科技在职期间交付的 3 套已投产系统;简历中的第 4 个代表项目(独立开发的 Agent 评测平台)就是本站,见页尾「方法论与本站」。三套系统共用的不是技术栈,而是同一套工程立场:</p>
+    <p class="work-stance"><b>资金状态的变更必须可解释、可补偿、可审计;结果不确定时宁可补查,不可盲目重放。</b></p>
+    <div class="stat-row" style="margin-top:16px">
+      <div class="stat"><b>3 套</b><span>已投产生产系统</span></div>
+      <div class="stat"><b>2 万+</b><span>服务用户</span></div>
+      <div class="stat"><b>3000+ 笔</b><span>贷款申请</span></div>
+      <div class="stat"><b>500+ 笔</b><span>业务订单</span></div>
+    </div>
+    <p class="note">本页图表均为<strong>脱敏版</strong>:隐去行方服务编码、内部接口路径与实现细节,保留业务流程与设计决策;业务数字为量级估算口径。</p>
+  </div>
+</section>
+
+<section id="slr" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">01</span><h2>数链融供应链金融平台</h2><span class="proj-meta">核心开发 · 2025.06 – 至今 · 政采云 / 云趣产品线</span></div>
+  <p class="proj-lead">面向小微企业的供应链金融平台:政采云动产融资(京智云仓仓储质押——入库 / 提货 / 盘点 / 解押,库存占用 + 还款试算控风险)与云趣电商贷两条产品线。</p>
+  <div class="proj-stack"><span class="stack-label">技术栈</span><span class="tag">Spring Cloud</span><span class="tag">RocketMQ</span><span class="tag">MySQL / Redis</span><span class="tag">XXL-JOB</span><span class="tag">OAuth 2.0 / JWT</span><span class="tag">Python / FastAPI</span><span class="tag">LangChain / LangGraph</span><span class="tag">RAG</span></div>
+
+  <div class="stat-row">
+    <div class="stat"><b>500+ 笔</b><span>业务订单</span></div>
+    <div class="stat"><b>1500 万+</b><span>资金流转</span></div>
+    <div class="stat"><b>10~50 万</b><span>单笔融资额度</span></div>
+    <div class="stat"><b>6 步</b><span>资金状态机有序链路</span></div>
+  </div>
+
+  <h3>设计要点</h3>
+  <div class="point-grid">
+    <div class="point"><h4>状态机底座</h4><p>B2B 资金流程建模为 6 步状态机(订单推送 → 定金 → 代采 → 核心转账 → 采购 → 付款),唯一流水 + 前置状态校验 + 乐观锁治理重复请求与并发覆盖;策略模式支撑商票 / 法透两类融资方案。</p></div>
+    <div class="point"><h4>可靠消息</h4><p>RocketMQ + Outbox 本地消息表:消费去重、结果补查、定时补偿;打通额度、借款、放款、子账户转账(含失败冲正)与资产包 SFTP。</p></div>
+    <div class="point"><h4>合同审核<span class="pt-tag">生产 AI · Qwen3.6-27B</span></h4><p>“要打钱时验合同”——合同结构化解析,货物 / 交易主体 / 金额 / 收款账户四项自动比对;失败重试 + 人工审核 + 补偿任务保障资金链路安全。</p></div>
+    <div class="point"><h4>盯市补保与 AI 风险报告<span class="pt-tag">生产 AI</span></h4><p>Java 汇总 SKU 市价与在押货值,5% 阈值生成波动工单,人工审批 / 历史工单作废,待补金额纳入还款试算与资金拆分;另以 LangChain create_agent 实现 Agent 原型:3 个只读工具 + Pydantic 结构化输出。</p></div>
+  </div>
+
+  <h3>全链路流程(脱敏版)</h3>
+${figViewer([
+  { file: "b2b-legal-overdraft.svg", tab: "图 1 · 法透模式", alt: "图 1 · B2B 法透模式全链路(脱敏版)" },
+  { file: "b2b-commercial-bill.svg", tab: "图 2 · 商票模式", alt: "图 2 · B2B 商票模式全链路(脱敏版)" },
+  { file: "contract-review.svg", tab: "图 3 · 合同审核机制", alt: "图 3 · 合同审核机制全链路(脱敏版)", w: 2400 },
+])}
+</section>
+
+<section id="bob" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">02</span><h2>北京银行贷款服务与开放平台</h2><span class="proj-meta">核心开发 · 2023.09 – 2025.04 · 度小满 / 1688</span></div>
+  <p class="proj-lead">两条产品线:与百度度小满合作的<strong>贷款服务</strong>(额度、提款、放款、还款结果、还款计划、贷前试算 6 类核心流程);与 1688 合作的<strong>银行能力开放平台</strong>(Spring Cloud 微服务,统一封装总行与杭州分行接口对外输出)。</p>
+  <div class="proj-stack"><span class="stack-label">技术栈</span><span class="tag">Spring Boot / Cloud</span><span class="tag">Spring Security OAuth 2.0</span><span class="tag">Gateway</span><span class="tag">Nacos</span><span class="tag">MyBatis-Plus</span><span class="tag">MySQL / Redis</span><span class="tag">SM2 / SM3 / SM4 国密</span></div>
+
+  <div class="stat-row">
+    <div class="stat"><b>1000+ 次</b><span>日均接口调用</span></div>
+    <div class="stat"><b>3000+ 笔</b><span>贷款申请</span></div>
+    <div class="stat"><b>2000 万+</b><span>累计放款</span></div>
+    <div class="stat"><b>6 类</b><span>贷款核心流程</span></div>
+  </div>
+
+  <h3>设计要点</h3>
+  <div class="point-grid">
+    <div class="point"><h4>报文治理</h4><p>统一 SysHead / AppHead / LocalHead 三层银行报文头与业务流水、请求响应模型、异常处理;治理双通道签名差异、空报文、金额精度、接口超时等兼容问题。</p></div>
+    <div class="point"><h4>国密与核身</h4><p>SM2 / SM3 / SM4 签名验签与报文加解密,适配行方与度小满两套签名协议;接入 OCR、生物识别、三要素核验,完成影像件上送。</p></div>
+    <div class="point"><h4>统一鉴权</h4><p>开放平台 OAuth 2.0 + Gateway + Redis RBAC 统一鉴权,对外按权限输出的风控、授信、放款、还款等行方能力接口。</p></div>
+    <div class="point"><h4>异步闭环</h4><p>结果补查 + 定时任务 + 参数校验,治理银行异步、重复调用与结果不确定场景;超时 ≠ 失败,一律补查收敛终态,形成资金闭环。</p></div>
+  </div>
+
+  <h3>全链路流程(脱敏版)</h3>
+${figViewer([
+  { file: "bob-loan-service.svg", tab: "图 4 · 贷款服务全链路", alt: "图 4 · 贷款服务全链路(度小满渠道)(脱敏版)" },
+  { file: "open-platform-architecture.svg", tab: "图 5 · 开放平台架构", alt: "图 5 · 银行能力开放平台架构(脱敏版)" },
+])}
+</section>
+
+<section id="sjjh" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">03</span><h2>“数字京杭”微信小程序</h2><span class="proj-meta">全栈开发 · 2023.09 – 2026.05 · 北京银行杭州分行</span></div>
+  <p class="proj-lead">北京银行杭州分行生产小程序(微信内搜索“数字京杭”可验证),负责小程序、H5、Vue 管理后台与 Java 服务端的全栈开发。</p>
+  <div class="proj-stack"><span class="stack-label">技术栈</span><span class="tag">Java / Spring Boot</span><span class="tag">MySQL / Redis</span><span class="tag">Vue 2 / Element UI</span><span class="tag">uni-app / 微信小程序</span><span class="tag">H5</span></div>
+
+  <div class="stat-row">
+    <div class="stat"><b>2 万+</b><span>服务用户</span></div>
+    <div class="stat"><b>4 端</b><span>小程序 + H5 + Vue 后台 + Java 服务端</span></div>
+    <div class="stat"><b>多期</b><span>运营活动上线与迭代</span></div>
+    <div class="stat"><b>可验证</b><span>微信内搜索“数字京杭”</span></div>
+  </div>
+
+  <h3>设计要点</h3>
+  <div class="point-grid">
+    <div class="point"><h4>业务与运营</h4><p>权益领取、营销活动等运营功能及配套管理后台配置审核,支撑分行多期活动上线及后续迭代维护。</p></div>
+    <div class="point"><h4>Token 鉴权与请求签名</h4><p>会话密钥签名、Token 失效检测与静默刷新、并发请求排队重放、敏感字段加密与接口白名单;完成渗透漏洞修复与未登录接口审计。</p></div>
+    <div class="point"><h4>行方门户集成</h4><p>Vue 管理后台以 iframe 集成至分行统一门户,基于门户用户标识与加密请求头完成登录态、用户身份和权限桥接,动态菜单、免二次登录。</p></div>
+    <div class="point"><h4>全栈交付</h4><p>从小程序前端到 Java 服务端一人贯通,接口契约、鉴权与数据模型无交接损耗。</p></div>
+  </div>
+</section>
+
+<section id="methodology" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">→</span><h2>方法论与本站:第 4 个代表项目</h2></div>
+  <p class="proj-lead">简历中的第 4 个代表项目——<strong>BDLH Agent 工程化与评测平台(Sentinel / Touchstone)</strong>,独立开发,2026.07 至今——就是本站。金融系统与 Agent 工程共享同一套立场:<strong>模型提议、代码裁决</strong>;生产系统里验证过的边界设计,延伸为本站要回答的实验问题:</p>
+  <table class="map-tbl">
+    <thead><tr><th class="map-src">生产系统实践</th><th style="width:40px"></th><th>本站 Agent 工程问题</th></tr></thead>
+    <tbody>
+      <tr><td class="map-src"><b>盯市补保</b>:数字永远取自定时任务落库结果,模型只写文案</td><td class="map-arrow">→</td><td>治理层:权限与只读边界由代码强制执行,模型不可越权</td></tr>
+      <tr><td class="map-src"><b>Outbox 可靠消息</b>:至少一次投递 + 幂等消费</td><td class="map-arrow">→</td><td>Agent 任务的唤醒去重与重复执行防护</td></tr>
+      <tr><td class="map-src"><b>银行结果补查</b>:超时 ≠ 失败,补查收敛终态</td><td class="map-arrow">→</td><td>评测的可复算:结果必须能回溯、能重验</td></tr>
+    </tbody>
+  </table>
+  <div class="closing-links">
+    <a class="closing-link" href="/overview/">系统总览 →</a>
+    <a class="closing-link" href="/results/">实验结果 →</a>
+    <a class="closing-link" href="/system/">执行逻辑 →</a>
+  </div>
+</section>`,
 };
 
 // ── 生成 ─────────────────────────────────────────────────────────────────

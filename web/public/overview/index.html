@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>系统总览 · Touchstone</title>
+<meta name="description" content="受控 Agent 实验与证据展示系统:固定题库、冻结工具数据、代码断言评测,把每次运行落成可审计证据。">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/"><img class="brand-avatar" src="/avatar.png" alt="umaru~"><span class="wordmark"><b>umaru~</b></span></a>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">代表项目</a><a href="/overview/" class="on">系统总览</a><a href="/results/">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
+    <a class="gh-link" href="https://github.com/umaruyuca-cmyk/bdlhxny-voice" target="_blank" rel="noopener" title="GitHub · umaruyuca-cmyk/bdlhxny-voice" aria-label="GitHub 仓库 umaruyuca-cmyk/bdlhxny-voice"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a>
+  </div>
+</header>
+<main class="page-main">
+  <div class="page-body">
+
+  <h1>系统总览</h1>
+  <p class="page-lead">这是一套<strong>受控 Agent 实验与证据展示系统</strong>:固定题库、冻结工具数据、同一套代码断言评测,在唯一自变量受控的条件下运行 Agent,并把每一次运行的输入、工具调用、治理判定、输出与评测结论完整落成可审计的公开证据。它不是聊天产品,本站不提供公开试用、发起实验或登录入口。</p>
+
+  <section id="publication-status" class="panel">
+    <h2>正式实验状态</h2>
+    <div id="homePublication">
+      <div class="placeholder-block">正在读取正式发布索引…</div>
+    </div>
+    <p class="note">正式结果只来自经维护者发布校验(有效样本门槛、逐运行哈希复算、敏感信息扫描)的公开快照;开发调试批次与匿名临时结果不会出现在这里。</p>
+  </section>
+
+  <section id="flow" class="panel">
+    <h2>一次实验的端到端流程</h2>
+    <div class="flow"><span class="flow-step">固定任务</span><span class="flow-arrow">→</span><span class="flow-step">上下文构建</span><span class="flow-arrow">→</span><span class="flow-step">Agent 规划与工具调用</span><span class="flow-arrow">→</span><span class="flow-step">治理检查</span><span class="flow-arrow">→</span><span class="flow-step">结果生成</span><span class="flow-arrow">→</span><span class="flow-step">评测断言</span><span class="flow-arrow">→</span><span class="flow-step">证据发布</span></div>
+    <p>每一步的输入、执行模块、关键规则、输出与写入的证据,见<a href="/system/">执行逻辑</a>;实验如何定义变量与固定条件、指标如何计算,见<a href="/methodology/">测试逻辑</a>。</p>
+  </section>
+
+  <section id="composition" class="panel">
+    <h2>系统构成(非实验成绩)</h2>
+    <div class="fact-row" id="homeFacts">
+      <div class="fact"><b>112</b><span>登记工具(冻结 Mock,只读)</span></div>
+      <div class="fact"><b>20</b><span>对比用例(固定题库)</span></div>
+      <div class="fact"><b>3</b><span>长上下文 Session 语料(版本化冻结)</span></div>
+      <div class="fact"><b>7</b><span>实验模板(每模板一个唯一自变量)</span></div>
+    </div>
+    <p class="note">以上是系统的静态构成事实,不代表任何实验结果;实验结果只看<a href="/results/">实验结果</a>页。</p>
+  </section>
+
+  <section id="guide" class="panel">
+    <h2>本站怎么读</h2>
+    <table class="tbl">
+      <thead><tr><th>页面</th><th>回答什么问题</th></tr></thead>
+      <tbody>
+        <tr><td><a href="/results/">实验结果</a></td><td>做了哪些正式实验,取得了什么结果,成功与失败各是什么样</td></tr>
+        <tr><td><a href="/evidence/">原始证据</a></td><td>每个汇总数字由哪些单次运行支持,单次运行实际发生了什么</td></tr>
+        <tr><td><a href="/system/">执行逻辑</a></td><td>一次运行经过哪些模块,每一步的规则与产出的证据是什么</td></tr>
+        <tr><td><a href="/methodology/">测试逻辑</a></td><td>实验怎么设计,指标怎么算,什么算有效运行</td></tr>
+      </tbody>
+    </table>
+  </section>
+  </div>
+</main>
+<footer class="site-foot">
+  <div class="foot-inner">
+    <p>全部结果数字来自发布校验后的公开快照;未发布即显示空状态,不使用演示成绩。证据为可审计执行记录,不含模型内部思维链。</p>
+    <p class="foot-links">源码仓库:<a href="https://github.com/umaruyuca-cmyk/bdlhxny-voice" target="_blank" rel="noopener">GitHub · bdlhxny-voice</a></p>
+  </div>
+</footer>
+<script src="/docs/docs.js"></script>
+<script src="/docs/showcase-data.js"></script>
+<script src="/docs/home.js"></script>
+</body>
+</html>

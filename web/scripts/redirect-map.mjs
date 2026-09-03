@@ -4,6 +4,8 @@
  *  实验设计/评判口径/题库语料 → /methodology/,系统执行/架构/治理/运维说明 → /system/。
  *  不把所有旧路由机械跳首页;静态资产(/docs/*.css|js、/showcase-data/*)不在映射内。 */
 export const REDIRECTS = new Map([
+  // 工作项目页升为首页(2026-09):旧 /work/ 地址 301 到 /
+  ["/work", "/"],
   // 公告/旧首页族
   ["/announce", "/"],
   ["/home", "/"],
@@ -90,6 +92,7 @@ export const PREFIX_REDIRECTS = [
 export function redirectFor(requestPath) {
   let normalized = String(requestPath || "");
   if (normalized.endsWith(".html")) normalized = normalized.slice(0, -5);
+  if (normalized.endsWith("/index")) normalized = normalized.slice(0, -6) || "/";
   while (normalized.length > 1 && normalized.endsWith("/")) normalized = normalized.slice(0, -1);
   if (REDIRECTS.has(normalized)) return REDIRECTS.get(normalized);
   for (const [prefix, target] of PREFIX_REDIRECTS) {
