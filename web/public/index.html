@@ -185,7 +185,7 @@
     <div class="point"><h4>状态机底座</h4><p>B2B 资金流程建模为 6 步状态机(订单推送 → 定金 → 代采 → 核心转账 → 采购 → 付款),唯一流水 + 前置状态校验 + 乐观锁治理重复请求与并发覆盖;策略模式支撑商票 / 法透两类融资方案。</p></div>
     <div class="point"><h4>可靠消息</h4><p>RocketMQ + Outbox 本地消息表:消费去重、结果补查、定时补偿;打通额度、借款、放款、子账户转账(含失败冲正)与资产包 SFTP。</p></div>
     <div class="point"><h4>合同审核<span class="pt-tag">生产 AI · Qwen3.6-27B</span></h4><p>“要打钱时验合同”——合同结构化解析,货物 / 交易主体 / 金额 / 收款账户四项自动比对;失败重试 + 人工审核 + 补偿任务保障资金链路安全。</p></div>
-    <div class="point"><h4>盯市补保与 AI 风险报告<span class="pt-tag">生产 AI</span></h4><p>Java 汇总 SKU 市价与在押货值,5% 阈值生成波动工单,人工审批 / 历史工单作废,待补金额纳入还款试算与资金拆分;另以 LangChain create_agent 实现 Agent 原型:3 个只读工具 + Pydantic 结构化输出。</p></div>
+    <div class="point"><h4>盯市补保与 AI 风险报告<span class="pt-tag">生产闭环 · Agent 原型</span></h4><p>Java 汇总 SKU 市价与在押货值,5% 阈值生成波动工单,人工审批 / 历史工单作废,待补金额纳入还款试算与资金拆分;另以 LangChain create_agent 实现 Agent 原型:3 个只读工具 + Pydantic 结构化输出。</p></div>
   </div>
 
   <h3>全链路流程(脱敏版)</h3>
@@ -248,14 +248,14 @@
 
 <section id="sjjh" class="proj-sec">
   <div class="proj-head"><span class="proj-idx">03</span><h2>“数字京杭”微信小程序</h2><span class="proj-meta">全栈开发 · 2023.09 – 2026.05 · 北京银行杭州分行</span></div>
-  <p class="proj-lead">北京银行杭州分行生产小程序(微信内搜索“数字京杭”可验证),负责小程序、H5、Vue 管理后台与 Java 服务端的全栈开发。</p>
+  <p class="proj-lead">北京银行杭州分行生产小程序,负责小程序、H5、Vue 管理后台与 Java 服务端的全栈开发。</p>
   <div class="proj-stack"><span class="stack-label">技术栈</span><span class="tag">Java / Spring Boot</span><span class="tag">MySQL / Redis</span><span class="tag">Vue 2 / Element UI</span><span class="tag">uni-app / 微信小程序</span><span class="tag">H5</span></div>
 
   <div class="stat-row">
     <div class="stat"><b>2 万+</b><span>服务用户</span></div>
     <div class="stat"><b>4 端</b><span>小程序 + H5 + Vue 后台 + Java 服务端</span></div>
     <div class="stat"><b>多期</b><span>运营活动上线与迭代</span></div>
-    <div class="stat"><b>可验证</b><span>微信内搜索“数字京杭”</span></div>
+    <div class="stat"><b>安全治理</b><span>渗透整改 + 未登录接口审计</span></div>
   </div>
 
   <h3>设计要点</h3>
@@ -273,7 +273,7 @@
   <table class="map-tbl">
     <thead><tr><th class="map-src">生产系统实践</th><th style="width:40px"></th><th>本站 Agent 工程问题</th></tr></thead>
     <tbody>
-      <tr><td class="map-src"><b>盯市补保</b>:数字永远取自定时任务落库结果,模型只写文案</td><td class="map-arrow">→</td><td>治理层:权限与只读边界由代码强制执行,模型不可越权</td></tr>
+      <tr><td class="map-src"><b>盯市补保</b>:金额与业务状态由 Java 确定性计算,Agent 基于只读工具生成可追溯风险报告,不参与审批和资金操作</td><td class="map-arrow">→</td><td>治理层:权限与只读边界由代码强制执行,模型不可越权</td></tr>
       <tr><td class="map-src"><b>Outbox 可靠消息</b>:至少一次投递 + 幂等消费</td><td class="map-arrow">→</td><td>Agent 任务的唤醒去重与重复执行防护</td></tr>
       <tr><td class="map-src"><b>银行结果补查</b>:超时 ≠ 失败,补查收敛终态</td><td class="map-arrow">→</td><td>评测的可复算:结果必须能回溯、能重验</td></tr>
     </tbody>

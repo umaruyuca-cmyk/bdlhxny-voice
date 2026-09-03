@@ -394,6 +394,24 @@ section { scroll-margin-top: 72px; }
 
 /* ── 移动端:不横向溢出,长字段受控换行 ─────────────────────────────── */
 @media (max-width: 640px) {
+  .topbar-inner {
+    padding: 8px 14px;
+    gap: 8px 12px;
+  }
+  .brand { order: 1; }
+  .gh-link { order: 2; margin-left: auto; }
+  .site-nav {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .site-nav::-webkit-scrollbar { display: none; }
+  .site-nav a { flex: 0 0 auto; padding: 5px 10px; }
+  section { scroll-margin-top: 108px; }
   .page-main { padding: 20px 14px 40px; }
   .panel { padding: 14px; }
   h1 { font-size: 23px; }
