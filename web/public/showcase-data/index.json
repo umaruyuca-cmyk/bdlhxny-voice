@@ -22,16 +22,6 @@
       "git_commit": "b9c3a2c"
     },
     {
-      "batch_id": "58253316-0e68-4771-afd5-bac7eefa837b",
-      "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:24.325Z",
-      "is_formal": true,
-      "case_count": 0,
-      "runs_per_case": 0,
-      "model": "configured-model",
-      "git_commit": "b9c3a2c"
-    },
-    {
       "batch_id": "768d2841-e71a-4844-8287-2f1d7a5c9f84",
       "experiment_type": "experiment-series",
       "published_at": "2026-09-03T03:21:24.390Z",
@@ -55,16 +45,6 @@
       "batch_id": "a831adec-a8fa-4865-b6df-98c97fba6570",
       "experiment_type": "experiment-series",
       "published_at": "2026-09-03T03:21:24.512Z",
-      "is_formal": true,
-      "case_count": 0,
-      "runs_per_case": 0,
-      "model": "configured-model",
-      "git_commit": "b9c3a2c"
-    },
-    {
-      "batch_id": "b2e08b6c-d72d-4150-b8e2-e44d8dc3595e",
-      "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:24.573Z",
       "is_formal": true,
       "case_count": 0,
       "runs_per_case": 0,
