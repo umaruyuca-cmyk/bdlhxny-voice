@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-02T14:49:38.597212+00:00",
+  "generated_at": "2026-09-03T05:09:31.441959+00:00",
   "formal_batches": [
     {
       "batch_id": "e1c2c5c2-d057-4bbb-a0f1-b7567932118d",
@@ -72,16 +72,6 @@
       "git_commit": "b9c3a2c"
     },
     {
-      "batch_id": "b944194f-9be4-4a26-b80c-295e1b2f07c8",
-      "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:24.642Z",
-      "is_formal": true,
-      "case_count": 0,
-      "runs_per_case": 0,
-      "model": "configured-model",
-      "git_commit": "b9c3a2c"
-    },
-    {
       "batch_id": "f13a06df-59a2-4762-8d50-938e6655ff9c",
       "experiment_type": "experiment-series",
       "published_at": "2026-09-03T03:21:24.733Z",
@@ -102,68 +92,78 @@
       "git_commit": "b9c3a2c"
     },
     {
-      "batch_id": "c9928a3d-fe5a-476e-8266-f8006150c4fc",
+      "batch_id": "b944194f-9be4-4a26-b80c-295e1b2f07c8",
       "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:24.895Z",
+      "published_at": "2026-09-03T05:10:23.066Z",
       "is_formal": true,
       "case_count": 0,
       "runs_per_case": 0,
       "model": "configured-model",
-      "git_commit": "b9c3a2c"
+      "git_commit": "762846c"
+    },
+    {
+      "batch_id": "c9928a3d-fe5a-476e-8266-f8006150c4fc",
+      "experiment_type": "experiment-series",
+      "published_at": "2026-09-03T05:10:23.144Z",
+      "is_formal": true,
+      "case_count": 0,
+      "runs_per_case": 0,
+      "model": "configured-model",
+      "git_commit": "762846c"
     },
     {
       "batch_id": "5c4a39be-a2e5-4bb0-8396-f747164d622d",
       "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:24.975Z",
+      "published_at": "2026-09-03T05:10:23.219Z",
       "is_formal": true,
       "case_count": 0,
       "runs_per_case": 0,
       "model": "configured-model",
-      "git_commit": "b9c3a2c"
+      "git_commit": "762846c"
     },
     {
       "batch_id": "a8445094-d6ba-4da4-958b-ea077c97963b",
       "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:25.038Z",
+      "published_at": "2026-09-03T05:10:23.288Z",
       "is_formal": true,
       "case_count": 0,
       "runs_per_case": 0,
       "model": "configured-model",
-      "git_commit": "b9c3a2c"
+      "git_commit": "762846c"
     },
     {
       "batch_id": "e06b966e-3185-4860-8a6e-d2e7821592e0",
       "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:25.099Z",
+      "published_at": "2026-09-03T05:10:23.359Z",
       "is_formal": true,
       "case_count": 0,
       "runs_per_case": 0,
       "model": "configured-model",
-      "git_commit": "b9c3a2c"
+      "git_commit": "762846c"
     },
     {
       "batch_id": "bb1adef7-3026-47b1-ab34-19bc07781e85",
       "experiment_type": "experiment-series",
-      "published_at": "2026-09-03T03:21:25.173Z",
+      "published_at": "2026-09-03T05:10:23.428Z",
       "is_formal": true,
       "case_count": 0,
       "runs_per_case": 0,
       "model": "configured-model",
-      "git_commit": "b9c3a2c"
+      "git_commit": "762846c"
     }
   ],
   "latest_batch": {
     "batch_id": "bb1adef7-3026-47b1-ab34-19bc07781e85",
     "experiment_type": "experiment-series",
-    "published_at": "2026-09-03T03:21:25.173Z",
+    "published_at": "2026-09-03T05:10:23.428Z",
     "is_formal": true,
     "case_count": 0,
     "runs_per_case": 0,
     "model": "configured-model",
-    "git_commit": "b9c3a2c",
+    "git_commit": "762846c",
     "validity_gate": {
       "met": true,
-      "reason": "每组有效样本 ≥ 1(任务三门槛),发布校验(敏感扫描/hash 复算/引用解析)全部通过;本批次无效运行 6 次已单列"
+      "reason": "每组有效样本 ≥ 1(任务三门槛),发布校验(敏感扫描/hash 复算/引用解析)全部通过;本批次无效运行 8 次已单列"
     }
   }
 }

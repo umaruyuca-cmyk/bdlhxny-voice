@@ -2,8 +2,8 @@
   "batch_id": "5c4a39be-a2e5-4bb0-8396-f747164d622d",
   "experiment_type": "experiment-series",
   "experiment_name": "tool-delivery-comparison · cmp-basic-single-01",
-  "generated_at": "2026-09-02T13:01:09.661957+00:00",
-  "git_commit": "b9c3a2c",
+  "generated_at": "2026-09-03T05:09:29.636985+00:00",
+  "git_commit": "762846c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -75,49 +75,49 @@
     {
       "key": "search",
       "label": "search",
-      "valid_runs": 3,
+      "valid_runs": 5,
       "invalid_runs": 2,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 5
       },
       "exclusion_reasons": {
         "INVALID": 2
       },
-      "sample_level": "最小正式样本",
+      "sample_level": "扩展样本",
       "rounds": {
-        "mean": 2.6667,
-        "median": 3,
+        "mean": 2.4,
+        "median": 2,
         "min": 2,
         "max": 3,
-        "n": 3
+        "n": 5
       },
       "duration": {
-        "mean": 12991.6667,
+        "mean": 12459.4,
         "median": 12869,
         "min": 9898,
         "max": 16208,
-        "n": 3
+        "n": 5
       },
       "input_tokens": {
-        "mean": 2911,
-        "median": 3343,
+        "mean": 2563.8,
+        "median": 2043,
         "min": 2043,
         "max": 3347,
-        "n": 3
+        "n": 5
       },
       "output_tokens": {
-        "mean": 643.3333,
-        "median": 624,
+        "mean": 770.6,
+        "median": 782,
         "min": 499,
-        "max": 807,
-        "n": 3
+        "max": 1141,
+        "n": 5
       },
       "tool_calls": {
         "mean": 0,
         "median": 0,
         "min": 0,
         "max": 0,
-        "n": 3
+        "n": 5
       },
       "metrics": {
         "task_success_rate": null,
@@ -127,8 +127,8 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 2.6667,
-        "mean_tokens": 3554.3333000000002,
+        "mean_rounds": 2.4,
+        "mean_tokens": 3334.4,
         "median_duration_ms": 12869,
         "p95_duration_ms": null
       }

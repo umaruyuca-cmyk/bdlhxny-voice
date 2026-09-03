@@ -2,8 +2,8 @@
   "batch_id": "bb1adef7-3026-47b1-ab34-19bc07781e85",
   "experiment_type": "experiment-series",
   "experiment_name": "compression-method-comparison · ctx-session-database-deploy-01",
-  "generated_at": "2026-09-02T14:49:38.597212+00:00",
-  "git_commit": "b9c3a2c",
+  "generated_at": "2026-09-03T05:09:31.441959+00:00",
+  "git_commit": "762846c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -17,35 +17,35 @@
     {
       "key": "budgeted-extractive",
       "label": "budgeted-extractive",
-      "valid_runs": 1,
-      "invalid_runs": 6,
+      "valid_runs": 2,
+      "invalid_runs": 8,
       "stop_reasons": {
-        "FINAL_ANSWER": 1
+        "FINAL_ANSWER": 2
       },
       "exclusion_reasons": {
-        "INVALID": 6
+        "INVALID": 8
       },
       "sample_level": "最小正式样本",
       "rounds": {
-        "mean": 1,
-        "median": 1,
+        "mean": 1.5,
+        "median": 1.5,
         "min": 1,
-        "max": 1,
-        "n": 1
+        "max": 2,
+        "n": 2
       },
       "duration": {
-        "mean": 218091,
-        "median": 218091,
-        "min": 218091,
+        "mean": 140416.5,
+        "median": 140416.5,
+        "min": 62742,
         "max": 218091,
-        "n": 1
+        "n": 2
       },
       "tool_calls": {
-        "mean": 0,
-        "median": 0,
+        "mean": 3,
+        "median": 3,
         "min": 0,
-        "max": 0,
-        "n": 1
+        "max": 6,
+        "n": 2
       },
       "metrics": {
         "task_success_rate": 0,
@@ -55,9 +55,9 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 1,
+        "mean_rounds": 1.5,
         "mean_tokens": null,
-        "median_duration_ms": 218091,
+        "median_duration_ms": 140416.5,
         "p95_duration_ms": null
       }
     },

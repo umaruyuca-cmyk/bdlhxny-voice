@@ -2,8 +2,8 @@
   "batch_id": "e06b966e-3185-4860-8a6e-d2e7821592e0",
   "experiment_type": "experiment-series",
   "experiment_name": "tool-availability-degradation · cmp-combo-route-01",
-  "generated_at": "2026-09-02T13:50:39.939155+00:00",
-  "git_commit": "b9c3a2c",
+  "generated_at": "2026-09-03T05:09:30.842375+00:00",
+  "git_commit": "762846c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -17,49 +17,49 @@
     {
       "key": "full-catalog",
       "label": "full-catalog",
-      "valid_runs": 3,
+      "valid_runs": 4,
       "invalid_runs": 1,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 4
       },
       "exclusion_reasons": {
         "INVALID": 1
       },
       "sample_level": "最小正式样本",
       "rounds": {
-        "mean": 3.3333,
+        "mean": 3.25,
         "median": 3,
         "min": 3,
         "max": 4,
-        "n": 3
+        "n": 4
       },
       "duration": {
-        "mean": 166392.3333,
-        "median": 35519,
+        "mean": 138628.5,
+        "median": 45428,
         "min": 12385,
         "max": 451273,
-        "n": 3
+        "n": 4
       },
       "input_tokens": {
-        "mean": 4612,
+        "mean": 4463.5,
         "median": 4018,
         "min": 4017,
         "max": 5801,
-        "n": 3
+        "n": 4
       },
       "output_tokens": {
-        "mean": 11393.3333,
-        "median": 1332,
+        "mean": 8925.25,
+        "median": 1426.5,
         "min": 1267,
         "max": 31581,
-        "n": 3
+        "n": 4
       },
       "tool_calls": {
-        "mean": 2.3333,
+        "mean": 2.25,
         "median": 2,
         "min": 2,
         "max": 3,
-        "n": 3
+        "n": 4
       },
       "metrics": {
         "task_success_rate": null,
@@ -69,19 +69,19 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 3.3333,
-        "mean_tokens": 16005.3333,
-        "median_duration_ms": 35519,
+        "mean_rounds": 3.25,
+        "mean_tokens": 13388.75,
+        "median_duration_ms": 45428,
         "p95_duration_ms": null
       }
     },
     {
       "key": "remove-preferred",
       "label": "remove-preferred",
-      "valid_runs": 3,
+      "valid_runs": 4,
       "invalid_runs": 1,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 4
       },
       "exclusion_reasons": {
         "INVALID": 1
@@ -92,35 +92,35 @@
         "median": 3,
         "min": 3,
         "max": 3,
-        "n": 3
+        "n": 4
       },
       "duration": {
-        "mean": 37308.3333,
-        "median": 28959,
-        "min": 28495,
+        "mean": 33882.5,
+        "median": 28727,
+        "min": 23605,
         "max": 54471,
-        "n": 3
+        "n": 4
       },
       "input_tokens": {
-        "mean": 3777.3333,
+        "mean": 3777.25,
         "median": 3777,
         "min": 3777,
         "max": 3778,
-        "n": 3
+        "n": 4
       },
       "output_tokens": {
-        "mean": 1904.3333,
-        "median": 1674,
-        "min": 1099,
+        "mean": 1701.25,
+        "median": 1386.5,
+        "min": 1092,
         "max": 2940,
-        "n": 3
+        "n": 4
       },
       "tool_calls": {
         "mean": 2,
         "median": 2,
         "min": 2,
         "max": 2,
-        "n": 3
+        "n": 4
       },
       "metrics": {
         "task_success_rate": null,
@@ -131,57 +131,57 @@
         "c1_violation_rate": null,
         "c2_violation_rate": null,
         "mean_rounds": 3,
-        "mean_tokens": 5681.6666,
-        "median_duration_ms": 28959,
+        "mean_tokens": 5478.5,
+        "median_duration_ms": 28727,
         "p95_duration_ms": null
       }
     },
     {
       "key": "remove-preferred-and-alternative",
       "label": "remove-preferred-and-alternative",
-      "valid_runs": 3,
+      "valid_runs": 10,
       "invalid_runs": 7,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 10
       },
       "exclusion_reasons": {
         "INVALID": 7
       },
-      "sample_level": "最小正式样本",
+      "sample_level": "扩展样本",
       "rounds": {
-        "mean": 3,
+        "mean": 2.9,
         "median": 3,
-        "min": 3,
-        "max": 3,
-        "n": 3
+        "min": 1,
+        "max": 4,
+        "n": 10
       },
       "duration": {
-        "mean": 26256.6667,
-        "median": 25488,
-        "min": 14261,
-        "max": 39021,
-        "n": 3
+        "mean": 30245.9,
+        "median": 34787,
+        "min": 5029,
+        "max": 44876,
+        "n": 10
       },
       "input_tokens": {
-        "mean": 3777.6667,
+        "mean": 3674,
         "median": 3778,
-        "min": 3777,
-        "max": 3778,
-        "n": 3
+        "min": 1035,
+        "max": 5483,
+        "n": 10
       },
       "output_tokens": {
-        "mean": 2351,
-        "median": 1515,
-        "min": 1497,
+        "mean": 1793.7,
+        "median": 1658.5,
+        "min": 215,
         "max": 4041,
-        "n": 3
+        "n": 10
       },
       "tool_calls": {
-        "mean": 2,
+        "mean": 1.9,
         "median": 2,
-        "min": 2,
-        "max": 2,
-        "n": 3
+        "min": 0,
+        "max": 3,
+        "n": 10
       },
       "metrics": {
         "task_success_rate": null,
@@ -191,9 +191,9 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 3,
-        "mean_tokens": 6128.6667,
-        "median_duration_ms": 25488,
+        "mean_rounds": 2.9,
+        "mean_tokens": 5467.7,
+        "median_duration_ms": 34787,
         "p95_duration_ms": null
       }
     }

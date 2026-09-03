@@ -2,8 +2,8 @@
   "batch_id": "c9928a3d-fe5a-476e-8266-f8006150c4fc",
   "experiment_type": "experiment-series",
   "experiment_name": "tool-availability-degradation · cmp-multi-travel-01",
-  "generated_at": "2026-09-02T10:03:53.005337+00:00",
-  "git_commit": "b9c3a2c",
+  "generated_at": "2026-09-03T05:09:29.051525+00:00",
+  "git_commit": "762846c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -17,49 +17,49 @@
     {
       "key": "full-catalog",
       "label": "full-catalog",
-      "valid_runs": 3,
+      "valid_runs": 5,
       "invalid_runs": 2,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 5
       },
       "exclusion_reasons": {
         "INVALID": 2
       },
-      "sample_level": "最小正式样本",
+      "sample_level": "扩展样本",
       "rounds": {
-        "mean": 3.3333,
-        "median": 4,
+        "mean": 3,
+        "median": 3,
         "min": 2,
         "max": 4,
-        "n": 3
+        "n": 5
       },
       "duration": {
-        "mean": 28290,
+        "mean": 28815.4,
         "median": 26257,
         "min": 19965,
         "max": 38648,
-        "n": 3
+        "n": 5
       },
       "input_tokens": {
-        "mean": 5747.3333,
-        "median": 6762,
-        "min": 3050,
+        "mean": 5102,
+        "median": 5230,
+        "min": 3038,
         "max": 7430,
-        "n": 3
+        "n": 5
       },
       "output_tokens": {
-        "mean": 1799.3333,
+        "mean": 1716.2,
         "median": 1664,
-        "min": 1333,
+        "min": 1312,
         "max": 2401,
-        "n": 3
+        "n": 5
       },
       "tool_calls": {
-        "mean": 5,
+        "mean": 4.8,
         "median": 6,
         "min": 3,
         "max": 6,
-        "n": 3
+        "n": 5
       },
       "metrics": {
         "task_success_rate": null,
@@ -69,8 +69,8 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 3.3333,
-        "mean_tokens": 7546.6666000000005,
+        "mean_rounds": 3,
+        "mean_tokens": 6818.2,
         "median_duration_ms": 26257,
         "p95_duration_ms": null
       }
@@ -79,12 +79,12 @@
       "key": "remove-preferred",
       "label": "remove-preferred",
       "valid_runs": 3,
-      "invalid_runs": 1,
+      "invalid_runs": 2,
       "stop_reasons": {
         "FINAL_ANSWER": 3
       },
       "exclusion_reasons": {
-        "INVALID": 1
+        "INVALID": 2
       },
       "sample_level": "最小正式样本",
       "rounds": {
@@ -139,49 +139,49 @@
     {
       "key": "remove-preferred-and-alternative",
       "label": "remove-preferred-and-alternative",
-      "valid_runs": 3,
+      "valid_runs": 5,
       "invalid_runs": 2,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 5
       },
       "exclusion_reasons": {
         "INVALID": 2
       },
-      "sample_level": "最小正式样本",
+      "sample_level": "扩展样本",
       "rounds": {
-        "mean": 2.3333,
+        "mean": 2.4,
         "median": 2,
         "min": 2,
         "max": 3,
-        "n": 3
+        "n": 5
       },
       "duration": {
-        "mean": 15904,
-        "median": 14075,
+        "mean": 15971.8,
+        "median": 14694,
         "min": 11624,
         "max": 22013,
-        "n": 3
+        "n": 5
       },
       "input_tokens": {
-        "mean": 3379,
-        "median": 2862,
+        "mean": 3520.6,
+        "median": 3053,
         "min": 2862,
         "max": 4413,
-        "n": 3
+        "n": 5
       },
       "output_tokens": {
-        "mean": 1290.3333,
-        "median": 1009,
+        "mean": 1320.6,
+        "median": 1315,
         "min": 858,
         "max": 2004,
-        "n": 3
+        "n": 5
       },
       "tool_calls": {
-        "mean": 3.3333,
-        "median": 3,
+        "mean": 3.6,
+        "median": 4,
         "min": 3,
         "max": 4,
-        "n": 3
+        "n": 5
       },
       "metrics": {
         "task_success_rate": null,
@@ -191,9 +191,9 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 2.3333,
-        "mean_tokens": 4669.3333,
-        "median_duration_ms": 14075,
+        "mean_rounds": 2.4,
+        "mean_tokens": 4841.2,
+        "median_duration_ms": 14694,
         "p95_duration_ms": null
       }
     }

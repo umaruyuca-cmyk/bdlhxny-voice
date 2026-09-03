@@ -2,8 +2,8 @@
   "batch_id": "b944194f-9be4-4a26-b80c-295e1b2f07c8",
   "experiment_type": "experiment-series",
   "experiment_name": "max-agent-steps-stability · cmp-multi-data-01",
-  "generated_at": "2026-09-02T09:07:45.534438+00:00",
-  "git_commit": "b9c3a2c",
+  "generated_at": "2026-09-03T05:09:28.415393+00:00",
+  "git_commit": "762846c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -133,49 +133,49 @@
     {
       "key": "steps-5",
       "label": "steps-5",
-      "valid_runs": 3,
-      "invalid_runs": 3,
+      "valid_runs": 5,
+      "invalid_runs": 4,
       "stop_reasons": {
-        "FINAL_ANSWER": 3
+        "FINAL_ANSWER": 5
       },
       "exclusion_reasons": {
-        "INVALID": 3
+        "INVALID": 4
       },
-      "sample_level": "最小正式样本",
+      "sample_level": "扩展样本",
       "rounds": {
-        "mean": 3,
+        "mean": 3.2,
         "median": 3,
         "min": 3,
-        "max": 3,
-        "n": 3
+        "max": 4,
+        "n": 5
       },
       "duration": {
-        "mean": 29571.3333,
-        "median": 26677,
+        "mean": 41671.2,
+        "median": 42944,
         "min": 18968,
-        "max": 43069,
-        "n": 3
+        "max": 76698,
+        "n": 5
       },
       "input_tokens": {
-        "mean": 4671.6667,
+        "mean": 5091.6,
         "median": 4677,
         "min": 4661,
-        "max": 4677,
-        "n": 3
+        "max": 6766,
+        "n": 5
       },
       "output_tokens": {
-        "mean": 1351,
-        "median": 1665,
+        "mean": 1688,
+        "median": 1672,
         "min": 716,
-        "max": 1672,
-        "n": 3
+        "max": 2233,
+        "n": 5
       },
       "tool_calls": {
-        "mean": 3,
+        "mean": 3.2,
         "median": 3,
         "min": 3,
-        "max": 3,
-        "n": 3
+        "max": 4,
+        "n": 5
       },
       "metrics": {
         "task_success_rate": null,
@@ -185,9 +185,9 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 3,
-        "mean_tokens": 6022.6667,
-        "median_duration_ms": 26677,
+        "mean_rounds": 3.2,
+        "mean_tokens": 6779.6,
+        "median_duration_ms": 42944,
         "p95_duration_ms": null
       }
     }
