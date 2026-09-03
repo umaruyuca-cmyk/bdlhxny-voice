@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "governance-on-off · cmp-multi-data-01",
   "generated_at": "2026-09-02T07:55:55.847496+00:00",
-  "git_commit": "9b27267",
+  "git_commit": "b9c3a2c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [

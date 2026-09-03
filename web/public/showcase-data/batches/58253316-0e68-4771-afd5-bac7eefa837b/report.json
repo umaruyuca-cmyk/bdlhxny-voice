@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "temperature-stability · cmp-basic-single-01",
   "generated_at": "2026-09-02T08:22:47.931788+00:00",
-  "git_commit": "9b27267",
+  "git_commit": "b9c3a2c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [

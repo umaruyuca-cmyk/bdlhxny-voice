@@ -201,7 +201,9 @@ export async function publishSeriesBatch({ artifactsDir = DEFAULT_ARTIFACTS, ser
     key: str(variant),
     label: str(variant),
     valid_runs: int(agg.included_count),
-    invalid_runs: int(agg.excluded_count) + int(agg.failed_count),
+    // 无效 = 物理尝试(完成+失败)− 有效。不得用 excluded+failed:
+    // 被熔断的失败运行既进 excluded 又进 failed,会双计(修复 2026-09-03)
+    invalid_runs: Math.max(0, int(agg.completed_count) - int(agg.included_count)) + int(agg.failed_count),
     stop_reasons: countMapOf(agg.stop_reasons),
     exclusion_reasons: countMapOf(agg.exclusion_reasons),
     sample_level: agg.sample_level && agg.sample_level.label ? str(agg.sample_level.label) : undefined,

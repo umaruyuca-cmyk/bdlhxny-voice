@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "compression-method-comparison · ctx-session-database-deploy-01",
   "generated_at": "2026-09-02T14:49:38.597212+00:00",
-  "git_commit": "9b27267",
+  "git_commit": "b9c3a2c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -18,7 +18,7 @@
       "key": "budgeted-extractive",
       "label": "budgeted-extractive",
       "valid_runs": 1,
-      "invalid_runs": 7,
+      "invalid_runs": 6,
       "stop_reasons": {
         "FINAL_ANSWER": 1
       },

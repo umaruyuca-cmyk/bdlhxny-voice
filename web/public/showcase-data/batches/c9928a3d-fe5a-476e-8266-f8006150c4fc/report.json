@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "tool-availability-degradation · cmp-multi-travel-01",
   "generated_at": "2026-09-02T10:03:53.005337+00:00",
-  "git_commit": "9b27267",
+  "git_commit": "b9c3a2c",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -18,7 +18,7 @@
       "key": "full-catalog",
       "label": "full-catalog",
       "valid_runs": 3,
-      "invalid_runs": 4,
+      "invalid_runs": 2,
       "stop_reasons": {
         "FINAL_ANSWER": 3
       },
@@ -79,7 +79,7 @@
       "key": "remove-preferred",
       "label": "remove-preferred",
       "valid_runs": 3,
-      "invalid_runs": 2,
+      "invalid_runs": 1,
       "stop_reasons": {
         "FINAL_ANSWER": 3
       },
@@ -140,7 +140,7 @@
       "key": "remove-preferred-and-alternative",
       "label": "remove-preferred-and-alternative",
       "valid_runs": 3,
-      "invalid_runs": 4,
+      "invalid_runs": 2,
       "stop_reasons": {
         "FINAL_ANSWER": 3
       },
