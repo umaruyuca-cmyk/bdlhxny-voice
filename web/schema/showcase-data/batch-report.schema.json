@@ -37,6 +37,25 @@
           "label": { "type": "string", "minLength": 1 },
           "valid_runs": { "type": "integer", "minimum": 0 },
           "invalid_runs": { "type": "integer", "minimum": 0 },
+          "stop_reasons": {
+            "type": "object",
+            "description": "收尾方式计数(实验组统计;如 FINAL_ANSWER×3、MAX_AGENT_STEPS×1)。上下文批次不携带。",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          },
+          "exclusion_reasons": {
+            "type": "object",
+            "description": "无效运行排除原因计数(实验组统计)。",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          },
+          "sample_level": {
+            "type": "string",
+            "description": "样本等级标签(实验组统计,如 最小正式样本/观察结果)。"
+          },
+          "rounds": { "$ref": "#/definitions/statBlock" },
+          "duration": { "$ref": "#/definitions/statBlock" },
+          "input_tokens": { "$ref": "#/definitions/statBlock" },
+          "output_tokens": { "$ref": "#/definitions/statBlock" },
+          "tool_calls": { "$ref": "#/definitions/statBlock" },
           "metrics": {
             "type": "object",
             "additionalProperties": false,
@@ -119,6 +138,18 @@
   "definitions": {
     "num": { "type": ["number", "integer", "null"], "description": "未运行为 null" },
     "num01": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "statBlock": {
+      "type": "object",
+      "description": "实验组统计的分布块(均值/中位数/最小/最大/样本数);上游未携带的键为 null。",
+      "additionalProperties": false,
+      "properties": {
+        "mean": { "$ref": "#/definitions/num" },
+        "median": { "$ref": "#/definitions/num" },
+        "min": { "$ref": "#/definitions/num" },
+        "max": { "$ref": "#/definitions/num" },
+        "n": { "type": ["integer", "null"] }
+      }
+    },
     "caseGroupResult": {
       "type": "object",
       "additionalProperties": false,

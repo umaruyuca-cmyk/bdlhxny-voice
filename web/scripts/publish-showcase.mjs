@@ -175,11 +175,41 @@ export async function publishSeriesBatch({ artifactsDir = DEFAULT_ARTIFACTS, ser
     const block = agg[key] || {};
     return Number.isFinite(Number(block.mean)) ? Number(block.mean) : null;
   };
-  const groups = Object.entries(stats.by_variant || {}).map(([variant, agg]) => ({
+  // 分布块整体投影:上游统计真实携带才落键,空块不发布(页面显示「未记录」)
+  const stripUndefined = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+  const blockOf = (agg, key) => {
+    const raw = agg[key];
+    if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) return undefined;
+    return {
+      mean: numOrNull(raw.mean),
+      median: numOrNull(raw.median),
+      min: numOrNull(raw.min),
+      max: numOrNull(raw.max),
+      n: Number.isInteger(raw.n) ? raw.n : null,
+    };
+  };
+  const countMapOf = (raw) => {
+    if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) return undefined;
+    const out = {};
+    for (const [k, v] of Object.entries(raw)) {
+      const count = Number(v);
+      if (Number.isInteger(count) && count > 0) out[str(k)] = count;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  };
+  const groups = Object.entries(stats.by_variant || {}).map(([variant, agg]) => stripUndefined({
     key: str(variant),
     label: str(variant),
     valid_runs: int(agg.included_count),
     invalid_runs: int(agg.excluded_count) + int(agg.failed_count),
+    stop_reasons: countMapOf(agg.stop_reasons),
+    exclusion_reasons: countMapOf(agg.exclusion_reasons),
+    sample_level: agg.sample_level && agg.sample_level.label ? str(agg.sample_level.label) : undefined,
+    rounds: blockOf(agg, "actual_agent_steps"),
+    duration: blockOf(agg, "duration_ms"),
+    input_tokens: blockOf(agg, "input_tokens"),
+    output_tokens: blockOf(agg, "output_tokens"),
+    tool_calls: blockOf(agg, "tool_calls_per_run"),
     metrics: {
       task_success_rate: num(agg.success_rate),
       tool_selection_rate: null,
@@ -692,6 +722,7 @@ async function writeJson(file, payload) {
 }
 
 const num = (v) => (Number.isFinite(v) ? v : null);
+const numOrNull = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 const int = (v) => (Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : 0);
 const str = (v) => (v === null || v === undefined ? "" : String(v));
 const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, obj[k]]));

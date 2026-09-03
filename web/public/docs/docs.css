@@ -382,3 +382,12 @@ section { scroll-margin-top: 72px; }
   .kv th { width: 110px; }
 }
 code, .hash { overflow-wrap: anywhere; }
+
+/* 结果页:实验总览可点击行与当前选中行 */
+.tbl tbody tr[data-batch] { cursor: pointer; }
+.tbl tbody tr[data-batch]:hover { background: #f2f6fb; }
+.tbl tbody tr.row-on { background: #eef4fc; box-shadow: inset 3px 0 0 var(--accent); }
+/* 结果页:结论摘要的核心结论与分析要点 */
+.concl-core { font-size: 15px; color: var(--ink); }
+.concl-list { margin: 2px 0 0; padding-left: 18px; }
+.concl-list li { margin: 4px 0; }

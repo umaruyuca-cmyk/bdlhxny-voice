@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "governance-on-off · cmp-basic-single-01",
   "generated_at": "2026-09-02T07:28:56.926009+00:00",
-  "git_commit": "28a3639",
+  "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -19,6 +19,45 @@
       "label": "off",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
+      "duration": {
+        "mean": 7671,
+        "median": 8090,
+        "min": 3779,
+        "max": 11144,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 2153,
+        "median": 2153,
+        "min": 2153,
+        "max": 2153,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 341.6667,
+        "median": 328,
+        "min": 124,
+        "max": 573,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -38,6 +77,45 @@
       "label": "standard",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
+      "duration": {
+        "mean": 6328.6667,
+        "median": 5567,
+        "min": 3652,
+        "max": 9767,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 2153,
+        "median": 2153,
+        "min": 2153,
+        "max": 2153,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 241.6667,
+        "median": 134,
+        "min": 134,
+        "max": 457,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,

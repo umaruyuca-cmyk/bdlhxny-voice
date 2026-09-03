@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "max-agent-steps-stability · cmp-multi-data-01",
   "generated_at": "2026-09-02T09:07:45.534438+00:00",
-  "git_commit": "889dd6a",
+  "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -19,6 +19,45 @@
       "label": "steps-3",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "MAX_AGENT_STEPS": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 21404.3333,
+        "median": 19584,
+        "min": 8901,
+        "max": 35728,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 4677,
+        "median": 4677,
+        "min": 4677,
+        "max": 4677,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 1198.3333,
+        "median": 1391,
+        "min": 732,
+        "max": 1472,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 4,
+        "median": 4,
+        "min": 4,
+        "max": 4,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -38,6 +77,45 @@
       "label": "steps-4",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 24960.6667,
+        "median": 28586,
+        "min": 11797,
+        "max": 34499,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 4673,
+        "median": 4677,
+        "min": 4665,
+        "max": 4677,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 1473.6667,
+        "median": 1692,
+        "min": 688,
+        "max": 2041,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -57,6 +135,48 @@
       "label": "steps-5",
       "valid_runs": 3,
       "invalid_runs": 6,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "exclusion_reasons": {
+        "INVALID": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 29571.3333,
+        "median": 26677,
+        "min": 18968,
+        "max": 43069,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 4671.6667,
+        "median": 4677,
+        "min": 4661,
+        "max": 4677,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 1351,
+        "median": 1665,
+        "min": 716,
+        "max": 1672,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,

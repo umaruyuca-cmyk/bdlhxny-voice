@@ -1,13 +1,13 @@
 {
-  "batch_id": "9e26b12e-3efd-4815-9da8-c0cb9089222d",
+  "batch_id": "bb1adef7-3026-47b1-ab34-19bc07781e85",
   "experiment_type": "experiment-series",
-  "experiment_name": "compression-method-comparison · ctx-session-product-evolution-01",
-  "generated_at": "2026-09-02T11:40:12.452962+00:00",
+  "experiment_name": "compression-method-comparison · ctx-session-database-deploy-01",
+  "generated_at": "2026-09-02T14:49:38.597212+00:00",
   "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
-      "ctx-session-product-evolution-01"
+      "ctx-session-database-deploy-01"
     ],
     "runs_per_case": 1,
     "tool_data": "frozen",
@@ -18,9 +18,12 @@
       "key": "budgeted-extractive",
       "label": "budgeted-extractive",
       "valid_runs": 1,
-      "invalid_runs": 0,
+      "invalid_runs": 7,
       "stop_reasons": {
         "FINAL_ANSWER": 1
+      },
+      "exclusion_reasons": {
+        "INVALID": 6
       },
       "sample_level": "最小正式样本",
       "rounds": {
@@ -31,10 +34,10 @@
         "n": 1
       },
       "duration": {
-        "mean": 27692,
-        "median": 27692,
-        "min": 27692,
-        "max": 27692,
+        "mean": 218091,
+        "median": 218091,
+        "min": 218091,
+        "max": 218091,
         "n": 1
       },
       "tool_calls": {
@@ -54,7 +57,7 @@
         "c2_violation_rate": null,
         "mean_rounds": 1,
         "mean_tokens": null,
-        "median_duration_ms": 27692,
+        "median_duration_ms": 218091,
         "p95_duration_ms": null
       }
     },
@@ -68,17 +71,17 @@
       },
       "sample_level": "最小正式样本",
       "rounds": {
-        "mean": 3,
-        "median": 3,
-        "min": 3,
-        "max": 3,
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
         "n": 1
       },
       "duration": {
-        "mean": 34487,
-        "median": 34487,
-        "min": 34487,
-        "max": 34487,
+        "mean": 26745,
+        "median": 26745,
+        "min": 26745,
+        "max": 26745,
         "n": 1
       },
       "tool_calls": {
@@ -96,9 +99,9 @@
         "number_hallucination_rate": null,
         "c1_violation_rate": null,
         "c2_violation_rate": null,
-        "mean_rounds": 3,
+        "mean_rounds": 2,
         "mean_tokens": null,
-        "median_duration_ms": 34487,
+        "median_duration_ms": 26745,
         "p95_duration_ms": null
       }
     }

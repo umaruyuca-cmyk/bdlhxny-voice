@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "temperature-stability · cmp-basic-single-01",
   "generated_at": "2026-09-02T08:22:47.931788+00:00",
-  "git_commit": "889dd6a",
+  "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -19,6 +19,45 @@
       "label": "t0.0",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
+      "duration": {
+        "mean": 8997.6667,
+        "median": 4836,
+        "min": 3994,
+        "max": 18163,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 2153,
+        "median": 2153,
+        "min": 2153,
+        "max": 2153,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 262.6667,
+        "median": 227,
+        "min": 123,
+        "max": 438,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -38,6 +77,45 @@
       "label": "t0.1",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
+      "duration": {
+        "mean": 4811,
+        "median": 4480,
+        "min": 3369,
+        "max": 6584,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 2153,
+        "median": 2153,
+        "min": 2153,
+        "max": 2153,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 238.6667,
+        "median": 152,
+        "min": 134,
+        "max": 430,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -57,6 +135,45 @@
       "label": "t0.3",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
+      "duration": {
+        "mean": 6426.6667,
+        "median": 6446,
+        "min": 5662,
+        "max": 7172,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 2153,
+        "median": 2153,
+        "min": 2153,
+        "max": 2153,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 368.3333,
+        "median": 423,
+        "min": 161,
+        "max": 521,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -76,6 +193,45 @@
       "label": "t0.7",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
+      "duration": {
+        "mean": 4449.3333,
+        "median": 4351,
+        "min": 3055,
+        "max": 5942,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 2153,
+        "median": 2153,
+        "min": 2153,
+        "max": 2153,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 195,
+        "median": 213,
+        "min": 152,
+        "max": 220,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,

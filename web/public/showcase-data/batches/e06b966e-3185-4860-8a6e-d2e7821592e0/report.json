@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "tool-availability-degradation · cmp-combo-route-01",
   "generated_at": "2026-09-02T13:50:39.939155+00:00",
-  "git_commit": "889dd6a",
+  "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -19,6 +19,48 @@
       "label": "full-catalog",
       "valid_runs": 3,
       "invalid_runs": 2,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "exclusion_reasons": {
+        "INVALID": 1
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3.3333,
+        "median": 3,
+        "min": 3,
+        "max": 4,
+        "n": 3
+      },
+      "duration": {
+        "mean": 166392.3333,
+        "median": 35519,
+        "min": 12385,
+        "max": 451273,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 4612,
+        "median": 4018,
+        "min": 4017,
+        "max": 5801,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 11393.3333,
+        "median": 1332,
+        "min": 1267,
+        "max": 31581,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 2.3333,
+        "median": 2,
+        "min": 2,
+        "max": 3,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -38,6 +80,48 @@
       "label": "remove-preferred",
       "valid_runs": 3,
       "invalid_runs": 2,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "exclusion_reasons": {
+        "INVALID": 1
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 37308.3333,
+        "median": 28959,
+        "min": 28495,
+        "max": 54471,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 3777.3333,
+        "median": 3777,
+        "min": 3777,
+        "max": 3778,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 1904.3333,
+        "median": 1674,
+        "min": 1099,
+        "max": 2940,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -57,6 +141,48 @@
       "label": "remove-preferred-and-alternative",
       "valid_runs": 3,
       "invalid_runs": 14,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "exclusion_reasons": {
+        "INVALID": 7
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 26256.6667,
+        "median": 25488,
+        "min": 14261,
+        "max": 39021,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 3777.6667,
+        "median": 3778,
+        "min": 3777,
+        "max": 3778,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 2351,
+        "median": 1515,
+        "min": 1497,
+        "max": 4041,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 2,
+        "median": 2,
+        "min": 2,
+        "max": 2,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,

@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "governance-on-off · cmp-multi-data-01",
   "generated_at": "2026-09-02T07:55:55.847496+00:00",
-  "git_commit": "889dd6a",
+  "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -19,6 +19,45 @@
       "label": "off",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 29940,
+        "median": 18315,
+        "min": 17047,
+        "max": 54458,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 4677,
+        "median": 4677,
+        "min": 4677,
+        "max": 4677,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 1173.3333,
+        "median": 797,
+        "min": 655,
+        "max": 2068,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,
@@ -38,6 +77,45 @@
       "label": "standard",
       "valid_runs": 3,
       "invalid_runs": 0,
+      "stop_reasons": {
+        "FINAL_ANSWER": 3
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 2.6667,
+        "median": 3,
+        "min": 2,
+        "max": 3,
+        "n": 3
+      },
+      "duration": {
+        "mean": 24535.3333,
+        "median": 28266,
+        "min": 13871,
+        "max": 31469,
+        "n": 3
+      },
+      "input_tokens": {
+        "mean": 4129,
+        "median": 4677,
+        "min": 3033,
+        "max": 4677,
+        "n": 3
+      },
+      "output_tokens": {
+        "mean": 2201.3333,
+        "median": 2402,
+        "min": 748,
+        "max": 3454,
+        "n": 3
+      },
+      "tool_calls": {
+        "mean": 3,
+        "median": 3,
+        "min": 3,
+        "max": 3,
+        "n": 3
+      },
       "metrics": {
         "task_success_rate": null,
         "tool_selection_rate": null,

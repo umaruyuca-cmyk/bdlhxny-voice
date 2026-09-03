@@ -3,7 +3,7 @@
   "experiment_type": "experiment-series",
   "experiment_name": "compression-method-comparison · ctx-session-context-engine-debug-01",
   "generated_at": "2026-09-02T13:50:36.520701+00:00",
-  "git_commit": "889dd6a",
+  "git_commit": "9b27267",
   "model": "configured-model",
   "fixed_conditions": {
     "case_ids": [
@@ -19,6 +19,34 @@
       "label": "budgeted-extractive",
       "valid_runs": 1,
       "invalid_runs": 1,
+      "stop_reasons": {
+        "FINAL_ANSWER": 1
+      },
+      "exclusion_reasons": {
+        "INVALID": 1
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 1,
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 1
+      },
+      "duration": {
+        "mean": 66067,
+        "median": 66067,
+        "min": 66067,
+        "max": 66067,
+        "n": 1
+      },
+      "tool_calls": {
+        "mean": 0,
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "n": 1
+      },
       "metrics": {
         "task_success_rate": 0,
         "tool_selection_rate": null,
@@ -38,6 +66,34 @@
       "label": "budgeted-hybrid-v1",
       "valid_runs": 1,
       "invalid_runs": 8,
+      "stop_reasons": {
+        "FINAL_ANSWER": 1
+      },
+      "exclusion_reasons": {
+        "INVALID": 4
+      },
+      "sample_level": "最小正式样本",
+      "rounds": {
+        "mean": 4,
+        "median": 4,
+        "min": 4,
+        "max": 4,
+        "n": 1
+      },
+      "duration": {
+        "mean": 27398,
+        "median": 27398,
+        "min": 27398,
+        "max": 27398,
+        "n": 1
+      },
+      "tool_calls": {
+        "mean": 9,
+        "median": 9,
+        "min": 9,
+        "max": 9,
+        "n": 1
+      },
       "metrics": {
         "task_success_rate": 0,
         "tool_selection_rate": null,

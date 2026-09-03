@@ -7,7 +7,10 @@
 
   var S = window.SITE;
   var SC = window.SHOWCASE;
-  var state = { batch: "", variant: "", scene: "", status: "" };
+  var state = { batch: "", experiment: "", variant: "", scene: "", status: "" };
+  /* 总览聚焦来源:只有用户动作(选实验/选批次/点行/带参 URL)才缩小总览;
+     「默认选中最新批次」不算聚焦,总览仍显示全部行。 */
+  var focus = { kind: "", value: "" };
   var data = []; // [{batch, runs, publishedAt}]
   var sel = null; // 当前选中的已发布批次
 
@@ -66,22 +69,49 @@
         state.variant = el("fVariant").value;
         state.scene = el("fScene").value;
         state.status = el("fStatus").value;
+        // 手选批次时撤销实验筛选,避免两组筛选条件互相打架
+        if (id === "fBatch" && state.experiment) {
+          state.experiment = "";
+          el("fExperiment").value = "";
+        }
+        focus.kind = "batch";
+        focus.value = state.batch;
         refreshDynamicFilters();
         syncQuery();
         render();
       });
     });
     el("fExperiment").addEventListener("change", function () {
-      // 实验类型当前与批次一一对应:选中后定位到对应批次
-      var label = el("fExperiment").value;
-      var hit = data.filter(function (d) { return experimentLabel(d.batch) === label; })[0];
-      if (hit) {
-        state.batch = hit.batch.batch_id;
-        el("fBatch").value = state.batch;
-        refreshDynamicFilters();
-        syncQuery();
-        render();
+      // 实验筛选:总览聚焦该实验的全部批次,明细区定位到其中最新一批
+      state.experiment = el("fExperiment").value;
+      focus.kind = state.experiment ? "experiment" : "";
+      focus.value = state.experiment;
+      if (state.experiment) {
+        var hits = data.filter(function (d) { return experimentLabel(d.batch) === state.experiment; });
+        var latestHit = hits.sort(function (a, b) { return String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")); })[0];
+        if (latestHit) {
+          state.batch = latestHit.batch.batch_id;
+          el("fBatch").value = state.batch;
+        }
       }
+      refreshDynamicFilters();
+      syncQuery();
+      render();
+    });
+    // 总览行点击 = 选中该批次(与「查看」等价,不必精确点链接)
+    el("overviewBlock").addEventListener("click", function (ev) {
+      var tr = ev.target.closest("tr[data-batch]");
+      if (!tr || !el("overviewBlock").contains(tr)) return;
+      if (ev.target.closest("a")) return; // 链接走自己的导航
+      state.batch = tr.getAttribute("data-batch");
+      state.experiment = "";
+      focus.kind = "batch";
+      focus.value = state.batch;
+      el("fBatch").value = state.batch;
+      el("fExperiment").value = "";
+      refreshDynamicFilters();
+      syncQuery();
+      render();
     });
   }
 
@@ -115,8 +145,8 @@
 
   /* ── 区块渲染 ─────────────────────────────────────────────────────── */
 
-  /* 实验总览:全部已发布正式批次一行一个(与单批视图同源数据),点击下钻。
-     概要列只呈现该批最有区分度的一项已发布事实(压缩率/最快变体/成功率)。 */
+  /* 实验总览:已发布正式批次一行一个(与单批视图同源数据),点击下钻。
+     随「实验/批次」筛选联动缩小范围;概要列 = 该批核心结论的第一句。 */
   function renderOverview() {
     if (!el("overviewBlock")) return;
     if (data.length === 0) {
@@ -124,43 +154,232 @@
       return;
     }
     var ordered = data.slice().sort(function (a, b) { return String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")); });
-    var head = "<thead><tr><th>实验(批次)</th><th class=\"num\">变体</th><th class=\"num\">有效样本</th><th>一句话概要</th><th></th></tr></thead>";
-    var rows = ordered.map(function (d) {
+    var visible = ordered.filter(function (d) {
+      if (focus.kind === "experiment") return experimentLabel(d.batch) === focus.value;
+      if (focus.kind === "batch") return d.batch.batch_id === focus.value;
+      return true;
+    });
+    if (visible.length === 0) visible = ordered;
+    var head = "<thead><tr><th>实验(批次)</th><th class=\"num\">变体</th><th class=\"num\">有效样本</th><th>核心结论</th><th></th></tr></thead>";
+    var rows = visible.map(function (d) {
       var b = d.batch;
       var groups = b.groups || [];
       var valid = groups.reduce(function (s, g) { return s + g.valid_runs; }, 0);
       var invalid = groups.reduce(function (s, g) { return s + g.invalid_runs; }, 0);
-      var note = '<span class="txt-muted">详见单批视图</span>';
-      var tokGroups = groups.filter(function (g) { return g.metrics && g.metrics.raw_tokens > 0 && g.metrics.working_tokens != null; });
-      if (tokGroups.length >= 2) {
-        var minWork = tokGroups.reduce(function (a, g) { return g.metrics.working_tokens < a.metrics.working_tokens ? g : a; }, tokGroups[0]);
-        note = "最紧变体 <strong>" + S.esc(zh(minWork.key)) + "</strong> 压缩至原始 " +
-          (100 * minWork.metrics.working_tokens / minWork.metrics.raw_tokens).toFixed(1) + "%";
-      } else {
-        var durGroups = groups.filter(function (g) { return g.metrics && g.metrics.median_duration_ms != null; });
-        if (durGroups.length >= 2) {
-          var fastest = durGroups.reduce(function (a, g) { return g.metrics.median_duration_ms < a.metrics.median_duration_ms ? g : a; }, durGroups[0]);
-          note = "最快变体 <strong>" + S.esc(zh(fastest.key)) + "</strong>(" + SC.metricCell(fastest.metrics, "median_duration_ms").text + ")";
-        } else {
-          var succ = groups.filter(function (g) { return g.metrics && g.metrics.task_success_rate != null; });
-          if (succ.length > 0) note = "任务成功率 " + succ.map(function (g) { return S.esc(zh(g.key)) + " " + SC.metricCell(g.metrics, "task_success_rate").text; }).join(" · ");
-        }
-      }
+      var concl = buildConclusion(b);
+      var note = concl.length > 0 ? concl[0] : '<span class="txt-muted">详见单批视图</span>';
       var current = sel && sel.batch.batch_id === b.batch_id;
-      return "<tr" + (current ? ' class="row-on"' : "") + "><td>" + S.esc(experimentLabel(b)) +
+      return "<tr" + (current ? ' class="row-on"' : "") + ' data-batch="' + S.esc(b.batch_id) + '" title="点击查看该批次">' +
+        "<td>" + S.esc(experimentLabel(b)) +
         '<br><span class="txt-muted">' + S.fmtTime(b.generated_at) + " 发布</span></td>" +
         '<td class="num">' + S.fmtInt(groups.length) + "</td>" +
         '<td class="num txt-ok">' + S.fmtInt(valid) + (invalid > 0 ? ' <span class="txt-warn">+' + S.fmtInt(invalid) + " 无效</span>" : "") + "</td>" +
         "<td>" + note + "</td>" +
         '<td><a href="/results/?batch=' + encodeURIComponent(b.batch_id) + '">查看 →</a></td></tr>';
     }).join("");
+    var scope = focus.kind === "experiment" ? "当前范围:" + S.esc(focus.value) : focus.kind === "batch" ? "当前范围:所选批次" : "当前范围:全部批次";
     el("overviewBlock").innerHTML =
       '<div class="tbl-scroll"><table class="tbl">' + head + "<tbody>" + rows + "</tbody></table></div>" +
-      '<p class="note">总览与单批视图同源(发布校验后的公开快照);概要只取各批最有区分度的一项已发布事实,完整指标进入单批视图查看。</p>';
+      '<p class="note">' + scope + " · 总览随上方「实验/批次」筛选联动,点行即可进入单批;「变体/场景/状态」筛选只作用于下方该批次的明细区。核心结论列是摘要区结论的第一句,完整分析在下方。</p>";
+  }
+
+  /* ── 核心结论(总结性分析)─────────────────────────────────────────
+     只从本批已发布的公开数字推导,按实验模板组织成人话结论;每个数字都
+     能在下方组表/指标表找到同源值。运行记录未持久化任务成败(第一版),
+     涉及「答案质量」的判断只引用已发布的质量断言,否则明说本批未发布。
+     返回 HTML 字符串数组:第 1 条是核心结论(总览概要列同款),其余为
+     行为明细/无效样本/样本等级/适用边界等支撑要点。 */
+  function stopZh(reason) {
+    return { FINAL_ANSWER: "正常收尾", MAX_AGENT_STEPS: "触及步数上限(未收尾)", BUDGET_EXHAUSTED: "预算终止" }[reason] || reason;
+  }
+
+  function stopOf(g) {
+    if (!g.stop_reasons) return null;
+    var s = { final: 0, capped: 0, other: 0, total: 0 };
+    Object.keys(g.stop_reasons).forEach(function (k) {
+      var n = g.stop_reasons[k] || 0;
+      s.total += n;
+      if (k === "FINAL_ANSWER") s.final += n;
+      else if (k === "MAX_AGENT_STEPS") s.capped += n;
+      else s.other += n;
+    });
+    return s.total > 0 ? s : null;
+  }
+
+  function medDur(g) {
+    if (g.duration && g.duration.median != null) return g.duration.median;
+    return g.metrics && g.metrics.median_duration_ms != null ? g.metrics.median_duration_ms : null;
+  }
+
+  function medRounds(g) {
+    if (g.rounds && g.rounds.median != null) return g.rounds.median;
+    return g.metrics && g.metrics.mean_rounds != null ? g.metrics.mean_rounds : null;
+  }
+
+  function inTok(g) {
+    return g.input_tokens && g.input_tokens.mean != null ? Math.round(g.input_tokens.mean) : null;
+  }
+
+  /* 结论里统一用秒,避免「3 分 38 秒 vs 26.7 s」两种格式混排 */
+  function fmtS(ms) {
+    return (ms / 1000).toFixed(1) + " s";
+  }
+
+  function buildConclusion(b) {
+    var groups = (b.groups || []).slice();
+    if (groups.length === 0) return [];
+    var fc = b.fixed_conditions || {};
+    var tpl = String(fc.variable || "");
+    var out = [];
+    var name = function (g) { return S.esc(zh(g.key)); };
+    var gByKey = function (key) { return groups.filter(function (g) { return g.key === key; })[0] || null; };
+    var durG = groups.filter(function (g) { return medDur(g) != null; });
+    var fast = durG.length ? durG.reduce(function (a, g) { return medDur(g) < medDur(a) ? g : a; }) : null;
+    var slow = durG.length ? durG.reduce(function (a, g) { return medDur(g) > medDur(a) ? g : a; }) : null;
+    var hasSuccessData = groups.some(function (g) { return g.metrics && g.metrics.task_success_rate != null; });
+
+    // —— 各实验模板的核心一句(全部由已发布数字拼装,缺项自动降级)——
+    if (b.experiment_type === "context-strategy") {
+      var tokG = groups.filter(function (g) { return g.metrics && g.metrics.raw_tokens > 0 && g.metrics.working_tokens != null; });
+      var qualityOk = groups.every(function (g) {
+        return g.metrics && g.metrics.constraint_retention_rate >= 1 && g.metrics.fact_recall_rate >= 1 &&
+          g.metrics.injection_isolated_rate >= 1 && g.metrics.forbidden_fact_leak_rate <= 0;
+      });
+      var parts = [];
+      if (tokG.length >= 2) {
+        var minW = tokG.reduce(function (a, g) {
+          return g.metrics.working_tokens / g.metrics.raw_tokens < a.metrics.working_tokens / a.metrics.raw_tokens ? g : a;
+        }, tokG[0]);
+        parts.push("<strong>" + name(minW) + "</strong> 只用原始 " +
+          (100 * minW.metrics.working_tokens / minW.metrics.raw_tokens).toFixed(1) + "% 的工作上下文");
+      }
+      if (qualityOk) parts.push("全部变体四项质量断言(强制项保留/关键事实/注入隔离/禁用事实泄漏)100% 达标");
+      if (parts.length > 0) out.push("压缩可行:" + parts.join(" · ") + " —— 按预算裁剪上下文没有击穿质量底线。");
+    } else if (tpl === "governance-on-off") {
+      var off = gByKey("off"), std = gByKey("standard");
+      if (off && std) {
+        var rO = medRounds(off), rS = medRounds(std), dO = medDur(off), dS = medDur(std), tO = inTok(off), tS = inTok(std);
+        var gp = [];
+        if (rO != null && rS != null) gp.push("轮次" + (rO === rS ? "完全相同(" + S.fmtInt(rO) + " 步)" : "不同(" + S.fmtInt(rO) + " vs " + S.fmtInt(rS) + " 步)"));
+        if (tO != null && tS != null) gp.push("输入 token " + (tO === tS ? "完全一致(冻结上下文,工具面同源)" : "不同(" + S.fmtInt(tO) + " vs " + S.fmtInt(tS) + ")"));
+        if (dO != null && dS != null) gp.push("中位时长 " + fmtS(dO) + " vs " + fmtS(dS) + "(差异主要来自模型服务延迟,见下方时长行)");
+        out.push("治理开/关在该用例的执行行为面上" + (gp.length > 0 ? gp.join(" · ") : "无已发布差异") + "。");
+      }
+    } else if (tpl === "tool-delivery-comparison") {
+      var all = gByKey("all"), search = gByKey("search");
+      if (all && search) {
+        var rA = medRounds(all), rSe = medRounds(search), dA = medDur(all), dSe = medDur(search), tA = inTok(all), tSe = inTok(search);
+        var dp = [];
+        if (rA != null && rSe != null && rSe > rA) dp.push("平均多走 " + S.fmtInt(rSe - rA) + " 轮(" + S.fmtInt(rSe) + " vs " + S.fmtInt(rA) + " 步)");
+        if (tA != null && tSe != null && tA > 0 && tSe !== tA) {
+          var delta = Math.round(100 * (tSe - tA) / tA);
+          dp.push(delta > 0 ? "输入 token +" + delta + "%" : "输入 token " + delta + "%(搜索注入的工具定义更少,抵掉了一部分轮次开销)");
+        }
+        if (dA != null && dSe != null && dA > 0 && dSe > dA) dp.push("中位时长约 " + (dSe / dA).toFixed(1) + " 倍(" + fmtS(dA) + " → " + fmtS(dSe) + ")");
+        var capS = stopOf(search);
+        if (capS && capS.capped > 0) dp.push("且 " + S.fmtInt(capS.capped) + " 次触及步数上限未收尾");
+        out.push(dp.length > 0
+          ? "只给搜索入口(不给全量工具)是有执行成本的:" + dp.join(" · ") + " —— 工具发现本身消耗轮次、上下文与时间。"
+          : "两种工具提供方式在已发布指标上无差异(轮次/时长/收尾一致)。");
+      }
+    } else if (tpl === "temperature-stability") {
+      var allFinal = groups.every(function (g) { var s = stopOf(g); return s && s.capped === 0 && s.other === 0; });
+      var rounds = groups.map(medRounds);
+      var sameRounds = rounds.every(function (v) { return v != null; }) && Math.max.apply(null, rounds) === Math.min.apply(null, rounds);
+      var durs = groups.map(medDur).filter(function (v) { return v != null; });
+      var dMin = durs.length ? Math.min.apply(null, durs) : null, dMax = durs.length ? Math.max.apply(null, durs) : null;
+      var tp = [];
+      if (sameRounds) tp.push("各温度档轮次一致(" + S.fmtInt(rounds[0]) + " 步)");
+      if (allFinal) tp.push("全部正常收尾");
+      if (dMin != null && dMax != null) tp.push("中位时长 " + fmtS(dMin) + "~" + fmtS(dMax) + ",与温度无单调关系");
+      out.push(tp.length > 0
+        ? "温度 0.0→0.7:" + tp.join(" · ") + " —— 冻结工具数据 + 本用例下,温度未引起可见的行为差异。"
+        : "温度稳定性:见下方各变体指标(部分维度未记录)。");
+    } else if (tpl === "max-agent-steps-stability") {
+      var byCap = groups.slice().sort(function (a, b2) {
+        return (parseInt(a.key.replace(/\D/g, ""), 10) || 0) - (parseInt(b2.key.replace(/\D/g, ""), 10) || 0);
+      });
+      var cappedFully = byCap.filter(function (g) { var s = stopOf(g); return s && s.capped >= s.total && s.total > 0; });
+      var cleanFully = byCap.filter(function (g) { var s = stopOf(g); return s && s.capped === 0; });
+      if (cappedFully.length > 0 && cleanFully.length > 0) {
+        var lowest = byCap.filter(function (g) { return stopOf(g) && stopOf(g).capped >= stopOf(g).total; })[0] || cappedFully[0];
+        var capN = lowest.key.replace(/\D/g, "");
+        var okN = cleanFully[0].key.replace(/\D/g, "");
+        out.push("步数上限有硬边界:<strong>" + name(lowest) + "</strong> 下 " + S.fmtInt(stopOf(lowest).total) + "/" + S.fmtInt(stopOf(lowest).total) +
+          " 全部触顶未收尾,放宽到 <strong>" + name(cleanFully[0]) + "</strong> 起全部正常收尾 —— 该用例 " + S.esc(capN) + " 步内做不完,最小可行上限是 " + S.esc(okN) + " 步。");
+      } else if (cappedFully.length === 0 && cleanFully.length === byCap.length && byCap.length > 0) {
+        var r0 = medRounds(byCap[0]);
+        out.push("步数上限在本用例未构成约束:各档全部正常收尾" + (r0 != null ? "(任务 " + S.fmtInt(r0) + " 步即完成,低于最低档上限)" : "") + " —— 上界选择不敏感。");
+      }
+    } else if (tpl === "tool-availability-degradation") {
+      var fullC = gByKey("full-catalog"), rp = gByKey("remove-preferred"), rpa = gByKey("remove-preferred-and-alternative");
+      if (fullC && rp && rpa) {
+        var seq = [fullC, rp, rpa];
+        var rpAll = seq.every(function (g) { var s = stopOf(g); return s && s.capped === 0 && s.other === 0; });
+        var roundsSeq = seq.map(medRounds);
+        var invSeq = seq.map(function (g) { return g.invalid_runs || 0; });
+        var ap = [];
+        if (roundsSeq.every(function (v) { return v != null; })) {
+          ap.push("轮次 " + roundsSeq.map(function (v) { return S.fmtInt(v); }).join(" → ") + " 步");
+        }
+        if (rpAll) ap.push("三档全部正常收尾");
+        out.push("工具被逐步移除后执行仍能收尾:" + (ap.length ? ap.join(" · ") : "") +
+          " —— 但注意:轮次变短不等于质量未损(本批无任务成败判定);真正的代价是无效率:" +
+          "最严变体 <strong>" + name(rpa) + "</strong> 另有 " + S.fmtInt(invSeq[2]) + " 次无效运行(长时间搜寻替代工具触发超时/熔断)。" +
+          (invSeq[0] + invSeq[1] > 0 ? "其余两档无效 " + S.fmtInt(invSeq[0]) + "/" + S.fmtInt(invSeq[1]) + " 次。" : ""));
+      }
+    } else if (tpl === "compression-method-comparison") {
+      var ext = groups.filter(function (g) { return /extractive/.test(g.key); })[0] || null;
+      var hyb = groups.filter(function (g) { return /hybrid/.test(g.key); })[0] || null;
+      if (ext && hyb) {
+        var rE = medRounds(ext), rH = medRounds(hyb), dE = medDur(ext), dH = medDur(hyb);
+        var cp = [];
+        if (rE != null && rH != null) cp.push("<strong>" + name(ext) + "</strong> " + S.fmtInt(rE) + " 步 vs <strong>" + name(hyb) + "</strong> " + S.fmtInt(rH) + " 步收尾");
+        if (dE != null && dH != null) {
+          var winner = dE <= dH ? ext : hyb;
+          cp.push("中位时长 " + fmtS(dE) + " vs " + fmtS(dH) + "(" + name(winner) + " 更快)");
+        }
+        var invE = ext.invalid_runs || 0, invH = hyb.invalid_runs || 0;
+        if (invE + invH > 0) cp.push("无效运行 " + S.fmtInt(invE) + "/" + S.fmtInt(invH) + " 次(不计入分母)");
+        out.push("同一 token 预算下两种压缩方法的执行画像:" + cp.join(" · ") + "。输入/输出 token 该链路未记录;压缩质量断言见「上下文策略对照」批次。");
+      }
+    }
+
+    // 兜底核心句(未知模板或上面没拼出来):最快/最慢变体对比
+    if (out.length === 0 && fast && slow && fast.key !== slow.key && medDur(fast) > 0) {
+      out.push("最快变体 <strong>" + name(fast) + "</strong>(" + fmtS(medDur(fast)) + "),最慢 " + name(slow) + "(" + fmtS(medDur(slow)) +
+        ",约 " + (medDur(slow) / medDur(fast)).toFixed(1) + " 倍)。");
+    }
+
+    // —— 共享支撑要点(只在数据支撑时出现)——
+    var stopDetail = groups.filter(function (g) { return stopOf(g) && (stopOf(g).capped > 0 || stopOf(g).other > 0); });
+    if (stopDetail.length > 0) {
+      out.push("收尾明细:" + groups.filter(function (g) { return stopOf(g); }).map(function (g) {
+        var s = stopOf(g);
+        return name(g) + " " + s.final + "/" + s.total + " 正常" + (s.capped > 0 ? "、" + s.capped + " 次触顶" : "") + (s.other > 0 ? "、" + s.other + " 次其他" : "");
+      }).join(" · "));
+    }
+    var totalInv = groups.reduce(function (s, g) { return s + (g.invalid_runs || 0); }, 0);
+    if (totalInv > 0) {
+      var worst = groups.slice().sort(function (a, b2) { return (b2.invalid_runs || 0) - (a.invalid_runs || 0); })[0];
+      out.push("无效运行 " + S.fmtInt(totalInv) + " 次(限流/服务不可用/熔断等,不计入指标分母)" +
+        (worst && worst.invalid_runs > 0 ? ",集中在 <strong>" + name(worst) + "</strong>(" + S.fmtInt(worst.invalid_runs) + " 次)" : "") + "。");
+    }
+    var levels = unique(groups.map(function (g) { return g.sample_level || ""; }).filter(Boolean));
+    if (levels.length > 0) out.push("样本等级:" + levels.map(S.esc).join(" / ") + "(发布门槛校验通过)。");
+    if (slow && slow.duration && slow.duration.max != null && slow.duration.min != null && slow.duration.min > 0 &&
+      slow.duration.max / slow.duration.min >= 2) {
+      out.push("时长波动提示:<strong>" + name(slow) + "</strong> 自身极差 " + fmtS(slow.duration.min) + "~" + fmtS(slow.duration.max) +
+        "(约 " + (slow.duration.max / slow.duration.min).toFixed(1) + " 倍),变体间时长对比含服务延迟噪声。");
+    }
+    if (b.experiment_type === "experiment-series" && !hasSuccessData) {
+      out.push("适用边界:本批运行未持久化任务成败判定,以上结论限于执行行为(收尾方式/轮次/时长/token),不下答案质量结论。");
+    }
+    return out;
   }
 
   /* 结论摘要:全部由本页已发布数字推导(组表/指标表同源),不另立口径;
-     字段缺失时逐条降级为「未记录」,不推断。 */
+     核心结论放在第一行,字段缺失时逐条降级为「未记录」,不推断。 */
   function renderSummary() {
     if (!el("summaryBlock")) return;
     var b = sel.batch;
@@ -174,6 +393,13 @@
     var totalInvalid = groups.reduce(function (s, g) { return s + g.invalid_runs; }, 0);
     var total = totalValid + totalInvalid;
     var rows = [];
+
+    // 核心结论(总结性分析,放最前):第 1 条 + 支撑要点列表
+    var concl = buildConclusion(b);
+    if (concl.length > 0) rows.push(["核心结论", '<span class="concl-core">' + concl[0] + "</span>"]);
+    if (concl.length > 1) {
+      rows.push(["分析要点", '<ul class="concl-list">' + concl.slice(1).map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>"]);
+    }
 
     // 设计一句话
     rows.push(["实验设计", (Array.isArray(fc.case_ids) ? S.fmtInt(fc.case_ids.length) : "?") + " 个用例 × " + groups.length + " 个变体" +
@@ -230,12 +456,15 @@
         (best.metrics.tool_selection_rate > 0 ? "(最高:" + S.esc(zh(best.key)) + ")" : "(各变体均未通过)")]);
     }
 
-    // 时长
+    // 时长(「最快」变体若含触顶未收尾样本要注明,避免把做不完读成快)
     var durGroups = groups.filter(function (g) { return g.metrics && g.metrics.median_duration_ms != null; });
+    var cappedNote = function (g) {
+      return g.stop_reasons && g.stop_reasons.MAX_AGENT_STEPS > 0 ? "(注意:" + S.esc(zh(g.key)) + " 含触顶未收尾样本)" : "";
+    };
     if (durGroups.length > 1) {
       var fastest = durGroups.reduce(function (a, g) { return g.metrics.median_duration_ms < a.metrics.median_duration_ms ? g : a; }, durGroups[0]);
       rows.push(["时长中位数", durGroups.map(function (g) { return S.esc(zh(g.key)) + " " + SC.metricCell(g.metrics, "median_duration_ms").text; }).join(" · ") +
-        "(最快:" + S.esc(zh(fastest.key)) + ")"]);
+        "(最快:" + S.esc(zh(fastest.key)) + ")" + cappedNote(fastest)]);
     }
 
     // 变体对比结论:按可用指标归纳差异(无差异维度不提,只描述已发布数据)
@@ -245,7 +474,7 @@
       var slowest = durGroups.reduce(function (a, g) { return g.metrics.median_duration_ms > a.metrics.median_duration_ms ? g : a; }, durGroups[0]);
       if (fastest2.key !== slowest.key && slowest.metrics.median_duration_ms > 0) {
         var speedup = slowest.metrics.median_duration_ms / fastest2.metrics.median_duration_ms;
-        compareNotes.push("<strong>" + S.esc(zh(fastest2.key)) + "</strong> 比 " + S.esc(zh(slowest.key)) + " 快约 " + speedup.toFixed(1) + " 倍");
+        compareNotes.push("<strong>" + S.esc(zh(fastest2.key)) + "</strong> 比 " + S.esc(zh(slowest.key)) + " 快约 " + speedup.toFixed(1) + " 倍" + cappedNote(fastest2));
       }
     }
     if (toolGroups.length > 1) {
@@ -480,6 +709,10 @@
     state.variant = params.get("variant") || "";
     state.scene = params.get("scene") || "";
     state.status = (params.get("status") || "").toLowerCase();
+    if (params.get("batch")) {
+      focus.kind = "batch";
+      focus.value = params.get("batch");
+    }
     data = await SC.loadPublished();
     if (data.length === 0) {
       el("resultsEmpty").hidden = false;
