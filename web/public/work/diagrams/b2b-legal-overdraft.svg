@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2950 1095" font-family="Microsoft YaHei,PingFang SC,Helvetica Neue,Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="2950" height="1095" fill="#f8f9fa" rx="8"/>
+
+  <!-- 标题 -->
+  <text x="1450" y="35" text-anchor="middle" font-size="22" font-weight="bold" fill="#2c3e50">B2B 法透模式 — 全链路业务流程图</text>
+  <text x="1450" y="57" text-anchor="middle" font-size="12" fill="#7f8c8d">三份合同串行推进（B2B订单→代采订单→采购订单），金额约束：采购≤代采≤B2B，货物约束：三方SKU+数量一致</text>
+
+  <!-- ============ 主流程节点 ============ -->
+
+  <!-- 步骤1 -->
+  <rect x="30" y="95" width="200" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="130" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 1</text>
+  <text x="130" y="137" text-anchor="middle" font-size="12" fill="white">B2B订单推送</text>
+  <text x="130" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">经销商 → 核心企业</text>
+  <text x="130" y="168" text-anchor="middle" font-size="10" fill="#d6eaf8">（B2B采购合同）</text>
+
+  <!-- 箭头 -->
+  <line x1="230" y1="135" x2="268" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤2 -->
+  <rect x="270" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="370" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 2a</text>
+  <text x="370" y="137" text-anchor="middle" font-size="12" fill="white">定金支付</text>
+  <text x="370" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">经销商 → 核心企业</text>
+  <text x="370" y="168" text-anchor="middle" font-size="10" fill="#d5f5e3">单笔一次性支付</text>
+
+  <!-- 箭头 -->
+  <line x1="470" y1="135" x2="508" y2="135" stroke="#8e44ad" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow)"/>
+
+  <!-- 融资内部流程（虚线框） -->
+  <rect x="510" y="78" width="620" height="115" rx="10" fill="none" stroke="#8e44ad" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="520" y="93" font-size="10" fill="#8e44ad" font-weight="bold">步骤2b：融资7关校验 → 银行放款 → 生成借据</text>
+
+  <!-- 融资子步骤 -->
+  <rect x="520" y="100" width="130" height="40" rx="6" fill="#8e44ad" filter="url(#shadow)"/>
+  <text x="585" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">融资7关校验</text>
+  <text x="585" y="133" text-anchor="middle" font-size="9" fill="#e8daef">详见下方明细</text>
+
+  <line x1="650" y1="120" x2="678" y2="120" stroke="#8e44ad" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="680" y="100" width="120" height="40" rx="6" fill="#27ae60" filter="url(#shadow)"/>
+  <text x="740" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">银行放款</text>
+  <text x="740" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">→ 经销商账户</text>
+
+  <line x1="800" y1="120" x2="828" y2="120" stroke="#27ae60" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+
+  <rect x="830" y="100" width="120" height="40" rx="6" fill="#16a085" filter="url(#shadow)"/>
+  <text x="890" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">生成借据</text>
+  <text x="890" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">借款记录落库</text>
+
+  <!-- 步骤2c 尾款支付 -->
+  <line x1="960" y1="135" x2="988" y2="135" stroke="#2c3e50" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="990" y="100" width="130" height="40" rx="6" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1055" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">步骤2c 尾款支付</text>
+  <text x="1055" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">经销商→核心企业</text>
+
+  <!-- 箭头: 步骤2c → 步骤3 -->
+  <line x1="1120" y1="135" x2="1148" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1134" y="155" text-anchor="middle" font-size="9" fill="#555">核心收齐</text>
+
+  <!-- 步骤3 -->
+  <rect x="1170" y="95" width="200" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1270" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 3</text>
+  <text x="1270" y="137" text-anchor="middle" font-size="12" fill="white">代采订单推送</text>
+  <text x="1270" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">核心企业 → 代采商</text>
+  <text x="1270" y="168" text-anchor="middle" font-size="10" fill="#d6eaf8">（代采合同）</text>
+
+  <line x1="1370" y1="135" x2="1408" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤4 -->
+  <rect x="1410" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1510" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 4</text>
+  <text x="1510" y="137" text-anchor="middle" font-size="12" fill="white">核心转代采</text>
+  <text x="1510" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">资金转给代采商</text>
+
+  <line x1="1610" y1="135" x2="1648" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤5 -->
+  <rect x="1650" y="95" width="200" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1750" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 5</text>
+  <text x="1750" y="137" text-anchor="middle" font-size="12" fill="white">采购订单推送</text>
+  <text x="1750" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">代采商 → 供应商</text>
+  <text x="1750" y="168" text-anchor="middle" font-size="10" fill="#d6eaf8">（采购合同）</text>
+
+  <line x1="1850" y1="135" x2="1888" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤6 -->
+  <rect x="1890" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1990" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 6</text>
+  <text x="1990" y="137" text-anchor="middle" font-size="12" fill="white">代采付供应商</text>
+  <text x="1990" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">资金转给供应商</text>
+
+  <line x1="2090" y1="135" x2="2128" y2="135" stroke="#27ae60" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+  <!-- 完成 -->
+  <rect x="2130" y="115" width="120" height="40" rx="20" fill="#27ae60" filter="url(#shadow)"/>
+  <text x="2190" y="140" text-anchor="middle" font-size="14" fill="white" font-weight="bold">链路完成</text>
+
+  <!-- ============ 底部明细区 ============ -->
+
+  <rect x="20" y="215" width="2910" height="855" rx="8" fill="white" stroke="#ddd" stroke-width="1" filter="url(#shadow)"/>
+  <text x="1475" y="245" text-anchor="middle" font-size="16" font-weight="bold" fill="#2c3e50">各步骤校验明细</text>
+
+  <!-- ====== 步骤1 明细 ====== -->
+  <rect x="35" y="265" width="390" height="740" rx="6" fill="#eaf2f8" stroke="#3498db" stroke-width="1"/>
+  <text x="230" y="292" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c3e50">步骤1 · B2B订单推送（B2B采购合同）</text>
+  <line x1="50" y1="302" x2="410" y2="302" stroke="#3498db" stroke-width="0.5"/>
+
+  <text x="50" y="324" font-size="11" fill="#333" font-weight="bold">订单推送入参校验：</text>
+  <line x1="60" y1="334" x2="410" y2="334" stroke="#ddd" stroke-width="0.5"/>
+
+  <text x="50" y="356" font-size="11" fill="#333">1. 交易双方角色校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="60" y="375" font-size="10" fill="#7f8c8d">   订单付款方 = 经销商（系统内角色）</text>
+  <text x="60" y="393" font-size="10" fill="#7f8c8d">   订单收款方 = 核心企业（系统内角色）</text>
+  <text x="60" y="411" font-size="10" fill="#7f8c8d">   双方企业名称与系统配置一致</text>
+
+  <text x="50" y="435" font-size="11" fill="#333">2. SKU白名单校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="60" y="454" font-size="10" fill="#7f8c8d">   所有SKU必须在系统白名单内</text>
+
+  <text x="50" y="478" font-size="11" fill="#333">3. 货物单价校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="60" y="497" font-size="10" fill="#7f8c8d">   |单价 - T-1日市场价| ÷ T-1日市场价 ≤ 5%</text>
+  <text x="60" y="515" font-size="10" fill="#7f8c8d">   即单价涨跌不能超过5%（比例可配置）</text>
+  <text x="60" y="533" font-size="10" fill="#7f8c8d">   市场价数据来源：系统内已有表</text>
+
+  <text x="50" y="557" font-size="11" fill="#333">4. 金额字段完整性 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="60" y="576" font-size="10" fill="#7f8c8d">   定金金额、尾款金额字段必填</text>
+
+  <text x="50" y="600" font-size="11" fill="#333">5. 定金比例校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="60" y="619" font-size="10" fill="#7f8c8d">   定金金额 ÷ 合同金额 > 20%（比例可配置）</text>
+
+  <line x1="50" y1="640" x2="410" y2="640" stroke="#ddd" stroke-width="0.5"/>
+  <text x="50" y="662" font-size="11" fill="#7f8c8d" font-weight="bold">合同下载与解析校验：</text>
+  <text x="50" y="682" font-size="10" fill="#7f8c8d">   合同数据一致性校验移至借款申请步骤（步骤2b）</text>
+  <text x="50" y="700" font-size="10" fill="#7f8c8d">   推送时仅保存订单和合同URL，校验在融资时进行</text>
+
+  <!-- ====== 步骤2a 明细 ====== -->
+  <rect x="440" y="265" width="350" height="740" rx="6" fill="#eafaf1" stroke="#2ecc71" stroke-width="1"/>
+  <text x="615" y="292" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c3e50">步骤2a · 定金支付</text>
+  <line x1="455" y1="302" x2="775" y2="302" stroke="#2ecc71" stroke-width="0.5"/>
+
+  <text x="455" y="324" font-size="11" fill="#333" font-weight="bold">前置条件 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="455" y="346" font-size="11" fill="#333">1. 步骤1（B2B订单推送）已完成</text>
+  <text x="455" y="368" font-size="11" fill="#333">2. 尚未发起融资申请</text>
+
+  <line x1="455" y1="384" x2="775" y2="384" stroke="#ddd" stroke-width="0.5"/>
+  <text x="455" y="406" font-size="11" fill="#333" font-weight="bold">定金支付校验：</text>
+
+  <text x="455" y="430" font-size="11" fill="#333">3. 资金流与信息流一致 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="465" y="449" font-size="10" fill="#7f8c8d">   实际支付金额 = 订单推送时约定的定金金额</text>
+
+  <text x="455" y="473" font-size="11" fill="#333">4. 定金金额 > 0 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <line x1="455" y1="492" x2="775" y2="492" stroke="#ddd" stroke-width="0.5"/>
+  <text x="455" y="514" font-size="11" fill="#7f8c8d" font-weight="bold">说明：</text>
+  <text x="455" y="536" font-size="11" fill="#7f8c8d">走 支付申请接口（B2B支付）</text>
+  <text x="455" y="558" font-size="11" fill="#7f8c8d">定金金额 = 订单推送时约定金额，单笔一次性支付</text>
+  <text x="455" y="580" font-size="11" fill="#7f8c8d">定金支付完成后可发起融资申请（步骤2b）</text>
+
+  <!-- ====== 步骤2c 明细（尾款支付） ====== -->
+  <line x1="455" y1="600" x2="775" y2="600" stroke="#2ecc71" stroke-width="0.5" stroke-dasharray="4,2"/>
+  <text x="615" y="625" text-anchor="middle" font-size="12" font-weight="bold" fill="#2ecc71">步骤2c · 尾款支付</text>
+  <line x1="455" y1="636" x2="775" y2="636" stroke="#2ecc71" stroke-width="0.5"/>
+
+  <text x="455" y="658" font-size="11" fill="#333" font-weight="bold">前置条件：</text>
+  <text x="455" y="680" font-size="11" fill="#333">1. 步骤2b（融资7关）已完成</text>
+  <text x="455" y="702" font-size="11" fill="#333">2. 银行已放款，借据已生成</text>
+
+  <line x1="455" y1="718" x2="775" y2="718" stroke="#ddd" stroke-width="0.5"/>
+  <text x="455" y="740" font-size="11" fill="#333" font-weight="bold">尾款支付校验：</text>
+
+  <text x="455" y="764" font-size="11" fill="#333">3. 资金流与信息流一致 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="465" y="783" font-size="10" fill="#7f8c8d">   实际支付金额 = 订单推送时约定的尾款金额</text>
+
+  <text x="455" y="807" font-size="11" fill="#333">4. 尾款金额 > 0 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <line x1="455" y1="826" x2="775" y2="826" stroke="#ddd" stroke-width="0.5"/>
+  <text x="455" y="848" font-size="11" fill="#7f8c8d" font-weight="bold">说明：</text>
+  <text x="455" y="870" font-size="11" fill="#7f8c8d">走 支付申请接口（与定金支付同一接口）</text>
+  <text x="455" y="892" font-size="11" fill="#7f8c8d">尾款来源：融资款 或 融资款+自有资金</text>
+  <text x="455" y="914" font-size="11" fill="#7f8c8d">尾款支付完成后 → 核心企业收齐 → 可推进步骤3</text>
+  <text x="455" y="936" font-size="11" fill="#7f8c8d">核心收齐 = 定金 + 尾款 ≥ 订单总额</text>
+
+  <!-- ====== 融资申请明细 ====== -->
+  <rect x="805" y="265" width="590" height="765" rx="6" fill="#f5eef8" stroke="#8e44ad" stroke-width="1.5"/>
+  <text x="1100" y="292" text-anchor="middle" font-size="13" font-weight="bold" fill="#8e44ad">步骤2b · 借款申请（融资7关校验）</text>
+  <line x1="820" y1="302" x2="1380" y2="302" stroke="#8e44ad" stroke-width="0.5"/>
+
+  <text x="820" y="324" font-size="11" fill="#333" font-weight="bold">前置条件 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="820" y="344" font-size="10" fill="#333">步骤1已完成、步骤2a定金已支付、本笔合同未申请过融资</text>
+
+  <!-- 关1 -->
+  <rect x="820" y="360" width="270" height="60" rx="4" fill="white" stroke="#3498db" stroke-width="0.8"/>
+  <text x="830" y="381" font-size="11" font-weight="bold" fill="#3498db">关卡1 · 身份校验</text>
+  <text x="830" y="399" font-size="10" fill="#333">借款人=订单经销商（信用代码一致）</text>
+  <text x="830" y="415" font-size="10" fill="#27ae60">✓ 已实现</text>
+
+  <!-- 关2 -->
+  <rect x="1100" y="360" width="280" height="60" rx="4" fill="white" stroke="#3498db" stroke-width="0.8"/>
+  <text x="1110" y="381" font-size="11" font-weight="bold" fill="#3498db">关卡2 · 订单校验</text>
+  <text x="1110" y="399" font-size="10" fill="#333">借款≤待收缺口、定金已付、未融资过</text>
+  <text x="1110" y="415" font-size="10" fill="#27ae60">✓ 已实现</text>
+
+  <!-- 关卡补充 · 合同数据一致性 -->
+  <rect x="820" y="430" width="560" height="120" rx="4" fill="white" stroke="#8e44ad" stroke-width="0.8"/>
+  <text x="830" y="451" font-size="11" font-weight="bold" fill="#8e44ad">关卡补充 · 合同数据一致性 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="830" y="469" font-size="10" fill="#7f8c8d">合同下载（三方平台接口）→ 合同解析（行内接口）→ 逐项比对：</text>
+  <text x="830" y="489" font-size="10" fill="#8e44ad">① 货物一致：合同SKU+数量 = 订单推送SKU+数量</text>
+  <text x="830" y="507" font-size="10" fill="#8e44ad">② 双方一致：合同买方/卖方 = 订单推送付款方/收款方</text>
+  <text x="830" y="525" font-size="10" fill="#8e44ad">③ 金额一致：合同金额 = 订单推送金额</text>
+  <text x="830" y="543" font-size="10" fill="#8e44ad">④ 收款账号：合同收款账号 = DB配置核心企业账号 = 入参收款账号</text>
+
+  <!-- 关3 -->
+  <rect x="820" y="560" width="280" height="150" rx="4" fill="white" stroke="#8e44ad" stroke-width="0.8"/>
+  <text x="830" y="581" font-size="11" font-weight="bold" fill="#8e44ad">关卡3 · 保证金 + 仓单质押</text>
+  <text x="830" y="600" font-size="10" fill="#333">利息保证金：余额≥授信×月利率×月数 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="830" y="617" font-size="10" fill="#333">（经销商授信相关）</text>
+  <text x="830" y="634" font-size="10" fill="#333">交易保证金（需同时满足）： <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="840" y="650" font-size="9" fill="#c0392b">① ≥ 订单金额×5%</text>
+  <text x="840" y="665" font-size="9" fill="#c0392b">② ≥ 核心企业下经销商保证金子户·正在被质押的保证金</text>
+  <text x="830" y="680" font-size="10" fill="#333">仓单质押：(融资金额-保证金)÷质押货金额≤80% <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="840" y="695" font-size="9" fill="#c0392b">保证金=核心企业主户下经销商保证金子户余额</text>
+
+  <!-- 关4 -->
+  <rect x="1100" y="560" width="280" height="90" rx="4" fill="white" stroke="#3498db" stroke-width="0.8"/>
+  <text x="1110" y="581" font-size="11" font-weight="bold" fill="#3498db">关卡4 · 链路账户状态</text>
+  <text x="1110" y="600" font-size="10" fill="#333">经销商 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1110" y="617" font-size="10" fill="#333">代采商 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1110" y="634" font-size="10" fill="#333">核心企业的交易状态 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+
+  <!-- 关5 -->
+  <rect x="820" y="700" width="280" height="90" rx="4" fill="white" stroke="#3498db" stroke-width="0.8"/>
+  <text x="830" y="721" font-size="11" font-weight="bold" fill="#3498db">关卡5 · 额度校验</text>
+  <text x="830" y="740" font-size="10" fill="#333">① 法透剩余额度 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="840" y="757" font-size="9" fill="#7f8c8d">   总行法透接口查回，直接取值</text>
+  <text x="830" y="774" font-size="10" fill="#333">② 项目集群剩余额度 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="840" y="788" font-size="9" fill="#7f8c8d">   取①和②的较小值</text>
+
+  <!-- 关6 -->
+  <rect x="1100" y="700" width="280" height="90" rx="4" fill="white" stroke="#e67e22" stroke-width="0.8"/>
+  <text x="1110" y="721" font-size="11" font-weight="bold" fill="#e67e22">关卡6 · 风控审核</text>
+  <text x="1110" y="740" font-size="10" fill="#333">黑名单/征信/工商 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1110" y="757" font-size="10" fill="#333">司法数据 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1110" y="774" font-size="9" fill="#7f8c8d">任一命中即拒绝</text>
+
+  <!-- 关7 -->
+  <rect x="820" y="805" width="560" height="70" rx="4" fill="white" stroke="#27ae60" stroke-width="0.8"/>
+  <text x="830" y="826" font-size="11" font-weight="bold" fill="#27ae60">关卡7 · 银行放款</text>
+  <text x="830" y="845" font-size="10" fill="#333">银行放款 → 经销商账户 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="830" y="862" font-size="10" fill="#333">放款成功 → 生成借据 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <!-- 融资流程总结 -->
+  <text x="820" y="905" font-size="11" fill="#8e44ad" font-weight="bold">融资流程（即借款申请接口）：</text>
+  <rect x="820" y="917" width="540" height="46" rx="4" fill="#f5eef8" stroke="#8e44ad" stroke-width="0.5"/>
+  <text x="1090" y="937" text-anchor="middle" font-size="10" fill="#8e44ad">身份→订单→合同校验→保证金+仓单→账户→额度→风控→银行放款→生成借据</text>
+  <text x="1090" y="955" text-anchor="middle" font-size="9" fill="#7f8c8d">融资7关与支付无关，放款完成后生成借据</text>
+
+  <text x="820" y="985" font-size="11" fill="#8e44ad" font-weight="bold">核心企业收齐判断 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="820" y="1007" font-size="10" fill="#333">累计定金 + 借款到账金额 ≥ 订单总额 → 核心收齐 → 可推进步骤3</text>
+
+  <!-- ====== 步骤3 明细 ====== -->
+  <rect x="1410" y="265" width="350" height="440" rx="6" fill="#eaf2f8" stroke="#3498db" stroke-width="1"/>
+  <text x="1585" y="292" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c3e50">步骤3 · 代采订单推送（代采合同）</text>
+  <line x1="1425" y1="302" x2="1745" y2="302" stroke="#3498db" stroke-width="0.5"/>
+
+  <text x="1425" y="324" font-size="11" fill="#333" font-weight="bold">前置条件 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1425" y="346" font-size="11" fill="#333">1. 步骤2c（尾款支付）已完成</text>
+  <text x="1425" y="368" font-size="11" fill="#333">2. 核心企业已收齐：</text>
+  <text x="1435" y="388" font-size="10" fill="#7f8c8d">   定金 + 借款 ≥ 订单总额</text>
+
+  <line x1="1425" y1="405" x2="1745" y2="405" stroke="#ddd" stroke-width="0.5"/>
+  <text x="1425" y="427" font-size="11" fill="#333" font-weight="bold">订单推送校验：</text>
+
+  <text x="1425" y="451" font-size="11" fill="#333">3. 交易双方角色校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1435" y="470" font-size="10" fill="#7f8c8d">   订单付款方 = 核心企业</text>
+  <text x="1435" y="488" font-size="10" fill="#7f8c8d">   订单收款方 = 代采商</text>
+  <text x="1435" y="506" font-size="10" fill="#7f8c8d">   双方企业名称与系统配置一致</text>
+
+  <text x="1425" y="530" font-size="11" fill="#333">4. 金额约束 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1435" y="549" font-size="10" fill="#8e44ad" font-weight="bold">   代采合同总额 ≤ B2B订单总额</text>
+
+  <line x1="1425" y1="573" x2="1745" y2="573" stroke="#ddd" stroke-width="0.5"/>
+  <text x="1425" y="595" font-size="10" fill="#7f8c8d">货物一致性、双方一致性等合同校验移至步骤4支付确认时进行</text>
+
+  <!-- ====== 步骤4 明细 ====== -->
+  <rect x="1410" y="720" width="350" height="350" rx="6" fill="#eafaf1" stroke="#2ecc71" stroke-width="1"/>
+  <text x="1585" y="747" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c3e50">步骤4 · 核心转代采</text>
+  <line x1="1425" y1="757" x2="1745" y2="757" stroke="#2ecc71" stroke-width="0.5"/>
+  <text x="1425" y="779" font-size="11" fill="#333" font-weight="bold">前置条件 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1425" y="801" font-size="11" fill="#333">1. 步骤3（代采订单推送）已完成</text>
+  <text x="1425" y="823" font-size="11" fill="#333">2. 步骤5（采购订单推送）尚未发起</text>
+  <line x1="1425" y1="840" x2="1745" y2="840" stroke="#ddd" stroke-width="0.5"/>
+  <text x="1425" y="862" font-size="11" fill="#333">资金转账：核心企业 → 代采商 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <line x1="1425" y1="878" x2="1745" y2="878" stroke="#ddd" stroke-width="0.5"/>
+  <text x="1425" y="900" font-size="11" fill="#333" font-weight="bold">合同一致性校验（同借款申请逻辑） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1425" y="918" font-size="10" fill="#7f8c8d">合同下载（三方平台）→ 解析（行内接口）→ 比对：</text>
+  <text x="1435" y="936" font-size="10" fill="#c0392b">① 货物：合同SKU+数量 = 代采订单SKU+数量</text>
+  <text x="1435" y="953" font-size="10" fill="#c0392b">② 双方：合同买方/卖方 = 订单推送付款方/收款方</text>
+  <text x="1435" y="970" font-size="10" fill="#c0392b">③ 金额：合同金额 = 代采订单金额</text>
+  <text x="1435" y="987" font-size="10" fill="#c0392b">④ 收款账号：代采合同收款账号 = 配置代采商收款账号 = 入参payeeAcct</text>
+  <text x="1435" y="1004" font-size="10" fill="#7f8c8d">走 支付确认接口</text>
+
+  <!-- ====== 步骤5 明细 ====== -->
+  <rect x="1775" y="265" width="350" height="440" rx="6" fill="#eaf2f8" stroke="#3498db" stroke-width="1"/>
+  <text x="1950" y="292" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c3e50">步骤5 · 采购订单推送（采购合同）</text>
+  <line x1="1790" y1="302" x2="2110" y2="302" stroke="#3498db" stroke-width="0.5"/>
+
+  <text x="1790" y="324" font-size="11" fill="#333" font-weight="bold">前置条件 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1790" y="346" font-size="11" fill="#333">1. 步骤3（代采订单推送）已完成</text>
+  <text x="1790" y="368" font-size="11" fill="#333">2. 步骤4（核心转代采）已完成</text>
+
+  <line x1="1790" y1="384" x2="2110" y2="384" stroke="#ddd" stroke-width="0.5"/>
+  <text x="1790" y="406" font-size="11" fill="#333" font-weight="bold">订单推送校验：</text>
+
+  <text x="1790" y="430" font-size="11" fill="#333">3. 交易双方角色校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1800" y="449" font-size="10" fill="#7f8c8d">   订单付款方 = 代采商</text>
+  <text x="1800" y="467" font-size="10" fill="#7f8c8d">   订单收款方 = 供应商</text>
+  <text x="1800" y="485" font-size="10" fill="#7f8c8d">   双方企业名称与系统配置一致</text>
+
+  <text x="1790" y="509" font-size="11" fill="#333">4. 供应商白名单校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1800" y="528" font-size="10" fill="#7f8c8d">   供应商必须在系统白名单内</text>
+
+  <text x="1790" y="552" font-size="11" fill="#333">5. 金额约束 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1800" y="571" font-size="10" fill="#8e44ad" font-weight="bold">   采购合同总额 ≤ 代采合同总额</text>
+
+  <line x1="1790" y1="595" x2="2110" y2="595" stroke="#ddd" stroke-width="0.5"/>
+  <text x="1790" y="617" font-size="10" fill="#7f8c8d">货物一致性、双方一致性等合同校验移至步骤6支付确认时进行</text>
+
+  <!-- ====== 步骤6 明细 ====== -->
+  <rect x="2140" y="265" width="350" height="340" rx="6" fill="#eafaf1" stroke="#2ecc71" stroke-width="1"/>
+  <text x="2315" y="292" text-anchor="middle" font-size="13" font-weight="bold" fill="#2c3e50">步骤6 · 代采付供应商</text>
+  <line x1="2155" y1="302" x2="2475" y2="302" stroke="#2ecc71" stroke-width="0.5"/>
+
+  <text x="2155" y="324" font-size="11" fill="#333" font-weight="bold">前置条件 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2155" y="346" font-size="11" fill="#333">1. 步骤3（代采订单推送）已完成</text>
+  <text x="2155" y="368" font-size="11" fill="#333">2. 步骤5（采购订单推送）已完成</text>
+
+  <line x1="2155" y1="388" x2="2475" y2="388" stroke="#ddd" stroke-width="0.5"/>
+  <text x="2155" y="410" font-size="11" fill="#333">资金转账：代采商 → 供应商 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <line x1="2155" y1="426" x2="2475" y2="426" stroke="#ddd" stroke-width="0.5"/>
+  <text x="2155" y="448" font-size="11" fill="#333" font-weight="bold">合同一致性校验（同借款申请逻辑） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2155" y="466" font-size="10" fill="#7f8c8d">合同下载（三方平台）→ 解析（行内接口）→ 比对：</text>
+  <text x="2165" y="484" font-size="10" fill="#c0392b">① 货物：合同SKU+数量 = 采购订单SKU+数量</text>
+  <text x="2165" y="501" font-size="10" fill="#c0392b">② 双方：合同买方/卖方 = 订单推送付款方/收款方</text>
+  <text x="2165" y="518" font-size="10" fill="#c0392b">③ 金额：合同金额 = 采购订单金额</text>
+  <text x="2165" y="535" font-size="10" fill="#c0392b">④ 收款户名：采购合同收款户名 = 入参payeeName</text>
+  <text x="2165" y="552" font-size="10" fill="#7f8c8d">走 支付确认接口</text>
+  <text x="2155" y="577" font-size="11" fill="#7f8c8d">此步骤完成后整条链路结束</text>
+
+  <!-- ====== 右侧约束汇总 ====== -->
+  <rect x="2510" y="265" width="420" height="740" rx="6" fill="#f9f9f9" stroke="#bbb" stroke-width="1"/>
+  <text x="2720" y="292" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">约束关系汇总</text>
+  <line x1="2525" y1="302" x2="2915" y2="302" stroke="#ddd" stroke-width="0.5"/>
+
+  <!-- 金额约束 -->
+  <text x="2525" y="328" font-size="12" font-weight="bold" fill="#8e44ad">金额约束（层层不超）</text>
+  <rect x="2525" y="340" width="390" height="95" rx="4" fill="white" stroke="#8e44ad" stroke-width="0.8"/>
+  <text x="2535" y="364" font-size="11" fill="#333">B2B采购合同金额 = 订单总额</text>
+  <text x="2830" y="364" font-size="11" fill="#8e44ad">最大</text>
+  <text x="2535" y="386" font-size="11" fill="#333">代采合同金额 ≤ B2B采购合同金额</text>
+  <text x="2535" y="408" font-size="11" fill="#333">采购合同金额 ≤ 代采合同金额</text>
+  <text x="2830" y="408" font-size="11" fill="#8e44ad">最小</text>
+  <text x="2535" y="428" font-size="10" fill="#7f8c8d">即：采购 ≤ 代采 ≤ B2B</text>
+
+  <!-- 货物约束 -->
+  <text x="2525" y="460" font-size="12" font-weight="bold" fill="#3498db">货物约束（三方一致）</text>
+  <rect x="2525" y="472" width="390" height="70" rx="4" fill="white" stroke="#3498db" stroke-width="0.8"/>
+  <text x="2535" y="495" font-size="11" fill="#333">B2B采购合同 SKU + 数量</text>
+  <text x="2535" y="517" font-size="11" fill="#333">  = 代采合同 SKU + 数量</text>
+  <text x="2535" y="537" font-size="11" fill="#333">  = 采购合同 SKU + 数量</text>
+
+  <!-- 核心收齐 -->
+  <text x="2525" y="570" font-size="12" font-weight="bold" fill="#27ae60">核心企业收齐（步骤3前置条件）</text>
+  <rect x="2525" y="582" width="390" height="45" rx="4" fill="white" stroke="#27ae60" stroke-width="0.8"/>
+  <text x="2535" y="610" font-size="11" fill="#333">累计定金 + 借款到账 ≥ 订单总额</text>
+
+  <!-- 合同下载解析说明 -->
+  <text x="2525" y="650" font-size="12" font-weight="bold" fill="#e67e22">合同下载与解析（三个合同同一套逻辑）</text>
+  <rect x="2525" y="662" width="390" height="80" rx="4" fill="white" stroke="#e67e22" stroke-width="0.8"/>
+  <text x="2535" y="685" font-size="11" fill="#3498db" font-weight="bold">合同下载（三方平台接口）：</text>
+  <text x="2535" y="705" font-size="11" fill="#333">B2B合同、代采合同、采购合同均调用同一下载接口</text>
+  <text x="2535" y="725" font-size="11" fill="#8e44ad" font-weight="bold">合同解析（行内接口）：</text>
+  <text x="2535" y="740" font-size="11" fill="#333">均调用同一解析接口，解析后与订单推送信息比对</text>
+
+  <!-- 已确认事项 -->
+  <text x="2525" y="770" font-size="12" font-weight="bold" fill="#27ae60">已确认事项</text>
+  <rect x="2525" y="782" width="390" height="60" rx="4" fill="#ffeaa7" stroke="#f39c12" stroke-width="0.8"/>
+  <text x="2535" y="805" font-size="10" fill="#333">000000 与 000001 子户功能不同，余额不互通：</text>
+  <text x="2535" y="823" font-size="10" fill="#333">000000 为 0 时不能从 000001 转出。</text>
+
+  <!-- ============ 图例 ============ -->
+  <text x="2525" y="868" font-size="12" font-weight="bold" fill="#2c3e50">图例</text>
+  <rect x="2525" y="878" width="14" height="14" rx="2" fill="#3498db"/>
+  <text x="2545" y="890" font-size="10" fill="#333">订单推送（合同下载+解析+校验）</text>
+  <rect x="2525" y="898" width="14" height="14" rx="2" fill="#2ecc71"/>
+  <text x="2545" y="910" font-size="10" fill="#333">资金操作（支付/转账）</text>
+  <rect x="2525" y="918" width="14" height="14" rx="2" fill="#8e44ad"/>
+  <text x="2545" y="930" font-size="10" fill="#333">融资内部流程（法透模式专属）</text>
+  <rect x="2525" y="938" width="14" height="14" rx="2" fill="#e67e22"/>
+  <text x="2545" y="950" font-size="10" fill="#333">风控审核</text>
+  <line x1="2525" y1="963" x2="2545" y2="963" stroke="#8e44ad" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="2555" y="967" font-size="10" fill="#333">虚线 = 法透模式内部流程</text>
+  <text x="2525" y="986" font-size="10" fill="#27ae60">✓已实现</text>
+</svg>

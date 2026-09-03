@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2950 1230" font-family="Microsoft YaHei,PingFang SC,Helvetica Neue,Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#8e44ad"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="2950" height="1230" fill="#f8f9fa" rx="8"/>
+
+  <!-- 标题 -->
+  <text x="1475" y="35" text-anchor="middle" font-size="22" font-weight="bold" fill="#2c3e50">B2B 商票模式 — 全链路业务流程图</text>
+  <text x="1475" y="57" text-anchor="middle" font-size="12" fill="#7f8c8d">六步串行推进；商票模式以「商票入库」替代银行借款，核心收齐口径 = 定金 + 商票 ≥ 订单总额；还款走「平日入保证金 + 到期日统一兑付」</text>
+
+  <!-- ============ 主流程节点 ============ -->
+
+  <!-- 步骤1 -->
+  <rect x="30" y="95" width="200" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="130" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 1</text>
+  <text x="130" y="137" text-anchor="middle" font-size="12" fill="white">B2B订单推送</text>
+  <text x="130" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">经销商 → 核心企业</text>
+  <text x="130" y="168" text-anchor="middle" font-size="10" fill="#d6eaf8">（B2B采购合同）</text>
+
+  <line x1="230" y1="135" x2="268" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤2 定金 -->
+  <rect x="270" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="370" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 2</text>
+  <text x="370" y="137" text-anchor="middle" font-size="12" fill="white">定金支付</text>
+  <text x="370" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">经销商 → 核心企业</text>
+  <text x="370" y="168" text-anchor="middle" font-size="10" fill="#d5f5e3">单笔一次性转账</text>
+
+  <line x1="470" y1="135" x2="508" y2="135" stroke="#8e44ad" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrowPurple)"/>
+
+  <!-- 步骤2b 商票入库（虚线框） -->
+  <rect x="510" y="78" width="620" height="115" rx="10" fill="none" stroke="#8e44ad" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="520" y="93" font-size="10" fill="#8e44ad" font-weight="bold">步骤2b：商票入库（以商票号识别 · 商票模式专属 · 替代银行借款）</text>
+
+  <rect x="520" y="100" width="150" height="40" rx="6" fill="#8e44ad" filter="url(#shadow)"/>
+  <text x="595" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">商票入库</text>
+  <text x="595" y="133" text-anchor="middle" font-size="9" fill="#e8daef">商票编号必填</text>
+
+  <line x1="670" y1="120" x2="698" y2="120" stroke="#8e44ad" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
+
+  <rect x="700" y="100" width="170" height="40" rx="6" fill="#27ae60" filter="url(#shadow)"/>
+  <text x="785" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">写入流程快照</text>
+  <text x="785" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">商票号+票面金额</text>
+
+  <line x1="870" y1="120" x2="898" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="900" y="100" width="220" height="40" rx="6" fill="#f4ecf7" stroke="#8e44ad" stroke-width="1"/>
+  <text x="1010" y="118" text-anchor="middle" font-size="11" fill="#8e44ad" font-weight="bold">无资金流 · 仅登记</text>
+  <text x="1010" y="133" text-anchor="middle" font-size="9" fill="#8e44ad">必须在步骤3代采订单推送前完成</text>
+
+  <line x1="1130" y1="135" x2="1158" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤3 -->
+  <rect x="1160" y="95" width="200" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1260" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 3</text>
+  <text x="1260" y="137" text-anchor="middle" font-size="12" fill="white">代采订单推送</text>
+  <text x="1260" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">核心企业 → 代采商</text>
+  <text x="1260" y="168" text-anchor="middle" font-size="10" fill="#d6eaf8">（代采合同 · 核心已收齐）</text>
+
+  <line x1="1360" y1="135" x2="1388" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤4 -->
+  <rect x="1390" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1490" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 4</text>
+  <text x="1490" y="137" text-anchor="middle" font-size="12" fill="white">核心转代采</text>
+  <text x="1490" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">行内单笔转账</text>
+  <text x="1490" y="168" text-anchor="middle" font-size="10" fill="#d5f5e3">验合同②</text>
+
+  <line x1="1590" y1="135" x2="1618" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤5 -->
+  <rect x="1620" y="95" width="200" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1720" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 5</text>
+  <text x="1720" y="137" text-anchor="middle" font-size="12" fill="white">采购订单推送</text>
+  <text x="1720" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">代采商 → 供应商</text>
+  <text x="1720" y="168" text-anchor="middle" font-size="10" fill="#d6eaf8">（采购合同）</text>
+
+  <line x1="1820" y1="135" x2="1848" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 步骤6 -->
+  <rect x="1850" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1950" y="117" text-anchor="middle" font-size="14" fill="white" font-weight="bold">步骤 6</text>
+  <text x="1950" y="137" text-anchor="middle" font-size="12" fill="white">代采付供应商</text>
+  <text x="1950" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">行内/行外按收款卡BIN</text>
+  <text x="1950" y="168" text-anchor="middle" font-size="10" fill="#d5f5e3">验合同③</text>
+
+  <line x1="2050" y1="135" x2="2078" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 链路完成 -->
+  <rect x="2080" y="105" width="120" height="60" rx="8" fill="#16a085" filter="url(#shadow)"/>
+  <text x="2140" y="130" text-anchor="middle" font-size="13" fill="white" font-weight="bold">链路完成</text>
+  <text x="2140" y="150" text-anchor="middle" font-size="10" fill="#d5f5e3">流程状态机收口</text>
+
+  <line x1="2200" y1="135" x2="2228" y2="135" stroke="#8e44ad" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrowPurple)"/>
+
+  <!-- 还款与兑付链路（虚线框） -->
+  <rect x="2230" y="78" width="690" height="115" rx="10" fill="none" stroke="#8e44ad" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="2240" y="93" font-size="10" fill="#8e44ad" font-weight="bold">还款与兑付链路（商票模式专属）</text>
+
+  <rect x="2240" y="100" width="150" height="40" rx="6" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="2315" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">平日还款确认</text>
+  <text x="2315" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">交易户 → 保证金户</text>
+
+  <line x1="2390" y1="120" x2="2408" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="2410" y="100" width="150" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2485" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">到期日转账Job</text>
+  <text x="2485" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">保证金户 → 交易户</text>
+
+  <line x1="2560" y1="120" x2="2578" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="2580" y="100" width="160" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2660" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">结果刷新+修正</text>
+  <text x="2660" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">PAID 视同已结清</text>
+
+  <line x1="2740" y1="120" x2="2758" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="2760" y="100" width="150" height="40" rx="6" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="2835" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">额度释放</text>
+  <text x="2835" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">回补集群可用额度</text>
+
+  <!-- ============ 各步骤校验明细 ============ -->
+  <text x="30" y="232" font-size="15" font-weight="bold" fill="#2c3e50">各步骤校验明细（商票模式）</text>
+
+  <!-- 左列：步骤1 / 步骤2 / 步骤2b -->
+  <rect x="30" y="245" width="950" height="200" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="50" y="272" font-size="13" font-weight="bold" fill="#2c3e50">步骤1 · B2B订单推送（B2B采购合同）</text>
+  <text x="50" y="296" font-size="11" fill="#333">1. 交易双方角色校验：付款方=经销商、收款方=核心企业，企业名称与配置一致 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="318" font-size="11" fill="#333">2. SKU白名单校验：所有SKU须在系统白名单内 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="340" font-size="11" fill="#333">3. 货物单价校验：|单价 − T-1日市场价| ÷ T-1日市场价 ≤ 5%（可配置） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="362" font-size="11" fill="#333">4. 金额字段完整性：定金金额、尾款金额必填 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="384" font-size="11" fill="#333">5. 定金比例校验：订单金额 × 20%（可配置） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="406" font-size="11" fill="#333">6. 模式初始化：融资模式随流程记录初始化并继承，后续步骤自动继承 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <rect x="30" y="455" width="950" height="120" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="50" y="482" font-size="13" font-weight="bold" fill="#2c3e50">步骤2 · 定金支付（转账）</text>
+  <text x="50" y="506" font-size="11" fill="#333">1. 前置：步骤1已完成，且代采订单（步骤3）尚未发起 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="528" font-size="11" fill="#333">2. 锁单 + 支付两阶段：先建锁单记录再发起银行转账，同一锁单仅允许一笔处理中转账 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="550" font-size="11" fill="#333">3. 资金流 = 信息流：实际支付金额 = 订单推送时约定的定金金额 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <rect x="30" y="585" width="950" height="200" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="50" y="612" font-size="13" font-weight="bold" fill="#2c3e50">步骤2b · 商票入库（支付确认接口请求带 商票编号 即路由至此）</text>
+  <text x="50" y="636" font-size="11" fill="#333">1. 商票编号必填：为空直接拒绝 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="658" font-size="11" fill="#333">2. 模式断言 商票入库模式校验：仅商票模式放行；法透模式抛「当前流程模式不支持商票入库」 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="680" font-size="11" fill="#333">3. 商票信息登记：商票号 + 票面金额写入流程快照（商票号 / 票面金额） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="702" font-size="11" fill="#333">4. 时机约束：必须在步骤3前完成（代采订单生成后不可再补商票） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="724" font-size="11" fill="#333">5. 无资金流：仅登记票据信息，不发生任何转账 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="746" font-size="11" fill="#333">6. 商票模式跳过电子营业执照认证（eLicense 仅法透模式要求） <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <!-- 中列：步骤3 / 4 / 5 / 6 -->
+  <rect x="1010" y="245" width="950" height="185" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="1030" y="272" font-size="13" font-weight="bold" fill="#2c3e50">步骤3 · 代采订单推送（代采合同）</text>
+  <text x="1030" y="296" font-size="11" fill="#333">1. 前置一：步骤2定金已支付成功 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="318" font-size="11" fill="#333">2. 前置二 核心收齐（商票口径，三条件须同时满足）：<tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1050" y="340" font-size="11" fill="#555">① 已有商票入库记录（已有商票入库记录）　② 商票金额 &gt; 0</text>
+  <text x="1050" y="362" font-size="11" fill="#555">③ 定金 + 商票金额 ≥ 订单总额</text>
+  <text x="1030" y="384" font-size="11" fill="#333">3. 失败提示：核心企业尚未收到商票 / 商票金额缺失 / 未收齐 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="406" font-size="11" fill="#7f8c8d">（法透口径对照：定金 + 借款到账 ≥ 订单总额）</text>
+
+  <rect x="1010" y="440" width="950" height="105" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="1030" y="467" font-size="13" font-weight="bold" fill="#2c3e50">步骤4 · 核心转代采</text>
+  <text x="1030" y="491" font-size="11" fill="#333">1. 前置：步骤3已完成，且步骤5尚未发起 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="513" font-size="11" fill="#333">2. 合同②审核（对应资金环节，与法透共用同一合同审核机制：AI解析+人工裁决） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="535" font-size="11" fill="#333">3. 转账：行内单笔支付，核心企业 → 代采商 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <rect x="1010" y="555" width="950" height="105" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="1030" y="582" font-size="13" font-weight="bold" fill="#2c3e50">步骤5 · 采购订单推送（采购合同）</text>
+  <text x="1030" y="606" font-size="11" fill="#333">1. 前置：步骤3、步骤4均已完成 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="628" font-size="11" fill="#333">2. 供应商白名单校验 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="650" font-size="11" fill="#333">3. 金额约束：采购合同总额 ≤ 代采合同总额 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <rect x="1010" y="670" width="950" height="120" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="1030" y="697" font-size="13" font-weight="bold" fill="#2c3e50">步骤6 · 代采付供应商</text>
+  <text x="1030" y="721" font-size="11" fill="#333">1. 前置：步骤3、步骤5已完成（商票约束已前移至步骤3，本步无额外模式校验） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="743" font-size="11" fill="#333">2. 合同③审核（对应资金环节，与法透共用） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="765" font-size="11" fill="#333">3. 转账路由：按收款卡BIN判断走行内 / 行外通道 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <!-- 右列：商票数据双通道 / 商票还款链路 -->
+  <rect x="1990" y="245" width="930" height="330" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="2010" y="272" font-size="13" font-weight="bold" fill="#2c3e50">商票数据双通道（两套数据并行，各管一段）</text>
+  <text x="2010" y="296" font-size="12" font-weight="bold" fill="#8e44ad">通道A · 商票台账（商票台账）—— 管票据生命周期</text>
+  <text x="2030" y="318" font-size="11" fill="#333">T日：政采云推送票号+金额（推送票号 / 推送金额，补录状态=未补录） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="340" font-size="11" fill="#333">T+1：分行补录Job按票号查北银，合并三类数据，补录后置为已补录 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2050" y="362" font-size="11" fill="#555">· 已开票要素（票号/子票区间/银票或商票/出票日/到期日 到期日）</text>
+  <text x="2050" y="384" font-size="11" fill="#555">· 转让记录（背书人 / 被背书人 / 背书日期，落 商票转让台账）</text>
+  <text x="2050" y="406" font-size="11" fill="#555">· 贴现要素（实付、贴现金额、利息、利率、贴现申请日、贴入人）</text>
+  <text x="2030" y="428" font-size="11" fill="#333">状态流转：未登记 → 已开票 → 已转让 → 已贴现 → 已兑付（PAID） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="450" font-size="11" fill="#333">用途：还款余额修正（PAID 视同已还清）与授信额度判断 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="480" font-size="12" font-weight="bold" fill="#8e44ad">通道B · 流程快照（流程记录表）—— 管流程准入</text>
+  <text x="2030" y="502" font-size="11" fill="#333">商票入库时写入 商票号 / 票面金额 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="524" font-size="11" fill="#333">步骤3核心收齐校验的数据来源（定金 + 商票 ≥ 总额） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="556" font-size="11" fill="#7f8c8d">双通道并行：台账管票据状态与兑付，快照管六步流程推进，互不替代</text>
+
+  <rect x="1990" y="585" width="930" height="420" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="2010" y="612" font-size="13" font-weight="bold" fill="#2c3e50">商票还款链路（平日入保证金 · 到期统一兑付）</text>
+  <text x="2010" y="636" font-size="11" fill="#333">1. 平日还款确认：交易账户 → 保证金账户（还款确认转账） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="658" font-size="11" fill="#555">前置：还款金额 ≥ 需还总额、≤ 贷款剩余本金、</text>
+  <text x="2030" y="680" font-size="11" fill="#555">可提款子户余额 − 当天商票待兑付金额 ≥ 还款金额（防止到期日保证金不足）</text>
+  <text x="2010" y="702" font-size="11" fill="#333">2. 到期日转账Job（商票到期转账任务）：<tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="724" font-size="11" fill="#555">查 到期日 = 当天的商票，每批限10条，当日已处理订单幂等跳过</text>
+  <text x="2030" y="746" font-size="11" fill="#555">转账金额 = 借据已还累计（已还累计），为0则跳过</text>
+  <text x="2030" y="768" font-size="11" fill="#555">保证金账户 → 交易账户（到期兑付转账），经 MQ 异步转账，发送失败即置还款失败</text>
+  <text x="2010" y="790" font-size="11" fill="#333">3. 结果刷新：定时Job + MQ消费回写 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="812" font-size="11" fill="#555">银行失败/未知 → 还款失败；成功 → 生成还款记录 → 已还累计累加</text>
+  <text x="2030" y="834" font-size="11" fill="#555">→ 累计 = 贷款金额时借据置「已结清」</text>
+  <text x="2010" y="856" font-size="11" fill="#333">4. 商票兑付修正：商票台账状态 = 已兑付（PAID）→ 视同已还金额 = 贷款金额 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2030" y="878" font-size="11" fill="#555">（借据未结清但票据实际已兑付时，以银行兑付事实为准修正余额）</text>
+  <text x="2010" y="900" font-size="11" fill="#333">5. 额度释放Job：待释放状态 → 按结清本金回补集群可用额度（乐观锁）→ 还款完成 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="930" font-size="11" fill="#e67e22" font-weight="bold">原则：商票不能提前还款，统一到期日从保证金账户转出兑付</text>
+
+  <!-- ============ 商票 vs 法透 差异对照表 ============ -->
+  <rect x="30" y="805" width="1930" height="335" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="50" y="832" font-size="15" font-weight="bold" fill="#2c3e50">商票模式 vs 法透模式 · 差异对照</text>
+
+  <rect x="50" y="848" width="280" height="30" fill="#eaf2f8"/>
+  <rect x="330" y="848" width="760" height="30" fill="#f4ecf7"/>
+  <rect x="1090" y="848" width="850" height="30" fill="#eafaf1"/>
+  <text x="190" y="868" text-anchor="middle" font-size="12" font-weight="bold" fill="#2c3e50">维度</text>
+  <text x="710" y="868" text-anchor="middle" font-size="12" font-weight="bold" fill="#8e44ad">商票模式（COMMERCIAL_BILL）</text>
+  <text x="1515" y="868" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e8449">法透模式（LEGAL_OVERDRAFT）</text>
+
+  <text x="60" y="902" font-size="11" fill="#333" font-weight="bold">尾款资金来源</text>
+  <text x="340" y="902" font-size="11" fill="#333">商票（核心企业收票）+ 定金</text>
+  <text x="1100" y="902" font-size="11" fill="#333">银行借款（法透放款）+ 定金</text>
+  <line x1="50" y1="912" x2="1940" y2="912" stroke="#eaecee" stroke-width="1"/>
+
+  <text x="60" y="936" font-size="11" fill="#333" font-weight="bold">商票入库</text>
+  <text x="340" y="936" font-size="11" fill="#333">支持，须在步骤3前完成；无资金流仅登记</text>
+  <text x="1100" y="936" font-size="11" fill="#333">拒绝：「当前流程模式不支持商票入库」</text>
+  <line x1="50" y1="946" x2="1940" y2="946" stroke="#eaecee" stroke-width="1"/>
+
+  <text x="60" y="970" font-size="11" fill="#333" font-weight="bold">借款申请</text>
+  <text x="340" y="970" font-size="11" fill="#333">入口即拒：「商票模式不支持借款申请」（无融资七关）</text>
+  <text x="1100" y="970" font-size="11" fill="#333">融资七关校验 → 银行放款 → 生成借据</text>
+  <line x1="50" y1="980" x2="1940" y2="980" stroke="#eaecee" stroke-width="1"/>
+
+  <text x="60" y="1004" font-size="11" fill="#333" font-weight="bold">核心收齐口径</text>
+  <text x="340" y="1004" font-size="11" fill="#333">已入库商票 &gt; 0 且 定金 + 商票金额 ≥ 订单总额</text>
+  <text x="1100" y="1004" font-size="11" fill="#333">借款已到账 且 定金 + 借款到账 ≥ 订单总额</text>
+  <line x1="50" y1="1014" x2="1940" y2="1014" stroke="#eaecee" stroke-width="1"/>
+
+  <text x="60" y="1038" font-size="11" fill="#333" font-weight="bold">授信额度</text>
+  <text x="340" y="1038" font-size="11" fill="#333">本地授信表客户可用额度 与 商票集群额度 取小</text>
+  <text x="1100" y="1038" font-size="11" fill="#333">总行法透剩余额度 与 项目集群剩余额度 取小</text>
+  <line x1="50" y1="1048" x2="1940" y2="1048" stroke="#eaecee" stroke-width="1"/>
+
+  <text x="60" y="1072" font-size="11" fill="#333" font-weight="bold">电子营业执照</text>
+  <text x="340" y="1072" font-size="11" fill="#333">支付确认前跳过认证</text>
+  <text x="1100" y="1072" font-size="11" fill="#333">支付确认前需已认证（eLicense）</text>
+  <line x1="50" y1="1082" x2="1940" y2="1082" stroke="#eaecee" stroke-width="1"/>
+
+  <text x="60" y="1106" font-size="11" fill="#333" font-weight="bold">保证金质押记录</text>
+  <text x="340" y="1106" font-size="11" fill="#333">不产生（无借款发生）</text>
+  <text x="1100" y="1106" font-size="11" fill="#333">每笔借款按订单金额×5%占用，还款完成后释放</text>
+
+  <text x="60" y="1132" font-size="11" fill="#333" font-weight="bold">还款方式</text>
+  <text x="340" y="1132" font-size="11" fill="#333">平日还款入保证金户，到期日统一转出兑付（不可提前还）</text>
+  <text x="1100" y="1132" font-size="11" fill="#333">常规还款确认流程，结清后释放额度</text>
+
+  <!-- 约束关系与共用说明 -->
+  <text x="30" y="1172" font-size="12" font-weight="bold" fill="#2c3e50">约束关系（与法透一致）</text>
+  <text x="30" y="1192" font-size="11" fill="#333">金额层层不超：采购 ≤ 代采 ≤ B2B　｜　货物三方一致：三份合同 SKU + 数量完全相同　｜　核心收齐才放行步骤3（商票口径见上）</text>
+  <text x="30" y="1212" font-size="11" fill="#7f8c8d">与法透共用：六步状态机、唯一流水 + 乐观锁、合同审核（AI 解析 + 人工裁决）、RocketMQ + Outbox 可靠消息、补偿任务 —— 详见《B2B法透全链路流程图》与《合同审核流程》</text>
+
+  <!-- 图例 -->
+  <rect x="1990" y="1050" width="14" height="14" rx="2" fill="#3498db"/>
+  <text x="2010" y="1062" font-size="10" fill="#333">订单推送（合同下载+解析+校验）</text>
+  <rect x="1990" y="1072" width="14" height="14" rx="2" fill="#2ecc71"/>
+  <text x="2010" y="1084" font-size="10" fill="#333">资金操作（支付/转账）</text>
+  <rect x="1990" y="1094" width="14" height="14" rx="2" fill="#8e44ad"/>
+  <text x="2010" y="1106" font-size="10" fill="#333">商票模式专属流程</text>
+  <rect x="1990" y="1116" width="14" height="14" rx="2" fill="#e67e22"/>
+  <text x="2010" y="1128" font-size="10" fill="#333">定时任务 / 兑付修正</text>
+  <line x1="1990" y1="1148" x2="2010" y2="1148" stroke="#8e44ad" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="2020" y="1152" font-size="10" fill="#333">虚线 = 商票模式内部流程</text>
+  <text x="2000" y="1182" font-size="10" fill="#27ae60">✓已实现</text>
+</svg>

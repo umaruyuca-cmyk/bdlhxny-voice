@@ -7,7 +7,7 @@
 
   var S = window.SITE;
   var SC = window.SHOWCASE;
-  var state = { batch: "", experiment: "", variant: "", scene: "", status: "" };
+  var state = { batch: "", template: "", caseId: "", variant: "", status: "" };
   /* 总览聚焦来源:只有用户动作(选实验/选批次/点行/带参 URL)才缩小总览;
      「默认选中最新批次」不算聚焦,总览仍显示全部行。 */
   var focus = { kind: "", value: "" };
@@ -26,7 +26,7 @@
     return sel.runs.filter(function (run) {
       var v = SC.runView(run, sel.batch);
       if (state.variant && v.variant !== state.variant) return false;
-      if (state.scene && (v.scene || "") !== state.scene) return false;
+      if (state.caseId && (v.caseId || "") !== state.caseId) return false;
       if (state.status) {
         var isInvalid = v.validity === "INVALID" || v.status === "INVALID";
         var key = isInvalid ? "invalid" : String(v.status).toLowerCase();
@@ -39,10 +39,14 @@
   /* ── 筛选 ─────────────────────────────────────────────────────────── */
 
   function fillSelect(select, values, current, allLabel, zhFn) {
+    // 值支持 [value, label] 二元组(状态筛选用);value 只能是原始值,
+    // 否则筛选比对永远不命中(中文化时引入的回归)
+    var valOf = function (v) { return Array.isArray(v) ? v[0] : v; };
+    var textOf = function (v) { return Array.isArray(v) ? v[1] : (zhFn ? zhFn(v) : v); };
     var html = '<option value="">' + allLabel + "</option>";
     values.forEach(function (v) {
-      var text = zhFn ? zhFn(v) : v;
-      html += '<option value="' + S.esc(v) + '"' + (v === current ? " selected" : "") + ">" + S.esc(text) + "</option>";
+      var val = valOf(v);
+      html += '<option value="' + S.esc(val) + '"' + (val === current ? " selected" : "") + ">" + S.esc(textOf(v)) + "</option>";
     });
     select.innerHTML = html;
   }
@@ -58,50 +62,77 @@
     return out;
   }
 
+  /* ── 级联筛选:实验(模板大类) → 用例 → 批次 → 变体/状态(批内) ──
+     实验与批次两个下拉的选项曾高度重合(实验名自带用例后缀),合并为
+     级联:先大类、再大类内用例、再该组合下的批次(重复组合按时间区分)。 */
+
+  function templateLabel(batch) {
+    if (batch.experiment_type === "context-strategy") return "上下文策略对照";
+    var v = (batch.fixed_conditions || {}).variable;
+    return v ? zh(v) : experimentLabel(batch);
+  }
+
+  function casesOf(batch) {
+    return Array.isArray((batch.fixed_conditions || {}).case_ids) ? batch.fixed_conditions.case_ids : [];
+  }
+
+  function latestOf(list) {
+    return list.slice().sort(function (a, b) { return String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")); })[0] || null;
+  }
+
   function initFilters() {
-    // 批次下拉显示「实验名 · 发布时间」而非原始批次 UUID(值仍是 UUID)
-    var batchText = function (id) {
-      var hit = data.filter(function (d) { return d.batch.batch_id === id; })[0];
-      return hit ? experimentLabel(hit.batch) + " · " + S.fmtTime(hit.batch.generated_at) : id;
-    };
-    fillSelect(el("fBatch"), data.map(function (d) { return d.batch.batch_id; }), state.batch, "全部批次(默认最新)", batchText);
-    var types = unique(data.map(function (d) { return experimentLabel(d.batch); }));
-    fillSelect(el("fExperiment"), types, "", "全部实验");
-    refreshDynamicFilters();
-    ["fBatch", "fVariant", "fScene", "fStatus"].forEach(function (id) {
+    fillSelect(el("fExperiment"), unique(data.map(function (d) { return templateLabel(d.batch); })), state.template, "全部实验");
+    el("fExperiment").addEventListener("change", function () {
+      state.template = el("fExperiment").value;
+      state.caseId = "";
+      state.variant = "";
+      var scope = state.template ? data.filter(function (d) { return templateLabel(d.batch) === state.template; }) : data;
+      var hit = latestOf(scope);
+      if (hit) state.batch = hit.batch.batch_id;
+      focus.kind = state.template ? "template" : "";
+      focus.value = state.template;
+      refreshDynamicFilters();
+      syncQuery();
+      render();
+    });
+    el("fCase").addEventListener("change", function () {
+      state.caseId = el("fCase").value;
+      state.variant = "";
+      var scope = data.filter(function (d) {
+        return (!state.template || templateLabel(d.batch) === state.template) &&
+          (!state.caseId || casesOf(d.batch).indexOf(state.caseId) > -1);
+      });
+      var hit = latestOf(scope);
+      if (hit) {
+        state.batch = hit.batch.batch_id;
+        if (!state.template) state.template = templateLabel(hit.batch);
+      }
+      focus.kind = state.template ? "template" : "";
+      focus.value = state.template;
+      refreshDynamicFilters();
+      syncQuery();
+      render();
+    });
+    ["fBatch", "fVariant", "fStatus"].forEach(function (id) {
       el(id).addEventListener("change", function () {
         state.batch = el("fBatch").value;
         state.variant = el("fVariant").value;
-        state.scene = el("fScene").value;
         state.status = el("fStatus").value;
-        // 手选批次时撤销实验筛选,避免两组筛选条件互相打架
-        if (id === "fBatch" && state.experiment) {
-          state.experiment = "";
-          el("fExperiment").value = "";
+        // 手选批次:级联上游同步成该批次的实验/用例(上下文批次含 3 个用例,用例保持「全部」)
+        if (id === "fBatch" && state.batch) {
+          var hit = data.filter(function (d) { return d.batch.batch_id === state.batch; })[0];
+          if (hit) {
+            state.template = templateLabel(hit.batch);
+            var cs = casesOf(hit.batch);
+            state.caseId = cs.length === 1 ? cs[0] : "";
+          }
         }
-        focus.kind = "batch";
-        focus.value = state.batch;
+        focus.kind = state.batch ? "batch" : state.template ? "template" : "";
+        focus.value = state.batch || state.template;
         refreshDynamicFilters();
         syncQuery();
         render();
       });
-    });
-    el("fExperiment").addEventListener("change", function () {
-      // 实验筛选:总览聚焦该实验的全部批次,明细区定位到其中最新一批
-      state.experiment = el("fExperiment").value;
-      focus.kind = state.experiment ? "experiment" : "";
-      focus.value = state.experiment;
-      if (state.experiment) {
-        var hits = data.filter(function (d) { return experimentLabel(d.batch) === state.experiment; });
-        var latestHit = hits.sort(function (a, b) { return String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")); })[0];
-        if (latestHit) {
-          state.batch = latestHit.batch.batch_id;
-          el("fBatch").value = state.batch;
-        }
-      }
-      refreshDynamicFilters();
-      syncQuery();
-      render();
     });
     // 总览行点击 / 「查看」链接 = 页内切换批次(不整页刷新),并定位到结论摘要;
     // 修饰键点击(Ctrl/Cmd 开新标签)保留原生链接导航
@@ -119,17 +150,21 @@
       if (!tr || !el("overviewBlock").contains(tr)) return;
       selectBatch(tr.getAttribute("data-batch"));
     });
+    refreshDynamicFilters();
   }
 
   /* 页内切换批次:同步筛选下拉与 URL,重渲染后滚到结论摘要——
      「查看」承诺的是看到该批次内容,不是回到页面顶部。 */
   function selectBatch(batchId) {
     state.batch = batchId;
-    state.experiment = "";
+    var hit = data.filter(function (d) { return d.batch.batch_id === batchId; })[0];
+    if (hit) {
+      state.template = templateLabel(hit.batch);
+      var cs = casesOf(hit.batch);
+      state.caseId = cs.length === 1 ? cs[0] : "";
+    }
     focus.kind = "batch";
     focus.value = batchId;
-    el("fBatch").value = batchId;
-    el("fExperiment").value = "";
     refreshDynamicFilters();
     syncQuery();
     render();
@@ -140,17 +175,30 @@
 
   function refreshDynamicFilters() {
     // 默认选中最新发布批次(发布时间倒序);URL 指定批次时以其为准
-    var latest = data.slice().sort(function (a, b) { return String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")); })[0];
+    var latest = latestOf(data);
     sel = data.filter(function (d) { return d.batch.batch_id === state.batch; })[0] || latest || null;
     if (sel && !state.batch) state.batch = sel.batch.batch_id;
+
+    // 用例选项:当前实验范围内的全部用例(上下文批次贡献 3 个 Session)
+    var tplScope = state.template ? data.filter(function (d) { return templateLabel(d.batch) === state.template; }) : data;
+    var caseIds = [];
+    tplScope.forEach(function (d) { casesOf(d.batch).forEach(function (c) { caseIds.push(c); }); });
+    fillSelect(el("fCase"), unique(caseIds), state.caseId, "全部用例", function (c) { return zh(c); });
+
+    // 批次选项:实验(且选了用例时该用例)范围内的批次,标签含时间以区分重复组合
+    var batchScope = state.caseId
+      ? tplScope.filter(function (d) { return casesOf(d.batch).indexOf(state.caseId) > -1; })
+      : tplScope;
+    fillSelect(el("fBatch"), batchScope.map(function (d) { return d.batch.batch_id; }), state.batch,
+      "全部批次(默认最新)", function (id) {
+        var hit = data.filter(function (d) { return d.batch.batch_id === id; })[0];
+        return hit ? experimentLabel(hit.batch) + " · " + S.fmtTime(hit.batch.generated_at) : id;
+      });
+    el("fExperiment").value = state.template || "";
+
     var variants = [];
-    var scenes = [];
-    if (sel) {
-      variants = unique((sel.batch.groups || []).map(function (g) { return g.key; }));
-      scenes = unique(sel.runs.map(function (r) { return SC.runView(r, sel.batch).scene; }));
-    }
+    if (sel) variants = unique((sel.batch.groups || []).map(function (g) { return g.key; }));
     fillSelect(el("fVariant"), variants, state.variant, "全部变体", zh);
-    fillSelect(el("fScene"), scenes, state.scene, "全部场景");
     fillSelect(el("fStatus"),
       [["complete", "完成"], ["failed", "失败"], ["invalid", "无效"], ["cancelled", "已取消"], ["pending_judgment", "待评测"], ["not_run", "未运行"]],
       state.status, "全部状态");
@@ -160,7 +208,7 @@
     var params = new URLSearchParams();
     if (state.batch) params.set("batch", state.batch);
     if (state.variant) params.set("variant", state.variant);
-    if (state.scene) params.set("scene", state.scene);
+    if (state.caseId) params.set("case", state.caseId);
     if (state.status) params.set("status", state.status);
     var q = params.toString();
     history.replaceState(null, "", q ? "?" + q : location.pathname);
@@ -169,7 +217,7 @@
   /* ── 区块渲染 ─────────────────────────────────────────────────────── */
 
   /* 实验总览:已发布正式批次一行一个(与单批视图同源数据),点击下钻。
-     随「实验/批次」筛选联动缩小范围;概要列 = 该批核心结论的第一句。 */
+     随「实验」筛选联动缩小范围;概要列 = 该批核心结论的第一句。 */
   function renderOverview() {
     if (!el("overviewBlock")) return;
     if (data.length === 0) {
@@ -178,7 +226,7 @@
     }
     var ordered = data.slice().sort(function (a, b) { return String(b.publishedAt || "").localeCompare(String(a.publishedAt || "")); });
     var visible = ordered.filter(function (d) {
-      if (focus.kind === "experiment") return experimentLabel(d.batch) === focus.value;
+      if (focus.kind === "template") return templateLabel(d.batch) === focus.value;
       if (focus.kind === "batch") return d.batch.batch_id === focus.value;
       return true;
     });
@@ -200,10 +248,10 @@
         "<td>" + note + "</td>" +
         '<td><a href="/results/?batch=' + encodeURIComponent(b.batch_id) + '">查看 →</a></td></tr>';
     }).join("");
-    var scope = focus.kind === "experiment" ? "当前范围:" + S.esc(focus.value) : focus.kind === "batch" ? "当前范围:所选批次" : "当前范围:全部批次";
+    var scope = focus.kind === "template" ? "当前范围:" + S.esc(focus.value) : focus.kind === "batch" ? "当前范围:所选批次" : "当前范围:全部批次";
     el("overviewBlock").innerHTML =
       '<div class="tbl-scroll"><table class="tbl">' + head + "<tbody>" + rows + "</tbody></table></div>" +
-      '<p class="note">' + scope + " · 总览随上方「实验/批次」筛选联动,点行即可进入单批;「变体/场景/状态」筛选只作用于下方该批次的明细区。核心结论列是摘要区结论的第一句,完整分析在下方。</p>";
+      '<p class="note">' + scope + " · 总览随上方「实验」筛选联动,点行即可进入单批;「用例/批次/变体/状态」筛选只作用于下方明细区。核心结论列是摘要区结论的第一句,完整分析在下方。</p>";
   }
 
   /* ── 核心结论(总结性分析)─────────────────────────────────────────
@@ -661,7 +709,8 @@
   }
 
   function renderFailures() {
-    var runs = sel.runs.map(function (r) { return SC.runView(r, sel.batch); });
+    // 与代表案例同口径:受当前筛选(用例/变体/状态)影响
+    var runs = selectedRuns().map(function (r) { return SC.runView(r, sel.batch); });
     var valid = runs.filter(function (r) { return !(r.validity === "INVALID" || r.status === "INVALID"); });
     var invalid = runs.filter(function (r) { return r.validity === "INVALID" || r.status === "INVALID"; });
     var failed = valid.filter(function (r) { return r.success === false || r.status === "FAILED"; });
@@ -671,7 +720,7 @@
       byReason[key] = (byReason[key] || 0) + 1;
     });
     var checkFails = {};
-    sel.runs.forEach(function (run) {
+    selectedRuns().forEach(function (run) {
       ((run.sections && run.sections.output_checks) || []).forEach(function (c) {
         if (c.passed === false) checkFails[c.check] = (checkFails[c.check] || 0) + 1;
       });
@@ -683,9 +732,10 @@
     var checkRows = Object.keys(checkFails).map(function (k) {
       return "<tr><td>" + S.esc(k) + "</td><td class=\"num\">" + S.fmtInt(checkFails[k]) + "</td></tr>";
     }).join("");
+    var scopeWord = state.caseId || state.variant || state.status ? "当前筛选下" : "本批次";
     el("failureBlock").innerHTML =
-      "<p>本批次 " + S.fmtInt(runs.length) + " 次发布运行:有效 " + S.fmtInt(valid.length) + " · 其中任务失败 " + S.fmtInt(failed.length) + " · 无效 " + S.fmtInt(invalid.length) + "。" +
-      (failed.length === 0 && invalid.length === 0 ? " 本批次无失败样本(如实说明,不以占位代替)。" : "") + "</p>" +
+      "<p>" + scopeWord + " " + S.fmtInt(runs.length) + " 次发布运行:有效 " + S.fmtInt(valid.length) + " · 其中任务失败 " + S.fmtInt(failed.length) + " · 无效 " + S.fmtInt(invalid.length) + "。" +
+      (failed.length === 0 && invalid.length === 0 ? " 无失败样本(如实说明,不以占位代替)。" : "") + "</p>" +
       (reasonRows ? '<div class="tbl-scroll"><table class="tbl"><thead><tr><th>失败原因(按断言归纳)</th><th class="num">次数</th><th>证据</th></tr></thead><tbody>' + reasonRows + "</tbody></table></div>" : "") +
       (checkRows ? '<h3>断言失败项计数(逐运行)</h3><div class="tbl-scroll"><table class="tbl"><thead><tr><th>断言</th><th class="num">未通过次数</th></tr></thead><tbody>' + checkRows + "</tbody></table></div>" : '<p class="note">无断言失败记录。</p>');
   }
@@ -730,7 +780,7 @@
     var params = new URLSearchParams(location.search);
     state.batch = params.get("batch") || "";
     state.variant = params.get("variant") || "";
-    state.scene = params.get("scene") || "";
+    state.caseId = params.get("case") || "";
     state.status = (params.get("status") || "").toLowerCase();
     if (params.get("batch")) {
       focus.kind = "batch";

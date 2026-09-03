@@ -176,7 +176,7 @@ test("前端数据适配层唯一:页面经 SHOWCASE(loadIndex/loadBatch/loadRun
 
 test("结果页:筛选五维 + 指标分母 + 下钻证据 + 成败并展 + 朴素柱状图", async () => {
   const page = await readPage("/results/index.html");
-  for (const id of ["fBatch", "fExperiment", "fVariant", "fScene", "fStatus"]) {
+  for (const id of ["fExperiment", "fCase", "fBatch", "fVariant", "fStatus"]) {
     assert.ok(page.includes(`id="${id}"`), `结果页筛选缺少 ${id}`);
   }
   assert.match(page, /尚无正式实验结果/, "无数据时使用统一空状态");

@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2950 1150" font-family="Microsoft YaHei,PingFang SC,Helvetica Neue,Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrowDown" markerWidth="7" markerHeight="10" refX="3.5" refY="9" orient="auto">
+      <polygon points="0 0, 7 0, 3.5 10" fill="#555"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e67e22"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect width="2950" height="1150" fill="#f8f9fa" rx="8"/>
+
+  <!-- 标题 -->
+  <text x="1475" y="35" text-anchor="middle" font-size="22" font-weight="bold" fill="#2c3e50">银行能力开放平台 — 全链路架构图（1688 合作产品线）</text>
+  <text x="1475" y="57" text-anchor="middle" font-size="12" fill="#7f8c8d">Spring Cloud 微服务底座（Nacos + Gateway + OAuth2 / JWT + Redis RBAC）；统一封装银行总行与杭州分行能力接口，以统一 API 对外输出</text>
+
+  <!-- ============ 调用方 ============ -->
+  <rect x="30" y="95" width="640" height="70" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="350" y="120" text-anchor="middle" font-size="13" fill="white" font-weight="bold">贷款服务（度小满渠道）</text>
+  <text x="350" y="140" text-anchor="middle" font-size="10" fill="#d6eaf8">统一通道 HTTP · SM2 签名 + SM4 加密调用 统一能力 API</text>
+
+  <rect x="690" y="95" width="640" height="70" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1010" y="120" text-anchor="middle" font-size="13" fill="white" font-weight="bold">1688 场景对接</text>
+  <text x="1010" y="140" text-anchor="middle" font-size="10" fill="#d6eaf8">订单接入 · 电子签章 · 场景化资金链路</text>
+
+  <rect x="1350" y="95" width="730" height="70" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1715" y="120" text-anchor="middle" font-size="13" fill="white" font-weight="bold">Vue 3 管理后台</text>
+  <text x="1715" y="140" text-anchor="middle" font-size="10" fill="#d6eaf8">运营配置 · 审核 · 渠道 / 产品 / 合同管理（Element Plus）</text>
+
+  <line x1="350" y1="165" x2="350" y2="193" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <line x1="1010" y1="165" x2="1010" y2="193" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <line x1="1715" y1="165" x2="1715" y2="193" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <!-- ============ 网关层 ============ -->
+  <rect x="30" y="200" width="2050" height="75" rx="8" fill="#8e44ad" filter="url(#shadow)"/>
+  <text x="1055" y="228" text-anchor="middle" font-size="14" fill="white" font-weight="bold">Spring Cloud Gateway</text>
+  <text x="1055" y="250" text-anchor="middle" font-size="11" fill="#e8daef">JWT 验签（公钥端点 → 认证中心公钥） · 白名单放行 · 全局过滤器 解析 JWT 注入用户头 · 鉴权管理器 路径鉴权（Redis RBAC）</text>
+  <text x="1055" y="266" text-anchor="middle" font-size="10" fill="#e8daef">忽略白名单 JWT 头清洗 · 多用户体系区分（admin / portal）</text>
+
+  <!-- ============ 认证中心 ============ -->
+  <line x1="1055" y1="275" x2="1055" y2="293" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <rect x="30" y="295" width="2050" height="70" rx="8" fill="#2980b9" filter="url(#shadow)"/>
+  <text x="1055" y="320" text-anchor="middle" font-size="14" fill="white" font-weight="bold">OAuth2 认证中心认证中心</text>
+  <text x="1055" y="342" text-anchor="middle" font-size="11" fill="#d6eaf8">password / refresh_token 模式 · RSA KeyPair（密钥库）签发 JWT · JwtTokenEnhancer 内容增强 · /rsa/publicKey 暴露公钥供网关验签</text>
+
+  <!-- ============ RBAC 数据流 ============ -->
+  <line x1="1055" y1="365" x2="1055" y2="383" stroke="#e67e22" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrowOrange)"/>
+
+  <rect x="30" y="385" width="2050" height="60" rx="8" fill="#fdf2e9" stroke="#e67e22" stroke-width="1.5"/>
+  <text x="1055" y="408" text-anchor="middle" font-size="11" fill="#e67e22" font-weight="bold">RBAC 数据流：权限表族（资源 / 角色 / 关联） → 聚合构建 → Redis 资源角色映射→ 网关按「资源 URL → 允许角色」做路径鉴权</text>
+  <text x="1055" y="430" text-anchor="middle" font-size="10" fill="#e67e22">角色 / 资源变更后重建映射，网关无状态鉴权，权限收敛到 Redis 一跳</text>
+
+  <!-- ============ manage 服务 ============ -->
+  <line x1="1055" y1="445" x2="1055" y2="463" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <rect x="30" y="465" width="1000" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="530" y="490" text-anchor="middle" font-size="14" fill="white" font-weight="bold">对外 API 服务（manage）</text>
+  <text x="530" y="512" text-anchor="middle" font-size="11" fill="#d6eaf8">对外统一 API（能力编排层）</text>
+  <text x="530" y="530" text-anchor="middle" font-size="10" fill="#d6eaf8">统一 API 编排：贷款服务与 1688 场景经网关调用银行能力</text>
+
+  <rect x="1060" y="465" width="1020" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1570" y="490" text-anchor="middle" font-size="14" fill="white" font-weight="bold">管理后台服务（manage · 17 个 Controller）</text>
+  <text x="1570" y="512" text-anchor="middle" font-size="11" fill="#d6eaf8">渠道 / 合作方 / 产品 / 项目 / 合同 / 影像 / 审批 / 应用详情</text>
+  <text x="1570" y="530" text-anchor="middle" font-size="10" fill="#d6eaf8">运营配置 + 审核流，配套 Vue3 管理后台</text>
+
+  <!-- ============ remote 客户端层 ============ -->
+  <line x1="530" y1="545" x2="530" y2="563" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <line x1="1570" y1="545" x2="1570" y2="563" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <rect x="30" y="565" width="820" height="80" rx="8" fill="#16a085" filter="url(#shadow)"/>
+  <text x="440" y="588" text-anchor="middle" font-size="13" fill="white" font-weight="bold">北京银行总行客户端（总行客户端 · 80+ 接口封装）</text>
+  <text x="440" y="608" text-anchor="middle" font-size="10" fill="#d5f5e3">风控 · 授信 · 放款 · 还款 · 绑卡</text>
+  <text x="440" y="626" text-anchor="middle" font-size="10" fill="#d5f5e3">生物识别 · 三要素验证 · 三层银行报文头</text>
+
+  <rect x="870" y="565" width="620" height="80" rx="8" fill="#16a085" filter="url(#shadow)"/>
+  <text x="1180" y="588" text-anchor="middle" font-size="13" fill="white" font-weight="bold">杭州分行客户端（杭州分行客户端模块）</text>
+  <text x="1180" y="608" text-anchor="middle" font-size="10" fill="#d5f5e3">单笔转账 · 子户开立 / 余额 / 流水 · 对账文件</text>
+  <text x="1180" y="626" text-anchor="middle" font-size="10" fill="#d5f5e3">分行报文组装 · 金额 / 状态解析</text>
+
+  <rect x="1510" y="565" width="270" height="80" rx="8" fill="#16a085" filter="url(#shadow)"/>
+  <text x="1645" y="590" text-anchor="middle" font-size="12" fill="white" font-weight="bold">OCR 能力</text>
+  <text x="1645" y="610" text-anchor="middle" font-size="10" fill="#d5f5e3">多家 OCR 服务商</text>
+  <text x="1645" y="628" text-anchor="middle" font-size="10" fill="#d5f5e3">身份证 / 证照识别</text>
+
+  <rect x="1800" y="565" width="280" height="80" rx="8" fill="#16a085" filter="url(#shadow)"/>
+  <text x="1940" y="590" text-anchor="middle" font-size="12" fill="white" font-weight="bold">影像平台</text>
+  <text x="1940" y="610" text-anchor="middle" font-size="10" fill="#d5f5e3">影像平台对接</text>
+  <text x="1940" y="628" text-anchor="middle" font-size="10" fill="#d5f5e3">影像件上传 / 管理</text>
+
+  <!-- ============ 外部机构 ============ -->
+  <line x1="440" y1="645" x2="440" y2="663" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <line x1="1180" y1="645" x2="1180" y2="663" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+  <line x1="1790" y1="645" x2="1790" y2="663" stroke="#555" stroke-width="2" marker-end="url(#arrowDown)"/>
+
+  <rect x="30" y="665" width="820" height="55" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="440" y="688" text-anchor="middle" font-size="13" fill="white" font-weight="bold">北京银行总行（核算 / 数智工厂）</text>
+  <text x="440" y="708" text-anchor="middle" font-size="10" fill="#d5f5e3">风控 · 授信 · 放款 · 还款 · 核算报文</text>
+
+  <rect x="870" y="665" width="620" height="55" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1180" y="688" text-anchor="middle" font-size="13" fill="white" font-weight="bold">北京银行杭州分行</text>
+  <text x="1180" y="708" text-anchor="middle" font-size="10" fill="#d5f5e3">转账 · 子户 · 对账</text>
+
+  <rect x="1510" y="665" width="570" height="55" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1795" y="688" text-anchor="middle" font-size="13" fill="white" font-weight="bold">OCR / 影像三方服务</text>
+  <text x="1795" y="708" text-anchor="middle" font-size="10" fill="#d5f5e3">OCR / 影像服务</text>
+
+  <!-- ============ 右列：贷前平台 / 中间件 / 我的足迹 ============ -->
+  <rect x="2120" y="95" width="800" height="215" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="2140" y="122" font-size="14" font-weight="bold" fill="#2c3e50">贷前平台（贷前平台模块）</text>
+  <text x="2140" y="148" font-size="11" fill="#333">授信申请 · 银行用信 · 放款申请 · 还款管理</text>
+  <text x="2140" y="172" font-size="11" fill="#333">发票信息 · 客户信息 · 统计报表</text>
+  <text x="2140" y="196" font-size="11" fill="#333">XXL-JOB jobhandlers：结果补查 / 状态刷新 / 对账类任务</text>
+  <text x="2140" y="228" font-size="11" fill="#7f8c8d">面向贷前 / 预授信业务域的独立模块，与 manage 共用底座</text>
+  <text x="2140" y="250" font-size="11" fill="#7f8c8d">客户定制分支（行业客户授信 / 1688 对接）</text>
+
+  <rect x="2120" y="330" width="800" height="170" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="2140" y="357" font-size="14" font-weight="bold" fill="#2c3e50">中间件与部署</text>
+  <text x="2140" y="383" font-size="11" fill="#333">Nacos：服务注册 + 配置中心</text>
+  <text x="2140" y="407" font-size="11" fill="#333">Redis：RBAC 资源角色映射 + 缓存</text>
+  <text x="2140" y="431" font-size="11" fill="#333">MySQL：业务库 + 权限库（ums_* 表族）</text>
+  <text x="2140" y="455" font-size="11" fill="#333">XXL-JOB 2.3.0：调度中心（独立部署）</text>
+  <text x="2140" y="479" font-size="11" fill="#333">Docker Compose 编排 · Jenkins 构建</text>
+
+  <rect x="2120" y="520" width="800" height="230" rx="8" fill="#f4ecf7" stroke="#8e44ad" stroke-width="1.5"/>
+  <text x="2140" y="547" font-size="14" font-weight="bold" fill="#8e44ad">我的参与足迹（git 可查）</text>
+  <text x="2140" y="573" font-size="11" fill="#333">· 杭州分行接口客户端封装（杭州分行客户端 · 76 文件）</text>
+  <text x="2140" y="597" font-size="11" fill="#333">· 对外 API 能力层（manage/api）</text>
+  <text x="2140" y="621" font-size="11" fill="#333">· 资产类 XXL-JOB 定时任务（jobhandler）</text>
+  <text x="2140" y="645" font-size="11" fill="#333">· 数据模型（mbg）与公共工具 / 枚举</text>
+  <text x="2140" y="677" font-size="11" fill="#8e44ad" font-weight="bold">· 个人 240+ 次提交 · 第三大贡献者</text>
+  <text x="2140" y="701" font-size="11" fill="#8e44ad" font-weight="bold">· 2023.10 - 2025.03 持续参与</text>
+  <text x="2140" y="731" font-size="10" fill="#7f8c8d">底座基于开源微服务脚手架裁剪，业务层自研</text>
+
+  <!-- ============ 登录与鉴权时序 ============ -->
+  <text x="30" y="775" font-size="15" font-weight="bold" fill="#2c3e50">登录与鉴权时序（一次管理端请求的完整链路）</text>
+
+  <rect x="30" y="790" width="440" height="60" rx="8" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="250" y="815" text-anchor="middle" font-size="12" fill="white" font-weight="bold">① 登录 /admin/login</text>
+  <text x="250" y="835" text-anchor="middle" font-size="10" fill="#fdebd0">管理后台提交账号密码</text>
+
+  <line x1="470" y1="820" x2="488" y2="820" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="490" y="790" width="450" height="60" rx="8" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="715" y="815" text-anchor="middle" font-size="12" fill="white" font-weight="bold">② 认证中心 /oauth/token</text>
+  <text x="715" y="835" text-anchor="middle" font-size="10" fill="#fdebd0">password 模式 · RSA 私钥签发 JWT</text>
+
+  <line x1="940" y1="820" x2="958" y2="820" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="960" y="790" width="430" height="60" rx="8" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="1175" y="815" text-anchor="middle" font-size="12" fill="white" font-weight="bold">③ 请求携带 JWT</text>
+  <text x="1175" y="835" text-anchor="middle" font-size="10" fill="#fdebd0">Authorization 头访问受保护接口</text>
+
+  <line x1="1390" y1="820" x2="1408" y2="820" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="1410" y="790" width="470" height="60" rx="8" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="1645" y="815" text-anchor="middle" font-size="12" fill="white" font-weight="bold">④ 网关公钥验签</text>
+  <text x="1645" y="835" text-anchor="middle" font-size="10" fill="#fdebd0">公钥端点 拉取认证中心公钥 · 白名单放行</text>
+
+  <line x1="1880" y1="820" x2="1898" y2="820" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="1900" y="790" width="510" height="60" rx="8" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2155" y="815" text-anchor="middle" font-size="12" fill="white" font-weight="bold">⑤ Redis 路径鉴权（RBAC）</text>
+  <text x="2155" y="835" text-anchor="middle" font-size="10" fill="#fdebd0">鉴权管理器 按「资源 URL → 角色」判定放行</text>
+
+  <line x1="2410" y1="820" x2="2428" y2="820" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="2430" y="790" width="490" height="60" rx="8" fill="#27ae60" filter="url(#shadow)"/>
+  <text x="2675" y="815" text-anchor="middle" font-size="12" fill="white" font-weight="bold">⑥ 注入用户头转发下游</text>
+  <text x="2675" y="835" text-anchor="middle" font-size="10" fill="#d5f5e3">全局过滤器 解析 JWT → 用户信息头 → 资源服务</text>
+
+  <!-- 底部说明与图例 -->
+  <text x="30" y="895" font-size="12" font-weight="bold" fill="#2c3e50">链路关系</text>
+  <text x="30" y="918" font-size="11" fill="#333">贷款服务经 统一通道 通道调用本平台 统一能力 API（SM2 签名 + SM4 加密）→ 网关鉴权 → manage 编排 → 总行 / 杭州分行客户端 → 北京银行总行 / 杭州分行。</text>
+  <text x="30" y="940" font-size="11" fill="#7f8c8d">与贷款服务共用方法论：唯一流水、报文统一封装、国密签名验签、结果补查、超时不重试资金操作。</text>
+
+  <rect x="30" y="965" width="14" height="14" rx="2" fill="#3498db"/>
+  <text x="50" y="977" font-size="10" fill="#333">调用方 / 业务服务</text>
+  <rect x="210" y="965" width="14" height="14" rx="2" fill="#8e44ad"/>
+  <text x="230" y="977" font-size="10" fill="#333">网关 / 平台层</text>
+  <rect x="370" y="965" width="14" height="14" rx="2" fill="#2980b9"/>
+  <text x="390" y="977" font-size="10" fill="#333">认证中心</text>
+  <rect x="510" y="965" width="14" height="14" rx="2" fill="#16a085"/>
+  <text x="530" y="977" font-size="10" fill="#333">银行客户端层</text>
+  <rect x="690" y="965" width="14" height="14" rx="2" fill="#2ecc71"/>
+  <text x="710" y="977" font-size="10" fill="#333">外部机构</text>
+  <rect x="830" y="965" width="14" height="14" rx="2" fill="#e67e22"/>
+  <text x="850" y="977" font-size="10" fill="#333">数据流 / 时序</text>
+  <rect x="990" y="965" width="14" height="14" rx="2" fill="#f4ecf7" stroke="#8e44ad"/>
+  <text x="1010" y="977" font-size="10" fill="#333">个人足迹</text>
+</svg>

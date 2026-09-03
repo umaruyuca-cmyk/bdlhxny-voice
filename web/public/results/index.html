@@ -12,7 +12,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="/"><span class="wordmark"><b>Touchstone</b><span>Agent 实验与证据</span></span></a>
-    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/" class="on">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/">测试逻辑</a></nav>
+    <nav class="site-nav" aria-label="站点主导航"><a href="/">系统总览</a><a href="/results/" class="on">实验结果</a><a href="/evidence/">原始证据</a><a href="/system/">执行逻辑</a><a href="/methodology/">测试逻辑</a><a href="/work/">工作项目</a></nav>
   </div>
 </header>
 <main class="page-main">
@@ -31,13 +31,13 @@
     <section id="results-filter" class="panel">
       <h2>筛选</h2>
       <div class="filter-row" role="group" aria-label="结果筛选">
-        <label>批次<select id="fBatch"></select></label>
         <label>实验<select id="fExperiment"></select></label>
+        <label>用例<select id="fCase"></select></label>
+        <label>批次<select id="fBatch"></select></label>
         <label>变体<select id="fVariant"></select></label>
-        <label>场景<select id="fScene"></select></label>
         <label>状态<select id="fStatus"></select></label>
       </div>
-      <p class="note">筛选决定本页显示哪个批次的明细,不改任何数据:「批次/实验」选定下方各区块(及上方总览)的范围,「全部批次」时自动展示最新发布的一批;「变体/场景/状态」只在所选批次内部进一步过滤运行明细。点击总览的行或「查看」同样会切换批次。</p>
+      <p class="note">筛选自左向右级联:先选实验大类,用例与批次随之大类内收窄(不选时显示全部);变体/状态只在所选批次内部过滤运行明细,不改任何数据。点击总览的行或「查看」同样会切换批次。</p>
     </section>
 
     <section id="results-overview" class="panel">

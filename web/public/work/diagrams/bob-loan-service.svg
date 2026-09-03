@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2950 1080" font-family="Microsoft YaHei,PingFang SC,Helvetica Neue,Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e67e22"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect width="2950" height="1080" fill="#f8f9fa" rx="8"/>
+
+  <!-- 标题 -->
+  <text x="1475" y="35" text-anchor="middle" font-size="22" font-weight="bold" fill="#2c3e50">京 e 贷（百度度小满渠道）— 贷款服务全链路流程图</text>
+  <text x="1475" y="57" text-anchor="middle" font-size="12" fill="#7f8c8d">小程序 / H5 → 贷款服务 → 银行能力开放平台（SM2 签名 + SM4 加密）→ 北京银行；度小满并行提供人脸 / 发票 / 税务三方数据</text>
+
+  <!-- ============ 第一行：业务主链 ============ -->
+
+  <rect x="30" y="95" width="170" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="115" y="117" text-anchor="middle" font-size="13" fill="white" font-weight="bold">用户端</text>
+  <text x="115" y="137" text-anchor="middle" font-size="11" fill="white">小程序 / H5</text>
+  <text x="115" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">京 e 贷申请入口</text>
+
+  <line x1="200" y1="135" x2="218" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 身份核验（虚线框） -->
+  <rect x="220" y="78" width="560" height="115" rx="10" fill="none" stroke="#e67e22" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="230" y="93" font-size="10" fill="#e67e22" font-weight="bold">贷前身份核验（三重）</text>
+
+  <rect x="230" y="100" width="160" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="310" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">OCR 身份证</text>
+  <text x="310" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">识别结果四要素比对</text>
+
+  <line x1="390" y1="120" x2="408" y2="120" stroke="#e67e22" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+
+  <rect x="410" y="100" width="170" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="495" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">人脸核验</text>
+  <text x="495" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">度小满评分 + 银行生物识别</text>
+
+  <line x1="580" y1="120" x2="598" y2="120" stroke="#e67e22" stroke-width="1.5" marker-end="url(#arrowOrange)"/>
+
+  <rect x="600" y="100" width="170" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="685" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">三要素核验</text>
+  <text x="685" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">运营商手机号验证</text>
+
+  <line x1="780" y1="135" x2="798" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 授信与额度 -->
+  <rect x="800" y="95" width="220" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="910" y="117" text-anchor="middle" font-size="13" fill="white" font-weight="bold">授信申请与额度查询</text>
+  <text x="910" y="137" text-anchor="middle" font-size="11" fill="white">quota / query</text>
+  <text x="910" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">BigDecimal 汇总可贷额度</text>
+
+  <line x1="1020" y1="135" x2="1038" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 提款审批 -->
+  <rect x="1040" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1140" y="117" text-anchor="middle" font-size="13" fill="white" font-weight="bold">提款审批</text>
+  <text x="1140" y="137" text-anchor="middle" font-size="11" fill="white">提款申请 / 结果查询</text>
+  <text x="1140" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">审批中(W)先查结果再放行</text>
+
+  <line x1="1240" y1="135" x2="1258" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 贷款发放 -->
+  <rect x="1260" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1360" y="117" text-anchor="middle" font-size="13" fill="white" font-weight="bold">贷款发放</text>
+  <text x="1360" y="137" text-anchor="middle" font-size="11" fill="white">loan / provide</text>
+  <text x="1360" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">结算信息 + 影像件随款上送</text>
+
+  <line x1="1460" y1="135" x2="1478" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 放还款结果 -->
+  <rect x="1480" y="95" width="200" height="80" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1580" y="117" text-anchor="middle" font-size="13" fill="white" font-weight="bold">放还款结果</text>
+  <text x="1580" y="137" text-anchor="middle" font-size="11" fill="white">loanRepay / result</text>
+  <text x="1580" y="154" text-anchor="middle" font-size="10" fill="#d5f5e3">N / W / F / E / Y 状态机</text>
+
+  <line x1="1680" y1="135" x2="1698" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 还款计划与试算 -->
+  <rect x="1700" y="95" width="220" height="80" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1810" y="117" text-anchor="middle" font-size="13" fill="white" font-weight="bold">还款计划 / 试算</text>
+  <text x="1810" y="137" text-anchor="middle" font-size="11" fill="white">repayPlan · repayTrial</text>
+  <text x="1810" y="154" text-anchor="middle" font-size="10" fill="#d6eaf8">借据+逾期天数+本息分拆</text>
+
+  <line x1="1920" y1="135" x2="1938" y2="135" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 结清 -->
+  <rect x="1940" y="105" width="120" height="60" rx="8" fill="#16a085" filter="url(#shadow)"/>
+  <text x="2000" y="130" text-anchor="middle" font-size="13" fill="white" font-weight="bold">结清 / 回收</text>
+  <text x="2000" y="150" text-anchor="middle" font-size="10" fill="#d5f5e3">还款回收</text>
+
+  <line x1="2060" y1="135" x2="2088" y2="135" stroke="#e67e22" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrowOrange)"/>
+
+  <!-- 异步闭环（虚线框） -->
+  <rect x="2090" y="78" width="830" height="115" rx="10" fill="none" stroke="#e67e22" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="2100" y="93" font-size="10" fill="#e67e22" font-weight="bold">放款异步闭环（银行超时 ≠ 失败：不自动重试资金操作，一律结果补查收敛）</text>
+
+  <rect x="2100" y="100" width="150" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2175" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">本地落「待查 N」</text>
+  <text x="2175" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">发起放款即入库</text>
+
+  <line x1="2250" y1="120" x2="2268" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="2270" y="100" width="150" height="40" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2345" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">轮询结果接口</text>
+  <text x="2345" y="133" text-anchor="middle" font-size="9" fill="#fdebd0">轻量调度器 定时补查</text>
+
+  <line x1="2420" y1="120" x2="2438" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="2440" y="100" width="220" height="40" rx="6" fill="#fdebd0" stroke="#e67e22" stroke-width="1"/>
+  <text x="2550" y="113" text-anchor="middle" font-size="10" fill="#e67e22" font-weight="bold">N/W 未完成 · F/E 失败</text>
+  <text x="2550" y="130" text-anchor="middle" font-size="10" fill="#e67e22">Y 成功 → 回填借据号</text>
+
+  <line x1="2660" y1="120" x2="2678" y2="120" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="2680" y="100" width="220" height="40" rx="6" fill="#27ae60" filter="url(#shadow)"/>
+  <text x="2790" y="118" text-anchor="middle" font-size="11" fill="white" font-weight="bold">终态才放行后续流程</text>
+  <text x="2790" y="133" text-anchor="middle" font-size="9" fill="#d5f5e3">未终态禁止再次发起</text>
+
+  <!-- ============ 第二行：通道链 ============ -->
+
+  <rect x="30" y="215" width="280" height="95" rx="8" fill="#8e44ad" filter="url(#shadow)"/>
+  <text x="170" y="238" text-anchor="middle" font-size="13" fill="white" font-weight="bold">贷款服务（本项目）</text>
+  <text x="170" y="258" text-anchor="middle" font-size="11" fill="white">Spring Boot 单体</text>
+  <text x="170" y="276" text-anchor="middle" font-size="10" fill="#e8daef">六类流程编排 · 防重 · 异步状态收敛</text>
+  <text x="170" y="294" text-anchor="middle" font-size="10" fill="#e8daef">MyBatis-Plus · 轻量调度器 任务表调度</text>
+
+  <line x1="310" y1="262" x2="338" y2="262" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 报文与安全层 -->
+  <rect x="340" y="200" width="900" height="130" rx="10" fill="none" stroke="#2980b9" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="350" y="217" font-size="10" fill="#2980b9" font-weight="bold">统一报文与国密安全层（对开放平台通道）</text>
+
+  <rect x="350" y="226" width="260" height="42" rx="6" fill="#2980b9" filter="url(#shadow)"/>
+  <text x="480" y="244" text-anchor="middle" font-size="11" fill="white" font-weight="bold">三层银行报文头</text>
+  <text x="480" y="260" text-anchor="middle" font-size="9" fill="#d6eaf8">SYS_HEAD + APP_HEAD + LOCAL_HEAD + BODY</text>
+
+  <line x1="610" y1="247" x2="628" y2="247" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="630" y="226" width="280" height="42" rx="6" fill="#2980b9" filter="url(#shadow)"/>
+  <text x="770" y="244" text-anchor="middle" font-size="11" fill="white" font-weight="bold">SM4 报文加密 → SM2 签名</text>
+  <text x="770" y="260" text-anchor="middle" font-size="9" fill="#d6eaf8">字典序签名原文：appId/nonce/timestamp/path/appKey/data</text>
+
+  <line x1="910" y1="247" x2="928" y2="247" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="930" y="226" width="300" height="42" rx="6" fill="#d6eaf8" stroke="#2980b9" stroke-width="1"/>
+  <text x="1080" y="240" text-anchor="middle" font-size="10" fill="#2980b9" font-weight="bold">兼容处理：空报文(body/BODY) · 双返回码口径</text>
+  <text x="1080" y="257" text-anchor="middle" font-size="10" fill="#2980b9">双返回码口径 · 金额 BigDecimal 分↔元</text>
+
+  <text x="350" y="292" font-size="10" fill="#7f8c8d">SEQ_NO = 渠道 + 日期 + UUID　｜　金额三级校验：提款 / 订单 / 合同，setScale(2, HALF_UP)</text>
+
+  <line x1="1240" y1="262" x2="1268" y2="262" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 开放平台 -->
+  <rect x="1270" y="215" width="300" height="95" rx="8" fill="#3498db" filter="url(#shadow)"/>
+  <text x="1420" y="238" text-anchor="middle" font-size="13" fill="white" font-weight="bold">银行能力开放平台</text>
+  <text x="1420" y="258" text-anchor="middle" font-size="11" fill="white">/manage/api/function</text>
+  <text x="1420" y="276" text-anchor="middle" font-size="10" fill="#d6eaf8">网关统一鉴权 · 能力统一封装</text>
+  <text x="1420" y="294" text-anchor="middle" font-size="10" fill="#d6eaf8">（详见开放平台架构图）</text>
+
+  <line x1="1570" y1="262" x2="1598" y2="262" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 北京银行 -->
+  <rect x="1600" y="215" width="280" height="95" rx="8" fill="#2ecc71" filter="url(#shadow)"/>
+  <text x="1740" y="238" text-anchor="middle" font-size="13" fill="white" font-weight="bold">北京银行</text>
+  <text x="1740" y="258" text-anchor="middle" font-size="11" fill="white">总行核算 / 数智工厂</text>
+  <text x="1740" y="276" text-anchor="middle" font-size="10" fill="#d5f5e3">风控 · 授信 · 放款 · 还款 · 核算</text>
+  <text x="1740" y="294" text-anchor="middle" font-size="10" fill="#d5f5e3">影像平台（合同 / 贸易背景 / 影像件）</text>
+
+  <!-- 度小满并行通道 -->
+  <rect x="1910" y="200" width="1010" height="130" rx="10" fill="none" stroke="#e67e22" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="1920" y="217" font-size="10" fill="#e67e22" font-weight="bold">度小满数据通道（并行 · 独立签名协议：SM4 随机密钥加密 + SM2 加密 key/salt + SM2 签名验签）</text>
+
+  <rect x="1920" y="226" width="220" height="42" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2030" y="244" text-anchor="middle" font-size="11" fill="white" font-weight="bold">人脸识别</text>
+  <text x="2030" y="260" text-anchor="middle" font-size="9" fill="#fdebd0">maxScore &gt; 70 通过 · 最佳帧回传银行</text>
+
+  <rect x="2160" y="226" width="180" height="42" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2250" y="244" text-anchor="middle" font-size="11" fill="white" font-weight="bold">发票数据</text>
+  <text x="2250" y="260" text-anchor="middle" font-size="9" fill="#fdebd0">贸易背景核验</text>
+
+  <rect x="2360" y="226" width="180" height="42" rx="6" fill="#e67e22" filter="url(#shadow)"/>
+  <text x="2450" y="244" text-anchor="middle" font-size="11" fill="white" font-weight="bold">税务数据</text>
+  <text x="2450" y="260" text-anchor="middle" font-size="9" fill="#fdebd0">经营状况核验</text>
+
+  <rect x="2560" y="226" width="340" height="42" rx="6" fill="#fdebd0" stroke="#e67e22" stroke-width="1"/>
+  <text x="2730" y="240" text-anchor="middle" font-size="10" fill="#e67e22" font-weight="bold">加密文件上传：SM4 加密 + tar.gz 打包</text>
+  <text x="2730" y="257" text-anchor="middle" font-size="10" fill="#e67e22">OkHttp multipart 上送</text>
+
+  <!-- ============ 六类核心流程明细 ============ -->
+  <text x="30" y="368" font-size="15" font-weight="bold" fill="#2c3e50">六类核心流程明细（统一远程门面 → 开放平台）</text>
+
+  <rect x="30" y="380" width="950" height="420" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="50" y="407" font-size="13" font-weight="bold" fill="#2c3e50">流程与接口（服务编码）</text>
+  <text x="50" y="432" font-size="11" fill="#333">1. 额度查询：统一远程门面 · BigDecimal 汇总可贷额度 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="456" font-size="11" fill="#333">2. 提款审批：useCreditApply / useCreditResult · 仅一条审批中(W)记录，存在先查结果 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="480" font-size="11" fill="#333">3. 贷款发放：放款接口 · 结算信息+影像件随款上送 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="504" font-size="11" fill="#333">4. 放还款结果：放还款结果接口 · 借据状态机更新 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="528" font-size="11" fill="#333">5. 还款计划：还款计划接口 · 借据+逾期天数+已还明细 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="552" font-size="11" fill="#333">6. 贷前试算：贷前试算接口 · 本息分拆；贷后试算 2209 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="576" font-size="11" fill="#333">7. 还款回收：还款回收 · 还款清分 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="610" font-size="12" font-weight="bold" fill="#2c3e50">身份核验三件套</text>
+  <text x="50" y="634" font-size="11" fill="#333">OCR：上传正反面 → OCR 识别接口 → 识别结果与录入四要素逐一比对 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="658" font-size="11" fill="#333">人脸：度小满评分(maxScore&gt;70) → 最佳帧上传 → 银行生物识别 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="682" font-size="11" fill="#333">三要素：运营商核验 运营商核验 → 通过后发送短信验证码（短信核验） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="716" font-size="12" font-weight="bold" fill="#2c3e50">统一异常与响应</text>
+  <text x="50" y="740" font-size="11" fill="#333">@RestControllerAdvice 分级处理：业务异常 / 远程通道异常 / 校验异常 / 过滤器异常 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="50" y="764" font-size="11" fill="#333">统一 Result 响应包装 + Bean Validation 参数校验 + 18 字段手工校验兜底 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <!-- 异步与防重 -->
+  <rect x="1010" y="380" width="950" height="420" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="1030" y="407" font-size="13" font-weight="bold" fill="#2c3e50">异步结果闭环与防重</text>
+  <text x="1030" y="432" font-size="11" fill="#333">1. 放款闭环：发起 → 本地落「待查 N」 → 轮询 → N/W 继续 / F,E 失败 / Y 成功回填借据号 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="456" font-size="11" fill="#333">2. 提款防重：同客户仅一条「审批中 W」记录，存在则先查结果再放行新申请 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="480" font-size="11" fill="#333">3. 放款防重：仅允许一条待查借据，未终态禁止再次发起 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="504" font-size="11" fill="#333">4. 授信防重：授信成功后禁止重复授信 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="528" font-size="11" fill="#333">5. 银行超时原则：超时 ≠ 失败，不自动重试资金操作，一律结果补查收敛 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="562" font-size="12" font-weight="bold" fill="#2c3e50">定时任务（轻量调度器 + 任务表 任务表）</text>
+  <text x="1030" y="586" font-size="11" fill="#333">任务从 任务表 表加载注册（OPEN 状态），支持后台开关 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="610" font-size="11" fill="#333">授信结果补查任务：异步授信到期未回 → 主动查询更新状态 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="634" font-size="11" fill="#333">放款结果轮询：待查借据批量补查 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="668" font-size="12" font-weight="bold" fill="#2c3e50">HTTP 客户端策略</text>
+  <text x="1030" y="692" font-size="11" fill="#333">超时参数按通道可配；仅连接类异常自动重试（最多 3 次） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="716" font-size="11" fill="#333">资金类接口不依赖 HTTP 重试，依赖业务层补查闭环 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="1030" y="740" font-size="11" fill="#333">多客户端并存：HttpClient4/5 · OkHttp · hutool，按通道选择 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <!-- 报文与兼容 -->
+  <rect x="1990" y="380" width="930" height="420" rx="8" fill="#ffffff" stroke="#d5dbdb"/>
+  <text x="2010" y="407" font-size="13" font-weight="bold" fill="#2c3e50">报文、安全与兼容明细</text>
+  <text x="2010" y="432" font-size="11" fill="#333">三层报文头：SYS_HEAD（SERVICE_CODE / SEQ_NO / MESSAGE_TYPE / ） <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="456" font-size="11" fill="#333">　　　　　　APP_HEAD（分页） + LOCAL_HEAD（RET 结果数组） + BODY <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="480" font-size="11" fill="#333">平台通道签名：data SM4 加密 → 五要素字典序拼原文 → SM2 私钥签名 → 响应 SM4 解密 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="504" font-size="11" fill="#333">度小满通道签名：SM4 随机密钥 + SM2 加密 key/salt + TreeMap 原文 SM2 签名验签 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="528" font-size="11" fill="#333">两套签名协议并存，按通道路由，互不复用 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="562" font-size="12" font-weight="bold" fill="#2c3e50">金额精度</text>
+  <text x="2010" y="586" font-size="11" fill="#333">提款 / 订单 / 合同三级金额校验，BigDecimal + setScale(2, HALF_UP) <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="610" font-size="11" fill="#333">分 ↔ 元换算统一走 统一换算器，禁止 double 直算 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="644" font-size="12" font-weight="bold" fill="#2c3e50">兼容性处理（联调踩坑沉淀）</text>
+  <text x="2010" y="668" font-size="11" fill="#333">空报文：body / 大小写兼容 + 空白判断 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="692" font-size="11" fill="#333">返回码双口径：数智工厂 000000 与 风控 00000 分别判定 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="716" font-size="11" fill="#333">业务流水：项目码 + yyyyMMddHHmmss + UUID 补齐 32 位全局唯一 <tspan fill="#27ae60">✓已实现</tspan></text>
+  <text x="2010" y="740" font-size="11" fill="#333">影像件：合同 / 贸易背景 / 影像件组 fileInfoList 随放款上送 + 平台上传双链路 <tspan fill="#27ae60">✓已实现</tspan></text>
+
+  <!-- 底部说明与图例 -->
+  <text x="30" y="845" font-size="12" font-weight="bold" fill="#2c3e50">链路关系</text>
+  <text x="30" y="868" font-size="11" fill="#333">本系统经 统一通道 HTTP 通道调用银行能力开放平台（/manage/api/function，SM2 签名 + SM4 加密），由开放平台统一对接北京银行总行与杭州分行；度小满通道为并行直连。</text>
+  <text x="30" y="890" font-size="11" fill="#7f8c8d">与数链融共用方法论：唯一流水、状态机收敛、结果补查、定时补偿、超时不重试资金操作——两套系统的资金一致性思路同源。</text>
+
+  <rect x="30" y="915" width="14" height="14" rx="2" fill="#3498db"/>
+  <text x="50" y="927" font-size="10" fill="#333">查询 / 计划类流程</text>
+  <rect x="200" y="915" width="14" height="14" rx="2" fill="#2ecc71"/>
+  <text x="220" y="927" font-size="10" fill="#333">资金操作类流程</text>
+  <rect x="370" y="915" width="14" height="14" rx="2" fill="#e67e22"/>
+  <text x="390" y="927" font-size="10" fill="#333">核验 / 异步闭环 / 度小满通道</text>
+  <rect x="620" y="915" width="14" height="14" rx="2" fill="#2980b9"/>
+  <text x="640" y="927" font-size="10" fill="#333">报文与安全层</text>
+  <rect x="790" y="915" width="14" height="14" rx="2" fill="#8e44ad"/>
+  <text x="810" y="927" font-size="10" fill="#333">本系统边界</text>
+  <text x="960" y="927" font-size="10" fill="#27ae60">✓已实现</text>
+</svg>
