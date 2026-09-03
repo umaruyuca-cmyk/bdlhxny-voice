@@ -592,9 +592,16 @@
       '<p class="note">固定条件写入运行配置快照(同配置必同哈希);变体由实验模板定义,任何角色不可编辑。</p>';
   }
 
+  /* 变体聚焦:选了变体时,组级表(样本/指标/柱图/分场景)随之收窄到该变体;
+     系列批次没有逐运行明细,变体筛选的变化全体现在这些组级表上。 */
+  function focusedGroups(batch) {
+    var groups = (batch.groups || []).filter(function (g) { return g.valid_runs > 0 || g.invalid_runs > 0; });
+    return state.variant ? groups.filter(function (g) { return g.key === state.variant; }) : groups;
+  }
+
   function renderSamples() {
     var b = sel.batch;
-    var groups = b.groups || [];
+    var groups = focusedGroups(b);
     var head = "<thead><tr><th>变体</th><th class=\"num\">有效运行<br>(进指标分母)</th><th class=\"num\">无效运行</th><th>运行证据</th></tr></thead>";
     var rows = groups.map(function (g) {
       return "<tr><td>" + S.esc(zh(g.label)) + "</td>" +
@@ -606,11 +613,12 @@
     var totalInvalid = groups.reduce(function (s, g) { return s + g.invalid_runs; }, 0);
     el("sampleBlock").innerHTML =
       '<div class="tbl-scroll"><table class="tbl">' + head + "<tbody>" + rows + "</tbody></table></div>" +
-      '<p>合计:<strong class="txt-ok">' + S.fmtInt(totalValid) + " 次有效</strong> · <strong>" + S.fmtInt(totalInvalid) + " 次无效</strong> · 共 " + S.fmtInt(totalValid + totalInvalid) + " 次。发布门槛要求每组有效运行 ≥ 5;无效运行(限流/服务不可用等)单列,不冒充失败样本。</p>";
+      '<p>' + (state.variant ? "已聚焦变体 <strong>" + S.esc(zh(state.variant)) + "</strong>(清除「变体」筛选可查看全部对照组)· " : "") +
+      "合计:<strong class=\"txt-ok\">" + S.fmtInt(totalValid) + " 次有效</strong> · <strong>" + S.fmtInt(totalInvalid) + " 次无效</strong> · 共 " + S.fmtInt(totalValid + totalInvalid) + " 次。发布门槛要求每组有效运行达标;无效运行(限流/服务不可用等)单列,不冒充失败样本。</p>";
   }
 
   function renderMetrics() {
-    var groups = (sel.batch.groups || []).filter(function (g) { return g.valid_runs > 0 || g.invalid_runs > 0; });
+    var groups = focusedGroups(sel.batch);
     var keys = SC.METRICS.filter(function (m) {
       return groups.some(function (g) { return g.metrics && g.metrics[m.key] != null; });
     });
@@ -636,7 +644,7 @@
   }
 
   function renderCompare() {
-    var groups = sel.batch.groups || [];
+    var groups = focusedGroups(sel.batch);
     var pctMetrics = SC.METRICS.filter(function (m) {
       return m.kind === "pct" && groups.some(function (g) { return g.metrics && g.metrics[m.key] != null; });
     });
@@ -678,7 +686,7 @@
 
   function renderScenes() {
     var cases = sel.batch.cases || [];
-    var groupKeys = (sel.batch.groups || []).map(function (g) { return g.key; });
+    var groupKeys = focusedGroups(sel.batch).map(function (g) { return g.key; });
     if (cases.length === 0) {
       el("sceneBlock").innerHTML = '<div class="placeholder-block">本批次报告未含分用例结果。</div>';
       return;
