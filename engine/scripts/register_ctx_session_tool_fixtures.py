@@ -95,6 +95,15 @@ def build_sql() -> str:
                 )
             )
 
+    # f-string 表达式内不能用反斜杠(Python 3.12 才放开,项目基线 3.11),
+    # 含 \n 的 join 先落变量再进模板。
+    set_rows_sql = ",\n".join(set_rows)
+    response_rows_sql = ",\n".join(response_rows)
+    change_description = (
+        "注册 ctx-session-* 三套用例冻结工具集"
+        "(gold runtime_mock_fixtures 按 path 覆盖键入库,供 context-batches 通道按用例取集)"
+    )
+
     return f"""-- ══════════════════════════════════════════════════════════════════════
 -- 注册 ctx-session-* 用例冻结工具集(gold runtime_mock_fixtures 入库)
 --
@@ -125,7 +134,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 INSERT INTO touchstone.fixture_sets
     (id, version, title, fixture_type, source_hash, public)
 VALUES
-{",\n".join(set_rows)}
+{set_rows_sql}
 ON CONFLICT (id, version) DO NOTHING;
 
 -- ── 2. 冻结返回(按 path 覆盖键) ──────────────────────────────────────
@@ -137,7 +146,7 @@ INSERT INTO touchstone.fixture_tool_responses
     (fixture_set_id, fixture_set_version, call_key, tool_name, arguments,
      response_status, response, observed_at, simulated_latency_ms, sequence)
 VALUES
-{",\n".join(response_rows)}
+{response_rows_sql}
 ON CONFLICT (fixture_set_id, fixture_set_version, call_key) DO NOTHING;
 
 UPDATE touchstone.fixture_tool_responses
@@ -151,7 +160,7 @@ ALTER TABLE touchstone.fixture_tool_responses ALTER COLUMN response_hash SET NOT
 
 INSERT INTO touchstone.database_changes (script_name, description)
 VALUES ('20260901-register-ctx-session-tool-fixtures.sql',
-        '注册 ctx-session-* 三套用例冻结工具集(gold runtime_mock_fixtures 按 path 覆盖键入库,供 context-batches 通道按用例取集)')
+        '{change_description}')
 ON CONFLICT DO NOTHING;
 
 COMMIT;

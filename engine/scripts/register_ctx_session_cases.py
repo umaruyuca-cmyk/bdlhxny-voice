@@ -108,7 +108,9 @@ def _expected_checks(case_id: str) -> dict:
         "context_expectations": {
             # gold required_facts 三个用例均为空;forbidden_claims 逐句整串匹配(低误报口径)
             "required_facts": {},
-            "forbidden_facts": {f"claim_{index}": claim for index, claim in enumerate(gold["forbidden_claims"], start=1)},
+            "forbidden_facts": {
+                f"claim_{index}": claim for index, claim in enumerate(gold["forbidden_claims"], start=1)
+            },
         },
     }
 
@@ -138,16 +140,21 @@ def build_sql() -> str:
         fixture = {"fixture_id": f"{case_id}-fixture-v1", "context_items": _context_items(case_id)}
         for variant_id, title, strategy, budget in _COMPARISON_VARIANTS:
             variants.append(
-                "({case}, 1, {vid}, {title}, {strategy}, {budget}, {fixture}, true)".format(
-                    case=_sql_str(case_id),
-                    vid=_sql_str(variant_id),
-                    title=_sql_str(title),
-                    strategy=_sql_str(strategy),
-                    budget=budget,
-                    fixture=_sql_json(fixture),
-                )
+                f"({_sql_str(case_id)}, 1, {_sql_str(variant_id)}, {_sql_str(title)}, "
+                f"{_sql_str(strategy)}, {budget}, {_sql_json(fixture)}, true)"
             )
         as_of_rows.append(f"('{case_id}', '{raw['ended_at']}'::timestamptz)")
+
+    # f-string 表达式内不能用反斜杠(Python 3.12 才放开,项目基线 3.11),
+    # 含 \n 的 join 先落变量再进模板。
+    definitions_sql = ",\n".join(definitions)
+    versions_sql = ",\n".join(versions)
+    variants_sql = ",\n".join(variants)
+    as_of_rows_sql = ",\n".join(as_of_rows)
+    change_description = (
+        "注册 ctx-session-* 三套 Session 压缩对照用例"
+        "(每套 full/budgeted-hybrid-v1/budgeted-extractive 三条对照变体及数据快照)"
+    )
 
     return f"""-- ══════════════════════════════════════════════════════════════════════
 -- 注册 ctx-session-* 三套 Session 压缩对照用例(context-batches 通道消费)
@@ -185,7 +192,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- ── 1. 用例定义 ────────────────────────────────────────────────────────
 
 INSERT INTO touchstone.case_definitions (id, title, current_version, test_type) VALUES
-{",\n".join(definitions)}
+{definitions_sql}
 ON CONFLICT DO NOTHING;
 
 -- ── 2. 用例版本(expected_checks 为判官方,不进上下文) ────────────────
@@ -194,7 +201,7 @@ INSERT INTO touchstone.case_versions
     (case_id, version, message, scene, authenticated, allowed_tools,
      context_profile, token_budget, expected_checks, public)
 VALUES
-{",\n".join(versions)}
+{versions_sql}
 ON CONFLICT DO NOTHING;
 
 -- ── 3. 对照变体(同一份 context_items,唯一变量是 strategy/budget) ────
@@ -202,7 +209,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO touchstone.case_variants
     (case_id, case_version, variant_id, title, context_strategy, token_budget, data_fixture, public)
 VALUES
-{",\n".join(variants)}
+{variants_sql}
 ON CONFLICT DO NOTHING;
 
 -- ── 4. 数据快照(content=变体条目,source_hash=其 sha256) ──────────────
@@ -214,14 +221,14 @@ SELECT cv.case_id || ':' || cv.variant_id || ':fixture-v1', cv.case_id, cv.case_
        'sha256:' || encode(digest(cv.data_fixture::text, 'sha256'), 'hex')
 FROM touchstone.case_variants cv
 JOIN (VALUES
-{",\n".join(as_of_rows)}
+{as_of_rows_sql}
 ) AS m(case_id, as_of) ON m.case_id = cv.case_id
 WHERE cv.case_id IN ({", ".join(_sql_str(case_id) for case_id in _CASES)})
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO touchstone.database_changes (script_name, description)
 VALUES ('20260901-register-ctx-session-cases.sql',
-        '注册 ctx-session-* 三套 Session 压缩对照用例(每套 full/budgeted-hybrid-v1/budgeted-extractive 三条对照变体及数据快照)')
+        '{change_description}')
 ON CONFLICT DO NOTHING;
 
 COMMIT;

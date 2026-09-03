@@ -259,9 +259,7 @@ class DataServiceContextBuildStore:
             "tokenizer_version": payload.get("tokenizerVersion"),
             "memory_segments": memory_segments,
             "memory_segment_ids": [
-                str(row.get("segment_id"))
-                for row in memory_segments
-                if isinstance(row, dict) and row.get("segment_id")
+                str(row.get("segment_id")) for row in memory_segments if isinstance(row, dict) and row.get("segment_id")
             ],
             "source_event_ids": source_event_ids,
             "events": turned_events,
@@ -308,9 +306,7 @@ class DataServiceContextBuildStore:
             "tokenizer_version": payload.get("tokenizerVersion"),
             "memory_segments": memory_segments,
             "memory_segment_ids": [
-                str(row.get("segment_id"))
-                for row in memory_segments
-                if isinstance(row, dict) and row.get("segment_id")
+                str(row.get("segment_id")) for row in memory_segments if isinstance(row, dict) and row.get("segment_id")
             ],
             "source_event_ids": source_event_ids,
             "events": turned_events,
@@ -416,9 +412,7 @@ class DataServiceContextBuildStore:
             "current_request_event_id": str(
                 payload.get("currentRequestEventId") or payload.get("current_request_event_id") or ""
             ),
-            "algorithm_version": str(
-                payload.get("algorithmVersion") or payload.get("algorithm_version") or ""
-            ),
+            "algorithm_version": str(payload.get("algorithmVersion") or payload.get("algorithm_version") or ""),
             "source_type": self.source_type,
             "status": str(payload.get("status") or "PENDING"),
             "current_phase": str(payload.get("currentPhase") or payload.get("current_phase") or "LOAD_HISTORY"),

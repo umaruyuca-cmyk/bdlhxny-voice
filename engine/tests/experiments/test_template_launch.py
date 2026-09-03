@@ -1096,9 +1096,7 @@ async def test_agent_timeout_zero_disables_circuit_breaker():
             await asyncio.sleep(self._delay)
             return AIMessage(content="上海多云。")
 
-    config = TEMPLATES["governance-on-off"].base_config.with_overrides(
-        {"limits.agent_timeout_seconds": 0}
-    )
+    config = TEMPLATES["governance-on-off"].base_config.with_overrides({"limits.agent_timeout_seconds": 0})
     assert config.limits.agent_timeout_seconds == 0
 
     # 0 = 不限时:循环照常完成

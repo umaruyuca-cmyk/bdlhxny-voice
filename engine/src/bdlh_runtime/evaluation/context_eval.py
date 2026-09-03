@@ -514,9 +514,7 @@ async def run_context_eval(
         case_frozen = default_frozen
         if case.fixture_set_id and frozen is None:
             if case.fixture_set_id not in frozen_by_set:
-                frozen_by_set[case.fixture_set_id] = FrozenObservations(
-                    client.get_tool_fixtures(case.fixture_set_id)
-                )
+                frozen_by_set[case.fixture_set_id] = FrozenObservations(client.get_tool_fixtures(case.fixture_set_id))
             case_frozen = frozen_by_set[case.fixture_set_id]
         for repeat_index in range(runs_per_variant):
             recorder = RunRecorder(

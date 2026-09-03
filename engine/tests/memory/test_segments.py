@@ -37,14 +37,27 @@ OWNER = "10000000-0000-0000-0000-000000000001"
 def _event(seq: int, event_id: str, kind: str, content: str, **extra: Any) -> SessionEvent:
     if kind == "tool_call":
         return SessionEvent(
-            seq, event_id, "", kind, content, "assistant",
-            call_id=extra.get("call_id"), tool_name=extra.get("tool_name"),
+            seq,
+            event_id,
+            "",
+            kind,
+            content,
+            "assistant",
+            call_id=extra.get("call_id"),
+            tool_name=extra.get("tool_name"),
         )
     if kind == "tool_result":
         return SessionEvent(
-            seq, event_id, "", kind, content, "tool",
-            call_id=extra.get("call_id"), tool_name=extra.get("tool_name"),
-            status=extra.get("status"), error_code=extra.get("error_code"),
+            seq,
+            event_id,
+            "",
+            kind,
+            content,
+            "tool",
+            call_id=extra.get("call_id"),
+            tool_name=extra.get("tool_name"),
+            status=extra.get("status"),
+            error_code=extra.get("error_code"),
         )
     role = "user" if kind == "user_message" else "assistant"
     return SessionEvent(seq, event_id, "", kind, content, role)
@@ -63,9 +76,7 @@ def _five_turn_events(current_content: str = "当前请求") -> tuple[SessionEve
         seq += 1
         if number == 3:
             # 第 3 轮带工具对:调用与结果必须同轮且不拆分
-            events.append(
-                _event(seq, f"c{number}", "tool_call", "", call_id=f"call-{number}", tool_name="read")
-            )
+            events.append(_event(seq, f"c{number}", "tool_call", "", call_id=f"call-{number}", tool_name="read"))
             seq += 1
             events.append(
                 _event(
@@ -316,9 +327,7 @@ def test_over_budget_or_empty_summary_misses() -> None:
 
     # 把一个已存 Segment 改成超预算(且保存时绕过校验),一个改空摘要
     keys = sorted(repository.segments)
-    repository.segments[keys[0]] = dataclasses.replace(
-        repository.segments[keys[0]], summary_tokens=999_999
-    )
+    repository.segments[keys[0]] = dataclasses.replace(repository.segments[keys[0]], summary_tokens=999_999)
     repository.segments[keys[1]] = dataclasses.replace(
         repository.segments[keys[1]], summary_content="", summary_tokens=0
     )
@@ -667,8 +676,18 @@ def test_overview_exposes_memory_state_and_latest_build(tmp_path: Any, monkeypat
     assert segments_payload["enabled"] is True
     assert len(segments_payload["segments"]) == 3
     row = segments_payload["segments"][0]
-    assert {"segment_id", "start_event_id", "end_event_id", "event_count", "source_hash_short",
-            "source_tokens", "summary_tokens", "status", "generation_mode", "summary_excerpt"} <= set(row)
+    assert {
+        "segment_id",
+        "start_event_id",
+        "end_event_id",
+        "event_count",
+        "source_hash_short",
+        "source_tokens",
+        "summary_tokens",
+        "status",
+        "generation_mode",
+        "summary_excerpt",
+    } <= set(row)
 
 
 def test_segments_library_degrades_for_legacy_without_repository(tmp_path: Any) -> None:

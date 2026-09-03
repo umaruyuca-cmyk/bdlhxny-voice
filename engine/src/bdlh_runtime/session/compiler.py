@@ -75,6 +75,7 @@ def recent_turns_event_ids(events: tuple[Any, ...], keep_turns: int) -> frozense
     keep_from = max(1, total - max(1, keep_turns) + 1)
     return frozenset(event_id for event_id, index in turn_of.items() if index >= keep_from)
 
+
 #: budgeted 早期实现的算法版本号(与 run_telemetry 的 structured-text-v1 对齐)
 STRUCTURED_TEXT_ALGO_VERSION = "structured-text-v1"
 
@@ -312,9 +313,7 @@ class SessionCompiler:
                 session.events,
                 int(variant.get("recent_turns") or DEFAULT_RECENT_TURNS),
             )
-            serialized_source = tuple(
-                entry for entry in serialized_source if set(entry.event_ids) & set(keep_ids)
-            )
+            serialized_source = tuple(entry for entry in serialized_source if set(entry.event_ids) & set(keep_ids))
             strategy = ContextStrategy.RECENT_EVENTS_LEGACY
         # 历史轮 Segment 注入:被完整覆盖的连续条目替换为合成摘要条目;
         # 非法 Segment 拒绝注入并保留原文(warning 记入工件)
@@ -504,17 +503,17 @@ class SessionCompiler:
         replaced: dict[str, Any] = {}
         for item in items:
             if item.superseded and item.classification is not ContextClassification.DISTRACTOR:
-                replaced[item.item_id] = dataclasses.replace(
-                    item, classification=ContextClassification.DISTRACTOR
-                )
+                replaced[item.item_id] = dataclasses.replace(item, classification=ContextClassification.DISTRACTOR)
                 code_rule_ids.add(item.item_id)
 
         candidates: list[tuple[str, str, str]] = []
         for item in items:
             if item.item_id in replaced or item.item_id.startswith("memory-segment:"):
                 continue
-            role = "assistant" if item.role == ContextRole.ASSISTANT else (
-                "tool" if item.role == ContextRole.UNTRUSTED_DATA else "user"
+            role = (
+                "assistant"
+                if item.role == ContextRole.ASSISTANT
+                else ("tool" if item.role == ContextRole.UNTRUSTED_DATA else "user")
             )
             candidates.append((item.item_id, role, item.content))
 

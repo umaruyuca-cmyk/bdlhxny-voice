@@ -461,10 +461,7 @@ def run_analysis(
             except DataServiceError:
                 judge_errors += 1  # 落库失败同样计入错误,不静默丢失
         builds_payload = data.list_context_builds_cross_owner(200, 0)
-        builds = [
-            _with_parsed_json(row)
-            for row in builds_payload.get("builds") or []
-        ]
+        builds = [_with_parsed_json(row) for row in builds_payload.get("builds") or []]
         report = {
             "quality_sampling": {
                 "sampled": sampled,

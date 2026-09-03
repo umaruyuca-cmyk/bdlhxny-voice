@@ -24,12 +24,9 @@ test("结果页与证据页共享统一适配层,不各自解析字段", async (
   }
 });
 
-test("未发布即空:索引为空时两核心页保持真实空状态,不渲染模拟数据", async () => {
-  // 发布器索引随仓库携带明确空状态(formal_batches 为空数组),页面据此渲染空态;
-  // 空索引不是正式数据,禁止向 formal_batches 手填条目
-  const index = JSON.parse(await readFile(new URL("../public/showcase-data/index.json", import.meta.url), "utf8"));
-  assert.deepEqual(index.formal_batches, [], "发布器索引初始为空");
-  assert.equal(index.latest_batch, null, "无最新批次时 latest_batch 为 null");
+test("空状态能力仍在:未发布时页面有真实空态,渲染不造模拟数据", async () => {
+  // 空状态是能力而非当前状态:索引已随正式发布转为非空,但两核心页的
+  // 空态文案与适配层"缺失即 null"纪律不得因为有了数据而丢失。
   const results = await readPublic("results/index.html");
   assert.match(results, /尚无正式实验结果/, "结果页空状态文案存在");
   assert.match(results, /不会用演示数据或估算填充/, "空状态声明不填充演示数据");

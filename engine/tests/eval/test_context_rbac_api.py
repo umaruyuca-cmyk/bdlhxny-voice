@@ -85,10 +85,7 @@ def test_copy_audit_requires_content_access(tmp_path: Path, monkeypatch) -> None
         json={"action": "CONTEXT_CONTENT_COPY"},
     )
     assert allowed.status_code == 204
-    assert any(
-        row["action"] == "CONTEXT_CONTENT_COPY" and row["account_id"] == "owner-2"
-        for row in _DATA.audit_calls
-    )
+    assert any(row["action"] == "CONTEXT_CONTENT_COPY" and row["account_id"] == "owner-2" for row in _DATA.audit_calls)
 
 
 def test_agent_run_start_audited(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
@@ -239,8 +236,14 @@ def test_ops_analysis_list_returns_runs(tmp_path: Path, monkeypatch) -> None:  #
     runs = response.json()["runs"]
     assert runs and runs[0]["run_id"] == "run-1"
     assert set(runs[0]) >= {
-        "run_id", "status", "trigger_source", "sampled_segments",
-        "judge_calls", "judge_errors", "report", "started_at",
+        "run_id",
+        "status",
+        "trigger_source",
+        "sampled_segments",
+        "judge_calls",
+        "judge_errors",
+        "report",
+        "started_at",
     }
 
 
@@ -261,9 +264,7 @@ def test_segment_quality_includes_persisted_semantic_checks(tmp_path: Path, monk
         }
     ]
 
-    response = client.get(
-        f"/api/v1/context/sessions/{session_id}/segment-quality", headers=_headers()
-    )
+    response = client.get(f"/api/v1/context/sessions/{session_id}/segment-quality", headers=_headers())
 
     assert response.status_code == 200
     semantic = response.json()["semantic"]

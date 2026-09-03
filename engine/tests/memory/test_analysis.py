@@ -166,10 +166,22 @@ def test_llm_judge_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_threshold_groups_split_by_frozen_config() -> None:
     builds = [
         _build_row(),
-        _build_row(config_snapshot={"algorithm_version": "budgeted-hybrid-v1", "recent_raw_turns": 2,
-                                    "segment_max_tokens": 512, "summary_call_cap": 2}),
-        _build_row(config_snapshot={"algorithm_version": "budgeted-hybrid-v1", "recent_raw_turns": 4,
-                                    "segment_max_tokens": 512, "summary_call_cap": 2}),
+        _build_row(
+            config_snapshot={
+                "algorithm_version": "budgeted-hybrid-v1",
+                "recent_raw_turns": 2,
+                "segment_max_tokens": 512,
+                "summary_call_cap": 2,
+            }
+        ),
+        _build_row(
+            config_snapshot={
+                "algorithm_version": "budgeted-hybrid-v1",
+                "recent_raw_turns": 4,
+                "segment_max_tokens": 512,
+                "summary_call_cap": 2,
+            }
+        ),
         _build_row(status="FAILED"),
     ]
     groups = threshold_groups(builds)
@@ -214,12 +226,18 @@ def test_correlation_requires_min_samples() -> None:
     assert "样本不足" in one["note"] or "还没有" in one["note"]
 
     builds = [
-        _build_row(budget={"history_input_tokens": 1000, "final_context_tokens": 900},
-                   agent_run={"status": "COMPLETED", "steps": 1}),  # rate 0.1
-        _build_row(budget={"history_input_tokens": 1000, "final_context_tokens": 500},
-                   agent_run={"status": "COMPLETED", "steps": 2}),  # rate 0.5
-        _build_row(budget={"history_input_tokens": 1000, "final_context_tokens": 100},
-                   agent_run={"status": "COMPLETED", "steps": 3}),  # rate 0.9
+        _build_row(
+            budget={"history_input_tokens": 1000, "final_context_tokens": 900},
+            agent_run={"status": "COMPLETED", "steps": 1},
+        ),  # rate 0.1
+        _build_row(
+            budget={"history_input_tokens": 1000, "final_context_tokens": 500},
+            agent_run={"status": "COMPLETED", "steps": 2},
+        ),  # rate 0.5
+        _build_row(
+            budget={"history_input_tokens": 1000, "final_context_tokens": 100},
+            agent_run={"status": "COMPLETED", "steps": 3},
+        ),  # rate 0.9
     ]
     report = compression_agent_correlation(builds)
     assert report["sample_count"] == 3
@@ -237,10 +255,12 @@ def test_run_analysis_samples_judges_and_persists() -> None:
         segments=[_segment_row("seg-1"), _segment_row("seg-2")],
         builds=[_build_row()],
     )
-    judge = _FakeJudge([
-        Verdict(verdict="PASS"),
-        Verdict(verdict="FAIL", missing_facts=("漏了约束",), hallucinations=("编造数字",)),
-    ])
+    judge = _FakeJudge(
+        [
+            Verdict(verdict="PASS"),
+            Verdict(verdict="FAIL", missing_facts=("漏了约束",), hallucinations=("编造数字",)),
+        ]
+    )
 
     outcome = run_analysis(data, judge, settings=AnalysisSettings(sample_size=5), trigger="MANUAL")
 
@@ -268,10 +288,12 @@ def test_run_analysis_partial_judge_errors_still_completes() -> None:
     """部分段评审失败:结果如实落库,运行整体仍 COMPLETED(有有效信号)。"""
 
     data = _FakeData(segments=[_segment_row("seg-1"), _segment_row("seg-2")])
-    judge = _FakeJudge([
-        Verdict(verdict="PASS"),
-        Verdict(verdict="ERROR", error_code="LLM_UNAVAILABLE"),
-    ])
+    judge = _FakeJudge(
+        [
+            Verdict(verdict="PASS"),
+            Verdict(verdict="ERROR", error_code="LLM_UNAVAILABLE"),
+        ]
+    )
 
     outcome = run_analysis(data, judge, settings=AnalysisSettings(sample_size=3))
 

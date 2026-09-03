@@ -292,7 +292,6 @@ class DataClient:
             raise DataServiceError("data service returned an invalid analysis run list")
         return runs
 
-
     def get_case_variant_context(self, case_id: str, version: int, variant_id: str) -> dict[str, Any]:
         """变体上下文条目(压缩对照输入):优先 fixture_context_items,兼容 data_fixture。"""
         payload = self._request("GET", f"/cases/{case_id}/versions/{version}/variants/{variant_id}/context")

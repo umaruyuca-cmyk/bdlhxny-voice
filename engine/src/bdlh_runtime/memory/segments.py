@@ -399,8 +399,7 @@ class ExtractiveSegmentSummarizer:
         counter: TokenCounter,
     ) -> dict[str, str]:
         return {
-            turn_id: self._extractive.summarize([source], max_tokens_per_item, counter)
-            for turn_id, source in entries
+            turn_id: self._extractive.summarize([source], max_tokens_per_item, counter) for turn_id, source in entries
         }
 
 
@@ -492,9 +491,7 @@ class MemorySegmentManager:
                 prepared[turn_id] = segment
                 generated_ids.add(segment.segment_id)
         elif missing:
-            warnings.append(
-                f"SHADOW_SEGMENT_MISS: {len(missing)} 个旧轮缺少可用 Segment,当前模式不调用 LLM 补齐"
-            )
+            warnings.append(f"SHADOW_SEGMENT_MISS: {len(missing)} 个旧轮缺少可用 Segment,当前模式不调用 LLM 补齐")
 
         segments = tuple(prepared[turn.turn_id] for turn in old_turns if turn.turn_id in prepared)
         saved_tokens = sum(max(0, segment.source_tokens - segment.summary_tokens) for segment in segments)

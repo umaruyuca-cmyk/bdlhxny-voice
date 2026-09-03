@@ -268,7 +268,7 @@ test("旧地址 301:redirect-map 与 nginx 一致,按内容唯一归属", async 
   assert.equal(redirectFor("/showcase/runs"), "/evidence/");
   assert.equal(redirectFor("/showcase/tools"), "/evidence/");
   assert.equal(redirectFor("/context"), "/system/");
-  assert.equal(redirectFor("/context/library"), "/methodology/");
+  assert.equal(redirectFor("/context/library"), "/methodology/strategy-comparison.html");
   assert.equal(redirectFor("/context/results"), "/results/");
   assert.equal(redirectFor("/judging"), "/methodology/");
   assert.equal(redirectFor("/judging/metrics"), "/methodology/");
@@ -360,12 +360,23 @@ test("showcase-data JSON 无 BOM(浏览器 JSON.parse 可直接解析)", async (
   }
 });
 
-test("正式发布索引初始为空(空状态真实,无手填成绩)", async () => {
-  // 发布器索引以明确空状态随仓库携带:formal_batches 为空、latest_batch 为 null;
-  // 本任务不创建正式数据,禁止向此处手填批次条目
+test("发布器索引与已发布正式批次一致(状态真实,无手填成绩)", async () => {
+  // 发布器索引由发布流写入:发布过即非空。守卫防两类脱节:
+  // 手填批次条目冒充发布、latest_batch 与批次列表不一致。
   const index = JSON.parse(await readFile(new URL("../public/showcase-data/index.json", import.meta.url), "utf8"));
-  assert.deepEqual(index.formal_batches, []);
-  assert.equal(index.latest_batch, null);
-  const publications = JSON.parse(await readFile(new URL("../public/showcase-data/publications/index.json", import.meta.url), "utf8"));
-  assert.deepEqual(publications.formal_publications, [], "发布登记索引为空属预期");
+  const batches = index.formal_batches;
+  assert.ok(Array.isArray(batches) && batches.length > 0, "已发布批次应进入索引(空状态只属于未发布)");
+  const newest = batches.reduce((a, b) => (b.published_at > a.published_at ? b : a));
+  assert.equal(index.latest_batch && index.latest_batch.batch_id, newest.batch_id, "latest_batch 指向 published_at 最新的批次");
+  for (const batch of batches) {
+    assert.equal(batch.is_formal, true, `索引内批次必须 is_formal:${batch.batch_id}`);
+    for (const field of ["batch_id", "experiment_type", "published_at", "is_formal"]) {
+      assert.ok(batch[field] !== undefined, `批次条目缺字段 ${field}:${batch.batch_id}`);
+    }
+  }
+  const publications = JSON.parse(
+    await readFile(new URL("../public/showcase-data/publications/index.json", import.meta.url), "utf8"),
+  );
+  // 发布登记(对外发表记录)是独立后续流程:允许为空,但结构必须有效
+  assert.ok(Array.isArray(publications.formal_publications), "发布登记索引必须是列表");
 });

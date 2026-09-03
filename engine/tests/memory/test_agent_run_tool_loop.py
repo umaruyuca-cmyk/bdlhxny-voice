@@ -156,9 +156,7 @@ def test_session_tool_fixtures_derivation_from_history_pairs() -> None:
 
 def test_session_tool_fixtures_error_status_and_plain_text() -> None:
     events = (
-        SessionEvent(
-            1, "c1", "", "tool_call", "", "assistant", call_id="k1", tool_name="x.y", arguments={"a": 1}
-        ),
+        SessionEvent(1, "c1", "", "tool_call", "", "assistant", call_id="k1", tool_name="x.y", arguments={"a": 1}),
         SessionEvent(
             2,
             "r1",
@@ -177,21 +175,21 @@ def test_session_tool_fixtures_error_status_and_plain_text() -> None:
 
 
 def test_session_tool_fixtures_ignores_orphan_results() -> None:
-    events = (
-        SessionEvent(1, "r-orphan", "", "tool_result", "{}", "tool", call_id="missing"),
-    )
+    events = (SessionEvent(1, "r-orphan", "", "tool_result", "{}", "tool", call_id="missing"),)
     assert session_tool_fixtures(events) == []
 
 
 def test_tool_loop_runner_multi_turn_with_frozen_fixtures() -> None:
-    llm = FakeChatModel([
-        AIMessage(
-            content="",
-            usage_metadata={"input_tokens": 100, "output_tokens": 8, "total_tokens": 108},
-            tool_calls=[{"name": "demo.echo", "args": {"q": "hi"}, "id": "call-1", "type": "tool_call"}],
-        ),
-        _final("基于冻结结果的回答"),
-    ])
+    llm = FakeChatModel(
+        [
+            AIMessage(
+                content="",
+                usage_metadata={"input_tokens": 100, "output_tokens": 8, "total_tokens": 108},
+                tool_calls=[{"name": "demo.echo", "args": {"q": "hi"}, "id": "call-1", "type": "tool_call"}],
+            ),
+            _final("基于冻结结果的回答"),
+        ]
+    )
     runner = ToolLoopAgentRunner(llm=llm)
     result = runner.run_with_session(ARTIFACT_MESSAGES, session=_session_case())
 
@@ -229,10 +227,12 @@ def test_tool_loop_runner_estimates_when_usage_missing() -> None:
 
 
 def test_tool_loop_runner_unmatched_arguments_return_not_in_fixture() -> None:
-    llm = FakeChatModel([
-        _tool_call(args={"q": "完全不同的参数"}),
-        _final("仍能继续回答"),
-    ])
+    llm = FakeChatModel(
+        [
+            _tool_call(args={"q": "完全不同的参数"}),
+            _final("仍能继续回答"),
+        ]
+    )
     runner = ToolLoopAgentRunner(llm=llm)
     result = runner.run_with_session(ARTIFACT_MESSAGES, session=_session_case())
     # 未命中冻结 fixture → NOT_IN_FIXTURE 错误负载回填,循环继续,不触网
@@ -285,14 +285,16 @@ def _service_with_tool_loop(tmp_path: Path, runner: ToolLoopAgentRunner) -> tupl
 
 
 def test_service_agent_run_end_to_end_with_tool_loop(tmp_path: Path) -> None:
-    llm = FakeChatModel([
-        AIMessage(
-            content="",
-            usage_metadata={"input_tokens": 50, "output_tokens": 6, "total_tokens": 56},
-            tool_calls=[{"name": "demo.echo", "args": {"q": "hi"}, "id": "call-1", "type": "tool_call"}],
-        ),
-        _final("端到端回答"),
-    ])
+    llm = FakeChatModel(
+        [
+            AIMessage(
+                content="",
+                usage_metadata={"input_tokens": 50, "output_tokens": 6, "total_tokens": 56},
+                tool_calls=[{"name": "demo.echo", "args": {"q": "hi"}, "id": "call-1", "type": "tool_call"}],
+            ),
+            _final("端到端回答"),
+        ]
+    )
     runner = ToolLoopAgentRunner(llm=llm)
     service, build_id = _service_with_tool_loop(tmp_path, runner)
 

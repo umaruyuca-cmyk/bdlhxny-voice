@@ -65,11 +65,20 @@ test("私有运行台(/lab)已退役:目录不存在,旧地址 301 到执行逻�
   assert.equal(redirectFor("/lab/index.html"), "/system/");
 });
 
-test("dev-server 与 nginx 均无 API 反代(公开镜像无私有通道)", async () => {
+test("公开镜像无 API 反代;dev-server 演示反代仅限只读白名单前缀", async () => {
+  // 公开镜像(nginx)无私有通道:不得反代任何 API。
+  // dev-server 允许唯一例外:系统演示账号的只读端点(仅 GET、上游固定本机 engine),
+  // 其余任何 API 前缀出现即违规。
+  const DEMO_API_PREFIX = "/api/v1/public/context-demo";
   const devServer = await readFile(new URL("../dev-server.js", import.meta.url), "utf8");
-  assert.doesNotMatch(devServer, /\/api\/v1/, "dev-server 不再反代任何 API");
+  const apiHits = devServer.match(/\/api\/v1[^\s"'`]*/g) || [];
+  for (const hit of new Set(apiHits)) {
+    assert.equal(hit, DEMO_API_PREFIX, `dev-server 出现白名单外的 API 前缀:${hit}`);
+  }
+  assert.match(devServer, /request\.method !== "GET"/, "演示反代必须只放行 GET");
+  assert.match(devServer, /http:\/\/127\.0\.0\.1:8090/, "演示反代上游固定本机 engine");
+  assert.match(devServer, /DEMO_API_UNAVAILABLE/, "上游不可用时明确降级,不兜底假数据");
   assert.doesNotMatch(devServer, /RUN_API_PROXY/, "dev-server 移除运行服务代理开关");
-  assert.doesNotMatch(devServer, /proxy/i, "dev-server 无代理逻辑");
   const nginx = await readFile(new URL("../nginx.conf", import.meta.url), "utf8");
   assert.doesNotMatch(nginx, /proxy_pass/, "nginx 不再反代任何 API");
   assert.doesNotMatch(nginx, /\/api\/v1/, "nginx 不含 API 路由");

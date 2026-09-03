@@ -263,9 +263,7 @@ class ContextBuildStore:
 
         with self._lock:
             candidates = [
-                row
-                for row in self._records.values()
-                if row["owner_id"] == owner_id and row["session_id"] == session_id
+                row for row in self._records.values() if row["owner_id"] == owner_id and row["session_id"] == session_id
             ]
             if not candidates:
                 return None

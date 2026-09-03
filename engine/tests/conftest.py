@@ -29,6 +29,7 @@ def _no_real_llm_credentials(monkeypatch):
 
     monkeypatch.delenv("LLM_API_KEY", raising=False)
 
+
 from bdlh_runtime.registry import load_and_validate
 
 from .registry.seeded_store import build_seeded_store

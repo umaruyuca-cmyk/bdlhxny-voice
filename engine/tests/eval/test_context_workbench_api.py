@@ -269,9 +269,7 @@ def test_segments_endpoint_lists_library_for_owner(tmp_path: Path, monkeypatch) 
     monkeypatch.setattr(run_api, "_data", lambda: ProductionData())
     client = TestClient(run_api.app)
 
-    response = client.get(
-        "/api/v1/context/sessions/production-session-1/segments", headers=_headers()
-    )
+    response = client.get("/api/v1/context/sessions/production-session-1/segments", headers=_headers())
 
     assert response.status_code == 200
     payload = response.json()

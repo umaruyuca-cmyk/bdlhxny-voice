@@ -141,7 +141,8 @@ class LLMContextClassifier:
             for index, (item_id, role, text) in enumerate(picked, start=1)
         ]
         prompt = (
-            f"{load_classify_system_prompt()}\n\n=== 待分类条目 ===\n" + "\n".join(lines)
+            f"{load_classify_system_prompt()}\n\n=== 待分类条目 ===\n"
+            + "\n".join(lines)
             + "\n\n请逐条输出分类 JSON;item_id 必须使用条目方括号里给出的 item_id 原文。"
         )
         started = time.perf_counter()

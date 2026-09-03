@@ -172,9 +172,10 @@ def test_segment_quality_checks_are_deterministic(tmp_path: Path) -> None:
     assert report["checked"] == 5
     assert report["passed"] == 1
     problems = {issue["segment_id"]: issue["problems"] for issue in report["issues"]}
-    assert problems["seg-empty-summary"] == ["EMPTY_SUMMARY", "MISSING_SOURCE_HASH"] or "EMPTY_SUMMARY" in problems[
-        "seg-empty-summary"
-    ]
+    assert (
+        problems["seg-empty-summary"] == ["EMPTY_SUMMARY", "MISSING_SOURCE_HASH"]
+        or "EMPTY_SUMMARY" in problems["seg-empty-summary"]
+    )
     assert "SUMMARY_OVER_BUDGET" in problems["seg-over-budget"]
     assert "STATUS_INVALIDATED" in problems["seg-invalidated"]
     assert "MISSING_SOURCE_EVENTS" in problems["seg-no-sources"]

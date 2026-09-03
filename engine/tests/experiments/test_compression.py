@@ -315,14 +315,14 @@ def test_generate_compression_method_contexts_two_artifacts():
     assert set(result["stats"]["original_tokens"]) == {"budgeted-extractive", "budgeted-hybrid-v1"}
     # 同一输入:压缩前 token 必然一致
     assert (
-    result["stats"]["original_tokens"]["budgeted-extractive"]
-    == result["stats"]["original_tokens"]["budgeted-hybrid-v1"]
-)
+        result["stats"]["original_tokens"]["budgeted-extractive"]
+        == result["stats"]["original_tokens"]["budgeted-hybrid-v1"]
+    )
     # 摘要文本不同 → 压缩后工作上下文与构建哈希不同
     assert (
-    result["stats"]["working_tokens"]["budgeted-hybrid-v1"]
-    != result["stats"]["working_tokens"]["budgeted-extractive"]
-)
+        result["stats"]["working_tokens"]["budgeted-hybrid-v1"]
+        != result["stats"]["working_tokens"]["budgeted-extractive"]
+    )
     details = result["compression_details"]["budgeted-hybrid-v1"]
     assert details["counts"]["compressed"] >= 1
     assert isinstance(result["by_variant"]["budgeted-hybrid-v1"]["warnings"], list)
@@ -409,9 +409,9 @@ async def test_run_compression_method_comparison_two_cells():
     assert set(result["compression_details"]) == set(COMPRESSION_METHODS)
     # 注入 LLM 摘要器后,生成式工件的替代文本与抽取式不同 → 构建哈希必然不同
     assert (
-    result["frozen_artifact_hashes"]["budgeted-extractive"]
-    != result["frozen_artifact_hashes"]["budgeted-hybrid-v1"]
-)
+        result["frozen_artifact_hashes"]["budgeted-extractive"]
+        != result["frozen_artifact_hashes"]["budgeted-hybrid-v1"]
+    )
 
 
 class _BatchCapSummarizer:
@@ -439,8 +439,8 @@ def test_generative_compile_caps_summary_calls_via_batch(monkeypatch):
     monkeypatch.setenv("LLM_SUMMARY_MAX_CALLS_PER_BUILD", "4")
     session, variants, _ = compression._load_session_bundle("ctx-session-product-evolution-01")
     budgeted_def = next(
-            v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-hybrid-v1"
-        )
+        v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-hybrid-v1"
+    )
     fake = _BatchCapSummarizer()
     compiled = SessionCompiler(summarizer=fake).compile(session, budgeted_def, common_rules="规则")
     assert fake.batch_calls <= 4  # 分块请求数受硬上限约束
@@ -503,8 +503,8 @@ async def test_default_cell_runner_llm_unavailable_marks_invalid(monkeypatch):
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     session, variants, _ = compression._load_session_bundle(SESSION_ID)
     budgeted_def = next(
-            v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-hybrid-v1"
-        )
+        v for v in variants.get("context_variants") or [] if v.get("variant_id") == "budgeted-hybrid-v1"
+    )
     from bdlh_runtime.session import SessionCompiler
 
     artifact = SessionCompiler().compile(session, budgeted_def, common_rules="规则")
@@ -594,6 +594,7 @@ def test_compile_method_artifacts_on_demand_subset_skips_generative():
 
 def test_compile_method_artifacts_rejects_unknown_subset():
     import pytest
+
     from bdlh_runtime.experiments.compression import CompressionSessionError
 
     session, variants, _ = compression._load_session_bundle(SESSION_ID)

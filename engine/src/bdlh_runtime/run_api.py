@@ -756,9 +756,7 @@ def _context_service_for(account: dict[str, Any]) -> ContextWorkbenchService:
 def _context_session_error(exc: Exception) -> HTTPException | None:
     from bdlh_runtime.experiments.compression import CompressionSessionError
 
-    if isinstance(exc, CompressionSessionError) or (
-        isinstance(exc, DataServiceError) and exc.status_code == 404
-    ):
+    if isinstance(exc, CompressionSessionError) or (isinstance(exc, DataServiceError) and exc.status_code == 404):
         return HTTPException(
             status_code=404,
             detail={"error_code": "SESSION_NOT_FOUND", "message": str(exc)},
@@ -855,9 +853,7 @@ def get_context_session_segment_quality(
     service = _context_service_for(account)
     semantic_checks: list[dict[str, Any]] | None = None
     try:
-        semantic_checks = _data().list_context_quality_checks(
-            _account_id(account), session_id=session_id, limit=limit
-        )
+        semantic_checks = _data().list_context_quality_checks(_account_id(account), session_id=session_id, limit=limit)
     except DataServiceError:
         semantic_checks = None  # 语义结果暂不可用:如实返回 None,不阻塞规则级结果
     try:

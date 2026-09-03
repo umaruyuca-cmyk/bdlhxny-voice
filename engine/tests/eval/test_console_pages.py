@@ -1,9 +1,9 @@
 """公开站点与真源同步守卫(信息架构 v3 · 五页)。
 
-- 首页系统构成事实卡与 showcase-data 静态数据一致(不以构成数字冒充成绩);
+- 系统总览页(/overview/)构成事实卡与 showcase-data 静态数据一致(不以构成数字冒充成绩);
 - 测试逻辑页(/methodology/)的实验清单与引擎模板注册表同步(真源在 templates.py);
 - 结果/证据两核心页只读发布器公开快照(经统一适配层),未发布保持空状态;
-- 正式发布索引为空属预期(本任务不生成正式数据)。
+- 发布器索引与已发布正式批次一致(发布过即非空);发布登记索引结构有效。
 """
 
 from __future__ import annotations
@@ -16,19 +16,19 @@ _WEB_PUBLIC = Path(__file__).resolve().parents[3] / "web" / "public"
 _ENGINE_SRC = Path(__file__).resolve().parents[2] / "src" / "bdlh_runtime"
 
 
-def test_home_composition_facts_match_data_sources():
-    """首页系统构成事实卡:数量与 tools.json / cases.json / context-library.json 一致。"""
-    html = (_WEB_PUBLIC / "index.html").read_text(encoding="utf-8")
+def test_overview_composition_facts_match_data_sources():
+    """系统总览页构成事实卡:数量与 tools.json / cases.json / context-library.json / 模板注册表一致。"""
+    html = (_WEB_PUBLIC / "overview" / "index.html").read_text(encoding="utf-8")
     nums = [int(n) for n in re.findall(r'<div class="fact"><b>(\d+)</b>', html)]
-    assert len(nums) == 4, "首页应有四张构成事实卡"
+    assert len(nums) == 4, "系统总览页应有四张构成事实卡(工具/用例/Session/模板)"
     tools = json.loads((_WEB_PUBLIC / "showcase-data" / "tools.json").read_text(encoding="utf-8"))
     cases = json.loads((_WEB_PUBLIC / "showcase-data" / "cases.json").read_text(encoding="utf-8"))
-    library = json.loads(
-        (_WEB_PUBLIC / "showcase-data" / "context-library.json").read_text(encoding="utf-8")
-    )
+    library = json.loads((_WEB_PUBLIC / "showcase-data" / "context-library.json").read_text(encoding="utf-8"))
+    registry = (_ENGINE_SRC / "experiments" / "templates.py").read_text(encoding="utf-8")
     assert nums[0] == tools["total"], "工具数与 tools.json 一致"
     assert nums[1] == cases["total"], "对比用例数与 cases.json 一致"
-    assert nums[2] == len(library["entries"]), "Session 数与 context-library.json 一致"
+    assert nums[2] == len(library["entries"]), "压缩 Session 数与 context-library.json 一致"
+    assert nums[3] == len(re.findall(r"^_register\(", registry, re.M)), "实验模板数与 templates.py 注册数一致"
     # 构成事实明确标注为非实验成绩
     assert "非实验成绩" in html, "构成事实卡必须声明非实验成绩"
 
@@ -57,15 +57,23 @@ def test_results_and_evidence_read_publisher_snapshot_only():
         assert forbidden not in adapter, f"适配层不得包含 {forbidden}"
 
 
-def test_publication_indices_empty_until_formal_batch_published():
-    """发布器索引与登记索引均为空(空状态真实,无手填成绩)。"""
+def test_publication_indices_consistent_with_published_batches():
+    """发布器索引与已发布正式批次一致;发布登记索引结构有效(空状态只属于未发布)。"""
     index = json.loads((_WEB_PUBLIC / "showcase-data" / "index.json").read_text(encoding="utf-8"))
-    assert index.get("formal_batches") == [], "发布器索引初始为空"
-    assert index.get("latest_batch") is None, "无最新批次时 latest_batch 为 null"
+    batches = index.get("formal_batches")
+    assert isinstance(batches, list) and batches, "已发布批次应进入发布器索引(不得回退到手填空状态)"
+    required_fields = {"batch_id", "experiment_type", "published_at", "is_formal"}
+    for batch in batches:
+        assert required_fields <= set(batch), f"批次条目缺字段:{batch.get('batch_id')}"
+        assert batch["is_formal"] is True, f"索引内批次必须 is_formal:{batch['batch_id']}"
+    newest = max(batches, key=lambda batch: batch["published_at"])
+    latest = index.get("latest_batch")
+    assert latest and latest.get("batch_id") == newest["batch_id"], "latest_batch 指向 published_at 最新的批次"
     publications = json.loads(
         (_WEB_PUBLIC / "showcase-data" / "publications" / "index.json").read_text(encoding="utf-8")
     )
-    assert publications.get("formal_publications") == [], "发布登记索引初始为空"
+    # 发布登记(对外发表记录)是独立后续流程:允许为空,但结构必须有效
+    assert isinstance(publications.get("formal_publications"), list), "发布登记索引必须是列表"
 
 
 def test_metric_definitions_single_source_on_methodology():
