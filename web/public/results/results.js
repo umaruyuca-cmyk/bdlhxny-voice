@@ -59,7 +59,12 @@
   }
 
   function initFilters() {
-    fillSelect(el("fBatch"), data.map(function (d) { return d.batch.batch_id; }), state.batch, "全部批次(默认最新)");
+    // 批次下拉显示「实验名 · 发布时间」而非原始批次 UUID(值仍是 UUID)
+    var batchText = function (id) {
+      var hit = data.filter(function (d) { return d.batch.batch_id === id; })[0];
+      return hit ? experimentLabel(hit.batch) + " · " + S.fmtTime(hit.batch.generated_at) : id;
+    };
+    fillSelect(el("fBatch"), data.map(function (d) { return d.batch.batch_id; }), state.batch, "全部批次(默认最新)", batchText);
     var types = unique(data.map(function (d) { return experimentLabel(d.batch); }));
     fillSelect(el("fExperiment"), types, "", "全部实验");
     refreshDynamicFilters();
@@ -98,21 +103,39 @@
       syncQuery();
       render();
     });
-    // 总览行点击 = 选中该批次(与「查看」等价,不必精确点链接)
+    // 总览行点击 / 「查看」链接 = 页内切换批次(不整页刷新),并定位到结论摘要;
+    // 修饰键点击(Ctrl/Cmd 开新标签)保留原生链接导航
     el("overviewBlock").addEventListener("click", function (ev) {
+      var link = ev.target.closest("a");
+      if (link) {
+        var match = (link.getAttribute("href") || "").match(/[?&]batch=([A-Za-z0-9_-]+)/);
+        if (match && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey) {
+          ev.preventDefault();
+          selectBatch(match[1]);
+        }
+        return;
+      }
       var tr = ev.target.closest("tr[data-batch]");
       if (!tr || !el("overviewBlock").contains(tr)) return;
-      if (ev.target.closest("a")) return; // 链接走自己的导航
-      state.batch = tr.getAttribute("data-batch");
-      state.experiment = "";
-      focus.kind = "batch";
-      focus.value = state.batch;
-      el("fBatch").value = state.batch;
-      el("fExperiment").value = "";
-      refreshDynamicFilters();
-      syncQuery();
-      render();
+      selectBatch(tr.getAttribute("data-batch"));
     });
+  }
+
+  /* 页内切换批次:同步筛选下拉与 URL,重渲染后滚到结论摘要——
+     「查看」承诺的是看到该批次内容,不是回到页面顶部。 */
+  function selectBatch(batchId) {
+    state.batch = batchId;
+    state.experiment = "";
+    focus.kind = "batch";
+    focus.value = batchId;
+    el("fBatch").value = batchId;
+    el("fExperiment").value = "";
+    refreshDynamicFilters();
+    syncQuery();
+    render();
+    var target = document.getElementById("results-summary");
+    // 瞬时滚动:部分内嵌/无障碍环境会丢弃 smooth 动画,导致完全不动
+    if (target) target.scrollIntoView({ block: "start" });
   }
 
   function refreshDynamicFilters() {
@@ -723,6 +746,11 @@
     el("resultsApp").hidden = false;
     initFilters();
     render();
+    // 带批次参数进入(分享链接)时,直接定位到该批次内容而非页面顶部
+    if (params.get("batch")) {
+      var target = document.getElementById("results-summary");
+      if (target) target.scrollIntoView({ block: "start" });
+    }
   }
 
   if (document.readyState === "loading") {
