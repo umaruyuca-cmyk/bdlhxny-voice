@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import functools
 import inspect
 import json
 import time
@@ -408,13 +409,21 @@ def _validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> st
     if not isinstance(schema, dict) or not schema:
         schema = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
     try:
-        Draft202012Validator(schema).validate(arguments)
+        _schema_validator(json.dumps(schema, sort_keys=True)).validate(arguments)
     except SchemaError:
         return "工具参数 schema 非法"
     except ValidationError as exc:
         path = ".".join(str(part) for part in exc.path) or "(root)"
         return f"参数校验失败:{path} {exc.message}"
     return None
+
+
+@functools.cache
+def _schema_validator(schema_json: str) -> Draft202012Validator:
+    """按 schema 内容缓存校验器——schema 随工具卡静态注册,逐调用重建
+    是每次工具调用的纯重复开销;非法 schema 抛 SchemaError 不会进缓存。
+    """
+    return Draft202012Validator(json.loads(schema_json))
 
 
 def _wrap_observation(name: str, raw: Any, elapsed_ms: int, card: ToolDescriptor) -> Observation:
