@@ -709,7 +709,7 @@ const WORK = {
 </section>
 
 <section id="slr" class="proj-sec">
-  <div class="proj-head"><span class="proj-idx">01</span><h2>数链融供应链金融平台</h2><span class="proj-meta">核心开发 · 2025.06 – 至今 · 政采云 / 云趣产品线</span></div>
+  <div class="proj-head"><span class="proj-idx">01</span><h2>数链融供应链金融平台</h2><span class="proj-meta">核心开发 · 2025.04 – 至今 · 政采云 / 云趣产品线</span></div>
   <p class="proj-lead">面向小微企业的供应链金融平台:政采云动产融资(京智云仓仓储质押——入库 / 提货 / 盘点 / 解押,库存占用 + 还款试算控风险)与云趣电商贷两条产品线。</p>
   <div class="proj-stack"><span class="stack-label">技术栈</span><span class="tag">Spring Cloud</span><span class="tag">RocketMQ</span><span class="tag">MySQL / Redis</span><span class="tag">XXL-JOB</span><span class="tag">OAuth 2.0 / JWT</span><span class="tag">Python / FastAPI</span><span class="tag">LangChain / LangGraph</span><span class="tag">RAG</span></div>
 
@@ -786,7 +786,7 @@ ${figViewer([
 
 <section id="methodology" class="proj-sec">
   <div class="proj-head"><span class="proj-idx">→</span><h2>方法论与本站:第 4 个代表项目</h2></div>
-  <p class="proj-lead">简历中的第 4 个代表项目——<strong>BDLH Agent 工程化与评测平台(Sentinel / Touchstone)</strong>,独立开发,2026.07 至今——就是本站。金融系统与 Agent 工程共享同一套立场:<strong>模型提议、代码裁决</strong>;生产系统里验证过的边界设计,延伸为本站要回答的实验问题:</p>
+  <p class="proj-lead">简历中的第 4 个代表项目——<strong>BDLH Agent 工程化与评测平台(Sentinel / Touchstone)</strong>,独立开发,2026.03 至今——就是本站。项目最初的原始设计从 Agent Skills 起步:早期以 Skills 组织领域能力与提示契约,经原型验证后逐步演进为 Sentinel Runtime 与 Touchstone 受控评测。金融系统与 Agent 工程共享同一套立场:<strong>模型提议、代码裁决</strong>;生产系统里验证过的边界设计,延伸为本站要回答的实验问题:</p>
   <table class="map-tbl">
     <thead><tr><th class="map-src">生产系统实践</th><th style="width:40px"></th><th>本站 Agent 工程问题</th></tr></thead>
     <tbody>
