@@ -84,7 +84,8 @@ async function serveStatic(requestPath, request, response) {
     response.end();
     return;
   }
-  const DIRECTORY_INDEX = ["/overview/", "/results/", "/evidence/", "/system/", "/methodology/"];
+  // /work/agent-architecture/ 为目录索引页(代表项目页「引用」以新窗口打开的子页)
+  const DIRECTORY_INDEX = ["/overview/", "/results/", "/evidence/", "/system/", "/methodology/", "/work/agent-architecture/"];
   // 模块子页带尾斜杠(/evidence/run/)301 去斜杠:子页是 *.html 文件不是目录;
   // 目录索引(/evidence/ 自身)除外
   if (requestPath !== "/" && requestPath.endsWith("/")) {

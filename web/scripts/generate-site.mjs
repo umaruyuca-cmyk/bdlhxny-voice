@@ -678,12 +678,19 @@ const figViewer = (figs) => `
     <div class="fig-hint">默认适应宽度看整体结构;点图或「切换原始大小」阅读细节,手机也可「新窗口打开原图」后双指放大(SVG 矢量不糊)。</div>
   </div>`;
 
+/** 主页面「引用」链接:新窗口打开 Agent 架构子页,沿用工作项目页主题色。 */
+const REF_STYLE = `
+  <style>
+    .ref-link{display:inline-block;margin-top:8px;font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent)}
+    .ref-link:hover{opacity:.75}
+  </style>`;
+
 const WORK = {
   path: "index.html",
   currentPath: "/",
   title: "工作项目 · 代表项目",
   description: "与简历同口径的三套投产系统:数链融供应链金融平台、北京银行贷款服务与开放平台、“数字京杭”微信小程序,配脱敏全链路流程图。",
-  extraHead: WORK_STYLE,
+  extraHead: WORK_STYLE + REF_STYLE,
   extraScripts: WORK_SCRIPT,
   sections: [
     { id: "overview", title: "总览" },
@@ -725,7 +732,7 @@ const WORK = {
     <div class="point"><h4>状态机底座</h4><p>B2B 资金流程建模为 6 步状态机(订单推送 → 定金 → 代采 → 核心转账 → 采购 → 付款),唯一流水 + 前置状态校验 + 乐观锁治理重复请求与并发覆盖;策略模式支撑商票 / 法透两类融资方案。</p></div>
     <div class="point"><h4>可靠消息</h4><p>RocketMQ + Outbox 本地消息表:消费去重、结果补查、定时补偿;打通额度、借款、放款、子账户转账(含失败冲正)与资产包 SFTP。</p></div>
     <div class="point"><h4>合同审核<span class="pt-tag">生产 AI · Qwen3.6-27B</span></h4><p>“要打钱时验合同”——合同结构化解析,货物 / 交易主体 / 金额 / 收款账户四项自动比对;失败重试 + 人工审核 + 补偿任务保障资金链路安全。</p></div>
-    <div class="point"><h4>盯市补保与 AI 风险报告<span class="pt-tag">生产闭环 · Agent 原型</span></h4><p>Java 汇总 SKU 市价与在押货值,5% 阈值生成波动工单,人工审批 / 历史工单作废,待补金额纳入还款试算与资金拆分;另以 LangChain create_agent 实现 Agent 原型:3 个只读工具 + Pydantic 结构化输出。</p></div>
+    <div class="point"><h4>盯市补保与 AI 风险报告<span class="pt-tag">生产闭环 · Agent 原型</span></h4><p>Java 汇总 SKU 市价与在押货值,5% 阈值生成波动工单,人工审批 / 历史工单作废,待补金额纳入还款试算与资金拆分;另以 LangChain create_agent 实现 Agent 原型:3 个只读工具 + Pydantic 结构化输出。<a class="ref-link" href="/work/agent-architecture/" target="_blank" rel="noopener">盯市补保:业务处理与系统设计(新窗口) ↗</a></p></div>
   </div>
 
   <h3>全链路流程(脱敏版)</h3>
@@ -803,9 +810,234 @@ ${figViewer([
 </section>`,
 };
 
+// ── 盯市补保子页(由代表项目页「引用」以新窗口打开) ──────────────────────
+
+const ARCH_STYLE = `
+  <style>
+    .arch-stack{display:flex;flex-direction:column;margin:14px 0 6px}
+    .arch-layer{border:1px solid var(--line,#e5e9f0);border-radius:8px;background:var(--bg,#fff);padding:12px 14px}
+    .arch-layer h4{margin:0 0 6px;font-size:14px}
+    .arch-layer p{margin:0;font-size:13px;color:var(--ink-soft,#5b6572)}
+    .arch-down{text-align:center;color:var(--accent);font-weight:700;font-size:12px;line-height:1.4;padding:6px 0}
+    .arch-branches{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0 6px}
+    .arch-branch{border:1px solid var(--line,#e5e9f0);border-radius:8px;background:var(--bg,#fff);padding:12px 14px}
+    .arch-branch h4{margin:0 0 8px;font-size:13.5px;color:var(--accent)}
+    .arch-branch ul{margin:0;padding-left:18px;font-size:13px;color:var(--ink-soft,#5b6572)}
+    .arch-branch li{margin:4px 0}
+    .arch-back{display:inline-block;margin:18px 0 0;font-size:13px;font-weight:600;color:var(--accent);text-decoration:none}
+    .flow-steps{margin:14px 0 6px;counter-reset:fs}
+    .flow-step{position:relative;padding:10px 12px 10px 44px;border:1px solid var(--line,#e5e9f0);border-radius:8px;background:var(--bg,#fff);margin-bottom:8px}
+    .flow-step::before{counter-increment:fs;content:counter(fs);position:absolute;left:12px;top:11px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+    .flow-step b{display:block;font-size:13.5px;margin-bottom:2px}
+    .flow-step span{font-size:13px;color:var(--ink-soft,#5b6572)}
+    .flow-step .flow-actor{display:inline-block;margin-left:6px;font-size:11px;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 5px;vertical-align:2px}
+    @media (max-width:760px){.arch-branches{grid-template-columns:1fr}}
+  </style>`;
+
+const WORK_AGENT = {
+  path: "work/agent-architecture/index.html",
+  currentPath: "/work/agent-architecture/",
+  title: "动产质押盯市补保 · 业务处理与系统设计 · 代表项目",
+  description: "供应链金融动产质押盯市补保:从质押入库、每日盯市、阈值预警、补保工单到解押处置的业务闭环,以及 Java 业务系统与 Python Agent 服务的职责边界(脱敏版)。",
+  extraHead: WORK_STYLE + ARCH_STYLE,
+  sections: [
+    { id: "scope", title: "业务背景" },
+    { id: "flow", title: "业务处理全流程" },
+    { id: "arch", title: "系统职责划分" },
+    { id: "design", title: "关键设计决策" },
+    { id: "tools", title: "Agent · 工具与取数" },
+    { id: "context", title: "Agent · 上下文管理" },
+    { id: "governance", title: "与本站的对应" },
+  ],
+  bodyHtml: `
+<section id="scope">
+  <div class="work-hero">
+    <h1>动产质押 · 盯市补保</h1>
+    <p style="margin:0;color:var(--ink-soft,#5b6572);max-width:62em">供应链金融动产质押融资:小微企业以在库货物质押获取融资,货物价格下跌会使在押货值缩水、触发补保。系统每日汇总 SKU 市价与在押货值,跌破阈值自动生成补保工单,并生成风险报告辅助风控处置。本页为<strong>脱敏版</strong>:隐去行方服务编码、内部接口路径与实现细节,保留业务流程与设计决策。</p>
+    <p class="work-stance"><b>金额与业务状态由 Java 确定性计算;Agent 只做只读取数与报告生成,不参与审批与资金操作。</b></p>
+    <div class="stat-row" style="margin-top:16px">
+      <div class="stat"><b>入库 / 提货 / 盘点 / 解押</b><span>仓储质押四类动作</span></div>
+      <div class="stat"><b>5% 阈值</b><span>跌破即生成波动工单</span></div>
+      <div class="stat"><b>待补金额</b><span>纳入还款试算与资金拆分</span></div>
+      <div class="stat"><b>只读</b><span>Agent 不碰写接口</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="flow" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">01</span><h2>业务处理全流程</h2><span class="proj-meta">质押入库 → 盯市预警 → 补保处置 → 解押</span></div>
+  <div class="flow-steps">
+    <div class="flow-step"><b>质押入库与库存占用<span class="flow-actor">Java</span></b><span>货物入库登记,建立质押关系与库存占用,作为后续盯市与货值计算的基准。</span></div>
+    <div class="flow-step"><b>每日盯市取价<span class="flow-actor">Java</span></b><span>汇总各 SKU 市价与在押数量,计算在押货值;取价结果留快照,保证事后可复核。</span></div>
+    <div class="flow-step"><b>阈值判定与待补金额<span class="flow-actor">Java</span></b><span>跌幅触发阈值(如 5%)即判定需补保,按质押敞口计算待补金额。</span></div>
+    <div class="flow-step"><b>生成补保工单<span class="flow-actor">Java</span></b><span>工单含标的、跌幅、在押货值与待补金额;同一标的同业务日不重复开单。</span></div>
+    <div class="flow-step"><b>异步生成风险报告<span class="flow-actor">Agent</span></b><span>工单落库后异步唤起 Agent:只读取数 + RAG 检索历史处置案例,输出结构化风险报告。</span></div>
+    <div class="flow-step"><b>人工审批<span class="flow-actor">人工</span></b><span>风控审批通过或作废历史工单;Agent 不参与决策,只提供报告依据。</span></div>
+    <div class="flow-step"><b>补保与资金处理<span class="flow-actor">Java</span></b><span>待补金额纳入还款试算与资金拆分,进入资金链路闭环。</span></div>
+    <div class="flow-step"><b>解押或处置<span class="flow-actor">Java</span></b><span>补足后解押提货;未补足则走质押物处置流程。</span></div>
+  </div>
+</section>
+
+<section id="arch" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">02</span><h2>系统职责划分</h2><span class="proj-meta">Java 业务系统为主体 · Agent 为其中一个能力模块</span></div>
+  <div class="arch-stack">
+    <div class="arch-layer"><h4>前端 · 风控工作台</h4><p>报告卡片 / 工单列表渲染结构化报告;聊天追问页以 SSE 流式对话承接风控人员的连续追问。</p></div>
+    <div class="arch-down">↕ SSE 流式</div>
+    <div class="arch-layer"><h4>Agent 服务 · Python 独立进程</h4><p>create_agent / 自研循环统一编排:工具分支负责取数,上下文分支负责组装;经查询接口读取 Java 侧业务数据,不直接写库。</p></div>
+    <div class="arch-down">↕ MQ / HTTP 异步调用(工单生成后触发)</div>
+    <div class="arch-layer"><h4>后端 · Java 业务系统</h4><p>工单、持仓、市价汇总由 Java 直管;金额与状态为确定性计算,审批与资金拆分不经过 Agent。</p></div>
+  </div>
+  <p class="note">并发形态:Java 多实例 × Python 单进程异步。Agent 服务由工单事件异步唤起,不参与业务主链路的强一致事务,避免模型耗时影响核心资金链路。</p>
+</section>
+
+<section id="design" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">03</span><h2>关键设计决策</h2><span class="proj-meta">为什么这么切分</span></div>
+  <div class="arch-branches">
+    <div class="arch-branch">
+      <h4>金额由 Java 确定性计算</h4>
+      <ul>
+        <li>在押货值、待补金额全部在 Java 侧算出</li>
+        <li>Agent 只读展示与解释,不重算、不裁决</li>
+        <li>避免模型算术误差进入资金链路</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>Agent 只读边界</h4>
+      <ul>
+        <li>仅开放查询接口,无写权限</li>
+        <li>审批与资金操作不经过 Agent</li>
+        <li>权限由代码强制,不依赖模型自觉</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>异步解耦,不进主事务</h4>
+      <ul>
+        <li>工单落库后再发消息唤起 Agent</li>
+        <li>模型耗时不拖长业务事务</li>
+        <li>Agent 超时或失败不影响工单流转</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>幂等防重</h4>
+      <ul>
+        <li>同一标的同业务日不重复生成工单</li>
+        <li>Agent 侧消费幂等,不重复出报告</li>
+        <li>重复消息与重试不产生重复副作用</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>取价快照可复算</h4>
+      <ul>
+        <li>每次盯市取价留痕</li>
+        <li>报告事后可按当时快照复核</li>
+        <li>价格波动不会让历史结论对不上账</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>失败可降级</h4>
+      <ul>
+        <li>Agent 不可用时工单仍走人工审批</li>
+        <li>报告缺失不影响补保与资金闭环</li>
+        <li>能力是增强项,不是关键路径依赖</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="tools" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">04</span><h2>Agent 模块 · 工具与取数</h2><span class="proj-meta">三类只读工具,取数路径经适配器收敛</span></div>
+  <div class="arch-branches">
+    <div class="arch-branch">
+      <h4>波动查询</h4>
+      <ul>
+        <li>rest api adapter → Java 盯市接口</li>
+        <li>返回跌幅 / 货值 / 待补金额</li>
+        <li>金额口径由 Java 侧确定,Agent 不重算</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>SKU 趋势</h4>
+      <ul>
+        <li>外部行情接口取价格序列</li>
+        <li>用于趋势描述与区间判断</li>
+        <li>外部数据带时效标记,过期即降权</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>RAG 检索</h4>
+      <ul>
+        <li>向量库:品类政策 / 历史处置案例</li>
+        <li>为结论提供可追溯依据</li>
+        <li>检索结果作为引用证据进入报告</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>结构化输出</h4>
+      <ul>
+        <li>Pydantic 约束输出结构</li>
+        <li>报告字段与前端卡片一一对应</li>
+        <li>无法证实的部分显式留空,不编造</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="context" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">05</span><h2>Agent 模块 · 上下文管理</h2><span class="proj-meta">单 session · 自动压缩 · 归档 · 长期记忆</span></div>
+  <div class="arch-branches">
+    <div class="arch-branch">
+      <h4>单 session 与事件注入</h4>
+      <ul>
+        <li>风控从通知点进入,按工单建立追问会话</li>
+        <li>会话初始化注入该工单的事件摘要</li>
+        <li>避免风控人员重复描述背景</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>自动压缩</h4>
+      <ul>
+        <li>会话历史只带最近 N 轮原文</li>
+        <li>更早轮次压缩为摘要归档</li>
+        <li>在有限上下文内保留追问连续性</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>归档与再检索</h4>
+      <ul>
+        <li>历史报告 / 历史会话落归档</li>
+        <li>可再经 RAG 检索取回</li>
+        <li>支撑跨工单的同类风险对照</li>
+      </ul>
+    </div>
+    <div class="arch-branch">
+      <h4>长期记忆</h4>
+      <ul>
+        <li>客户风险偏好等稳定画像</li>
+        <li>在后续报告中复用</li>
+        <li>只沉淀已确认信息,不由推断直接写入</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="governance" class="proj-sec">
+  <div class="proj-head"><span class="proj-idx">06</span><h2>与本站 Agent 工程问题的对应</h2></div>
+  <table class="map-tbl">
+    <thead><tr><th class="map-src">本项目中的做法</th><th style="width:40px"></th><th>对应的 Agent 工程问题</th></tr></thead>
+    <tbody>
+      <tr><td class="map-src"><b>只读工具</b>:Agent 经查询接口读数据,不碰写</td><td class="map-arrow">→</td><td>治理层:权限与只读边界由代码强制执行,模型不可越权</td></tr>
+      <tr><td class="map-src"><b>金额由 Java 确定性计算</b>,Agent 只做解释与归纳</td><td class="map-arrow">→</td><td>模型提议、代码裁决:确定性计算不下放给模型</td></tr>
+      <tr><td class="map-src"><b>结构化输出 + 取价快照</b>:报告可追溯、可复算</td><td class="map-arrow">→</td><td>评测的可复算:结果必须能回溯、能重验</td></tr>
+      <tr><td class="map-src"><b>工单幂等 + 消费去重</b>:重复消息不产生重复副作用</td><td class="map-arrow">→</td><td>Agent 任务的唤醒去重与重复执行防护</td></tr>
+    </tbody>
+  </table>
+  <a class="arch-back" href="/">← 返回代表项目</a>
+</section>`,
+};
+
 // ── 生成 ─────────────────────────────────────────────────────────────────
 
-const ALL_PAGES = [HOME, RESULTS, EVIDENCE, EVIDENCE_RUN, SYSTEM, METHODOLOGY, WORK];
+const ALL_PAGES = [HOME, RESULTS, EVIDENCE, EVIDENCE_RUN, SYSTEM, METHODOLOGY, WORK, WORK_AGENT];
 
 export async function generateSite({ only } = {}) {
   // only:逗号分隔的页面 path 白名单,用于安全重生成指定产物页。
